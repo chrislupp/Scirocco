@@ -15,6 +15,7 @@ find_package(Eigen3 REQUIRED)
 # Main library
 add_library(xfoil_cpp
     src/spline.cpp
+    src/geometry.cpp
 )
 target_include_directories(xfoil_cpp PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -36,6 +37,7 @@ if(XFOIL_BUILD_TESTS)
 
     add_executable(xfoil_tests
         tests/spline_test.cpp
+        tests/geometry_test.cpp
     )
     target_link_libraries(xfoil_tests xfoil_cpp GTest::gtest_main)
     gtest_discover_tests(xfoil_tests)
