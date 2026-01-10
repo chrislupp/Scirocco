@@ -8,91 +8,76 @@
 
 namespace xfoil {
 
-/// @brief Array type aliases using Eigen for linear algebra.
-/// Dynamic sizes for arbitrary number of points (no hardcoded limits).
+// Vector and matrix type aliases
+using VectorXd = Eigen::VectorXd;
+using MatrixXd = Eigen::MatrixXd;
+using Vector3d = Eigen::Vector3d;
+using Matrix35d = Eigen::Matrix<double, 3, 5>;
 
-template <typename Scalar, int N>
-using Vector = Eigen::Matrix<Scalar, N, 1>;
-
-template <typename Scalar, int Rows, int Cols>
-using Matrix = Eigen::Matrix<Scalar, Rows, Cols>;
-
-template <typename Scalar>
-using VectorX = Eigen::Matrix<Scalar, Eigen::Dynamic, 1>;
-
-template <typename Scalar>
-using MatrixX = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
-
-/// @brief Operating conditions (design variables for optimization).
-template <typename Scalar>
+/// @brief Operating conditions.
 struct FlightCondition {
-    Scalar alpha;       ///< Angle of attack [rad]
-    Scalar re;          ///< Reynolds number
-    Scalar mach;        ///< Freestream Mach number
-    Scalar xstrip[2];   ///< Forced transition locations (upper/lower)
+    double alpha;       ///< Angle of attack [rad]
+    double re;          ///< Reynolds number
+    double mach;        ///< Freestream Mach number
+    double xstrip[2];   ///< Forced transition locations (upper/lower)
 };
 
-/// @brief Airfoil geometry state (design variables for optimization).
-template <typename Scalar>
+/// @brief Airfoil geometry state.
 struct Geometry {
-    int n;                          ///< Number of points
-    VectorX<Scalar> x, y, s;        ///< Coordinates, arc length
-    VectorX<Scalar> xp, yp;         ///< Spline derivatives dx/ds, dy/ds
-    VectorX<Scalar> nx, ny;         ///< Normal vectors
-    Scalar xle, yle, xte, yte;      ///< LE/TE coordinates
-    Scalar chord, sle;              ///< Chord, arc length to LE
-    bool sharp_te;                  ///< Sharp trailing edge flag
+    int n;                  ///< Number of points
+    VectorXd x, y, s;       ///< Coordinates, arc length
+    VectorXd xp, yp;        ///< Spline derivatives dx/ds, dy/ds
+    VectorXd nx, ny;        ///< Normal vectors
+    double xle, yle;        ///< LE coordinates
+    double xte, yte;        ///< TE coordinates
+    double chord, sle;      ///< Chord, arc length to LE
+    bool sharp_te;          ///< Sharp trailing edge flag
 };
 
 /// @brief Panel solution state.
-template <typename Scalar>
 struct PanelSolution {
-    VectorX<Scalar> gam;    ///< Vorticity strength
-    VectorX<Scalar> sig;    ///< Source strength (viscous)
-    VectorX<Scalar> qinv;   ///< Inviscid velocity
-    VectorX<Scalar> qvis;   ///< Viscous velocity
-    VectorX<Scalar> cpi;    ///< Inviscid pressure coefficient
-    VectorX<Scalar> cpv;    ///< Viscous pressure coefficient
+    VectorXd gam;    ///< Vorticity strength
+    VectorXd sig;    ///< Source strength (viscous)
+    VectorXd qinv;   ///< Inviscid velocity
+    VectorXd qvis;   ///< Viscous velocity
+    VectorXd cpi;    ///< Inviscid pressure coefficient
+    VectorXd cpv;    ///< Viscous pressure coefficient
 };
 
 /// @brief Influence coefficient matrices.
-template <typename Scalar>
 struct InfluenceMatrices {
-    MatrixX<Scalar> aij;    ///< Vortex influence (NxN)
-    MatrixX<Scalar> dij;    ///< Source influence (NxN)
-    bool valid;             ///< True if matrices are up to date
+    MatrixXd aij;    ///< Vortex influence (NxN)
+    MatrixXd dij;    ///< Source influence (NxN)
+    bool valid;      ///< True if matrices are up to date
 };
 
 /// @brief Boundary layer station state.
-template <typename Scalar>
 struct BLStation {
-    Scalar x;       ///< Arc length position
-    Scalar theta;   ///< Momentum thickness
-    Scalar dstar;   ///< Displacement thickness
-    Scalar uedg;    ///< Edge velocity
-    Scalar ctau;    ///< Shear coefficient / amplification
-    Scalar cf;      ///< Skin friction coefficient
-    Scalar hk;      ///< Shape parameter H = delta*/theta
+    double x;       ///< Arc length position
+    double theta;   ///< Momentum thickness
+    double dstar;   ///< Displacement thickness
+    double uedg;    ///< Edge velocity
+    double ctau;    ///< Shear coefficient / amplification
+    double cf;      ///< Skin friction coefficient
+    double hk;      ///< Shape parameter H = delta*/theta
 };
 
 /// @brief BL Newton system (3x5 blocks per station).
-template <typename Scalar>
 struct BLNewtonBlock {
-    Matrix<Scalar, 3, 5> vs1;     ///< d(residual)/d(vars at station 1)
-    Matrix<Scalar, 3, 5> vs2;     ///< d(residual)/d(vars at station 2)
-    Vector<Scalar, 3> vsrez;      ///< Residual vector
-    Vector<Scalar, 3> vsm;        ///< d(residual)/d(Mach)
-    Vector<Scalar, 3> vsr;        ///< d(residual)/d(Re)
+    Matrix35d vs1;   ///< d(residual)/d(vars at station 1)
+    Matrix35d vs2;   ///< d(residual)/d(vars at station 2)
+    Vector3d vsrez;  ///< Residual vector
+    Vector3d vsm;    ///< d(residual)/d(Mach)
+    Vector3d vsr;    ///< d(residual)/d(Re)
 };
 
 /// @brief Output aerodynamic coefficients.
-template <typename Scalar>
 struct AeroCoefficients {
-    Scalar cl;      ///< Lift coefficient
-    Scalar cd;      ///< Total drag coefficient
-    Scalar cm;      ///< Moment coefficient
-    Scalar cdp;     ///< Pressure drag
-    Scalar cdf;     ///< Friction drag
+    double cl;      ///< Lift coefficient
+    double cd;      ///< Total drag coefficient
+    double cm;      ///< Moment coefficient
+    double cdp;     ///< Pressure drag
+    double cdf;     ///< Friction drag
 };
 
 }  // namespace xfoil
