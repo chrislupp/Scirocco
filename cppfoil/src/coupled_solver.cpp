@@ -11,6 +11,7 @@
 #include "cppfoil/core/boundary_layer.h"
 #include "cppfoil/core/transition.h"
 #include "cppfoil/core/forces.h"
+#include "cppfoil/core/panel_influence.h"
 #include "cppfoil/util/math_utils.h"
 
 namespace cppfoil {
@@ -483,15 +484,221 @@ void UpdateState(FoilState& state) {
 
 void CalcUeM(FoilState& state) {
     // Calculate d(ue)/d(mass) sensitivities
-    // This is a placeholder - full implementation would compute
-    // influence matrices for transpiration BC
+    // This implements the transpiration BC coupling
 
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
 
-    state.vsol.ue_m.resize(Nsys, Nsys);
-    state.vsol.ue_m.setIdentity();
+    if (Nw == 0) {
+        // No wake - just use identity
+        state.vsol.ue_m.resize(Nsys, Nsys);
+        state.vsol.ue_m.setIdentity();
+        return;
+    }
+
+    // 1. Cgam = d(wake uei)/d(gamma) [Nw x N]
+    MatrixXd Cgam = MatrixXd::Zero(Nw, N);
+    for (int i = 0; i < Nw; ++i) {
+        Vector2d xi = state.wake.x.col(i);
+        Vector2d ti = state.wake.t.col(i);
+
+        // Compute velocity influence of each airfoil gamma on wake point
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+
+            Vector2d a, b;
+            PanelLinVortexVelocity(Xj, xi, nullptr, false, a, b);
+
+            Cgam(i, j) += a.dot(ti);
+            Cgam(i, j + 1) += b.dot(ti);
+        }
+    }
+
+    // 2. B = d(airfoil streamfunction)/d(source) [(N+1) x (N+Nw-2)]
+    int Npanel = N + Nw - 2;  // N-1 airfoil panels + Nw-1 wake panels
+    MatrixXd B = MatrixXd::Zero(N + 1, Npanel);
+
+    for (int i = 0; i < N; ++i) {
+        Vector2d xi = state.foil.x.col(i);
+
+        // Constant source panels on airfoil
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            B(i, j) = PanelConstSourceStream(Xj, xi);
+        }
+
+        // Linear source panels on wake
+        for (int j = 0; j < Nw - 1; ++j) {
+            Matrix2d Xj;
+            Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
+            Xj.col(0) = state.wake.x.col(j);
+            Xj.col(1) = Xm;
+
+            // Ghost extension at last point
+            Vector2d X_right;
+            if (j == Nw - 2) {
+                X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+            } else {
+                X_right = state.wake.x.col(j + 1);
+            }
+
+            double a_left, b_left, a_right, b_right;
+
+            // Left half panel
+            PanelLinSourceStream(Xj, xi, a_left, b_left);
+            if (j > 0) {
+                B(i, N - 1 + j) += 0.5 * a_left + b_left;
+                B(i, N - 1 + j - 1) += 0.5 * a_left;
+            } else {
+                B(i, N - 1 + j) += b_left;
+            }
+
+            // Right half panel
+            Xj.col(0) = Xm;
+            Xj.col(1) = X_right;
+            PanelLinSourceStream(Xj, xi, a_right, b_right);
+            B(i, N - 1 + j) += a_right + 0.5 * b_right;
+            if (j < Nw - 2) {
+                B(i, N - 1 + j + 1) += 0.5 * b_right;
+            } else {
+                B(i, N - 1 + j) += 0.5 * b_right;
+            }
+        }
+    }
+
+    // 3. Bp = -inv(AIC) * B [N x (N+Nw-2)]
+    // Note: AIC is (N+1) x (N+1), but last row is Kutta condition
+    MatrixXd Bp = -state.isol.AIC.lu().solve(B);
+    Bp.conservativeResize(N, Npanel);  // Remove last row
+
+    // 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)]
+    MatrixXd Csig = MatrixXd::Zero(Nw, Npanel);
+
+    for (int i = 0; i < Nw; ++i) {
+        Vector2d xi = state.wake.x.col(i);
+        Vector2d ti = state.wake.t.col(i);
+
+        // Constant source panels on airfoil
+        int jstart = (i == 0) ? 1 : 0;
+        int jend = (i == 0) ? N - 2 : N - 1;
+        for (int j = jstart; j < jend; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            Vector2d v = PanelConstSourceVelocity(Xj, xi, &ti);
+            Csig(i, j) = v(0);
+        }
+
+        // Piecewise linear source on wake
+        for (int j = 0; j < Nw; ++j) {
+            int il = std::max(j - 1, 0);
+            int im = j;
+            int ir = std::min(j + 1, Nw - 1);
+
+            Vector2d Xl = 0.5 * (state.wake.x.col(il) + state.wake.x.col(im));
+            Vector2d Xm = state.wake.x.col(im);
+            Vector2d Xr = 0.5 * (state.wake.x.col(im) + state.wake.x.col(ir));
+
+            if (j == Nw - 1) {
+                Xr = 2.0 * Xm - Xl;  // Ghost extension
+            }
+
+            double d1 = (Xm - Xl).norm();
+            double d2 = (Xr - Xm).norm();
+
+            if (i == j) {
+                // Self-influence (singular)
+                if (j == 0) {
+                    // First point: TE special case
+                    double dl = (state.foil.x.col(1) - state.foil.x.col(0)).norm();
+                    double du = (state.foil.x.col(N - 1) - state.foil.x.col(N - 2)).norm();
+                    Csig(i, 0) += (0.5 / kPi) * (SafeLog(dl / d2) + 1.0);
+                    Csig(i, N - 2) += (0.5 / kPi) * (SafeLog(du / d2) + 1.0);
+                    Csig(i, N - 1) += -0.5 / kPi;
+                } else if (j == Nw - 1) {
+                    // Last point: no self effect
+                } else {
+                    double aa = (0.25 / kPi) * SafeLog(d1 / d2);
+                    Csig(i, N - 1 + j - 1) += aa + 0.5 / kPi;
+                    Csig(i, N - 1 + j) += aa - 0.5 / kPi;
+                }
+            } else {
+                // Non-self influence
+                if (j == 0) {
+                    Matrix2d Xj;
+                    Xj.col(0) = Xm;
+                    Xj.col(1) = Xr;
+                    Vector2d a, b;
+                    PanelLinSourceVelocity(Xj, xi, a, b);
+                    Csig(i, N - 1) += b.dot(ti);
+                    Csig(i, 0) += a.dot(ti);
+                    Csig(i, N - 2) += a.dot(ti);
+                } else if (j == Nw - 1) {
+                    Matrix2d Xj;
+                    Xj.col(0) = Xl;
+                    Xj.col(1) = Xr;
+                    Vector2d v = PanelConstSourceVelocity(Xj, xi, &ti);
+                    Csig(i, N + Nw - 3) += v(0);
+                } else {
+                    Matrix2d Xj;
+                    Vector2d a1, b1, a2, b2;
+
+                    // Left half-panel
+                    Xj.col(0) = Xl;
+                    Xj.col(1) = Xm;
+                    PanelLinSourceVelocity(Xj, xi, a1, b1);
+
+                    // Right half-panel
+                    Xj.col(0) = Xm;
+                    Xj.col(1) = Xr;
+                    PanelLinSourceVelocity(Xj, xi, a2, b2);
+
+                    Csig(i, N - 1 + j - 1) += a1.dot(ti) + 0.5 * b1.dot(ti);
+                    Csig(i, N - 1 + j) += 0.5 * a2.dot(ti) + b2.dot(ti);
+                }
+            }
+        }
+    }
+
+    // 5. ue_sigma = d(unsigned ue)/d(source) [(N+Nw) x (N+Nw-2)]
+    // Df = Bp for foil, Dw = Cgam*Bp + Csig for wake
+    MatrixXd Dw = Cgam * Bp + Csig;
+    Dw.row(0) = Bp.row(N - 1);  // First wake point same as TE
+
+    state.vsol.ue_sigma.resize(Nsys, Npanel);
+    state.vsol.ue_sigma.topRows(N) = Bp;
+    state.vsol.ue_sigma.bottomRows(Nw) = Dw;
+
+    // 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)]
+    std::vector<Triplet> triplets;
+    for (int i = 0; i < N - 1; ++i) {
+        double ds = state.foil.s(i + 1) - state.foil.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(i, i, -state.isol.sgnue(i) / ds);
+            triplets.emplace_back(i, i + 1, state.isol.sgnue(i + 1) / ds);
+        }
+    }
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds = state.wake.s(i + 1) - state.wake.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(N - 1 + i, N + i, -1.0 / ds);
+            triplets.emplace_back(N - 1 + i, N + i + 1, 1.0 / ds);
+        }
+    }
+    state.vsol.sigma_m.resize(Npanel, Nsys);
+    state.vsol.sigma_m.setFromTriplets(triplets.begin(), triplets.end());
+
+    // 7. ue_m = sgnue * ue_sigma * sigma_m
+    VectorXd sgue(Nsys);
+    sgue.head(N) = state.isol.sgnue;
+    sgue.tail(Nw).setOnes();
+
+    state.vsol.ue_m = sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
 }
 
 void RebuildUeM(FoilState& state) {
