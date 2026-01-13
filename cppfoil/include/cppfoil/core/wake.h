@@ -24,8 +24,12 @@ void BuildWake(FoilState& state);
 // OUTPUT:
 //   state.isol.sstag, Istag, xstag : Stagnation point information
 //   state.isol.sgnue : Sign of edge velocity
-//   state.isol.xi : Distance from stagnation point
+//   state.isol.xi : Distance from stagnation point (foil only)
 void StagPointFind(FoilState& state);
+
+// Extend xi array to include wake points
+// Must be called after BuildWake
+void ExtendXiToWake(FoilState& state);
 
 // Move stagnation point during viscous iterations
 // INPUT/OUTPUT:
