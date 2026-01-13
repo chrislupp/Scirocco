@@ -293,4 +293,128 @@ ScalarLin8 Upwind(double upw, const Vector8d& upw_U,
     return {f, f_U};
 }
 
+ScalarLin4 GetDe(const Vector4d& U, const Param& param) {
+    // BL thickness measure: delta* + weighted theta
+    auto [Hk, Hk_U] = GetHk(U, param);
+
+    double th = std::max(U(0), 1e-12);
+    double ds = U(1);
+
+    // Weight depends on Hk
+    double aa = 3.15 + 1.72 / (Hk - 1.0);
+    Vector4d aa_U = -1.72 / ((Hk - 1.0) * (Hk - 1.0)) * Hk_U;
+
+    double de = th * aa + ds;
+    Vector4d de_U;
+    de_U << aa, 1.0, 0.0, 0.0;
+    de_U += th * aa_U;
+
+    // Cap at 12*theta
+    double dmx = 12.0;
+    if (de > dmx * th) {
+        de = dmx * th;
+        de_U << dmx, 0.0, 0.0, 0.0;
+    }
+
+    return {de, de_U};
+}
+
+ScalarLin4 GetUs(const Vector4d& U, const Param& param) {
+    // Normalized wall slip velocity
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [H, H_U] = GetH(U);
+
+    // Limit Hk
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) {
+        Hk = Hk_lim;
+        Hk_U.setZero();
+    }
+
+    double beta = param.GB;
+    double bi = 1.0 / beta;
+
+    double Us = 0.5 * Hs * (1.0 - bi * (Hk - 1.0) / H);
+    Vector4d Us_U = 0.5 * Hs_U * (1.0 - bi * (Hk - 1.0) / H) +
+                    0.5 * Hs * (-bi * Hk_U / H + bi * (Hk - 1.0) / (H * H) * H_U);
+
+    // Limits
+    if (!param.wake) {
+        if (Us > 0.98) {
+            Us = 0.98;
+            Us_U.setZero();
+        }
+    }
+
+    return {Us, Us_U};
+}
+
+ScalarLinX GetCfxt(const Vector4d& U, double x, const Param& param) {
+    // cf * x / theta
+    auto [cf, cf_U] = GetCf(U, param);
+    double th = std::max(U(0), 1e-12);
+
+    double cfxt = cf * x / th;
+    Vector4d cfxt_U = cf_U * x / th;
+    cfxt_U(0) -= cfxt / th;
+    double cfxt_x = cf / th;
+
+    return {cfxt, cfxt_U, cfxt_x};
+}
+
+ScalarLinX GetCDixt(const Vector4d& U, double x, const Param& param) {
+    // cDi * x / theta (dissipation function)
+    auto [cDi, cDi_U] = GetCDi(U, param);
+    double th = std::max(U(0), 1e-12);
+
+    double cDixt = cDi * x / th;
+    Vector4d cDixt_U = cDi_U * x / th;
+    cDixt_U(0) -= cDixt / th;
+    double cDixt_x = cDi / th;
+
+    return {cDixt, cDixt_U, cDixt_x};
+}
+
+ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf, const Vector8d& cf_U,
+                  double Hk, const Vector8d& Hk_U, double Ret, const Vector8d& Ret_U,
+                  const Param& param) {
+    // Equilibrium pressure gradient 1/ue * due/dx
+    double beta = param.GB;
+    double A = param.GA;
+    double C = param.GC;
+
+    if (param.wake) {
+        A *= param.Dlr;
+        C = 0.0;
+    }
+
+    // Limit Hk
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    Vector8d Hk_U_use = Hk_U;
+    if (Hk < Hk_lim) {
+        Hk = Hk_lim;
+        Hk_U_use.setZero();
+    }
+
+    double Hkc = Hk - 1.0 - C / std::max(Ret, 1e-10);
+    Vector8d Hkc_U = Hk_U_use + C / (Ret * Ret) * Ret_U;
+
+    if (Hkc < 0.01) {
+        Hkc = 0.01;
+        Hkc_U.setZero();
+    }
+
+    double ut = 0.5 * cf - (Hkc / (A * Hk)) * (Hkc / (A * Hk));
+    Vector8d ut_U = 0.5 * cf_U -
+                    2.0 * (Hkc / (A * Hk)) *
+                    (Hkc_U / (A * Hk) - Hkc / (A * Hk * Hk) * Hk_U_use);
+
+    double ds_safe = std::max(ds, 1e-12);
+    double uq = ut / (beta * ds_safe);
+    Vector8d uq_U = ut_U / (beta * ds_safe) - uq / ds_safe * ds_U;
+
+    return {uq, uq_U};
+}
+
 }  // namespace cppfoil

@@ -64,6 +64,30 @@ ScalarLin8 Upwind(double upw, const Vector8d& upw_U,
                    double f1, const Vector4d& f1_U1,
                    double f2, const Vector4d& f2_U2);
 
+// BL thickness measure delta (delta* + weighted theta)
+ScalarLin4 GetDe(const Vector4d& U, const Param& param);
+
+// Normalized wall slip velocity
+ScalarLin4 GetUs(const Vector4d& U, const Param& param);
+
+// Result type for functions with x-derivative
+struct ScalarLinX {
+    double value;
+    Vector4d lin_U;
+    double lin_x;
+};
+
+// cf * x / theta
+ScalarLinX GetCfxt(const Vector4d& U, double x, const Param& param);
+
+// cDi * x / theta (dissipation * x / theta)
+ScalarLinX GetCDixt(const Vector4d& U, double x, const Param& param);
+
+// Equilibrium pressure gradient 1/ue * due/dx
+ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf, const Vector8d& cf_U,
+                  double Hk, const Vector8d& Hk_U, double Ret, const Vector8d& Ret_U,
+                  const Param& param);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_PROPERTIES_BL_PROPERTIES_H
