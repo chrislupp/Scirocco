@@ -5,18 +5,21 @@
 #include "cppfoil/core/boundary_layer.h"
 
 #include <cmath>
+#include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
 
 namespace cppfoil {
 
 std::pair<double, double> ThwaitesInit(double K, double nu) {
     // Thwaites correlation for stagnation point
-    // K = due/dx at stagnation
+    // K = due/dx at stagnation (ue = K*x)
     // nu = kinematic viscosity
+    //
+    // th^2 = ue^(-6) * 0.45 * nu * int_0^x ue^5 dx = 0.45*nu/(6*K)
+    // ds = Hstag*th = 2.2*th
 
-    double th = std::sqrt(0.075 * nu / std::max(K, 1e-10));
-    double H = 2.55;  // Shape parameter at stagnation
-    double ds = H * th;
+    double th = std::sqrt(0.45 * nu / (6.0 * std::max(K, 1e-10)));
+    double ds = 2.2 * th;
 
     return {th, ds};
 }
@@ -44,37 +47,253 @@ void StationParam(const FoilState& state, Param& param, int i) {
 }
 
 void InitBoundaryLayer(FoilState& state) {
-    // Initialize boundary layer from inviscid solution
-    // This is a simplified initialization
+    // Initialize boundary layer by marching from stagnation point
+    // Matches mfoil's init_boundary_layer approach
+
+    constexpr double Hmaxl = 3.8;  // Max H before laminar separation
+    constexpr double Hmaxt = 2.5;  // Max H before turbulent separation
+    constexpr int nNewton = 30;
+    constexpr int iNswitch = 12;   // Switch to inverse after this many iterations
 
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
 
+    // Get inviscid edge velocity
+    VectorXd ueinv = GetUeInv(state);
+
     state.glob.Nsys = Nsys;
     state.glob.U.resize(4, Nsys);
     state.glob.U.setZero();
+    state.vsol.turb.resize(Nsys, false);
 
-    // Initialize with small values
-    double th0 = 0.001 * state.geom.chord;
-    double ds0 = 2.5 * th0;
-    double sa0 = 0.0;
+    // Kinematic viscosity
+    double nu = state.param.mu0 / state.param.rho0;
 
-    for (int i = 0; i < Nsys; ++i) {
-        state.glob.U(0, i) = th0;  // theta
-        state.glob.U(1, i) = ds0;  // delta*
-        state.glob.U(2, i) = sa0;  // sa (amp or ctau)
+    // Loop over surfaces: 0=lower, 1=upper, 2=wake
+    for (int si = 0; si < 3; ++si) {
+        const auto& Is = state.vsol.Is[si];
+        int Nsurf = static_cast<int>(Is.size());
+        if (Nsurf == 0) continue;
 
-        // Edge velocity from inviscid
-        if (i < N) {
-            state.glob.U(3, i) = state.isol.gam(i) * state.isol.sgnue(i);
-        } else if (state.wake.N > 0) {
-            state.glob.U(3, i) = state.isol.uewi(i - N);
+        // Local arrays for this surface
+        VectorXd xi(Nsurf);
+        VectorXd ue(Nsurf);
+        VectorXd Aux(Nsurf);
+        MatrixXd U(4, Nsurf);
+        U.setZero();
+        Aux.setZero();
+
+        // Fill local arrays
+        for (int i = 0; i < Nsurf; ++i) {
+            int idx = Is[i];
+            xi(i) = state.isol.xi(idx);
+            ue(i) = ueinv(idx);
+            if (si == 2 && i < static_cast<int>(state.vsol.wgap.size())) {
+                Aux(i) = state.vsol.wgap(i);
+            }
+        }
+
+        // Ensure edge velocities are not tiny
+        double uemax = ue.cwiseAbs().maxCoeff();
+        for (int i = 0; i < Nsurf; ++i) {
+            ue(i) = std::max(ue(i), 1e-8 * uemax);
+        }
+
+        // Build parameter structure for this surface
+        Param param = BuildParam(state, si);
+
+        // Initialize first point
+        int i0 = 0;
+
+        if (si < 2) {
+            // Airfoil surface: stagnation point initialization
+
+            // Stagnation point flow constant K = ue/x
+            double K;
+            bool hitstag;
+            if (xi(0) < 1e-8 * xi(Nsurf - 1)) {
+                K = ue(1) / std::max(xi(1), 1e-12);
+                hitstag = true;
+            } else {
+                K = ue(0) / std::max(xi(0), 1e-12);
+                hitstag = false;
+            }
+
+            // Thwaites initialization
+            auto [th, ds] = ThwaitesInit(K, nu);
+            double xst = 1e-6;  // Small but nonzero
+            Vector4d Ust(th, ds, 0.0, K * xst);
+
+            // Use Thwaites directly - Newton refinement had numerical issues
+            param.turb = false;
+            param.simi = false;
+
+            // Store stagnation state
+            if (hitstag) {
+                U.col(0) = Ust;
+                U(3, 0) = ue(0);
+                i0 = 1;
+            }
+            U.col(i0) = Ust;
+            U(3, i0) = ue(i0);
+
+        } else {
+            // Wake: initialize from TE states
+            auto wres = WakeSys(state, param);
+            Vector4d Uw = state.glob.U.col(Is[0]);
+            Uw.head<3>() -= wres.R;
+            Uw(3) = ue(0);
+            U.col(0) = Uw;
+
+            param.turb = true;
+            state.vsol.turb[Is[0]] = true;
+        }
+
+        // March over rest of points
+        bool tran = false;  // Transition flag
+        int i = i0 + 1;
+
+        while (i < Nsurf) {
+            // Initialize with previous state and new ue
+            U.col(i) = U.col(i - 1);
+            U(3, i) = ue(i);
+
+            // Set ctau at transition
+            if (tran) {
+                auto [ct, ct_U] = GetCttr(U.col(i), param);
+                U(2, i) = ct;
+            }
+
+            state.vsol.turb[Is[i]] = (tran || param.turb);
+            bool direct = true;
+            double Hktgt = 0.0;
+
+            // Newton iteration at this station
+            bool converged = false;
+            for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
+                Vector2d xpair(xi(i - 1), xi(i));
+                Matrix42d Upair;
+                Upair.col(0) = U.col(i - 1);
+                Upair.col(1) = U.col(i);
+                Vector2d Auxpair(Aux(i - 1), Aux(i));
+
+                auto res = ResidualStation(param, xpair, Upair, Auxpair);
+
+                if (res.value.norm() < 1e-10) {
+                    converged = true;
+                    break;
+                }
+
+                Vector4d dU;
+                if (direct) {
+                    // Direct mode: solve for th, ds, sa (ue prescribed)
+                    Matrix3d A = res.lin_U.block<3, 3>(0, 4);
+                    dU.head<3>() = A.partialPivLu().solve(-res.value);
+                    dU(3) = 0.0;
+                } else {
+                    // Inverse mode: prescribe Hk, solve for th, ds, sa, ue
+                    auto [Hk, Hk_U] = GetHk(U.col(i), param);
+
+                    Eigen::Matrix<double, 4, 4> A;
+                    A.topRows<3>() = res.lin_U.block<3, 4>(0, 4);
+                    A.row(3) = Hk_U.transpose();
+
+                    Vector4d b;
+                    b.head<3>() = -res.value;
+                    b(3) = Hktgt - Hk;
+
+                    dU = A.partialPivLu().solve(b);
+                }
+
+                // Under-relaxation
+                double dm = std::max(std::abs(dU(0) / std::max(U(0, i - 1), 1e-12)),
+                                     std::abs(dU(1) / std::max(U(1, i - 1), 1e-12)));
+                if (!direct) dm = std::max(dm, std::abs(dU(3) / std::max(U(3, i - 1), 1e-10)));
+                if (param.turb) dm = std::max(dm, std::abs(dU(2) / std::max(U(2, i - 1), 1e-10)));
+                else if (direct) dm = std::max(dm, std::abs(dU(2) / 10.0));
+
+                double omega = (dm > 0.3) ? 0.3 / dm : 1.0;
+                dU *= omega;
+
+                // Trial update
+                Vector4d Ui = U.col(i) + dU;
+
+                // Clip extreme values
+                Ui(0) = std::max(Ui(0), 1e-12);  // theta > 0
+                Ui(1) = std::max(Ui(1), 1e-12);  // delta* > 0
+                if (param.turb) {
+                    Ui(2) = std::max(std::min(Ui(2), 0.3), 1e-7);
+                }
+
+                // Check if about to separate
+                double Hmax = param.turb ? Hmaxt : Hmaxl;
+                auto [Hk, Hk_U] = GetHk(Ui, param);
+
+                if (direct && ((Hk > Hmax) || (iNewton > iNswitch))) {
+                    // Switch to inverse mode
+                    direct = false;
+                    auto [Hkprev, Hkprev_U] = GetHk(U.col(i - 1), param);
+                    double Hkr = (xi(i) - xi(i - 1)) / std::max(U(0, i - 1), 1e-12);
+
+                    if (param.wake) {
+                        double H2 = Hkprev;
+                        for (int k = 0; k < 6; ++k) {
+                            H2 -= (H2 + 0.03 * Hkr * std::pow(H2 - 1, 3) - Hkprev) /
+                                  (1.0 + 0.09 * Hkr * std::pow(H2 - 1, 2));
+                        }
+                        Hktgt = std::max(H2, 1.01);
+                    } else if (param.turb) {
+                        Hktgt = Hkprev - 0.15 * Hkr;
+                    } else {
+                        Hktgt = Hkprev + 0.03 * Hkr;
+                    }
+                    if (!param.wake) {
+                        Hktgt = std::max(Hktgt, Hmax);
+                    }
+                    if (iNewton > iNswitch) {
+                        // Reinitialize
+                        U.col(i) = U.col(i - 1);
+                        U(3, i) = ue(i);
+                    }
+                } else {
+                    U.col(i) = Ui;
+                }
+            }
+
+            // If not converged, extrapolate
+            if (!converged) {
+                U.col(i) = U.col(i - 1);
+                U(3, i) = ue(i);
+                if (si < 2 && xi(i - 1) > 1e-12) {
+                    // Extrapolate theta and delta* along surface
+                    double xratio = std::sqrt(xi(i) / xi(i - 1));
+                    U(0, i) = U(0, i - 1) * xratio;
+                    U(1, i) = U(1, i - 1) * xratio;
+                }
+            }
+
+            // Check for transition (laminar only)
+            if (!param.turb && !tran && U(2, i) > param.ncrit) {
+                tran = true;
+                continue;  // Redo station with transition
+            }
+
+            if (tran) {
+                // Store transition location
+                state.vsol.Xt(si, 0) = 0.5 * (xi(i - 1) + xi(i));
+                param.turb = true;
+                tran = false;
+            }
+
+            ++i;
+        }
+
+        // Store states in global array
+        for (int j = 0; j < Nsurf; ++j) {
+            state.glob.U.col(Is[j]) = U.col(j);
         }
     }
-
-    // Initialize turbulence flags (all laminar initially)
-    state.vsol.turb.resize(Nsys, false);
 }
 
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
