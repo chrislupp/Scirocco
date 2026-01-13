@@ -39,14 +39,14 @@ ScalarLin4 GetHk(const Vector4d& U, const Param& param) {
 }
 
 ScalarLin4 GetHw(const Vector4d& U, double wgap) {
-    auto [H, H_U] = GetH(U);
+    // Wake gap shape parameter Hw = wgap/theta
+    // This is added to H = (ds - wgap)/th to recover the full ds/th
     double th = std::max(U(0), 1e-12);
 
-    // Wake gap correction
-    double Hw = H - wgap / th;
+    double Hw = wgap / th;
 
-    Vector4d Hw_U = H_U;
-    Hw_U(0) += wgap / (th * th);  // Additional term from gap
+    Vector4d Hw_U = Vector4d::Zero();
+    Hw_U(0) = -Hw / th;  // dHw/dth = -wgap/th^2
 
     return {Hw, Hw_U};
 }
@@ -79,12 +79,18 @@ ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
 }
 
 ScalarLin4 GetHss(const Vector4d& U, const Param& param) {
-    // Density shape parameter (simplified)
+    // Density shape parameter Hss = M2 * (0.064/(Hk-0.8) + 0.251)
+    // For incompressible flow (M2=0), Hss = 0
+    auto [M2, M2_U] = GetMach2(U, param);
     auto [Hk, Hk_U] = GetHk(U, param);
-    double Hss = 0.064 / (Hk - 0.8) + 0.251;
-    double dHss_dHk = -0.064 / ((Hk - 0.8) * (Hk - 0.8));
 
-    return {Hss, dHss_dHk * Hk_U};
+    double num = 0.064 / (Hk - 0.8) + 0.251;
+    Vector4d num_U = -0.064 / ((Hk - 0.8) * (Hk - 0.8)) * Hk_U;
+
+    double Hss = M2 * num;
+    Vector4d Hss_U = M2_U * num + M2 * num_U;
+
+    return {Hss, Hss_U};
 }
 
 ScalarLin4 GetRet(const Vector4d& U, const Param& param) {

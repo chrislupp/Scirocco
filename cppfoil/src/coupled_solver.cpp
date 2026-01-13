@@ -79,11 +79,67 @@ void SolveViscous(FoilState& state) {
     }
 }
 
+void CheckJacobian(FoilState& state, int station) {
+    // Finite-difference check of BL residual Jacobian at one station
+
+    const auto& Is = state.vsol.Is[1];  // Upper surface
+    if (station < 1 || station >= static_cast<int>(Is.size())) return;
+
+    int ip = station - 1;
+    int i = station;
+
+    Param param = BuildParam(state, 1);  // Upper surface
+    StationParam(state, param, Is[i]);
+
+    VectorXd xi_surf(Is.size());
+    for (size_t j = 0; j < Is.size(); ++j) {
+        xi_surf(j) = state.isol.xi(Is[j]);
+    }
+
+    Matrix42d U0;
+    U0.col(0) = state.glob.U.col(Is[ip]);
+    U0.col(1) = state.glob.U.col(Is[i]);
+    Vector2d x0(xi_surf(ip), xi_surf(i));
+    Vector2d Aux0 = Vector2d::Zero();
+
+    auto res0 = ResidualStation(param, x0, U0, Aux0);
+
+    std::cout << "Jacobian check at station " << station << " (idx=" << Is[i] << "):" << std::endl;
+    std::cout << "  U1 = (th=" << U0(0,0) << ", ds=" << U0(1,0) << ", sa=" << U0(2,0) << ", ue=" << U0(3,0) << ")" << std::endl;
+    std::cout << "  U2 = (th=" << U0(0,1) << ", ds=" << U0(1,1) << ", sa=" << U0(2,1) << ", ue=" << U0(3,1) << ")" << std::endl;
+    std::cout << "  x = (" << x0(0) << ", " << x0(1) << ")" << std::endl;
+    std::cout << "  R = (" << res0.value(0) << ", " << res0.value(1) << ", " << res0.value(2) << ")" << std::endl;
+
+    double eps = 1e-5;  // Larger step for better numerical accuracy
+    for (int var = 0; var < 8; ++var) {
+        Matrix42d Up = U0;
+        int col = var / 4;
+        int row = var % 4;
+        double base = std::abs(Up(row, col));
+        double h = eps * std::max(1e-6, base);  // Ensure h isn't too tiny
+        Up(row, col) += h;
+
+        auto resp = ResidualStation(param, x0, Up, Aux0);
+        Vector3d dRdU_fd = (resp.value - res0.value) / h;
+        Vector3d dRdU_an = res0.lin_U.col(var);
+        double err = (dRdU_fd - dRdU_an).norm() / std::max(1.0, dRdU_an.norm());
+
+        std::cout << "  dR/dU[" << var << "]: fd=(" << dRdU_fd(0) << "," << dRdU_fd(1) << "," << dRdU_fd(2)
+                  << ") an=(" << dRdU_an(0) << "," << dRdU_an(1) << "," << dRdU_an(2)
+                  << ") err=" << err << std::endl;
+    }
+}
+
 void SolveCoupled(FoilState& state) {
     // Coupled Newton iteration
 
     int niglob = state.param.niglob;
     double rtol = state.param.rtol;
+
+    // Debug: check Jacobian at a station
+    if (state.param.verb >= 2) {
+        CheckJacobian(state, 10);
+    }
 
     for (int iter = 0; iter < niglob; ++iter) {
         // Build global system
@@ -598,17 +654,24 @@ void UpdateState(FoilState& state) {
 
     // 3. Limit ctau changes (turbulent regions) to 0.05
     double dumax_ct = 0.0;
+    int imax_ct = -1;
     for (int i = 0; i < Nsys; ++i) {
         if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
-            dumax_ct = std::max(dumax_ct, std::abs(state.glob.dU(2, i)));
+            double du = std::abs(state.glob.dU(2, i));
+            if (du > dumax_ct) {
+                dumax_ct = du;
+                imax_ct = i;
+            }
         }
     }
     if (dumax_ct > 0) {
         double om = 0.05 / dumax_ct;
         if (om < omega) {
             omega = om;
-            if (state.param.verb >= 3) {
-                std::cout << "    ctau: omega = " << omega << std::endl;
+            if (state.param.verb >= 2) {
+                std::cout << "    ctau limit: omega = " << omega
+                          << " @" << imax_ct << " ct=" << state.glob.U(2, imax_ct)
+                          << " dct=" << state.glob.dU(2, imax_ct) << std::endl;
             }
         }
     }

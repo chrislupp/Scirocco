@@ -140,6 +140,7 @@ void InitBoundaryLayer(FoilState& state) {
 
         } else {
             // Wake: initialize from TE states
+            i0 = 0;  // Reset for wake
             auto wres = WakeSys(state, param);
             Vector4d Uw = state.glob.U.col(Is[0]);
             Uw.head<3>() -= wres.R;
@@ -450,6 +451,30 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
         auto [Us2, Us2_U2] = GetUs(U2, param);
         auto [Us, Us_U] = Upwind(0.5, Vector8d::Zero(), Us1, Us1_U1, Us2, Us2_U2);
 
+        // Hk, upwinded (needed for uq)
+        auto [Hk1, Hk1_U1] = GetHk(U1, param);
+        auto [Hk2, Hk2_U2] = GetHk(U2, param);
+        auto [Hk, Hk_U] = Upwind(upw, upw_U, Hk1, Hk1_U1, Hk2, Hk2_U2);
+
+        // Ret, averaged
+        auto [Ret1, Ret1_U1] = GetRet(U1, param);
+        auto [Ret2, Ret2_U2] = GetRet(U2, param);
+        auto [Ret, Ret_U] = Upwind(0.5, Vector8d::Zero(), Ret1, Ret1_U1, Ret2, Ret2_U2);
+
+        // cf, upwinded
+        auto [cf1, cf1_U1] = GetCf(U1, param);
+        auto [cf2, cf2_U2] = GetCf(U2, param);
+        auto [cf, cf_U] = Upwind(upw, upw_U, cf1, cf1_U1, cf2, cf2_U2);
+
+        // ds averaged
+        double dsa = 0.5 * (U1(1) + U2(1));
+        Vector8d dsa_U = Vector8d::Zero();
+        dsa_U(1) = 0.5;
+        dsa_U(5) = 0.5;
+
+        // uq = equilibrium velocity gradient
+        auto [uq, uq_U] = GetUq(dsa, dsa_U, cf, cf_U, Hk, Hk_U, Ret, Ret_U, param);
+
         auto [cteq1, cteq1_U1] = GetCteq(U1, param);
         auto [cteq2, cteq2_U2] = GetCteq(U2, param);
         auto [cteq, cteq_U] = Upwind(upw, upw_U, cteq1, cteq1_U1, cteq2, cteq2_U2);
@@ -467,12 +492,18 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
         Vector8d Clag_U = -Clag / (1.0 + Us) * Us_U;
 
         double ald = param.wake ? param.Dlr : 1.0;
+        double Cuq = param.Cuq;
 
-        Rlag = Clag * (cteq - ald * saa) * dx - 2.0 * de * salog;
+        // Full shear lag equation with uq correction
+        Rlag = Clag * (cteq - ald * saa) * dx - 2.0 * de * salog +
+               2.0 * de * (uq * dx - uelog) * Cuq;
         Rlag_U = Clag_U * (cteq - ald * saa) * dx +
                  Clag * (cteq_U - ald * saa_U) * dx -
-                 2.0 * de_U * salog - 2.0 * de * salog_U;
-        Rlag_x = Clag * (cteq - ald * saa) * dx_x;
+                 2.0 * de_U * salog - 2.0 * de * salog_U +
+                 2.0 * de_U * (uq * dx - uelog) * Cuq +
+                 2.0 * de * (uq_U * dx - uelog_U) * Cuq;
+        Rlag_x = Clag * (cteq - ald * saa) * dx_x +
+                 2.0 * de * uq * dx_x * Cuq;
     } else {
         // Laminar: amplification factor equation
         if (param.simi) {

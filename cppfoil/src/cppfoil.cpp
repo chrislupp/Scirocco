@@ -52,7 +52,7 @@ bool Cppfoil::Solve() {
     if (state_.oper.viscous) {
         // Initialize parameters for viscous solve
         state_.oper.initbl = true;
-        state_.param.verb = 1;  // Debug mode
+        state_.param.verb = 1;  // Normal verbose output
         state_.param.niglob = 25;  // Max iterations
         state_.param.rtol = 1e-6;  // Convergence tolerance
 
