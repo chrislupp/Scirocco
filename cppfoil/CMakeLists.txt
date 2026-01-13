@@ -60,6 +60,9 @@ endif()
 if(CPPFOIL_BUILD_EXAMPLES)
     add_executable(naca_example examples/naca_example.cpp)
     target_link_libraries(naca_example cppfoil)
+
+    add_executable(viscous_example examples/viscous_example.cpp)
+    target_link_libraries(viscous_example cppfoil)
 endif()
 
 # Installation

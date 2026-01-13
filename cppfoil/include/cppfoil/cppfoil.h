@@ -29,11 +29,14 @@ public:
                  double Re = 0.0, double Ma = 0.0);
 
     // Solve the current operating point
-    void Solve();
+    // Returns true if converged (always true for inviscid)
+    bool Solve();
 
     // Get results
     double GetCl() const { return state_.post.cl; }
     double GetCd() const { return state_.post.cd; }
+    double GetCdf() const { return state_.post.cdf; }
+    double GetCdp() const { return state_.post.cdp; }
     double GetCm() const { return state_.post.cm; }
     double GetAlpha() const { return state_.oper.alpha; }
     bool IsConverged() const { return state_.glob.conv; }
