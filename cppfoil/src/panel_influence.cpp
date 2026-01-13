@@ -75,25 +75,35 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
     double u_a, v_a, u_b, v_b;
 
     if (onmid) {
-        // Limit values at panel midpoint
+        // Limit values at panel midpoint (matching mfoil)
         u_a = 0.25;
-        v_a = 0.0;
+        v_a = -1.0 / (2.0 * kPi);
         u_b = 0.25;
-        v_b = 0.0;
+        v_b = 1.0 / (2.0 * kPi);
     } else {
         double inv_2pi = 1.0 / (2.0 * kPi);
         double inv_len = 1.0 / len;
 
-        // Contribution from linear vortex (from Katz & Plotkin)
-        u_a = inv_2pi * (info.y * inv_len * logr +
-                         (len - info.x1) * inv_len * dtheta);
-        v_a = inv_2pi * ((len - info.x1) * inv_len * logr -
-                         info.y * inv_len * dtheta - 1.0);
+        // Linear vortex velocity (matching mfoil formulas)
+        // temp1 = dtheta/(2*pi)
+        // temp2 = (2*z*log(r1/r2) - 2*x*dtheta)/(4*pi*d) = (-z*logr - x*dtheta)/(2*pi*d)
+        // ug1 = temp1 + temp2 = (d*dtheta - z*logr - x*dtheta)/(2*pi*d)
+        //                     = ((d-x)*dtheta - z*logr)/(2*pi*d)
+        // ug2 = -temp2 = (z*logr + x*dtheta)/(2*pi*d)
+        double temp1 = dtheta * inv_2pi;
+        double temp2 = (-info.y * logr - info.x1 * dtheta) * inv_2pi * inv_len;
+        u_a = temp1 + temp2;
+        u_b = -temp2;
 
-        u_b = inv_2pi * (-info.y * inv_len * logr +
-                         info.x1 * inv_len * dtheta);
-        v_b = inv_2pi * (-info.x1 * inv_len * logr +
-                         info.y * inv_len * dtheta + 1.0);
+        // temp1 = logr/(2*pi)
+        // temp2 = (x*log(r1/r2) - d + z*dtheta)/(2*pi*d) = (-x*logr - d + z*dtheta)/(2*pi*d)
+        // wg1 = temp1 + temp2 = (d*logr - x*logr - d + z*dtheta)/(2*pi*d)
+        //                     = ((d-x)*logr - d + z*dtheta)/(2*pi*d)
+        // wg2 = -temp2 = (x*logr + d - z*dtheta)/(2*pi*d)
+        temp1 = logr * inv_2pi;
+        temp2 = (-info.x1 * logr - len + info.y * dtheta) * inv_2pi * inv_len;
+        v_a = temp1 + temp2;
+        v_b = -temp2;
     }
 
     // Transform back to global coordinates
