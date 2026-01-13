@@ -19,12 +19,29 @@ namespace cppfoil {
 void SolveViscous(FoilState& state) {
     // Top-level viscous solution
 
+    if (state.param.verb >= 1) {
+        std::cout << "SolveViscous: starting" << std::endl;
+    }
+
     // Build inviscid solution first
     BuildGamma(state, state.oper.alpha);
     StagPointFind(state);
 
+    if (state.param.verb >= 1) {
+        std::cout << "  Inviscid done, N=" << state.foil.N
+                  << ", Istag=" << state.isol.Istag[0] << "," << state.isol.Istag[1]
+                  << std::endl;
+    }
+
     // Build wake
     BuildWake(state);
+
+    // Extend xi to include wake points
+    ExtendXiToWake(state);
+
+    if (state.param.verb >= 1) {
+        std::cout << "  Wake done, Nw=" << state.wake.N << std::endl;
+    }
 
     // Identify surfaces
     IdentifySurfaces(state);
@@ -32,12 +49,21 @@ void SolveViscous(FoilState& state) {
     // Set wake gap
     SetWakeGap(state);
 
+    if (state.param.verb >= 1) {
+        std::cout << "  Surfaces: lower=" << state.vsol.Is[0].size()
+                  << ", upper=" << state.vsol.Is[1].size()
+                  << ", wake=" << state.vsol.Is[2].size() << std::endl;
+    }
+
     // Calculate ue sensitivities
     CalcUeM(state);
 
     // Initialize boundary layer
     if (state.oper.initbl) {
         InitBoundaryLayer(state);
+        if (state.param.verb >= 1) {
+            std::cout << "  BL init done, Nsys=" << state.glob.Nsys << std::endl;
+        }
     }
 
     // Solve coupled system
@@ -46,6 +72,11 @@ void SolveViscous(FoilState& state) {
     // Calculate forces
     CalcForce(state);
     GetDistributions(state);
+
+    if (state.param.verb >= 1) {
+        std::cout << "SolveViscous: done, cl=" << state.post.cl
+                  << ", cd=" << state.post.cd << std::endl;
+    }
 }
 
 void SolveCoupled(FoilState& state) {
@@ -62,6 +93,46 @@ void SolveCoupled(FoilState& state) {
         double rnorm = state.glob.R.norm();
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm << std::endl;
+
+            // Debug: print max residual components
+            if (iter < 3) {
+                int Nsys = state.glob.Nsys;
+                double maxRmom = 0, maxRshp = 0, maxRlag = 0;
+                int imaxRmom = 0, imaxRshp = 0, imaxRlag = 0;
+                for (int i = 0; i < Nsys; ++i) {
+                    if (std::abs(state.glob.R(3*i)) > maxRmom) {
+                        maxRmom = std::abs(state.glob.R(3*i));
+                        imaxRmom = i;
+                    }
+                    if (std::abs(state.glob.R(3*i+1)) > maxRshp) {
+                        maxRshp = std::abs(state.glob.R(3*i+1));
+                        imaxRshp = i;
+                    }
+                    if (std::abs(state.glob.R(3*i+2)) > maxRlag) {
+                        maxRlag = std::abs(state.glob.R(3*i+2));
+                        imaxRlag = i;
+                    }
+                }
+                std::cout << "    maxRmom=" << maxRmom << " @" << imaxRmom
+                          << ", maxRshp=" << maxRshp << " @" << imaxRshp
+                          << ", maxRlag=" << maxRlag << " @" << imaxRlag << std::endl;
+
+                // Print state at max shape residual location
+                std::cout << "    U@" << imaxRshp << ": th=" << state.glob.U(0, imaxRshp)
+                          << ", ds=" << state.glob.U(1, imaxRshp)
+                          << ", sa=" << state.glob.U(2, imaxRshp)
+                          << ", ue=" << state.glob.U(3, imaxRshp)
+                          << ", xi=" << state.isol.xi(imaxRshp) << std::endl;
+                // Previous point
+                if (imaxRshp > 0) {
+                    int ip = imaxRshp - 1;
+                    std::cout << "    U@" << ip << ": th=" << state.glob.U(0, ip)
+                              << ", ds=" << state.glob.U(1, ip)
+                              << ", sa=" << state.glob.U(2, ip)
+                              << ", ue=" << state.glob.U(3, ip)
+                              << ", xi=" << state.isol.xi(ip) << std::endl;
+                }
+            }
         }
 
         if (rnorm < rtol) {
@@ -69,8 +140,25 @@ void SolveCoupled(FoilState& state) {
             return;
         }
 
+        if (!std::isfinite(rnorm)) {
+            state.glob.conv = false;
+            std::cout << "  Warning: NaN in residual, stopping" << std::endl;
+            return;
+        }
+
         // Solve and update
         SolveGlob(state);
+
+        // Debug: print max update
+        if (state.param.verb >= 1 && iter < 3) {
+            double maxdth = state.glob.dU.row(0).cwiseAbs().maxCoeff();
+            double maxdds = state.glob.dU.row(1).cwiseAbs().maxCoeff();
+            double maxdsa = state.glob.dU.row(2).cwiseAbs().maxCoeff();
+            double maxdue = state.glob.dU.row(3).cwiseAbs().maxCoeff();
+            std::cout << "    max|dU|: dth=" << maxdth << ", dds=" << maxdds
+                      << ", dsa=" << maxdsa << ", due=" << maxdue << std::endl;
+        }
+
         UpdateState(state);
 
         // Update stagnation point
@@ -465,18 +553,128 @@ void SolveGlob(FoilState& state) {
 }
 
 void UpdateState(FoilState& state) {
-    // Update state with under-relaxation
+    // Update state with adaptive under-relaxation (matching mfoil approach)
 
-    double omega = 0.5;  // Under-relaxation factor
+    int Nsys = state.glob.Nsys;
+    double omega = 1.0;
 
+    // 1. Limit theta and delta* decreases to 50%
+    for (int k = 0; k < 2; ++k) {
+        double fmin = 0.0;
+        for (int i = 0; i < Nsys; ++i) {
+            double Uk = state.glob.U(k, i);
+            double dUk = state.glob.dU(k, i);
+            if (Uk > 1e-12) {
+                fmin = std::min(fmin, dUk / Uk);
+            }
+        }
+        if (fmin < -0.5) {
+            double om = std::abs(0.5 / fmin);
+            if (om < omega) {
+                omega = om;
+                if (state.param.verb >= 3) {
+                    std::cout << "    th/ds decrease: omega = " << omega << std::endl;
+                }
+            }
+        }
+    }
+
+    // 2. Limit amplification changes (laminar regions) to 2.0
+    double dumax_amp = 0.0;
+    for (int i = 0; i < Nsys; ++i) {
+        if (i < static_cast<int>(state.vsol.turb.size()) && !state.vsol.turb[i]) {
+            dumax_amp = std::max(dumax_amp, std::abs(state.glob.dU(2, i)));
+        }
+    }
+    if (dumax_amp > 0) {
+        double om = 2.0 / dumax_amp;
+        if (om < omega) {
+            omega = om;
+            if (state.param.verb >= 3) {
+                std::cout << "    amp: omega = " << omega << std::endl;
+            }
+        }
+    }
+
+    // 3. Limit ctau changes (turbulent regions) to 0.05
+    double dumax_ct = 0.0;
+    for (int i = 0; i < Nsys; ++i) {
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
+            dumax_ct = std::max(dumax_ct, std::abs(state.glob.dU(2, i)));
+        }
+    }
+    if (dumax_ct > 0) {
+        double om = 0.05 / dumax_ct;
+        if (om < omega) {
+            omega = om;
+            if (state.param.verb >= 3) {
+                std::cout << "    ctau: omega = " << omega << std::endl;
+            }
+        }
+    }
+
+    // 4. Limit ue changes to 0.2 * Vinf
+    double fmax_ue = 0.0;
+    for (int i = 0; i < Nsys; ++i) {
+        fmax_ue = std::max(fmax_ue, std::abs(state.glob.dU(3, i)) / state.oper.Vinf);
+    }
+    if (fmax_ue > 0.2) {
+        double om = 0.2 / fmax_ue;
+        if (om < omega) {
+            omega = om;
+            if (state.param.verb >= 3) {
+                std::cout << "    ue: omega = " << omega << std::endl;
+            }
+        }
+    }
+
+    // 5. Limit alpha changes to 2 degrees
+    if (std::abs(state.glob.dalpha) > 2.0) {
+        omega = std::min(omega, 2.0 / std::abs(state.glob.dalpha));
+    }
+
+    if (state.param.verb >= 2) {
+        std::cout << "    state update: omega = " << omega << std::endl;
+    }
+
+    // Apply update
     state.glob.U += omega * state.glob.dU;
     state.oper.alpha += omega * state.glob.dalpha;
 
-    // Enforce physical constraints
-    // - theta > 0
-    // - delta* > 0
-    // - bounded shape parameters
-    for (int i = 0; i < state.glob.Nsys; ++i) {
+    // Fix bad Hk after update (ensure H = ds/th is physically reasonable)
+    for (int si = 0; si < 3; ++si) {
+        double Hkmin = (si == 2) ? 1.00005 : 1.02;
+        const auto& Is = state.vsol.Is[si];
+        for (int idx : Is) {
+            if (idx >= Nsys) continue;
+            double th = state.glob.U(0, idx);
+            double ds = state.glob.U(1, idx);
+            if (th > 1e-12) {
+                double H = ds / th;
+                if (H < Hkmin) {
+                    state.glob.U(1, idx) += 2.0 * (Hkmin - H) * ds;
+                }
+            }
+        }
+    }
+
+    // Fix negative ctau after update
+    double ctmax = 0.0;
+    for (int i = 0; i < Nsys; ++i) {
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
+            ctmax = std::max(ctmax, state.glob.U(2, i));
+        }
+    }
+    for (int i = 0; i < Nsys; ++i) {
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
+            if (state.glob.U(2, i) < 0) {
+                state.glob.U(2, i) = 0.1 * ctmax;
+            }
+        }
+    }
+
+    // Ensure positivity constraints
+    for (int i = 0; i < Nsys; ++i) {
         state.glob.U(0, i) = std::max(state.glob.U(0, i), 1e-10);
         state.glob.U(1, i) = std::max(state.glob.U(1, i), 1e-10);
     }
