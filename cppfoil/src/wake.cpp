@@ -55,6 +55,13 @@ void StagPointFind(FoilState& state) {
         state.isol.sstag_g.setZero();
     }
 
+    // Linearization of sstag w.r.t. edge velocity (ue)
+    // ga_ue = dgamma/due = sign(gam) for inviscid
+    double ga_ue0 = (std::abs(g1) > 1e-12) ? g1 / std::abs(g1) : 0.0;
+    double ga_ue1 = (std::abs(g2) > 1e-12) ? g2 / std::abs(g2) : 0.0;
+    state.isol.sstag_ue(0) = state.isol.sstag_g(0) * ga_ue0;
+    state.isol.sstag_ue(1) = state.isol.sstag_g(1) * ga_ue1;
+
     // Stagnation point coordinates
     Vector2d x1 = state.foil.x.col(istag);
     Vector2d x2 = state.foil.x.col(istag + 1);
@@ -199,6 +206,7 @@ void SetWakeGap(FoilState& state) {
     // TE gap
     int N = state.foil.N;
     double hTE = (state.foil.x.col(N - 1) - state.foil.x.col(0)).norm();
+    state.geom.hTE = hTE;  // Store in geometry
 
     // Exponential decay of gap along wake
     state.vsol.wgap.resize(Nw);
