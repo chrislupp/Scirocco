@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include "cppfoil/core/inviscid.h"
+#include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
 
 namespace cppfoil {
@@ -113,10 +114,67 @@ void CalcForce(FoilState& state) {
     state.post.cdf = 0.0;
     state.post.cdp = 0.0;
 
-    if (state.oper.viscous && state.glob.U.cols() > 0) {
-        // TODO: Implement viscous drag calculation
-        // - Squire-Young relation for total drag
-        // - Skin friction integration for cdf
+    if (state.oper.viscous && state.glob.U.cols() > 0 && !state.vsol.Is.empty()) {
+        // Squire-Young relation for total drag (from wake trailing edge)
+        if (state.vsol.Is.size() > 2 && !state.vsol.Is[2].empty()) {
+            int iw = state.vsol.Is[2].back();  // End of wake
+            if (iw < state.glob.U.cols()) {
+                Vector4d Uw = state.glob.U.col(iw);
+                auto [H, H_U] = GetH(Uw);
+                auto [uk, uk_U] = GetUk(Uw(3), state.param);
+                double uk_Vinf = uk / Vinf;
+
+                state.post.cd = 2.0 * Uw(0) * std::pow(uk_Vinf, (5.0 + H) / 2.0);
+            }
+        }
+
+        // Skin friction drag integration
+        double Df = 0.0;
+        double rho = state.oper.rho;
+        double qinf = 0.5 * rho * Vinf * Vinf;
+
+        for (int si = 0; si < 2; ++si) {  // Lower and upper surfaces
+            if (si >= static_cast<int>(state.vsol.Is.size())) continue;
+            const auto& Is = state.vsol.Is[si];
+            if (Is.empty()) continue;
+
+            Param param = state.param;
+            param.wake = false;
+
+            double cf1 = 0.0;
+            double ue1 = 0.0;
+            double rho1 = rho;
+            Vector2d x1 = state.isol.xstag;
+
+            for (size_t idx = 0; idx < Is.size(); ++idx) {
+                int i = Is[idx];
+                if (i >= state.glob.U.cols()) continue;
+
+                // Update turbulence flag
+                if (i < static_cast<int>(state.vsol.turb.size())) {
+                    param.turb = state.vsol.turb[i];
+                }
+
+                Vector4d Ui = state.glob.U.col(i);
+                auto [cf2, cf2_U] = GetCf(Ui, param);
+                auto [ue2, ue2_U] = GetUk(Ui(3), param);
+                auto [rho2, rho2_U] = GetRho(Ui, param);
+
+                Vector2d x2 = state.foil.x.col(i);
+                Vector2d dxv = x2 - x1;
+                double dx_proj = dxv(0) * Cosd(alpha) + dxv(1) * Sind(alpha);
+
+                Df += 0.25 * (rho1 * cf1 * ue1 * ue1 + rho2 * cf2 * ue2 * ue2) * dx_proj;
+
+                cf1 = cf2;
+                ue1 = ue2;
+                x1 = x2;
+                rho1 = rho2;
+            }
+        }
+
+        state.post.cdf = Df / (qinf * chord);
+        state.post.cdp = state.post.cd - state.post.cdf;
     }
 }
 
