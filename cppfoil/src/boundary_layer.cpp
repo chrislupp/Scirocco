@@ -288,4 +288,145 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
     return result;
 }
 
+StagnationResult StagnationState(const Matrix42d& U, const Vector2d& x) {
+    // Extrapolates two states to stagnation point
+    // Fits quadratic to edge velocity (0 at x=0), linear to other states
+
+    StagnationResult result;
+
+    Vector4d U1 = U.col(0);
+    Vector4d U2 = U.col(1);
+    double x1 = x(0);
+    double x2 = x(1);
+
+    double dx = x2 - x1;
+    Vector2d dx_x(-1.0, 1.0);
+    double rx = x2 / x1;
+    Vector2d rx_x(-rx / x1, 1.0 / x1);
+
+    // Linear extrapolation weights
+    double w1 = x2 / dx;
+    Vector2d w1_x = -w1 / dx * dx_x + Vector2d(0.0, 1.0) / dx;
+    double w2 = -x1 / dx;
+    Vector2d w2_x = -w2 / dx * dx_x + Vector2d(-1.0, 0.0) / dx;
+
+    // Stagnation state (linear extrapolation for th, ds, sa)
+    result.Ust = U1 * w1 + U2 * w2;
+
+    // Quadratic extrapolation of edge velocity for better slope: ue = K*x
+    double wk1 = rx / dx;
+    Vector2d wk1_x = rx_x / dx - wk1 / dx * dx_x;
+    double wk2 = -1.0 / (rx * dx);
+    Vector2d wk2_x = -wk2 * (rx_x / rx + dx_x / dx);
+
+    double K = wk1 * U1(3) + wk2 * U2(3);
+    Vector8d K_U = Vector8d::Zero();
+    K_U(3) = wk1;
+    K_U(7) = wk2;
+    Vector2d K_x = U1(3) * wk1_x + U2(3) * wk2_x;
+
+    // Stagnation coord must be small but nonzero
+    result.xst = 1e-6;
+    result.Ust(3) = K * result.xst;
+
+    // Build linearization w.r.t. U
+    result.Ust_U.setZero();
+    for (int i = 0; i < 3; ++i) {
+        result.Ust_U(i, i) = w1;
+        result.Ust_U(i, i + 4) = w2;
+    }
+    result.Ust_U.row(3) = K_U.transpose() * result.xst;
+
+    // Build linearization w.r.t. x
+    result.Ust_x.setZero();
+    for (int i = 0; i < 3; ++i) {
+        result.Ust_x.row(i) = U1(i) * w1_x + U2(i) * w2_x;
+    }
+    result.Ust_x.row(3) = K_x * result.xst;
+
+    return result;
+}
+
+WakeResult WakeSys(const FoilState& state, Param& param) {
+    // Construct residual system for wake initialization
+    // Enforces theta_wake = theta_lower + theta_upper
+    //         ds_wake = ds_lower + ds_upper + hTE
+    //         ctau_wake = weighted average of lower/upper ctau
+
+    WakeResult result;
+
+    int il = state.vsol.Is[0].back();   // Lower surface TE index
+    int iu = state.vsol.Is[1].back();   // Upper surface TE index
+    int iw = state.vsol.Is[2].front();  // First wake index
+
+    Vector4d Ul = state.glob.U.col(il);
+    Vector4d Uu = state.glob.U.col(iu);
+    Vector4d Uw = state.glob.U.col(iw);
+
+    // Get TE gap
+    double hTE = state.geom.hTE;
+
+    // Get shear stress at wake start
+    // Use transition ctau if not already turbulent
+    param.turb = true;
+    param.wake = false;
+
+    double ctl, ctu;
+    Vector4d ctl_Ul = Vector4d::Zero();
+    Vector4d ctu_Uu = Vector4d::Zero();
+
+    if (state.vsol.turb[il]) {
+        ctl = Ul(2);
+        ctl_Ul(2) = 1.0;
+    } else {
+        auto [ct, ct_U] = GetCttr(Ul, param);
+        ctl = ct;
+        ctl_Ul = ct_U;
+    }
+
+    if (state.vsol.turb[iu]) {
+        ctu = Uu(2);
+        ctu_Uu(2) = 1.0;
+    } else {
+        auto [ct, ct_U] = GetCttr(Uu, param);
+        ctu = ct;
+        ctu_Uu = ct_U;
+    }
+
+    // Theta-weighted average of ctau
+    double thsum = Ul(0) + Uu(0);
+    double ctw = (ctl * Ul(0) + ctu * Uu(0)) / thsum;
+
+    Vector4d ctw_Ul = (ctl_Ul * Ul(0) + (ctl - ctw) * Vector4d(1, 0, 0, 0)) / thsum;
+    Vector4d ctw_Uu = (ctu_Uu * Uu(0) + (ctu - ctw) * Vector4d(1, 0, 0, 0)) / thsum;
+
+    // Build residual: wake state = sum of TE states (plus gap for ds)
+    result.R(0) = Uw(0) - (Ul(0) + Uu(0));
+    result.R(1) = Uw(1) - (Ul(1) + Uu(1) + hTE);
+    result.R(2) = Uw(2) - ctw;
+
+    // Store indices
+    result.J = {il, iu, iw};
+
+    // Build Jacobian (3x12 for lower, upper, wake 4-states each)
+    result.R_U.setZero();
+
+    // Block 0: d/dUl (columns 0-3)
+    result.R_U(0, 0) = -1.0;
+    result.R_U(1, 1) = -1.0;
+    result.R_U.block<1, 4>(2, 0) = -ctw_Ul.transpose();
+
+    // Block 1: d/dUu (columns 4-7)
+    result.R_U(0, 4) = -1.0;
+    result.R_U(1, 5) = -1.0;
+    result.R_U.block<1, 4>(2, 4) = -ctw_Uu.transpose();
+
+    // Block 2: d/dUw (columns 8-11)
+    result.R_U(0, 8) = 1.0;
+    result.R_U(1, 9) = 1.0;
+    result.R_U(2, 10) = 1.0;
+
+    return result;
+}
+
 }  // namespace cppfoil

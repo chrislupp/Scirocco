@@ -18,6 +18,7 @@ struct Geom {
     std::string name = "noname";  // Airfoil name, e.g. "NACA 0012"
     MatrixXd xpoint;              // Point coordinates [2 x npoint]
     Vector2d xref{0.25, 0.0};     // Moment reference point
+    double hTE = 0.0;             // Trailing edge gap height
 };
 
 }  // namespace cppfoil

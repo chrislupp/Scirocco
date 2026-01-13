@@ -27,6 +27,7 @@ using Matrix38d = Eigen::Matrix<double, 3, 8>;
 using Matrix32d = Eigen::Matrix<double, 3, 2>;
 using Matrix42d = Eigen::Matrix<double, 4, 2>;
 using Matrix48d = Eigen::Matrix<double, 4, 8>;
+using Matrix312d = Eigen::Matrix<double, 3, 12>;
 
 // Sparse matrix types
 using SparseMatrixd = Eigen::SparseMatrix<double>;
