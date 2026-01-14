@@ -18,6 +18,13 @@ void InitBoundaryLayer(FoilState& state);
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                              const Matrix42d& U, const Vector2d& Aux);
 
+// Compute residual at a transition station (combined laminar + turbulent)
+// U1 should be laminar, U2 should be turbulent
+// Returns combined residual and Jacobian
+ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
+                                const Vector2d& x, const Matrix42d& U,
+                                const Vector2d& Aux);
+
 // Thwaites correlation for stagnation initialization
 // Returns (theta, delta*) at stagnation point
 std::pair<double, double> ThwaitesInit(double K, double nu);

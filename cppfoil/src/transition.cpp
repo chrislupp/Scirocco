@@ -5,47 +5,156 @@
 #include "cppfoil/core/transition.h"
 
 #include <cmath>
+#include <cassert>
 #include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/core/boundary_layer.h"
 
 namespace cppfoil {
 
-void MarchAmplification(FoilState& state, int si) {
-    // March amplification factor along surface si
-    // Using eN method
+int MarchAmplification(FoilState& state, int si) {
+    // Marches amplification equation on surface si
+    // Returns: index of last laminar station before transition (in Is array)
+    // Also updates state.glob.U[2,:] with amplification at laminar stations
 
     const auto& Is = state.vsol.Is[si];
-    if (Is.empty()) return;
+    int N = static_cast<int>(Is.size());
+    if (N == 0) return -1;
 
     Param param = BuildParam(state, si);
-    double ncrit = param.ncrit;
+    param.turb = false;
+    param.wake = false;
 
-    for (size_t idx = 1; idx < Is.size(); ++idx) {
-        int i = Is[idx];
-        int ip = Is[idx - 1];
+    // No amplification at first station
+    state.glob.U(2, Is[0]) = 0.0;
 
-        StationParam(state, param, i);
+    int i = 1;
+    while (i < N) {
+        int ip = Is[i - 1];
+        int ii = Is[i];
 
-        // Get amplification rate
-        Vector4d Ui = state.glob.U.col(i);
-        auto [damp, damp_U] = GetDamp(Ui, param);
+        Vector4d U1 = state.glob.U.col(ip);
+        Vector4d U2 = state.glob.U.col(ii);
 
-        // Update amplification factor
-        double ds = state.foil.s(i) - state.foil.s(ip);
-        double dN = damp * ds;
-        state.glob.U(2, i) = state.glob.U(2, ip) + dN;
+        // Initialize amp if currently turbulent
+        if (ii < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[ii]) {
+            U2(2) = U1(2) * 1.01;
+        }
+
+        double dx = state.isol.xi(ii) - state.isol.xi(ip);
+
+        // Newton iterations for amplification equation
+        int nNewton = 20;
+        for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
+            // Amplification rate, averaged
+            StationParam(state, param, ip);
+            auto [damp1, damp1_U1] = GetDamp(U1, param);
+            StationParam(state, param, ii);
+            auto [damp2, damp2_U2] = GetDamp(U2, param);
+
+            double damp = 0.5 * (damp1 + damp2);
+
+            double Ramp = U2(2) - U1(2) - damp * dx;
+
+            if (std::abs(Ramp) < 1e-12) break;  // Converged
+
+            // Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx
+            double Ramp_U2 = 1.0 - 0.5 * damp2_U2(2) * dx;
+            double dU = -Ramp / Ramp_U2;
+
+            double omega = 1.0;
+            double dmax = 0.5 * (1.01 - static_cast<double>(iNewton) / nNewton);
+            if (std::abs(dU) > dmax) {
+                omega = dmax / std::abs(dU);
+            }
+            U2(2) += omega * dU;
+        }
 
         // Check for transition
-        if (state.glob.U(2, i) > ncrit && !state.vsol.turb[i]) {
-            StoreTransition(state, si, i);
+        if (U2(2) > param.ncrit) {
+            // Transition found - return last laminar station
+            return i - 1;
+        } else {
+            // Store amplification
+            state.glob.U(2, ii) = U2(2);
         }
+
+        ++i;
     }
+
+    // No transition - return last station as laminar
+    return N - 1;
 }
 
 void UpdateTransition(FoilState& state) {
-    // Update transition on all surfaces
+    // Updates transition location using current state
+    // Updates turb flags and U[2,:] (amp/ctau) as needed
+
     for (int si = 0; si < 2; ++si) {  // Lower and upper only
-        MarchAmplification(state, si);
+        const auto& Is = state.vsol.Is[si];
+        int N = static_cast<int>(Is.size());
+        if (N == 0) continue;
+
+        Param param = BuildParam(state, si);
+
+        // Find current last laminar station (ilam0)
+        int ilam0 = -1;
+        for (int idx = 0; idx < N; ++idx) {
+            int j = Is[idx];
+            if (j < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[j]) {
+                ilam0 = idx - 1;
+                break;
+            }
+        }
+        if (ilam0 < 0) ilam0 = N - 1;  // All laminar
+
+        // Save current sa values (so we don't change them unnecessarily)
+        VectorXd sa(N);
+        for (int idx = 0; idx < N; ++idx) {
+            sa(idx) = state.glob.U(2, Is[idx]);
+        }
+
+        // March amplification to get new last laminar station
+        int ilam = MarchAmplification(state, si);
+
+        if (ilam == ilam0) {
+            // No change - restore original sa
+            for (int idx = 0; idx < N; ++idx) {
+                state.glob.U(2, Is[idx]) = sa(idx);
+            }
+            continue;
+        }
+
+        if (ilam < ilam0) {
+            // Transition is now earlier: fill in turb between [ilam+1, ilam0]
+            param.turb = true;
+            StationParam(state, param, Is[ilam + 1]);
+            auto [sa0, temp] = GetCttr(state.glob.U.col(Is[ilam + 1]), param);
+            double sa1 = (ilam0 < N - 1) ? state.glob.U(2, Is[ilam0 + 1]) : sa0;
+
+            double xi_start = state.isol.xi(Is[ilam + 1]);
+            double xi_end = state.isol.xi(Is[std::min(ilam0 + 1, N - 1)]);
+            double dx = xi_end - xi_start;
+
+            for (int idx = ilam + 1; idx <= ilam0; ++idx) {
+                double f = 0.0;
+                if (dx != 0.0 && idx != ilam + 1) {
+                    f = (state.isol.xi(Is[idx]) - xi_start) / dx;
+                }
+                if ((ilam + 1) == ilam0) f = 1.0;
+
+                state.glob.U(2, Is[idx]) = sa0 + f * (sa1 - sa0);
+                assert(state.glob.U(2, Is[idx]) > 0 && "negative ctau in UpdateTransition");
+                state.vsol.turb[Is[idx]] = true;
+            }
+        } else {  // ilam > ilam0
+            // Transition is now later: mark stations as laminar
+            // Amplification already filled in by march_amplification
+            for (int idx = ilam0; idx <= ilam && idx < N; ++idx) {
+                if (Is[idx] < static_cast<int>(state.vsol.turb.size())) {
+                    state.vsol.turb[Is[idx]] = false;
+                }
+            }
+        }
     }
 }
 

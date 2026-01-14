@@ -11,7 +11,8 @@
 namespace cppfoil {
 
 // March amplification factor along a surface
-void MarchAmplification(FoilState& state, int si);
+// Returns: index of last laminar station in Is array (before transition)
+int MarchAmplification(FoilState& state, int si);
 
 // Update transition locations based on current solution
 void UpdateTransition(FoilState& state);

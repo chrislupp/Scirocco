@@ -5,6 +5,7 @@
 #include "cppfoil/core/boundary_layer.h"
 
 #include <cmath>
+#include <iostream>
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -119,24 +120,62 @@ void InitBoundaryLayer(FoilState& state) {
                 K = ue(0) / std::max(xi(0), 1e-12);
                 hitstag = false;
             }
+            std::cout << "  BL init si=" << si << " hitstag=" << hitstag
+                      << " xi(0)=" << xi(0) << " xi(Nsurf-1)=" << xi(Nsurf-1)
+                      << " K=" << K << std::endl;
 
             // Thwaites initialization
             auto [th, ds] = ThwaitesInit(K, nu);
             double xst = 1e-6;  // Small but nonzero
             Vector4d Ust(th, ds, 0.0, K * xst);
 
-            // Use Thwaites directly - Newton refinement had numerical issues
+            // Newton refinement at stagnation (matching mfoil)
             param.turb = false;
-            param.simi = false;
+            param.simi = true;  // Similarity station flag
 
-            // Store stagnation state
+            for (int iNewton = 0; iNewton < 20; ++iNewton) {
+                // Call residual at stagnation with simi=true
+                Vector2d xpair(xst, xst);
+                Matrix42d Upair;
+                Upair.col(0) = Ust;
+                Upair.col(1) = Ust;
+                Vector2d Auxpair(0.0, 0.0);
+
+                auto res = ResidualStation(param, xpair, Upair, Auxpair);
+
+                if (res.value.norm() < 1e-10) break;
+
+                // Solve: A = R_U[:,4:7] + R_U[:,0:3] (both sides same state)
+                Matrix3d A = res.lin_U.block<3, 3>(0, 4) + res.lin_U.block<3, 3>(0, 0);
+                Vector3d b = -res.value;
+                Vector3d dU3 = A.partialPivLu().solve(b);
+
+                // Under-relaxation
+                double dm = std::max(std::abs(dU3(0) / Ust(0)), std::abs(dU3(1) / Ust(1)));
+                double omega = (dm < 0.2) ? 1.0 : 0.2 / dm;
+                dU3 *= omega;
+
+                Ust(0) += dU3(0);
+                Ust(1) += dU3(1);
+                Ust(2) += dU3(2);
+            }
+
+            param.simi = false;  // Reset similarity flag
+
+            // Store stagnation state (mfoil approach)
+            // When hitstag, both point 0 and point 1 get the stagnation state,
+            // and marching starts from point 2
             if (hitstag) {
                 U.col(0) = Ust;
                 U(3, 0) = ue(0);
-                i0 = 1;
+                U.col(1) = Ust;
+                U(3, 1) = ue(1);
+                i0 = 1;  // March will start from i0+1 = 2
+            } else {
+                U.col(0) = Ust;
+                U(3, 0) = ue(0);
+                i0 = 0;  // March will start from i0+1 = 1
             }
-            U.col(i0) = Ust;
-            U(3, i0) = ue(i0);
 
         } else {
             // Wake: initialize from TE states
@@ -155,15 +194,21 @@ void InitBoundaryLayer(FoilState& state) {
         bool tran = false;  // Transition flag
         int i = i0 + 1;
 
+        if (si == 1) {
+            std::cout << "  BL march si=" << si << " starting at i=" << i << " (i0=" << i0 << ")" << std::endl;
+        }
+
         while (i < Nsurf) {
             // Initialize with previous state and new ue
             U.col(i) = U.col(i - 1);
             U(3, i) = ue(i);
 
-            // Set ctau at transition
+            // Set ctau at transition and switch to turbulent mode
             if (tran) {
                 auto [ct, ct_U] = GetCttr(U.col(i), param);
+                std::cout << "  cttr from GetCttr: " << ct << " (Hk will determine this)" << std::endl;
                 U(2, i) = ct;
+                param.turb = true;  // Set turb BEFORE Newton so we use turbulent residuals
             }
 
             state.vsol.turb[Is[i]] = (tran || param.turb);
@@ -179,7 +224,25 @@ void InitBoundaryLayer(FoilState& state) {
                 Upair.col(1) = U.col(i);
                 Vector2d Auxpair(Aux(i - 1), Aux(i));
 
-                auto res = ResidualStation(param, xpair, Upair, Auxpair);
+                // Use transition residual at transition stations
+                ResidualLin res;
+                if (tran) {
+                    res = ResidualTransition(state, param, xpair, Upair, Auxpair);
+                    if (iNewton == 0) {
+                        std::cout << "  Tran Newton start: ctau=" << U(2,i) << " R=("
+                                  << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")"
+                                  << " |R|=" << res.value.norm() << std::endl;
+                    }
+                } else {
+                    res = ResidualStation(param, xpair, Upair, Auxpair);
+                }
+
+                // Debug for first few stations
+                if (si == 1 && i <= 3 && iNewton == 0) {
+                    std::cout << "  Init si=" << si << " i=" << i << " |R|=" << res.value.norm()
+                              << " R=(" << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")"
+                              << " th=" << U(0,i) << " ds=" << U(1,i) << std::endl;
+                }
 
                 if (res.value.norm() < 1e-10) {
                     converged = true;
@@ -192,6 +255,10 @@ void InitBoundaryLayer(FoilState& state) {
                     Matrix3d A = res.lin_U.block<3, 3>(0, 4);
                     dU.head<3>() = A.partialPivLu().solve(-res.value);
                     dU(3) = 0.0;
+                    if (tran && iNewton < 5) {
+                        std::cout << "  Tran Newton[" << iNewton << "] dU=(" << dU(0) << "," << dU(1) << "," << dU(2) << ")"
+                                  << " A(2,2)=" << A(2,2) << " ctau_before=" << U(2,i) << std::endl;
+                    }
                 } else {
                     // Inverse mode: prescribe Hk, solve for th, ds, sa, ue
                     auto [Hk, Hk_U] = GetHk(U.col(i), param);
@@ -260,31 +327,52 @@ void InitBoundaryLayer(FoilState& state) {
                 } else {
                     U.col(i) = Ui;
                 }
+                if (tran && iNewton < 5) {
+                    std::cout << "  Tran Newton[" << iNewton << "] ctau_after=" << U(2,i)
+                              << " omega=" << omega << " direct=" << direct << std::endl;
+                }
             }
 
-            // If not converged, extrapolate
+            // If not converged, extrapolate or use fallback
             if (!converged) {
                 U.col(i) = U.col(i - 1);
                 U(3, i) = ue(i);
-                if (si < 2 && xi(i - 1) > 1e-12) {
-                    // Extrapolate theta and delta* along surface
-                    double xratio = std::sqrt(xi(i) / xi(i - 1));
-                    U(0, i) = U(0, i - 1) * xratio;
-                    U(1, i) = U(1, i - 1) * xratio;
+
+                // At transition station, preserve cttr instead of laminar amp
+                if (tran) {
+                    auto [ct, ct_U] = GetCttr(U.col(i), param);
+                    U(2, i) = ct;
+                } else if (si < 2 && xi(i) > 1e-10) {
+                    // Check if we're right after stagnation (tiny xi_prev)
+                    if (xi(i - 1) < 1e-8 * xi(Nsurf - 1)) {
+                        // Use Thwaites initialization at this station
+                        double K_local = ue(i) / std::max(xi(i), 1e-12);
+                        auto [th_new, ds_new] = ThwaitesInit(K_local, nu);
+                        U(0, i) = th_new;
+                        U(1, i) = ds_new;
+                    } else {
+                        // Extrapolate theta and delta* along surface
+                        double xratio = std::sqrt(xi(i) / xi(i - 1));
+                        U(0, i) = U(0, i - 1) * xratio;
+                        U(1, i) = U(1, i - 1) * xratio;
+                    }
                 }
             }
 
             // Check for transition (laminar only)
             if (!param.turb && !tran && U(2, i) > param.ncrit) {
                 tran = true;
+                std::cout << "  Transition detected: si=" << si << " i=" << i
+                          << " Is[i]=" << Is[i] << " n=" << U(2,i) << std::endl;
                 continue;  // Redo station with transition
             }
 
             if (tran) {
-                // Store transition location
+                // Store transition location (param.turb already set before Newton)
                 state.vsol.Xt(si, 0) = 0.5 * (xi(i - 1) + xi(i));
-                param.turb = true;
                 tran = false;
+                std::cout << "  Transition applied: si=" << si << " i=" << i
+                          << " ctau=" << U(2,i) << std::endl;
             }
 
             ++i;
@@ -324,11 +412,13 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
     auto [uk1, uk1_U] = GetUk(U1(3), param);
     auto [uk2, uk2_U] = GetUk(U2(3), param);
 
-    // Log changes
-    double thlog = std::log(th2 / th1);
+    // Log changes (with protection against small/negative values)
+    double th1_safe = std::max(th1, 1e-12);
+    double th2_safe = std::max(th2, 1e-12);
+    double thlog = std::log(th2_safe / th1_safe);
     Vector8d thlog_U = Vector8d::Zero();
-    thlog_U(0) = -1.0 / th1;
-    thlog_U(4) = 1.0 / th2;
+    thlog_U(0) = (th1 > 1e-12) ? -1.0 / th1 : 0.0;
+    thlog_U(4) = (th2 > 1e-12) ? 1.0 / th2 : 0.0;
 
     double uelog = std::log(std::max(uk2, 1e-12) / std::max(uk1, 1e-12));
     Vector8d uelog_U = Vector8d::Zero();
@@ -438,10 +528,13 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
 
     if (param.turb) {
         // Turbulent: shear lag equation
-        double salog = std::log(sa2 / sa1);
+        // Protect against small/negative ctau values
+        double sa1_safe = std::max(sa1, 1e-10);
+        double sa2_safe = std::max(sa2, 1e-10);
+        double salog = std::log(sa2_safe / sa1_safe);
         Vector8d salog_U = Vector8d::Zero();
-        salog_U(2) = -1.0 / sa1;
-        salog_U(6) = 1.0 / sa2;
+        salog_U(2) = (sa1 > 1e-10) ? -1.0 / sa1 : 0.0;
+        salog_U(6) = (sa2 > 1e-10) ? 1.0 / sa2 : 0.0;
 
         auto [de1, de1_U1] = GetDe(U1, param);
         auto [de2, de2_U2] = GetDe(U2, param);
@@ -675,6 +768,189 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
     result.R_U(0, 8) = 1.0;
     result.R_U(1, 9) = 1.0;
     result.R_U(2, 10) = 1.0;
+
+    return result;
+}
+
+ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
+                                const Vector2d& x, const Matrix42d& U,
+                                const Vector2d& Aux) {
+    // Calculates the combined lam + turb residual for a transition station
+    // U1 should be laminar; U2 should be turbulent
+    // Calculates and linearizes the transition location in the process
+
+    ResidualLin result;
+    result.value = Vector3d::Zero();
+    result.lin_U = Matrix38d::Zero();
+    result.lin_x = Matrix32d::Zero();
+
+    // States
+    Vector4d U1 = U.col(0);
+    Vector4d U2 = U.col(1);
+    Vector4d Z4 = Vector4d::Zero();
+
+    // Interval
+    double x1 = x(0);
+    double x2 = x(1);
+    double dx = x2 - x1;
+
+    // Determine transition location (xt) using amplification equation
+    double xt = x1 + 0.5 * dx;  // Initial guess
+    double ncrit = param_base.ncrit;
+    constexpr int nNewton = 20;
+
+    double sa1 = U1(2);  // Amplification at point 1
+
+    // Newton iteration to find xt
+    for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
+        double w2 = (xt - x1) / dx;
+        double w1 = 1.0 - w2;
+
+        // State at xt (linear interpolation)
+        Vector4d Ut = w1 * U1 + w2 * U2;
+        Vector4d Ut_xt = (U2 - U1) / dx;  // d(Ut)/d(xt)
+        Ut(2) = ncrit;      // Amplification at transition = ncrit
+        Ut_xt(2) = 0.0;     // sa at xt is always ncrit
+
+        // Get damping at U1 and Ut
+        Param param = param_base;
+        param.turb = false;
+        auto [damp1, damp1_U1] = GetDamp(U1, param);
+        auto [dampt, dampt_Ut] = GetDamp(Ut, param);
+        dampt_Ut(2) = 0.0;  // No dependence on sa at transition
+
+        // Residual for transition location: ncrit - sa1 - 0.5*(xt-x1)*(damp1 + dampt)
+        double Rxt = ncrit - sa1 - 0.5 * (xt - x1) * (damp1 + dampt);
+        double Rxt_xt = -0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * dampt_Ut.dot(Ut_xt);
+
+        double dxt = -Rxt / Rxt_xt;
+
+        // Limit step size
+        double dmax = 0.2 * dx * (1.1 - static_cast<double>(iNewton) / nNewton);
+        if (std::abs(dxt) > dmax) {
+            dxt = dxt * dmax / std::abs(dxt);
+        }
+
+        if (std::abs(Rxt) < 1e-10) break;
+        if (iNewton < nNewton - 1) xt += dxt;
+    }
+
+    // Store transition location
+    state.vsol.xt = xt;
+
+    // Prepare for xt linearizations
+    double w2 = (xt - x1) / dx;
+    double w1 = 1.0 - w2;
+    Vector4d Ut = w1 * U1 + w2 * U2;
+    Vector4d Ut_xt = (U2 - U1) / dx;
+    Ut(2) = ncrit;
+    Ut_xt(2) = 0.0;
+
+    Param param = param_base;
+    param.turb = false;
+    auto [damp1, damp1_U1] = GetDamp(U1, param);
+    auto [dampt, dampt_Ut] = GetDamp(Ut, param);
+    dampt_Ut(2) = 0.0;
+
+    double Rxt_xt = -0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * dampt_Ut.dot(Ut_xt);
+
+    // Rxt_U = d(Rxt)/d(U1, U2) at fixed xt
+    Vector8d Rxt_U = Vector8d::Zero();
+    Rxt_U.head<4>() = -0.5 * (xt - x1) * (damp1_U1 + dampt_Ut * w1);
+    Rxt_U.tail<4>() = -0.5 * (xt - x1) * dampt_Ut * w2;
+    Rxt_U(2) -= 1.0;  // d(Rxt)/d(sa1) = -1
+
+    // Ut_x at fixed xt
+    Vector4d Ut_x1 = (U2 - U1) * (w2 - 1.0) / dx;
+    Vector4d Ut_x2 = (U2 - U1) * (-w2) / dx;
+    Ut_x1(2) = 0.0;
+    Ut_x2(2) = 0.0;
+
+    double Rxt_x1 = 0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * dampt_Ut.dot(Ut_x1);
+    double Rxt_x2 = -0.5 * (xt - x1) * dampt_Ut.dot(Ut_x2);
+
+    // Sensitivity of xt w.r.t. U,x from Rxt(xt,U,x) = 0 constraint
+    Vector8d xt_U = -Rxt_U / Rxt_xt;
+    Vector4d xt_U1 = xt_U.head<4>();
+    Vector4d xt_U2 = xt_U.tail<4>();
+    double xt_x1 = -Rxt_x1 / Rxt_xt;
+    double xt_x2 = -Rxt_x2 / Rxt_xt;
+
+    // Include derivatives w.r.t. xt in Ut_x
+    Ut_x1 += Ut_xt * xt_x1;
+    Ut_x2 += Ut_xt * xt_x2;
+
+    // Sensitivity of Ut w.r.t. U1 and U2
+    Matrix4d Ut_U1 = w1 * Matrix4d::Identity() + (U2 - U1) * xt_U1.transpose() / dx;
+    Matrix4d Ut_U2 = w2 * Matrix4d::Identity() + (U2 - U1) * xt_U2.transpose() / dx;
+
+    // Laminar and turbulent states at transition
+    Vector4d Utl = Ut;
+    Matrix4d Utl_U1 = Ut_U1;
+    Matrix4d Utl_U2 = Ut_U2;
+    Vector4d Utl_x1 = Ut_x1;
+    Vector4d Utl_x2 = Ut_x2;
+    Utl(2) = ncrit;
+    Utl_U1.row(2).setZero();
+    Utl_U2.row(2).setZero();
+    Utl_x1(2) = 0.0;
+    Utl_x2(2) = 0.0;
+
+    Vector4d Utt = Ut;
+    Matrix4d Utt_U1 = Ut_U1;
+    Matrix4d Utt_U2 = Ut_U2;
+    Vector4d Utt_x1 = Ut_x1;
+    Vector4d Utt_x2 = Ut_x2;
+
+    // Set turbulent shear coefficient in Utt
+    param.turb = true;
+    auto [cttr, cttr_Ut] = GetCttr(Ut, param);
+    Utt(2) = cttr;
+    Utt_U1.row(2) = (cttr_Ut.transpose() * Ut_U1).transpose();
+    Utt_U2.row(2) = (cttr_Ut.transpose() * Ut_U2).transpose();
+    Utt_x1(2) = cttr_Ut.dot(Ut_x1);
+    Utt_x2(2) = cttr_Ut.dot(Ut_x2);
+
+    // Laminar residual: x1 to xt
+    param.turb = false;
+    Matrix42d U_lam;
+    U_lam.col(0) = U1;
+    U_lam.col(1) = Utl;
+    Vector2d x_lam(x1, xt);
+    auto Rl = ResidualStation(param, x_lam, U_lam, Aux);
+
+    // Turbulent residual: xt to x2
+    param.turb = true;
+    Matrix42d U_turb;
+    U_turb.col(0) = Utt;
+    U_turb.col(1) = U2;
+    Vector2d x_turb(xt, x2);
+    auto Rt = ResidualStation(param, x_turb, U_turb, Aux);
+
+    // Combined residual
+    result.value = Rl.value + Rt.value;
+
+    // Combined Jacobian using chain rule
+    // R_U1 = Rl_U1 + Rl_Utl * Utl_U1 + Rl_x[:,1] * xt_U1 + Rt_Utt * Utt_U1 + Rt_x[:,0] * xt_U1
+    Matrix34d Rl_U1 = Rl.lin_U.block<3, 4>(0, 0);
+    Matrix34d Rl_Utl = Rl.lin_U.block<3, 4>(0, 4);
+    Matrix34d Rt_Utt = Rt.lin_U.block<3, 4>(0, 0);
+    Matrix34d Rt_U2 = Rt.lin_U.block<3, 4>(0, 4);
+
+    Matrix34d R_U1 = Rl_U1 + Rl_Utl * Utl_U1 + Rl.lin_x.col(1) * xt_U1.transpose() +
+                     Rt_Utt * Utt_U1 + Rt.lin_x.col(0) * xt_U1.transpose();
+
+    Matrix34d R_U2 = Rl_Utl * Utl_U2 + Rl.lin_x.col(1) * xt_U2.transpose() +
+                     Rt_Utt * Utt_U2 + Rt_U2 + Rt.lin_x.col(0) * xt_U2.transpose();
+
+    result.lin_U.block<3, 4>(0, 0) = R_U1;
+    result.lin_U.block<3, 4>(0, 4) = R_U2;
+
+    // Combined x linearization
+    result.lin_x.col(0) = Rl.lin_x.col(0) + Rl.lin_x.col(1) * xt_x1 + Rt.lin_x.col(0) * xt_x1 +
+                          Rl_Utl * Utl_x1 + Rt_Utt * Utt_x1;
+    result.lin_x.col(1) = Rt.lin_x.col(1) + Rl.lin_x.col(1) * xt_x2 + Rt.lin_x.col(0) * xt_x2 +
+                          Rl_Utl * Utl_x2 + Rt_Utt * Utt_x2;
 
     return result;
 }
