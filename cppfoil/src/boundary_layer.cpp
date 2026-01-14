@@ -30,8 +30,8 @@ Param BuildParam(const FoilState& state, int si) {
 
     // Set surface-specific flags
     param.wake = (si == 2);
+    param.turb = param.wake;  // Wake is fully turbulent (matches mfoil)
     param.simi = false;
-    param.turb = false;
 
     return param;
 }
@@ -45,6 +45,9 @@ void StationParam(const FoilState& state, Param& param, int i) {
 
     // Wake flag
     param.wake = (i >= N);
+
+    // Similarity flag: true at stagnation point (matches mfoil)
+    param.simi = (i == state.isol.Istag[0] || i == state.isol.Istag[1]);
 }
 
 void InitBoundaryLayer(FoilState& state) {

@@ -767,6 +767,61 @@ def extract_all_reference_data(filename):
         forces_grp.create_dataset('converged', data=M2.glob.conv)
         forces_grp.create_dataset('U_converged', data=M2.glob.U)
 
+        # ========== BUILD_PARAM REFERENCE ==========
+        build_param_grp = f.create_group('build_param')
+        for si in [0, 1, 2]:
+            param = mfoil.build_param(M, si)
+            grp = build_param_grp.create_group(f'surface_{si}')
+            grp.create_dataset('wake', data=param.wake)
+            grp.create_dataset('turb', data=param.turb)
+            grp.create_dataset('simi', data=param.simi)
+
+        # ========== STATION_PARAM REFERENCE ==========
+        station_param_grp = f.create_group('station_param')
+        Is_lower = list(M.vsol.Is[0])
+        Is_upper = list(M.vsol.Is[1])
+        Istag = M.isol.Istag
+        # Test indices: lower surface, upper surface laminar, upper turbulent, stagnation
+        test_indices = []
+        if len(Is_lower) > 2:
+            test_indices.append(Is_lower[2])
+        if len(Is_upper) > 5:
+            test_indices.append(Is_upper[5])
+        if len(Is_upper) > 0:
+            test_indices.append(Is_upper[-1])
+        test_indices.extend([Istag[0], Istag[1]])
+        station_param_grp.create_dataset('test_indices', data=np.array(test_indices))
+        for idx in test_indices:
+            si = 0 if idx in Is_lower else 1
+            param = mfoil.build_param(M, si)
+            mfoil.station_param(M, param, idx)
+            grp = station_param_grp.create_group(f'idx_{idx}')
+            grp.create_dataset('turb', data=param.turb)
+            grp.create_dataset('simi', data=param.simi)
+            grp.create_dataset('wake', data=param.wake)
+
+        # ========== MAKE_PANELS / SPLINE_CURVATURE REFERENCE ==========
+        # Use M.geom.xpoint (raw NACA points) to test SplineCurvature
+        panels_grp = f.create_group('make_panels')
+        panels_grp.create_dataset('xpoint', data=M.geom.xpoint)
+        # Panel output is already in geometry, but store explicitly
+        panels_grp.create_dataset('x', data=M.foil.x)
+        panels_grp.create_dataset('s', data=M.foil.s)
+        panels_grp.create_dataset('t', data=M.foil.t)
+        panels_grp.create_dataset('N', data=M.foil.N)
+
+        # Direct spline_curvature call
+        spline_curv_grp = f.create_group('spline_curvature')
+        xpoint = M.geom.xpoint.copy()
+        X, S, XS = mfoil.spline_curvature(xpoint, 131, 2.0, 0.1, None)  # None = automatic spacing
+        spline_curv_grp.create_dataset('xpoint', data=xpoint)
+        spline_curv_grp.create_dataset('N', data=131)
+        spline_curv_grp.create_dataset('Ufac', data=2.0)
+        spline_curv_grp.create_dataset('TEfac', data=0.1)
+        spline_curv_grp.create_dataset('X', data=X)
+        spline_curv_grp.create_dataset('S', data=S)
+        spline_curv_grp.create_dataset('XS', data=XS)
+
     print(f"Reference data saved to {filename}")
     return M
 

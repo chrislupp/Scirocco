@@ -23,6 +23,7 @@
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/transition.h"
 #include "cppfoil/core/spline.h"
+#include "cppfoil/core/paneling.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -1876,4 +1877,218 @@ TEST_F(MfoilReferenceTest, CalcForce_Inviscid) {
     // Inviscid cd should be ~0 (pressure drag only, no wake for this)
     std::cout << "CalcForce_Inviscid: cl=" << state.post.cl << " (ref=" << cl_ref << ")"
               << ", cm=" << state.post.cm << " (ref=" << cm_ref << ")" << std::endl;
+}
+
+// ============================================================================
+// HIGH PRIORITY FUNCTION TESTS
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, GetUeInv) {
+    // Test inviscid edge velocity computation
+    VectorXd ue_inv_ref = readVector(getFile(), "ue_inv");
+
+    // Set up state with inviscid solution
+    MatrixXd x = readMatrix(getFile(), "geometry/x");
+    VectorXd s = readVector(getFile(), "geometry/s");
+    MatrixXd gamref = readMatrix(getFile(), "inviscid/gamref");
+    VectorXd gam = readVector(getFile(), "inviscid/gam");
+    VectorXd sgnue = readVector(getFile(), "surfaces/sgnue");
+
+    FoilState state;
+    state.foil.N = static_cast<int>(x.cols());
+    state.foil.x = x;
+    state.foil.s = s;
+    state.isol.gamref = gamref;
+    state.isol.gam = gam;  // Required for GetUeInv check
+    state.isol.sgnue = sgnue;
+    state.oper.alpha = 0.0;
+    state.oper.viscous = true;
+
+    // Set up wake
+    state.wake.N = readScalar<int>(getFile(), "wake/N");
+    state.wake.x = readMatrix(getFile(), "wake/x");
+    state.wake.s = readVector(getFile(), "wake/s");
+
+    // Read wake reference velocities from ue_inv_ref data
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    state.isol.uewiref.resize(Nw, 2);
+    state.isol.uewiref.setZero();
+
+    VectorXd ue_inv = GetUeInv(state);
+
+    // Compare airfoil portion (first N values)
+    double max_err = 0.0;
+    for (int i = 0; i < N; ++i) {
+        double err = std::abs(ue_inv(i) - ue_inv_ref(i));
+        max_err = std::max(max_err, err);
+    }
+
+    EXPECT_LT(max_err, TOL_TIGHT) << "GetUeInv airfoil max error";
+    std::cout << "GetUeInv: N=" << N << ", Nw=" << Nw
+              << ", airfoil max_err=" << max_err << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, BuildParam) {
+    // Test BuildParam for each surface type
+    int passed = 0;
+    int failed = 0;
+
+    FoilState state;
+    state.param.gam = 1.4;  // Initialize with some values
+
+    for (int si = 0; si < 3; ++si) {
+        std::string path = "build_param/surface_" + std::to_string(si);
+        bool wake_ref = readScalar<bool>(getFile(), path + "/wake");
+        bool turb_ref = readScalar<bool>(getFile(), path + "/turb");
+        bool simi_ref = readScalar<bool>(getFile(), path + "/simi");
+
+        Param param = BuildParam(state, si);
+
+        bool ok = (param.wake == wake_ref) &&
+                  (param.turb == turb_ref) &&
+                  (param.simi == simi_ref);
+        if (ok) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "BuildParam surface " << si << " FAILED:" << std::endl;
+            std::cout << "  wake: " << param.wake << " (ref=" << wake_ref << ")" << std::endl;
+            std::cout << "  turb: " << param.turb << " (ref=" << turb_ref << ")" << std::endl;
+            std::cout << "  simi: " << param.simi << " (ref=" << simi_ref << ")" << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of 3 BuildParam tests";
+    std::cout << "BuildParam: " << passed << "/3 passed" << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, StationParam) {
+    // Test StationParam at various station indices
+    std::vector<int64_t> test_indices_buf;
+    {
+        H5::DataSet ds = getFile().openDataSet("station_param/test_indices");
+        H5::DataSpace space = ds.getSpace();
+        hsize_t dims[1];
+        space.getSimpleExtentDims(dims);
+        test_indices_buf.resize(dims[0]);
+        ds.read(test_indices_buf.data(), H5::PredType::NATIVE_INT64);
+    }
+
+    // Set up state with required data
+    FoilState state;
+    state.foil.N = readScalar<int>(getFile(), "geometry/N");
+
+    // Read turbulence flags
+    std::vector<uint8_t> turb_buf;
+    {
+        H5::DataSet ds = getFile().openDataSet("bl_init/turb");
+        H5::DataSpace space = ds.getSpace();
+        hsize_t dims[1];
+        space.getSimpleExtentDims(dims);
+        turb_buf.resize(dims[0]);
+        ds.read(turb_buf.data(), H5::PredType::NATIVE_UINT8);
+    }
+    state.vsol.turb.resize(turb_buf.size());
+    for (size_t i = 0; i < turb_buf.size(); ++i) {
+        state.vsol.turb[i] = (turb_buf[i] != 0);
+    }
+
+    // Read stagnation indices
+    std::vector<int64_t> istag_buf(2);
+    {
+        H5::DataSet ds = getFile().openDataSet("stagnation/Istag");
+        ds.read(istag_buf.data(), H5::PredType::NATIVE_INT64);
+    }
+    state.isol.Istag[0] = static_cast<int>(istag_buf[0]);
+    state.isol.Istag[1] = static_cast<int>(istag_buf[1]);
+
+    int passed = 0;
+    int failed = 0;
+
+    for (int64_t idx64 : test_indices_buf) {
+        int idx = static_cast<int>(idx64);
+        std::string path = "station_param/idx_" + std::to_string(idx);
+
+        bool turb_ref = readScalar<bool>(getFile(), path + "/turb");
+        bool simi_ref = readScalar<bool>(getFile(), path + "/simi");
+
+        Param param;
+        param.turb = false;
+        param.simi = false;
+        param.wake = false;
+        StationParam(state, param, idx);
+
+        bool ok = (param.turb == turb_ref) && (param.simi == simi_ref);
+        if (ok) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "StationParam idx=" << idx << " FAILED:" << std::endl;
+            std::cout << "  turb: " << param.turb << " (ref=" << turb_ref << ")" << std::endl;
+            std::cout << "  simi: " << param.simi << " (ref=" << simi_ref << ")" << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of " << test_indices_buf.size() << " StationParam tests";
+    std::cout << "StationParam: " << passed << "/" << test_indices_buf.size() << " passed" << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, MakePanels) {
+    // Test panel generation matches mfoil
+    MatrixXd x_ref = readMatrix(getFile(), "make_panels/x");
+    VectorXd s_ref = readVector(getFile(), "make_panels/s");
+    MatrixXd t_ref = readMatrix(getFile(), "make_panels/t");
+    int N_ref = readScalar<int>(getFile(), "make_panels/N");
+
+    // Create panels using cppfoil
+    Cppfoil foil("0012", 130);  // Same as mfoil: npanel=130
+    FoilState& state = foil.GetState();
+
+    // Compare
+    EXPECT_EQ(state.foil.N, N_ref) << "Panel count mismatch";
+
+    double max_x_err = 0.0;
+    double max_s_err = 0.0;
+    for (int i = 0; i < N_ref; ++i) {
+        double ex = (state.foil.x.col(i) - x_ref.col(i)).norm();
+        double es = std::abs(state.foil.s(i) - s_ref(i));
+        max_x_err = std::max(max_x_err, ex);
+        max_s_err = std::max(max_s_err, es);
+    }
+
+    EXPECT_LT(max_x_err, TOL_TIGHT) << "MakePanels x max error";
+    EXPECT_LT(max_s_err, TOL_TIGHT) << "MakePanels s max error";
+    std::cout << "MakePanels: N=" << N_ref << ", max_x_err=" << max_x_err
+              << ", max_s_err=" << max_s_err << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, SplineCurvature) {
+    // Test curvature-based spacing matches mfoil
+    MatrixXd xpoint = readMatrix(getFile(), "spline_curvature/xpoint");
+    MatrixXd X_ref = readMatrix(getFile(), "spline_curvature/X");
+    VectorXd S_ref = readVector(getFile(), "spline_curvature/S");
+    MatrixXd XS_ref = readMatrix(getFile(), "spline_curvature/XS");
+    int N = readScalar<int>(getFile(), "spline_curvature/N");
+    double Ufac = readScalar<double>(getFile(), "spline_curvature/Ufac");
+    double TEfac = readScalar<double>(getFile(), "spline_curvature/TEfac");
+
+    // Call cppfoil's SplineCurvature
+    VectorXd stgt;  // Empty target
+    SpacingResult result = SplineCurvature(xpoint, N, Ufac, TEfac, stgt);
+
+    // Compare
+    double max_X_err = 0.0;
+    double max_S_err = 0.0;
+    for (int i = 0; i < N; ++i) {
+        double ex = (result.X.col(i) - X_ref.col(i)).norm();
+        double es = std::abs(result.S(i) - S_ref(i));
+        max_X_err = std::max(max_X_err, ex);
+        max_S_err = std::max(max_S_err, es);
+    }
+
+    EXPECT_LT(max_X_err, TOL_LOOSE) << "SplineCurvature X max error";
+    EXPECT_LT(max_S_err, TOL_LOOSE) << "SplineCurvature S max error";
+    std::cout << "SplineCurvature: N=" << N << ", max_X_err=" << max_X_err
+              << ", max_S_err=" << max_S_err << std::endl;
 }
