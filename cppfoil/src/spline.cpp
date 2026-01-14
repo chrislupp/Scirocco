@@ -31,7 +31,7 @@ int FindSegment(const VectorXd& s, double sval) {
     return lo;
 }
 
-// Build natural cubic spline from data points
+// Build cubic spline with not-a-knot boundary conditions (like scipy.CubicSpline)
 // Returns coefficient matrix [4 x (N-1)]
 MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     int n = static_cast<int>(s.size());
@@ -39,56 +39,60 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
         throw std::invalid_argument("Need at least 2 points for spline");
     }
 
-    // Build tridiagonal system for second derivatives
+    // Compute intervals
     VectorXd h(n - 1);
     for (int i = 0; i < n - 1; ++i) {
         h(i) = s(i + 1) - s(i);
     }
 
-    // Natural spline: second derivative = 0 at endpoints
     VectorXd d2y = VectorXd::Zero(n);
 
-    if (n > 2) {
-        // Set up tridiagonal system
-        int m = n - 2;
-        VectorXd diag(m), upper(m - 1), lower(m - 1), rhs(m);
+    if (n == 2) {
+        // Linear interpolation (no curvature)
+        d2y.setZero();
+    } else if (n == 3) {
+        // Quadratic - single d2y value (constant curvature)
+        double dy0 = (y(1) - y(0)) / h(0);
+        double dy1 = (y(2) - y(1)) / h(1);
+        double d2 = 2.0 * (dy1 - dy0) / (h(0) + h(1));
+        d2y(0) = d2;
+        d2y(1) = d2;
+        d2y(2) = d2;
+    } else {
+        // Not-a-knot: solve full system with boundary conditions
+        // The third derivative is continuous at x[1] and x[n-2]
 
-        for (int i = 0; i < m; ++i) {
-            diag(i) = 2.0 * (h(i) + h(i + 1));
-            rhs(i) = 6.0 * ((y(i + 2) - y(i + 1)) / h(i + 1) -
-                            (y(i + 1) - y(i)) / h(i));
-        }
-        for (int i = 0; i < m - 1; ++i) {
-            upper(i) = h(i + 1);
-            lower(i) = h(i + 1);
+        // Build full n x n system (almost tridiagonal with extra entries)
+        MatrixXd A = MatrixXd::Zero(n, n);
+        VectorXd rhs = VectorXd::Zero(n);
+
+        // Interior equations (i = 1 to n-2): continuity of first derivative
+        for (int i = 1; i < n - 1; ++i) {
+            A(i, i - 1) = h(i - 1);
+            A(i, i) = 2.0 * (h(i - 1) + h(i));
+            A(i, i + 1) = h(i);
+            rhs(i) = 6.0 * ((y(i + 1) - y(i)) / h(i) - (y(i) - y(i - 1)) / h(i - 1));
         }
 
-        // Thomas algorithm for tridiagonal system
-        VectorXd cp(m), dp(m);
-        if (m == 1) {
-            // Special case: single interior point
-            d2y(1) = rhs(0) / diag(0);
-        } else {
-            cp(0) = upper(0) / diag(0);
-            dp(0) = rhs(0) / diag(0);
-            for (int i = 1; i < m; ++i) {
-                double denom = diag(i) - lower(i - 1) * cp(i - 1);
-                if (i < m - 1) {
-                    cp(i) = upper(i) / denom;
-                }
-                dp(i) = (rhs(i) - lower(i - 1) * dp(i - 1)) / denom;
-            }
+        // Not-a-knot at left: third derivative continuous at s[1]
+        // d2y[0] * (1/h0) - d2y[1] * (1/h0 + 1/h1) + d2y[2] * (1/h1) = 0
+        A(0, 0) = h(1);
+        A(0, 1) = -(h(0) + h(1));
+        A(0, 2) = h(0);
+        rhs(0) = 0.0;
 
-            // Back substitution
-            d2y(m) = dp(m - 1);
-            for (int i = m - 2; i >= 0; --i) {
-                d2y(i + 1) = dp(i) - cp(i) * d2y(i + 2);
-            }
-        }
+        // Not-a-knot at right: third derivative continuous at s[n-2]
+        A(n - 1, n - 3) = h(n - 2);
+        A(n - 1, n - 2) = -(h(n - 3) + h(n - 2));
+        A(n - 1, n - 1) = h(n - 3);
+        rhs(n - 1) = 0.0;
+
+        // Solve the system
+        d2y = A.partialPivLu().solve(rhs);
     }
 
     // Compute coefficients for each segment
-    // f(t) = c0*t^3 + c1*t^2 + c2*t + c3
+    // f(t) = c0*t^3 + c1*t^2 + c2*t + c3 where t = s - s[i]
     MatrixXd c(4, n - 1);
     for (int i = 0; i < n - 1; ++i) {
         double hi = h(i);
@@ -206,6 +210,13 @@ MatrixXd SplineTangent(const Spline2D& spline, const VectorXd& s_vals) {
         result(1, i) = spline.Y.EvalDeriv(s_vals(i));
     }
     return result;
+}
+
+CubicSpline1D Spline1DCreate(const VectorXd& x, const VectorXd& y) {
+    CubicSpline1D spline;
+    spline.s = x;
+    spline.c = BuildCubicSpline(x, y);
+    return spline;
 }
 
 }  // namespace cppfoil

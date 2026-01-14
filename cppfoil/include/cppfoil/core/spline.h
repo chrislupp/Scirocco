@@ -56,6 +56,14 @@ MatrixXd SplineEval(const Spline2D& spline, const VectorXd& s_vals);
 //   dX/ds and dY/ds values at each point [2 x len(s_vals)]
 MatrixXd SplineTangent(const Spline2D& spline, const VectorXd& s_vals);
 
+// Create a 1D cubic spline from x and y data
+// INPUT:
+//   x : independent variable values [N]
+//   y : dependent variable values [N]
+// OUTPUT:
+//   CubicSpline1D with x as parameter
+CubicSpline1D Spline1DCreate(const VectorXd& x, const VectorXd& y);
+
 // Quadrature points and weights for [0,1] segment
 // Used for arc-length integration
 // OUTPUT:
