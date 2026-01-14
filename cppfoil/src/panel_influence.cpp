@@ -176,7 +176,8 @@ Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
     double inv_2pi = 1.0 / (2.0 * kPi);
 
     // Velocity in panel coordinates
-    double u = inv_2pi * logr;
+    // Note: u = (log(r1) - log(r2)) / (2*pi) = -log(r2/r1) / (2*pi)
+    double u = -inv_2pi * logr;
     double v = inv_2pi * dtheta;
 
     // Transform to global
@@ -242,6 +243,7 @@ double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi) {
 void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
                            double& a, double& b) {
     // Streamfunction from linear source panel
+    // Matches mfoil panel_linsource_stream
 
     PanelInfo info = GetPanelInfo(Xj, xi);
 
@@ -251,26 +253,52 @@ void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
         return;
     }
 
-    double dtheta = info.theta2 - info.theta1;
-    double logr1 = SafeLog(info.r1);
-    double logr2 = SafeLog(info.r2);
+    // Variables matching Python notation
+    double x = info.x1;
+    double z = info.y;
+    double d = info.len;
+    double r1 = info.r1;
+    double r2 = info.r2;
+    double theta1 = info.theta1;
+    double theta2 = info.theta2;
 
-    double inv_2pi = 1.0 / (2.0 * kPi);
-    double inv_len = 1.0 / info.len;
+    // Make branch cut at theta = 0 (mfoil does this)
+    if (theta1 < 0) theta1 += 2.0 * kPi;
+    if (theta2 < 0) theta2 += 2.0 * kPi;
 
-    // Linear source: sigma = sigma_a * (1 - s/L) + sigma_b * (s/L)
-    a = inv_2pi * inv_len * ((info.len - info.x1) *
-                             (info.y * dtheta + info.x1 * logr1 - info.x2 * logr2 + info.len) +
-                             info.y * (info.x1 * dtheta - info.y * logr1 + info.y * logr2));
+    // Check for r1, r2 zero
+    double ep = 1e-9;
+    double logr1, logr2;
+    if (r1 < ep) {
+        logr1 = 0.0;
+        theta1 = kPi;
+        theta2 = kPi;
+    } else {
+        logr1 = std::log(r1);
+    }
+    if (r2 < ep) {
+        logr2 = 0.0;
+        theta1 = 0.0;
+        theta2 = 0.0;
+    } else {
+        logr2 = std::log(r2);
+    }
 
-    b = inv_2pi * inv_len * (info.x1 *
-                             (-info.y * dtheta - info.x1 * logr1 + info.x2 * logr2 - info.len) +
-                             info.y * (-info.x2 * dtheta + info.y * logr1 - info.y * logr2));
+    double inv_2pi = 0.5 / kPi;
+
+    // Streamfunction components (mfoil formula)
+    double P1 = inv_2pi * (x * (theta1 - theta2) + theta2 * d + z * logr1 - z * logr2);
+    double P2 = x * P1 + inv_2pi * (0.5 * r2 * r2 * theta2 - 0.5 * r1 * r1 * theta1 - 0.5 * z * d);
+
+    // Influence coefficients
+    a = P1 - P2 / d;
+    b = P2 / d;
 }
 
 void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
                              Vector2d& a, Vector2d& b) {
     // Velocity from linear source panel
+    // Matches mfoil panel_linsource_velocity
 
     PanelInfo info = GetPanelInfo(Xj, xi);
 
@@ -284,26 +312,34 @@ void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
     Vector2d t = dx / info.len;
     Vector2d n(-t(1), t(0));
 
+    // Variables matching Python notation
+    double x = info.x1;
+    double z = info.y;
+    double d = info.len;
+    double r1 = info.r1;
+    double r2 = info.r2;
     double dtheta = info.theta2 - info.theta1;
-    double logr = SafeLog(info.r2 / std::max(info.r1, kEps));
 
-    double inv_2pi = 1.0 / (2.0 * kPi);
-    double inv_len = 1.0 / info.len;
+    double inv_2pi = 0.5 / kPi;
+    double inv_d = 1.0 / d;
 
-    // Velocity in panel coordinates
-    double u_a = inv_2pi * ((info.len - info.x1) * inv_len * logr -
-                            info.y * inv_len * dtheta + 1.0);
-    double v_a = inv_2pi * ((info.len - info.x1) * inv_len * dtheta +
-                            info.y * inv_len * logr);
+    // log(r1/r2) used in mfoil
+    double logr12 = SafeLog(r1) - SafeLog(r2);
 
-    double u_b = inv_2pi * (info.x1 * inv_len * logr +
-                            info.y * inv_len * dtheta - 1.0);
-    double v_b = inv_2pi * (info.x1 * inv_len * dtheta -
-                            info.y * inv_len * logr);
+    // Velocity in panel coordinates (mfoil formulas)
+    double temp1 = logr12 * inv_2pi;
+    double temp2 = (x * logr12 - d + z * dtheta) * inv_2pi * inv_d;
+    double ug1 = temp1 - temp2;
+    double ug2 = temp2;
 
-    // Transform to global
-    a = u_a * t + v_a * n;
-    b = u_b * t + v_b * n;
+    temp1 = dtheta * inv_2pi;
+    temp2 = (-z * logr12 + x * dtheta) * inv_2pi * inv_d;
+    double wg1 = temp1 - temp2;
+    double wg2 = temp2;
+
+    // Transform to global coordinates
+    a = ug1 * t + wg1 * n;
+    b = ug2 * t + wg2 * n;
 }
 
 }  // namespace cppfoil

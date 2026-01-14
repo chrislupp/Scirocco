@@ -64,22 +64,16 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N,
         sk = sk.array() + 2.0 * sk_avg;
 
         // Interpolate to get arc-length values at uniformly spaced sk
+        // Use cubic spline interpolation (matching mfoil's interp1d cubic)
         VectorXd sk_target = VectorXd::LinSpaced(N, sk(0), sk(nfine - 1));
 
-        // Linear interpolation of s from sk
+        // Create cubic spline: sk -> s (using our 1D spline)
+        CubicSpline1D sk_to_s = Spline1DCreate(sk, s);
+
+        // Evaluate at target sk values
         VectorXd s_new(N);
         for (int i = 0; i < N; ++i) {
-            double target = sk_target(i);
-            // Find segment
-            int j = 0;
-            while (j < nfine - 1 && sk(j + 1) < target) {
-                ++j;
-            }
-            if (j >= nfine - 1) j = nfine - 2;
-
-            // Linear interpolation
-            double t = (target - sk(j)) / (sk(j + 1) - sk(j));
-            s_new(i) = s(j) + t * (s(j + 1) - s(j));
+            s_new(i) = sk_to_s.Eval(sk_target(i));
         }
 
         result.S = s_new;
@@ -98,9 +92,9 @@ void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt) {
     int N = npanel + 1;  // Number of nodes
 
-    // Use curvature-based spacing
-    double Ufac = 1.0;   // Uniformity factor
-    double TEfac = 1.0;  // TE resolution factor
+    // Use curvature-based spacing (must match mfoil exactly)
+    double Ufac = 2.0;   // Uniformity factor (higher = more uniform)
+    double TEfac = 0.1;  // TE resolution factor (higher = more TE resolution)
 
     SpacingResult spacing = SplineCurvature(geom.xpoint, N, Ufac, TEfac, stgt);
 

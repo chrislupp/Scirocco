@@ -31,6 +31,9 @@ void CalcUeM(FoilState& state);
 // Rebuild ue sensitivities after stagnation point move
 void RebuildUeM(FoilState& state);
 
+// Rebuild inviscid solution after alpha change
+void RebuildIsol(FoilState& state);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_COUPLED_SOLVER_H

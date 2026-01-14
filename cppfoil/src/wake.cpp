@@ -15,67 +15,68 @@ void StagPointFind(FoilState& state) {
     int N = state.foil.N;
     const VectorXd& gam = state.isol.gam;
 
-    // Find where gamma changes sign (stagnation point)
-    int istag = -1;
-    for (int i = 0; i < N - 1; ++i) {
-        if (gam(i) * gam(i + 1) <= 0) {
-            istag = i;
-            break;
-        }
+    // Find first index j where gamma becomes positive (matching mfoil)
+    // Use a tolerance for near-zero values to handle numerical precision
+    // (at the stagnation point, gamma should be exactly zero but numerics give ~1e-13)
+    constexpr double gam_tol = 1e-10;
+
+    int j = 0;
+    for (; j < N; ++j) {
+        // Treat values within tolerance of zero as effectively positive
+        // This handles cases where gamma at stagnation is ~1e-13 due to numerics
+        if (gam(j) > -gam_tol) break;
     }
 
-    if (istag < 0) {
-        // No sign change found; use minimum |gamma|
+    if (j == 0 || j >= N) {
+        // Fallback: find minimum |gamma|
         int imin;
         gam.cwiseAbs().minCoeff(&imin);
-        istag = imin;
+        j = std::max(1, imin);
     }
+
+    // Stagnation is between j-1 and j
+    int i0 = j - 1;
+    int i1 = j;
+
+    // Store indices (matching mfoil: I = [j-1, j])
+    state.isol.Istag[0] = i0;
+    state.isol.Istag[1] = i1;
 
     // Linear interpolation for stagnation s location
-    double g1 = gam(istag);
-    double g2 = gam(istag + 1);
-    double denom = g2 - g1;
-    double frac = (std::abs(denom) > 1e-12) ? -g1 / denom : 0.5;
-    frac = Clamp(frac, 0.0, 1.0);
+    double g0 = gam(i0);
+    double g1 = gam(i1);
+    double denom = g1 - g0;
+    double w1 = g1 / denom;
+    double w2 = -g0 / denom;
 
-    double s1 = state.foil.s(istag);
-    double s2 = state.foil.s(istag + 1);
-    state.isol.sstag = s1 + frac * (s2 - s1);
-
-    // Store indices
-    state.isol.Istag[0] = istag;
-    state.isol.Istag[1] = istag + 1;
-
-    // Linearization of sstag w.r.t. adjacent gammas
-    if (std::abs(denom) > 1e-12) {
-        double ds = s2 - s1;
-        state.isol.sstag_g(0) = ds * g2 / (denom * denom);
-        state.isol.sstag_g(1) = -ds * g1 / (denom * denom);
-    } else {
-        state.isol.sstag_g.setZero();
-    }
-
-    // Linearization of sstag w.r.t. edge velocity (ue)
-    // ga_ue = dgamma/due = sign(gam) for inviscid
-    double ga_ue0 = (std::abs(g1) > 1e-12) ? g1 / std::abs(g1) : 0.0;
-    double ga_ue1 = (std::abs(g2) > 1e-12) ? g2 / std::abs(g2) : 0.0;
-    state.isol.sstag_ue(0) = state.isol.sstag_g(0) * ga_ue0;
-    state.isol.sstag_ue(1) = state.isol.sstag_g(1) * ga_ue1;
+    double s0 = state.foil.s(i0);
+    double s1 = state.foil.s(i1);
+    state.isol.sstag = w1 * s0 + w2 * s1;
 
     // Stagnation point coordinates
-    Vector2d x1 = state.foil.x.col(istag);
-    Vector2d x2 = state.foil.x.col(istag + 1);
-    state.isol.xstag = x1 + frac * (x2 - x1);
+    state.isol.xstag = w1 * state.foil.x.col(i0) + w2 * state.foil.x.col(i1);
 
-    // Set sign of edge velocity: positive on upper, negative on lower
+    // Linearization of sstag w.r.t. adjacent gammas
+    double st_g1 = g1 * (s0 - s1) / (denom * denom);
+    state.isol.sstag_g(0) = st_g1;
+    state.isol.sstag_g(1) = -st_g1;
+
+    // Set sign of edge velocity: negative on lower (i < j), positive on upper (i >= j)
     state.isol.sgnue.resize(N);
     for (int i = 0; i < N; ++i) {
-        if (i <= istag) {
+        if (i < j) {
             state.isol.sgnue(i) = -1.0;  // Lower surface
         } else {
             state.isol.sgnue(i) = 1.0;   // Upper surface
         }
     }
+
+    // Linearization of sstag w.r.t. edge velocity (ue)
+    // ga_ue = dgamma/due = sign(gam) for inviscid
+    double ga_ue0 = (std::abs(g0) > 1e-12) ? g0 / std::abs(g0) : 0.0;
+    double ga_ue1 = (std::abs(g1) > 1e-12) ? g1 / std::abs(g1) : 0.0;
+    state.isol.sstag_ue(0) = state.isol.sstag_g(0) * ga_ue0;
+    state.isol.sstag_ue(1) = state.isol.sstag_g(1) * ga_ue1;
 
     // Compute xi (distance from stagnation point) for foil points only
     // Wake points will be added after BuildWake is called
@@ -86,32 +87,76 @@ void StagPointFind(FoilState& state) {
 }
 
 void ExtendXiToWake(FoilState& state) {
-    // Extend xi to include wake points: xi_wake = wake.s + (foil perimeter - sstag)
+    // Extend xi to include wake points
+    // mfoil formula: xi = wake.s - sstag (wake.s continues from foil.s[N-1])
     int N = state.foil.N;
     int Nw = state.wake.N;
     if (Nw == 0) return;
 
-    // xi for wake = wake.s + distance from stag to TE (along upper surface)
-    // Actually mfoil uses: wake.s - sstag, but wake.s starts at 0 at TE
-    // So effectively xi_wake = wake.s + (foil.s[N-1] - sstag)
-    // But simpler: xi_wake = wake.s + xi_at_TE
-    double xi_TE = state.isol.xi(N - 1);  // xi at upper TE
-
     VectorXd xi_new(N + Nw);
     xi_new.head(N) = state.isol.xi;
+
+    // Wake xi = wake.s - sstag (matching mfoil exactly)
     for (int i = 0; i < Nw; ++i) {
-        xi_new(N + i) = xi_TE + state.wake.s(i);
+        xi_new(N + i) = state.wake.s(i) - state.isol.sstag;
     }
     state.isol.xi = xi_new;
 }
 
+namespace {
+// Geometric spacing function matching mfoil's space_geom
+// Returns Np points from [0, L] with first interval dx0
+VectorXd SpaceGeom(double dx0, double L, int Np) {
+    if (Np <= 1) {
+        VectorXd x(1);
+        x(0) = 0.0;
+        return x;
+    }
+
+    int N = Np - 1;  // Number of intervals
+    double d = L / dx0;
+
+    // Solve for geometric ratio r using Newton iteration
+    // L = dx0 * (r^N - 1) / (r - 1)
+    // Initial guess from polynomial approximation
+    double a = N * (N - 1.0) * (N - 2.0) / 6.0;
+    double b = N * (N - 1.0) / 2.0;
+    double c = N - d;
+    double disc = std::max(b * b - 4.0 * a * c, 0.0);
+    double r = 1.0 + (-b + std::sqrt(disc)) / (2.0 * a);
+
+    // Newton iterations
+    for (int k = 0; k < 10; ++k) {
+        double rN = std::pow(r, N);
+        double R = rN - 1.0 - d * (r - 1.0);
+        double R_r = N * std::pow(r, N - 1) - d;
+        double dr = -R / R_r;
+        if (std::abs(dr) < 1e-6) break;
+        r += dr;
+    }
+
+    // Generate points
+    VectorXd x(Np);
+    x(0) = 0.0;
+    double dx = dx0;
+    for (int i = 1; i < Np; ++i) {
+        x(i) = x(i - 1) + dx;
+        dx *= r;
+    }
+
+    return x;
+}
+}  // namespace
+
 void BuildWake(FoilState& state) {
-    // Number of wake points
-    int Nw = 32;  // Default number of wake points
-    // double wakelen = state.geom.wakelen * state.geom.chord;  // TODO: use for spacing
+    int N = state.foil.N;
+    double wakelen = state.geom.wakelen;
+    double chord = state.geom.chord;
+
+    // Number of wake points (matching mfoil exactly)
+    int Nw = static_cast<int>(std::ceil(N / 10.0 + 10.0 * wakelen));
 
     // TE point (average of upper and lower TE)
-    int N = state.foil.N;
     Vector2d xy1 = state.foil.x.col(0);      // Lower TE
     Vector2d xyN = state.foil.x.col(N - 1);  // Upper TE
     Vector2d xte = 0.5 * (xy1 + xyN);
@@ -119,36 +164,38 @@ void BuildWake(FoilState& state) {
     // TE direction: tangent pointing downstream
     Vector2d n = xyN - xy1;  // Normal to TE gap
     Vector2d t_te(n(1), -n(0));  // Rotate 90 degrees to get tangent
-    double t_mag = t_te.norm();
-    if (t_mag < 1e-12) {
-        t_te = Vector2d(1.0, 0.0);  // Default to +x if TE is sharp
-    } else {
-        t_te /= t_mag;
-    }
     // Ensure tangent points downstream (positive x)
     if (t_te(0) < 0) t_te = -t_te;
 
-    // Wake stretching ratio
-    double ds0 = (state.foil.x.col(N - 1) - state.foil.x.col(N - 2)).norm();
-    double stretch = 1.2;  // Geometric stretching factor
+    // First nominal wake panel size (average of TE panels)
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                        (state.foil.s(N - 1) - state.foil.s(N - 2)));
 
-    // Generate wake points via predictor-corrector streamline tracing
+    // Geometric spacing for wake
+    VectorXd sv = SpaceGeom(ds1, wakelen * chord, Nw);
+
+    // Wake s values continue from airfoil (matching mfoil)
+    VectorXd sw(Nw);
+    for (int i = 0; i < Nw; ++i) {
+        sw(i) = state.foil.s(N - 1) + sv(i);
+    }
+
+    // Initialize wake arrays
     state.wake.N = Nw;
     state.wake.x.resize(2, Nw);
-    state.wake.s.resize(Nw);
+    state.wake.s = sw;
     state.wake.t.resize(2, Nw);
 
     // First wake point slightly behind TE (like mfoil)
-    state.wake.x.col(0) = xte + 1e-5 * t_te * state.geom.chord;
-    state.wake.s(0) = 0.0;
-    state.wake.t.col(0) = t_te;  // Initial tangent
+    state.wake.x.col(0) = xte + 1e-5 * t_te * chord;
 
-    double ds = ds0;
     double Vinf = state.oper.Vinf;
     double alpha = state.oper.alpha;
 
+    // Generate wake points via predictor-corrector streamline tracing
     for (int i = 1; i < Nw; ++i) {
         Vector2d x0 = state.wake.x.col(i - 1);
+        double ds = sv(i) - sv(i - 1);  // Distance to next point
 
         // Predictor: velocity at current point
         Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam,
@@ -175,12 +222,16 @@ void BuildWake(FoilState& state) {
 
         state.wake.x.col(i) = x0 + ds * t_avg;
         state.wake.t.col(i - 1) = t_avg;
-        state.wake.s(i) = state.wake.s(i - 1) + ds;
-
-        // Stretch for next step
-        ds *= stretch;
     }
 
+    // First tangent (same as first computed tangent)
+    {
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam,
+                                        Vinf, alpha, state.wake.x.col(0));
+        double V0mag = V0.norm();
+        if (V0mag < 1e-10) V0mag = 1e-10;
+        state.wake.t.col(0) = V0 / V0mag;
+    }
     // Last tangent
     state.wake.t.col(Nw - 1) = state.wake.t.col(Nw - 2);
 
@@ -272,15 +323,15 @@ void StagPointMove(FoilState& state) {
     // Update xi values for foil points (already done in StagPointFind)
     // Now update wake xi values too
     if (Nw > 0) {
-        double xi_TE = state.isol.xi(N - 1);  // xi at upper TE
         // Resize if needed (StagPointFind only allocates N)
         if (state.isol.xi.size() < N + Nw) {
             VectorXd xi_new(N + Nw);
             xi_new.head(N) = state.isol.xi;
             state.isol.xi = xi_new;
         }
+        // Wake xi = wake.s - sstag (matching mfoil)
         for (int i = 0; i < Nw; ++i) {
-            state.isol.xi(N + i) = xi_TE + state.wake.s(i);
+            state.isol.xi(N + i) = state.wake.s(i) - state.isol.sstag;
         }
     }
 }
