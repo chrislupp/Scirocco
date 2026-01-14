@@ -52,27 +52,94 @@ ScalarLin4 GetHw(const Vector4d& U, double wgap) {
 }
 
 ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
+    // Kinetic energy shape parameter (matches mfoil get_Hs)
     auto [Hk, Hk_U] = GetHk(U, param);
 
-    // Kinetic energy shape parameter correlation
+    // Limit Hk
+    if (param.wake && Hk < 1.00005) {
+        Hk = 1.00005;
+        Hk_U.setZero();
+    }
+    if (!param.wake && Hk < 1.05) {
+        Hk = 1.05;
+        Hk_U.setZero();
+    }
+
     double Hs;
     Vector4d Hs_U;
 
     if (param.turb) {
         // Turbulent correlation
-        double Hk0 = std::max(Hk, 1.05);
-        if (Hk < 5.5) {
-            Hs = 0.028 * (Hk0 - 1.0) + 0.014 / std::pow(Hk0 - 1.0, 2);
-        } else {
-            Hs = 0.028 * (Hk0 - 1.0) + 0.014 / 20.25;
+        constexpr double Hsmin = 1.5;
+        constexpr double dHsinf = 0.015;
+
+        auto [Ret, Ret_U] = GetRet(U, param);
+
+        // Limit Re_theta and dependence
+        double Ho = 4.0;
+        Vector4d Ho_U = Vector4d::Zero();
+        if (Ret > 400.0) {
+            Ho = 3.0 + 400.0 / Ret;
+            Ho_U = -400.0 / (Ret * Ret) * Ret_U;
         }
-        double dHs_dHk = 0.028 - 0.028 / std::pow(std::max(Hk0 - 1.0, 0.05), 3);
-        Hs_U = dHs_dHk * Hk_U;
+
+        double Reb = Ret;
+        Vector4d Reb_U = Ret_U;
+        if (Ret < 200.0) {
+            Reb = 200.0;
+            Reb_U.setZero();
+        }
+
+        if (Hk < Ho) {
+            // Attached branch
+            double Hr = (Ho - Hk) / (Ho - 1.0);
+            Vector4d Hr_U = (Ho_U - Hk_U) / (Ho - 1.0) - (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_U;
+
+            double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr * Hr;
+            Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr * Hr +
+                            (2.0 - Hsmin - 4.0 / Reb) * 2.0 * Hr * Hr_U;
+
+            Hs = Hsmin + 4.0 / Reb + aa * 1.5 / (Hk + 0.5);
+            Hs_U = -4.0 / (Reb * Reb) * Reb_U + aa_U * 1.5 / (Hk + 0.5) -
+                   aa * 1.5 / ((Hk + 0.5) * (Hk + 0.5)) * Hk_U;
+        } else {
+            // Separated branch
+            double lrb = std::log(Reb);
+            Vector4d lrb_U = Reb_U / Reb;
+
+            double aa = Hk - Ho + 4.0 / lrb;
+            Vector4d aa_U = Hk_U - Ho_U - 4.0 / (lrb * lrb) * lrb_U;
+
+            double bb = 0.007 * lrb / (aa * aa) + dHsinf / Hk;
+            Vector4d bb_U = 0.007 * (lrb_U / (aa * aa) - 2.0 * lrb / (aa * aa * aa) * aa_U) -
+                            dHsinf / (Hk * Hk) * Hk_U;
+
+            Hs = Hsmin + 4.0 / Reb + (Hk - Ho) * (Hk - Ho) * bb;
+            Hs_U = -4.0 / (Reb * Reb) * Reb_U +
+                   2.0 * (Hk - Ho) * (Hk_U - Ho_U) * bb + (Hk - Ho) * (Hk - Ho) * bb_U;
+        }
+
+        // Mach number correction
+        auto [M2, M2_U] = GetMach2(U, param);
+        double den = 1.0 + 0.014 * M2;
+        Hs = (Hs + 0.028 * M2) / den;
+        Hs_U = (Hs_U + 0.028 * M2_U) / den - Hs / den * 0.014 * M2_U;
     } else {
         // Laminar correlation
-        Hs = 1.515 + 0.076 * (Hk - 4.0) * (Hk - 4.0) / Hk;
-        double dHs_dHk = 0.076 * (2.0 * (Hk - 4.0) / Hk - (Hk - 4.0) * (Hk - 4.0) / (Hk * Hk));
-        Hs_U = dHs_dHk * Hk_U;
+        double a = Hk - 4.35;
+        double Hs_Hk;
+
+        if (Hk < 4.35) {
+            double num = 0.0111 * a * a - 0.0278 * a * a * a;
+            Hs = num / (Hk + 1.0) + 1.528 - 0.0002 * (a * Hk) * (a * Hk);
+            Hs_Hk = (0.0111 * 2.0 * a - 0.0278 * 3.0 * a * a) / (Hk + 1.0) -
+                    num / ((Hk + 1.0) * (Hk + 1.0)) -
+                    0.0002 * 2.0 * a * Hk * (Hk + a);
+        } else {
+            Hs = 0.015 * a * a / Hk + 1.528;
+            Hs_Hk = 0.015 * 2.0 * a / Hk - 0.015 * a * a / (Hk * Hk);
+        }
+        Hs_U = Hs_Hk * Hk_U;
     }
 
     return {Hs, Hs_U};
@@ -107,6 +174,11 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param) {
 }
 
 ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
+    // Skin friction coefficient (matches mfoil get_cf)
+    if (param.wake) {
+        return {0.0, Vector4d::Zero()};
+    }
+
     auto [Hk, Hk_U] = GetHk(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
 
@@ -114,43 +186,195 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
     Vector4d cf_U;
 
     if (param.turb) {
-        // Turbulent: Ludwieg-Tillmann correlation (simplified)
-        double Fc = 1.0;  // Compressibility factor
-        cf = Fc * 0.246 / std::pow(std::max(Ret, 1.0), 0.268) *
-             std::pow(10.0, -0.678 * Hk);
+        // Turbulent cf (mfoil correlation)
+        auto [M2, M2_U] = GetMach2(U, param);
+        double Fc = std::sqrt(1.0 + 0.5 * (param.gam - 1.0) * M2);
+        Vector4d Fc_U = 0.5 / Fc * 0.5 * (param.gam - 1.0) * M2_U;
 
-        double dcf_dRet = -0.268 * cf / std::max(Ret, 1.0);
-        double dcf_dHk = -0.678 * std::log(10.0) * cf;
+        double aa = -1.33 * Hk;
+        Vector4d aa_U = -1.33 * Hk_U;
+        // Smooth limiting of aa
+        if (aa < -17.0) {
+            double old_aa = aa;
+            aa = -20.0 + 3.0 * std::exp((old_aa + 17.0) / 3.0);
+            aa_U = (aa + 20.0) / 3.0 * aa_U;
+        }
 
-        cf_U = dcf_dRet * Ret_U + dcf_dHk * Hk_U;
+        double bb = std::log(Ret / Fc);
+        Vector4d bb_U = Ret_U / Ret - Fc_U / Fc;
+        if (bb < 3.0) {
+            bb = 3.0;
+            bb_U.setZero();
+        }
+        bb /= std::log(10.0);
+        bb_U /= std::log(10.0);
+
+        double cc = -1.74 - 0.31 * Hk;
+        Vector4d cc_U = -0.31 * Hk_U;
+
+        double dd = std::tanh(4.0 - Hk / 0.875);
+        Vector4d dd_U = (1.0 - dd * dd) * (-Hk_U / 0.875);
+
+        double cf0 = 0.3 * std::exp(aa) * std::pow(bb, cc);
+        Vector4d cf0_U = cf0 * aa_U +
+                         0.3 * std::exp(aa) * cc * std::pow(bb, cc - 1.0) * bb_U +
+                         cf0 * std::log(bb) * cc_U;
+
+        cf = (cf0 + 1.1e-4 * (dd - 1.0)) / Fc;
+        cf_U = (cf0_U + 1.1e-4 * dd_U) / Fc - cf / Fc * Fc_U;
     } else {
-        // Laminar: Thwaites correlation (simplified)
-        double lam = (Hk - 1.0) / (Hk - 1.0 + 1.0);  // Simplified lambda
-        cf = 2.0 * (0.22 + 1.402 * lam - 0.018 * lam * lam / (0.107 + lam)) /
-             std::max(Ret, 1.0);
-
-        // Simplified linearization
-        double dcf_dRet = -cf / std::max(Ret, 1.0);
-        cf_U = dcf_dRet * Ret_U;
-    }
-
-    if (param.wake) {
-        cf = 0.0;
-        cf_U.setZero();
+        // Laminar cf (mfoil correlation)
+        double num, num_Hk;
+        if (Hk < 5.5) {
+            double term = std::pow(5.5 - Hk, 3) / (Hk + 1.0);
+            num = 0.0727 * term - 0.07;
+            num_Hk = 0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
+                               std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
+        } else {
+            double invterm = 1.0 - 1.0 / (Hk - 4.5);
+            num = 0.015 * invterm * invterm - 0.07;
+            num_Hk = 0.015 * 2.0 * invterm / std::pow(Hk - 4.5, 2);
+        }
+        cf = num / Ret;
+        cf_U = num_Hk / Ret * Hk_U - num / (Ret * Ret) * Ret_U;
     }
 
     return {cf, cf_U};
 }
 
-ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
-    auto [Hs, Hs_U] = GetHs(U, param);
-    auto [cf, cf_U] = GetCf(U, param);
+// Helper: laminar dissipation (used by laminar flow and as floor for turbulent)
+static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
 
-    // Dissipation coefficient
-    double cDi = 0.5 * cf * Hs;
-    Vector4d cDi_U = 0.5 * (cf_U * Hs + cf * Hs_U);
+    double num, num_Hk;
+    if (Hk < 4.0) {
+        double term = std::pow(4.0 - Hk, 5.5);
+        num = 0.00205 * term + 0.207;
+        num_Hk = 0.00205 * 5.5 * std::pow(4.0 - Hk, 4.5) * (-1.0);
+    } else {
+        double Hk1 = Hk - 4.0;
+        double denom = 1.0 + 0.02 * Hk1 * Hk1;
+        num = -0.0016 * Hk1 * Hk1 / denom + 0.207;
+        num_Hk = -0.0016 * (2.0 * Hk1 / denom -
+                           Hk1 * Hk1 / (denom * denom) * 0.02 * 2.0 * Hk1);
+    }
+
+    double cDi = num / Ret;
+    Vector4d cDi_U = num_Hk / Ret * Hk_U - num / (Ret * Ret) * Ret_U;
 
     return {cDi, cDi_U};
+}
+
+// Helper: turbulent wall contribution
+static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
+    if (param.wake) return {0.0, Vector4d::Zero()};
+
+    auto [cf, cf_U] = GetCf(U, param);
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+
+    double lr = std::log(Ret);
+    Vector4d lr_U = Ret_U / Ret;
+
+    double Hmin = 1.0 + 2.1 / lr;
+    Vector4d Hmin_U = -2.1 / (lr * lr) * lr_U;
+
+    double aa = std::tanh((Hk - 1.0) / (Hmin - 1.0));
+    double fac = 0.5 + 0.5 * aa;
+    Vector4d fac_U = 0.5 * (1.0 - aa * aa) *
+                     (Hk_U / (Hmin - 1.0) - (Hk - 1.0) / ((Hmin - 1.0) * (Hmin - 1.0)) * Hmin_U);
+
+    double cDi = 0.5 * cf * Us * (2.0 / Hs) * fac;
+    Vector4d cDi_U = cf_U * Us / Hs * fac +
+                     cf * Us_U / Hs * fac -
+                     cDi / Hs * Hs_U +
+                     cf * Us / Hs * fac_U;
+
+    return {cDi, cDi_U};
+}
+
+// Helper: outer layer contribution (turbulent)
+static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
+    if (!param.turb) return {0.0, Vector4d::Zero()};
+
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+
+    // Shear stress: state stores ct^0.5, so ct = sa^2
+    double ct = U(2) * U(2);
+    Vector4d ct_U = Vector4d::Zero();
+    ct_U(2) = 2.0 * U(2);
+
+    double cDi = ct * (0.995 - Us) * 2.0 / Hs;
+    Vector4d cDi_U = ct_U * (0.995 - Us) * 2.0 / Hs +
+                     ct * (-Us_U) * 2.0 / Hs -
+                     ct * (0.995 - Us) * 2.0 / (Hs * Hs) * Hs_U;
+
+    return {cDi, cDi_U};
+}
+
+// Helper: laminar stress contribution (turbulent)
+static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+
+    double HsRet = Hs * Ret;
+    Vector4d HsRet_U = Hs_U * Ret + Hs * Ret_U;
+
+    double num = 0.15 * (0.995 - Us) * (0.995 - Us) * 2.0;
+    double num_Us = 0.15 * 2.0 * (0.995 - Us) * (-1.0) * 2.0;
+
+    double cDi = num / HsRet;
+    Vector4d cDi_U = num_Us * Us_U / HsRet - num / (HsRet * HsRet) * HsRet_U;
+
+    return {cDi, cDi_U};
+}
+
+ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
+    // Dissipation function cDi = 2*cD/H* (matches mfoil get_cDi)
+    if (param.turb) {
+        double cDi = 0.0;
+        Vector4d cDi_U = Vector4d::Zero();
+
+        if (!param.wake) {
+            // Turbulent wall contribution
+            auto [cDi0, cDi0_U] = GetCDi_TurbWall(U, param);
+            cDi += cDi0;
+            cDi_U += cDi0_U;
+        }
+
+        // Outer layer contribution
+        auto [cDi_outer, cDi_outer_U] = GetCDi_Outer(U, param);
+        cDi += cDi_outer;
+        cDi_U += cDi_outer_U;
+
+        // Laminar stress contribution
+        auto [cDi_lamstress, cDi_lamstress_U] = GetCDi_LamStress(U, param);
+        cDi += cDi_lamstress;
+        cDi_U += cDi_lamstress_U;
+
+        // Maximum check against laminar value
+        auto [cDil, cDil_U] = GetCDi_Lam(U, param);
+        if (cDil > cDi) {
+            cDi = cDil;
+            cDi_U = cDil_U;
+        }
+
+        // Double dissipation in wake
+        if (param.wake) {
+            cDi *= 2.0;
+            cDi_U *= 2.0;
+        }
+
+        return {cDi, cDi_U};
+    } else {
+        // Laminar dissipation
+        return GetCDi_Lam(U, param);
+    }
 }
 
 ScalarLin4 GetCpFromUe(double ue, const Param& param) {
@@ -214,74 +438,204 @@ ScalarLin4 GetRho(const Vector4d& U, const Param& param) {
 }
 
 ScalarLin4 GetDamp(const Vector4d& U, const Param& param) {
-    // Amplification factor rate (eN method)
+    // Amplification rate dn/dx (matches mfoil get_damp)
     auto [Hk, Hk_U] = GetHk(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
+    double th = U(0);
 
-    // Gaster criterion (simplified)
-    double Hk_crit = 2.8;
+    // Limit Hk
+    if (Hk < 1.05) {
+        Hk = 1.05;
+        Hk_U.setZero();
+    }
+
+    double Hmi = 1.0 / (Hk - 1.0);
+    Vector4d Hmi_U = -Hmi * Hmi * Hk_U;
+
+    double aa = 2.492 * std::pow(Hmi, 0.43);
+    Vector4d aa_U = 0.43 * aa / Hmi * Hmi_U;
+
+    double bb = std::tanh(14.0 * Hmi - 9.24);
+    Vector4d bb_U = (1.0 - bb * bb) * 14.0 * Hmi_U;
+
+    double lrc = aa + 0.7 * (bb + 1.0);
+    Vector4d lrc_U = aa_U + 0.7 * bb_U;
+
+    constexpr double lten = 2.302585092994046;  // log(10)
+    double lr = std::log(Ret) / lten;
+    Vector4d lr_U = (1.0 / Ret) * Ret_U / lten;
+
     double damp = 0.0;
     Vector4d damp_U = Vector4d::Zero();
 
-    if (Hk < Hk_crit && Ret > 0) {
-        double f = (Hk_crit - Hk) / (Hk_crit - 1.0);
-        damp = 0.01 * f * f * std::sqrt(Ret);
+    constexpr double dl = 0.1;
+    if (lr >= lrc - dl) {
+        double rn = (lr - (lrc - dl)) / (2.0 * dl);
+        Vector4d rn_U = (lr_U - lrc_U) / (2.0 * dl);
 
-        double ddamp_dHk = -0.02 * f / (Hk_crit - 1.0) * std::sqrt(Ret);
-        double ddamp_dRet = 0.005 * f * f / std::sqrt(std::max(Ret, 1e-10));
+        double rf, rf_U_coeff;
+        if (rn >= 1.0) {
+            rf = 1.0;
+            rf_U_coeff = 0.0;
+        } else {
+            rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
+            rf_U_coeff = 6.0 * rn - 6.0 * rn * rn;
+        }
+        Vector4d rf_U = rf_U_coeff * rn_U;
 
-        damp_U = ddamp_dHk * Hk_U + ddamp_dRet * Ret_U;
+        double ar = 3.87 * Hmi - 2.52;
+        Vector4d ar_U = 3.87 * Hmi_U;
+
+        double ex = std::exp(-ar * ar);
+        Vector4d ex_U = ex * (-2.0 * ar * ar_U);
+
+        double da = 0.028 * (Hk - 1.0) - 0.0345 * ex;
+        Vector4d da_U = 0.028 * Hk_U - 0.0345 * ex_U;
+
+        double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi + 3.0 * Hmi * Hmi * Hmi +
+                    0.1 * std::exp(-20.0 * Hmi);
+        Vector4d af_U = (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi -
+                         2.0 * std::exp(-20.0 * Hmi)) * Hmi_U;
+
+        damp = rf * af * da / th;
+        damp_U = (rf_U * af * da + rf * af_U * da + rf * af * da_U) / th;
+        damp_U(0) -= damp / th;
     }
+
+    // Extra amplification to ensure dn/dx > 0 near ncrit
+    double ncrit = param.ncrit;
+    constexpr double Cea = 5.0;
+    double nx = Cea * (U(2) - ncrit);
+    Vector4d nx_U = Vector4d::Zero();
+    nx_U(2) = Cea;
+
+    double eex = 1.0 + std::tanh(nx);
+    Vector4d eex_U = (1.0 - std::tanh(nx) * std::tanh(nx)) * nx_U;
+
+    double ed = eex * 0.001 / th;
+    Vector4d ed_U = eex_U * 0.001 / th;
+    ed_U(0) -= ed / th;
+
+    damp += ed;
+    damp_U += ed_U;
 
     return {damp, damp_U};
 }
 
-ScalarLin4 GetCttr(const Vector4d& U, const Param& param) {
-    // Initial ctau at transition
-    auto [Hk, Hk_U] = GetHk(U, param);
-
-    double cttr = param.CtauC * std::pow(Hk, -param.CtauE);
-    double dcttr_dHk = -param.CtauE * cttr / Hk;
-
-    return {cttr, dcttr_dHk * Hk_U};
-}
-
 ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
-    // Equilibrium ctau
+    // Equilibrium sqrt(ctau) (matches mfoil get_cteq)
+    double CC = 0.5 / (param.GA * param.GA * param.GB);
+    double C = param.GC;
+
     auto [Hk, Hk_U] = GetHk(U, param);
-    auto [cf, cf_U] = GetCf(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [H, H_U] = GetH(U);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
 
-    double Hk0 = std::max(Hk, 1.05);
-    double cteq = 0.03 * std::sqrt(0.5 * cf) * (Hk0 - 1.0);
-
-    Vector4d cteq_U = Vector4d::Zero();
-    if (cf > 1e-12) {
-        double dcteq_dcf = 0.015 / std::sqrt(2.0 * cf) * (Hk0 - 1.0);
-        double dcteq_dHk = 0.03 * std::sqrt(0.5 * cf);
-        cteq_U = dcteq_dcf * cf_U + dcteq_dHk * Hk_U;
+    // Limit Hk and compute Hkc
+    double Hkc;
+    Vector4d Hkc_U;
+    if (param.wake) {
+        if (Hk < 1.00005) {
+            Hk = 1.00005;
+            Hk_U.setZero();
+        }
+        Hkc = Hk - 1.0;
+        Hkc_U = Hk_U;
+    } else {
+        if (Hk < 1.05) {
+            Hk = 1.05;
+            Hk_U.setZero();
+        }
+        Hkc = Hk - 1.0 - C / Ret;
+        Hkc_U = Hk_U + C / (Ret * Ret) * Ret_U;
+        if (Hkc < 0.01) {
+            Hkc = 0.01;
+            Hkc_U.setZero();
+        }
     }
+
+    double num = CC * Hs * (Hk - 1.0) * Hkc * Hkc;
+    Vector4d num_U = CC * (Hs_U * (Hk - 1.0) * Hkc * Hkc +
+                           Hs * Hk_U * Hkc * Hkc +
+                           Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
+
+    double den = (1.0 - Us) * H * Hk * Hk;
+    Vector4d den_U = (-Us_U) * H * Hk * Hk +
+                     (1.0 - Us) * H_U * Hk * Hk +
+                     (1.0 - Us) * H * 2.0 * Hk * Hk_U;
+
+    double cteq = std::sqrt(num / den);
+    Vector4d cteq_U = 0.5 / cteq * (num_U / den - num / (den * den) * den_U);
 
     return {cteq, cteq_U};
 }
 
+ScalarLin4 GetCttr(const Vector4d& U, const Param& param) {
+    // Initial sqrt(ctau) at transition (matches mfoil get_cttr)
+    // Note: transition happens just before the wake starts, so force wake=false
+    Param param_nowake = param;
+    param_nowake.wake = false;
+
+    auto [cteq, cteq_U] = GetCteq(U, param_nowake);
+    auto [Hk, Hk_U] = GetHk(U, param_nowake);
+
+    // Limit Hk
+    if (Hk < 1.05) {
+        Hk = 1.05;
+        Hk_U.setZero();
+    }
+
+    double C = param.CtauC;
+    double E = param.CtauE;
+
+    double c = C * std::exp(-E / (Hk - 1.0));
+    Vector4d c_U = c * E / ((Hk - 1.0) * (Hk - 1.0)) * Hk_U;
+
+    double cttr = c * cteq;
+    Vector4d cttr_U = c_U * cteq + c * cteq_U;
+
+    return {cttr, cttr_U};
+}
+
 ScalarLin8 GetUpw(const Vector4d& U1, const Vector4d& U2, const Param& param) {
-    // Upwind factor for stability
+    // Upwind factor for stability (matches mfoil get_upw)
+    // Decision to upwind is made based on the shape factor change
     auto [Hk1, Hk1_U] = GetHk(U1, param);
     auto [Hk2, Hk2_U] = GetHk(U2, param);
 
-    // Simple upwind based on shape parameter
-    double upw = 0.5;
-    Vector8d upw_U = Vector8d::Zero();
+    Vector4d Z = Vector4d::Zero();
 
-    if (Hk1 > 1.05 && Hk2 > 1.05) {
-        double dH = Hk2 - Hk1;
-        if (std::abs(dH) > 0.1) {
-            upw = (dH > 0) ? 0.7 : 0.3;
-            // Simplified linearization
-            upw_U.head<4>() = -0.4 * Hk1_U / std::abs(dH);
-            upw_U.tail<4>() = 0.4 * Hk2_U / std::abs(dH);
-        }
+    // Triggering constant and wake factor
+    double Hut = 1.0;
+    double C = param.wake ? 1.0 : 5.0;
+    double Huc = C * Hut / (Hk2 * Hk2);  // only depends on U2
+
+    Vector8d Huc_U;
+    Huc_U.head<4>() = Z;
+    Huc_U.tail<4>() = -2.0 * Huc / Hk2 * Hk2_U;
+
+    // aa = (Hk2-1)/(Hk1-1), log-based upwinding
+    double aa = (Hk2 - 1.0) / (Hk1 - 1.0);
+    double sga = (aa >= 0) ? 1.0 : -1.0;
+    double la = std::log(sga * aa);
+
+    Vector8d la_U;
+    la_U.head<4>() = -1.0 / (Hk1 - 1.0) * Hk1_U;
+    la_U.tail<4>() = 1.0 / (Hk2 - 1.0) * Hk2_U;
+
+    double Hls = la * la;
+    Vector8d Hls_U = 2.0 * la * la_U;
+
+    // Cap at 15
+    if (Hls > 15.0) {
+        Hls = 15.0;
+        Hls_U.setZero();
     }
+
+    double upw = 1.0 - 0.5 * std::exp(-Hls * Huc);
+    Vector8d upw_U = -0.5 * std::exp(-Hls * Huc) * (-Hls_U * Huc - Hls * Huc_U);
 
     return {upw, upw_U};
 }
