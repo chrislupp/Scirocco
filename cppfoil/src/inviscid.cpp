@@ -180,14 +180,15 @@ Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G,
     }
 
     // TE vortex panel contribution
+    // Each node has its own factor: node 0 gets +0.5*tdp, node N-1 gets -0.5*tdp
     Vector2d a_vor, b_vor;
     PanelLinVortexVelocity(XjTE, xi, nullptr, false, a_vor, b_vor);
-    double gamma_te = -0.5 * te.tdp * (G(N - 1) + G(0));
-    V += (a_vor + b_vor) * gamma_te;
+    Vector2d f_vor = a_vor + b_vor;
+    V += f_vor * (0.5 * te.tdp) * G(0) + f_vor * (-0.5 * te.tdp) * G(N - 1);
 
     if (compute_lin && V_G != nullptr) {
-        V_G->col(0) += (a_vor + b_vor) * (-0.5 * te.tdp);
-        V_G->col(N - 1) += (a_vor + b_vor) * (-0.5 * te.tdp);
+        V_G->col(0) += f_vor * (0.5 * te.tdp);
+        V_G->col(N - 1) += f_vor * (-0.5 * te.tdp);
     }
 
     // Freestream contribution
