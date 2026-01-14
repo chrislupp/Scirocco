@@ -12,6 +12,7 @@
 #include "cppfoil/core/transition.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/panel_influence.h"
+#include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
 
 namespace cppfoil {
@@ -22,6 +23,10 @@ void SolveViscous(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "SolveViscous: starting" << std::endl;
     }
+
+    // Initialize thermodynamic parameters
+    state.oper.viscous = true;
+    InitThermo(state);
 
     // Build inviscid solution first
     BuildGamma(state, state.oper.alpha);
@@ -393,9 +398,6 @@ void BuildGlobSys(FoilState& state) {
                         Is[i] < static_cast<int>(state.vsol.turb.size())) &&
                         (state.vsol.turb[Is[ip]] != state.vsol.turb[Is[i]]);
 
-            // Update param for this station
-            StationParam(state, param, Is[i]);
-
             // Get states
             Matrix42d Uin;
             Uin.col(0) = state.glob.U.col(Is[ip]);
@@ -403,12 +405,48 @@ void BuildGlobSys(FoilState& state) {
             Vector2d xin(xi(ip), xi(i));
             Vector2d Aux_in(Aux(ip), Aux(i));
 
-            // Compute residual
-            auto res = ResidualStation(param, xin, Uin, Aux_in);
+            // Compute residual - use transition residual at transition stations
+            ResidualLin res;
+            if (tran) {
+                // Transition station: combined laminar + turbulent residual
+                res = ResidualTransition(state, param, xin, Uin, Aux_in);
+                // After transition, subsequent stations are turbulent
+                param.turb = true;
+            } else {
+                // Update param for this station
+                StationParam(state, param, Is[i]);
+                // Regular residual
+                res = ResidualStation(param, xin, Uin, Aux_in);
+            }
 
             // Store in global system
             int Ig = 3 * Is[i];
             state.glob.R.segment<3>(Ig) += res.value;
+
+            // Check for NaN in residual
+            if (!res.value.allFinite()) {
+                std::cout << "  BuildGlobSys NaN detected: si=" << si << " i=" << i
+                          << " Is[i]=" << Is[i] << " tran=" << tran << " turb=" << param.turb << std::endl;
+                std::cout << "    R=(" << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")" << std::endl;
+                std::cout << "    U[" << Is[ip] << "]: th=" << Uin(0,0) << " ds=" << Uin(1,0)
+                          << " sa=" << Uin(2,0) << " ue=" << Uin(3,0) << std::endl;
+                std::cout << "    U[" << Is[i] << "]: th=" << Uin(0,1) << " ds=" << Uin(1,1)
+                          << " sa=" << Uin(2,1) << " ue=" << Uin(3,1) << std::endl;
+                std::cout << "    xi=(" << xin(0) << "," << xin(1) << ") Aux=(" << Aux_in(0) << "," << Aux_in(1) << ")" << std::endl;
+            }
+
+            // Debug for node 0
+            if (Is[i] == 0) {
+                std::cout << "  BuildGlobSys node0: si=" << si << " i=" << i
+                          << " Is[i-1]=" << Is[ip] << " Is[i]=" << Is[i]
+                          << " R=(" << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")"
+                          << " turb=" << param.turb << " tran=" << tran << std::endl;
+                std::cout << "    U[" << Is[ip] << "]: th=" << Uin(0,0) << " ds=" << Uin(1,0)
+                          << " sa=" << Uin(2,0) << " ue=" << Uin(3,0) << std::endl;
+                std::cout << "    U[" << Is[i] << "]: th=" << Uin(0,1) << " ds=" << Uin(1,1)
+                          << " sa=" << Uin(2,1) << " ue=" << Uin(3,1) << std::endl;
+                std::cout << "    xi=(" << xin(0) << "," << xin(1) << ")" << std::endl;
+            }
 
             // Store Jacobian entries
             for (int k = 0; k < 3; ++k) {
@@ -426,11 +464,6 @@ void BuildGlobSys(FoilState& state) {
                     triplets_x.emplace_back(Ig + k, Is[ip], val_x1);
                 if (std::abs(val_x2) > 1e-15)
                     triplets_x.emplace_back(Ig + k, Is[i], val_x2);
-            }
-
-            // If transition occurred, subsequent stations are turbulent
-            if (tran) {
-                param.turb = true;
             }
         }
     }
@@ -502,6 +535,57 @@ void SolveGlob(FoilState& state) {
     VectorXd mass = ds.cwiseProduct(ue);
     VectorXd ue_correction = state.vsol.ue_m * mass;
     R.segment(3 * Nsys, Nsys) = ue - (ueinv + ue_correction);
+
+    // Debug: check ue_m magnitude and NaN
+    double max_mass = mass.cwiseAbs().maxCoeff();
+    double max_ue_m = state.vsol.ue_m.cwiseAbs().maxCoeff();
+    if (state.param.verb >= 1) {
+        std::cout << "    Debug: max|mass|=" << max_mass << ", max|ue_m|=" << max_ue_m
+                  << ", ue_m size=" << state.vsol.ue_m.rows() << "x" << state.vsol.ue_m.cols() << std::endl;
+
+        // Check for NaN in BL residuals
+        for (int i = 0; i < 3 * Nsys; ++i) {
+            if (!std::isfinite(state.glob.R(i))) {
+                std::cout << "    NaN in state.glob.R at i=" << i << " (node " << i/3 << ", comp " << i%3 << ")" << std::endl;
+                // Print state at this node
+                int node = i / 3;
+                std::cout << "      U[" << node << "]: th=" << state.glob.U(0, node)
+                          << ", ds=" << state.glob.U(1, node)
+                          << ", sa=" << state.glob.U(2, node)
+                          << ", ue=" << state.glob.U(3, node) << std::endl;
+                break;
+            }
+        }
+        // Check for NaN in ue residuals
+        for (int i = 0; i < Nsys; ++i) {
+            if (!std::isfinite(R(3 * Nsys + i))) {
+                std::cout << "    NaN in ue residual at i=" << i
+                          << " (ue=" << ue(i) << ", ueinv=" << ueinv(i)
+                          << ", corr=" << ue_correction(i) << ")" << std::endl;
+                break;
+            }
+        }
+    }
+
+    // Debug: check ue residual magnitude
+    VectorXd R_ue = ue - (ueinv + ue_correction);
+    double R_bl_norm = state.glob.R.norm();
+    double R_ue_norm = R_ue.norm();
+    if (state.param.verb >= 1) {
+        // Find max ue residual
+        int imax_ue = 0;
+        double max_ue_res = 0;
+        for (int i = 0; i < Nsys; ++i) {
+            if (std::abs(R_ue(i)) > max_ue_res) {
+                max_ue_res = std::abs(R_ue(i));
+                imax_ue = i;
+            }
+        }
+        std::cout << "    SolveGlob: |R_bl|=" << R_bl_norm << ", |R_ue|=" << R_ue_norm
+                  << ", maxR_ue=" << max_ue_res << " @" << imax_ue
+                  << " (ue=" << ue(imax_ue) << ", ueinv=" << ueinv(imax_ue)
+                  << ", corr=" << ue_correction(imax_ue) << ")" << std::endl;
+    }
 
     // Build Jacobian using triplets
     std::vector<Triplet> triplets;
@@ -614,6 +698,16 @@ void UpdateState(FoilState& state) {
     int Nsys = state.glob.Nsys;
     double omega = 1.0;
 
+    // Get max ctau for threshold calculations
+    double ctmax = 0.0;
+    std::vector<int> turbIdx;
+    for (int i = 0; i < Nsys; ++i) {
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
+            ctmax = std::max(ctmax, state.glob.U(2, i));
+            turbIdx.push_back(i);
+        }
+    }
+
     // 1. Limit theta and delta* decreases to 50%
     for (int k = 0; k < 2; ++k) {
         double fmin = 0.0;
@@ -635,7 +729,29 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    // 2. Limit amplification changes (laminar regions) to 2.0
+    // 2. Prevent negative amplification/ctau (mfoil approach)
+    for (int i = 0; i < Nsys; ++i) {
+        if (i >= static_cast<int>(state.vsol.turb.size())) continue;
+        double Uk = state.glob.U(2, i);
+        double dUk = state.glob.dU(2, i);
+        // Skip small values (don't limit small amp/ctau)
+        if (!state.vsol.turb[i] && Uk < 0.2) continue;   // small amp
+        if (state.vsol.turb[i] && Uk < 0.1 * ctmax) continue;  // small ctau
+        if (Uk == 0.0 || dUk == 0.0) continue;
+        // Check if update would make value negative
+        if (Uk + dUk < 0.0) {
+            double om = 0.8 * std::abs(Uk / dUk);
+            if (om < omega) {
+                omega = om;
+                if (state.param.verb >= 3) {
+                    std::cout << "    neg sa: omega = " << omega << std::endl;
+                }
+            }
+        }
+    }
+
+    // 3. Limit amplification changes (laminar regions) to 2.0
+    // Include all laminar points (matching mfoil)
     double dumax_amp = 0.0;
     for (int i = 0; i < Nsys; ++i) {
         if (i < static_cast<int>(state.vsol.turb.size()) && !state.vsol.turb[i]) {
@@ -652,31 +768,37 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    // 3. Limit ctau changes (turbulent regions) to 0.05
+    // 4. Limit ctau changes (turbulent regions) to 0.05
+    // Include all turbulent points (matching mfoil)
     double dumax_ct = 0.0;
     int imax_ct = -1;
-    for (int i = 0; i < Nsys; ++i) {
-        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
-            double du = std::abs(state.glob.dU(2, i));
-            if (du > dumax_ct) {
-                dumax_ct = du;
-                imax_ct = i;
-            }
+    for (int i : turbIdx) {
+        double du = std::abs(state.glob.dU(2, i));
+        if (du > dumax_ct) {
+            dumax_ct = du;
+            imax_ct = i;
         }
+    }
+    if (state.param.verb >= 1) {
+        std::cout << "    ctau limit check: turbIdx.size=" << turbIdx.size()
+                  << " dumax_ct=" << dumax_ct << " imax_ct=" << imax_ct
+                  << " turb[21]=" << (21 < static_cast<int>(state.vsol.turb.size()) ? state.vsol.turb[21] : -1)
+                  << " dU[2,21]=" << state.glob.dU(2, 21)
+                  << " U[2,21]=" << state.glob.U(2, 21) << std::endl;
     }
     if (dumax_ct > 0) {
         double om = 0.05 / dumax_ct;
         if (om < omega) {
             omega = om;
-            if (state.param.verb >= 2) {
-                std::cout << "    ctau limit: omega = " << omega
+            if (state.param.verb >= 1) {
+                std::cout << "    ctau limit applied: omega = " << omega
                           << " @" << imax_ct << " ct=" << state.glob.U(2, imax_ct)
                           << " dct=" << state.glob.dU(2, imax_ct) << std::endl;
             }
         }
     }
 
-    // 4. Limit ue changes to 0.2 * Vinf
+    // 5. Limit ue changes to 0.2 * Vinf
     double fmax_ue = 0.0;
     for (int i = 0; i < Nsys; ++i) {
         fmax_ue = std::max(fmax_ue, std::abs(state.glob.dU(3, i)) / state.oper.Vinf);
@@ -691,48 +813,54 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    // 5. Limit alpha changes to 2 degrees
+    // 6. Limit alpha changes to 2 degrees
     if (std::abs(state.glob.dalpha) > 2.0) {
         omega = std::min(omega, 2.0 / std::abs(state.glob.dalpha));
     }
 
-    if (state.param.verb >= 2) {
+    if (state.param.verb >= 1) {
         std::cout << "    state update: omega = " << omega << std::endl;
     }
 
-    // Apply update
-    state.glob.U += omega * state.glob.dU;
-    state.oper.alpha += omega * state.glob.dalpha;
+    // Store omega for convergence check
+    double alpha_change = omega * state.glob.dalpha;
 
-    // Fix bad Hk after update (ensure H = ds/th is physically reasonable)
+    // Apply update
+    double U21_before = state.glob.U(2, 21);
+    double dU21 = state.glob.dU(2, 21);
+    state.glob.U += omega * state.glob.dU;
+    state.oper.alpha += alpha_change;
+
+    if (state.param.verb >= 1) {
+        std::cout << "    Update check: U[2,21] " << U21_before << " + " << omega << " * " << dU21
+                  << " = " << U21_before + omega * dU21 << " (actual=" << state.glob.U(2, 21) << ")" << std::endl;
+    }
+
+    // Fix bad Hk after update (using proper Hk calculation)
     for (int si = 0; si < 3; ++si) {
         double Hkmin = (si == 2) ? 1.00005 : 1.02;
         const auto& Is = state.vsol.Is[si];
+        Param param = BuildParam(state, si);
         for (int idx : Is) {
             if (idx >= Nsys) continue;
-            double th = state.glob.U(0, idx);
-            double ds = state.glob.U(1, idx);
-            if (th > 1e-12) {
-                double H = ds / th;
-                if (H < Hkmin) {
-                    state.glob.U(1, idx) += 2.0 * (Hkmin - H) * ds;
-                }
+            StationParam(state, param, idx);
+            Vector4d Uj = state.glob.U.col(idx);
+            auto [Hk, Hk_U] = GetHk(Uj, param);
+            if (Hk < Hkmin) {
+                state.glob.U(1, idx) += 2.0 * (Hkmin - Hk) * state.glob.U(1, idx);
             }
         }
     }
 
     // Fix negative ctau after update
-    double ctmax = 0.0;
-    for (int i = 0; i < Nsys; ++i) {
-        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
-            ctmax = std::max(ctmax, state.glob.U(2, i));
-        }
+    // Recompute ctmax after update
+    ctmax = 0.0;
+    for (int i : turbIdx) {
+        ctmax = std::max(ctmax, state.glob.U(2, i));
     }
-    for (int i = 0; i < Nsys; ++i) {
-        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
-            if (state.glob.U(2, i) < 0) {
-                state.glob.U(2, i) = 0.1 * ctmax;
-            }
+    for (int i : turbIdx) {
+        if (state.glob.U(2, i) < 0) {
+            state.glob.U(2, i) = 0.1 * ctmax;
         }
     }
 
@@ -740,6 +868,11 @@ void UpdateState(FoilState& state) {
     for (int i = 0; i < Nsys; ++i) {
         state.glob.U(0, i) = std::max(state.glob.U(0, i), 1e-10);
         state.glob.U(1, i) = std::max(state.glob.U(1, i), 1e-10);
+    }
+
+    // Rebuild inviscid solution if alpha changed
+    if (std::abs(alpha_change) > 1e-10) {
+        RebuildIsol(state);
     }
 }
 
@@ -759,22 +892,19 @@ void CalcUeM(FoilState& state) {
     }
 
     // 1. Cgam = d(wake uei)/d(gamma) [Nw x N]
+    // Use full InviscidVelocity to get linearization w.r.t. gamma, which includes
+    // TE source and TE vortex contributions (matching mfoil's inviscid_velocity call)
     MatrixXd Cgam = MatrixXd::Zero(Nw, N);
     for (int i = 0; i < Nw; ++i) {
         Vector2d xi = state.wake.x.col(i);
         Vector2d ti = state.wake.t.col(i);
 
-        // Compute velocity influence of each airfoil gamma on wake point
-        for (int j = 0; j < N - 1; ++j) {
-            Matrix2d Xj;
-            Xj.col(0) = state.foil.x.col(j);
-            Xj.col(1) = state.foil.x.col(j + 1);
+        MatrixXd V_G;
+        InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi, true, &V_G);
 
-            Vector2d a, b;
-            PanelLinVortexVelocity(Xj, xi, nullptr, false, a, b);
-
-            Cgam(i, j) += a.dot(ti);
-            Cgam(i, j + 1) += b.dot(ti);
+        // Cgam(i,:) = V_G[0,:]*ti[0] + V_G[1,:]*ti[1] (tangent component)
+        for (int j = 0; j < N; ++j) {
+            Cgam(i, j) = V_G(0, j) * ti(0) + V_G(1, j) * ti(1);
         }
     }
 
@@ -837,8 +967,17 @@ void CalcUeM(FoilState& state) {
     MatrixXd Bp = -state.isol.AIC.lu().solve(B);
     Bp.conservativeResize(N, Npanel);  // Remove last row
 
+    // Debug: check intermediate matrix magnitudes
+    std::cout << "  CalcUeM debug: max|Cgam|=" << Cgam.cwiseAbs().maxCoeff()
+              << ", max|B|=" << B.cwiseAbs().maxCoeff()
+              << ", max|Bp|=" << Bp.cwiseAbs().maxCoeff() << std::endl;
+
     // 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)]
     MatrixXd Csig = MatrixXd::Zero(Nw, Npanel);
+
+    // Debug: track contributions to Csig(1, 0)
+    double csig10_airfoil = 0.0;
+    double csig10_wake = 0.0;
 
     for (int i = 0; i < Nw; ++i) {
         Vector2d xi = state.wake.x.col(i);
@@ -853,6 +992,9 @@ void CalcUeM(FoilState& state) {
             Xj.col(1) = state.foil.x.col(j + 1);
             Vector2d v = PanelConstSourceVelocity(Xj, xi, &ti);
             Csig(i, j) = v(0);
+            if (i == 1 && j == 0) {
+                csig10_airfoil = v(0);
+            }
         }
 
         // Piecewise linear source on wake
@@ -899,6 +1041,9 @@ void CalcUeM(FoilState& state) {
                     Csig(i, N - 1) += b.dot(ti);
                     Csig(i, 0) += a.dot(ti);
                     Csig(i, N - 2) += a.dot(ti);
+                    if (i == 1) {
+                        csig10_wake = a.dot(ti);
+                    }
                 } else if (j == Nw - 1) {
                     Matrix2d Xj;
                     Xj.col(0) = Xl;
@@ -926,10 +1071,29 @@ void CalcUeM(FoilState& state) {
         }
     }
 
+    // Debug: Csig(1,0) breakdown
+    std::cout << "  CalcUeM Csig(1,0) breakdown: airfoil=" << csig10_airfoil
+              << ", wake=" << csig10_wake
+              << ", total=" << Csig(1, 0) << std::endl;
+
     // 5. ue_sigma = d(unsigned ue)/d(source) [(N+Nw) x (N+Nw-2)]
     // Df = Bp for foil, Dw = Cgam*Bp + Csig for wake
-    MatrixXd Dw = Cgam * Bp + Csig;
+    MatrixXd CgamBp = Cgam * Bp;
+    MatrixXd Dw = CgamBp + Csig;
     Dw.row(0) = Bp.row(N - 1);  // First wake point same as TE
+
+    // Debug: check components at row 132 = ue_sigma(132, 0)
+    int row132_wake_idx = 132 - N;
+    std::cout << "  CalcUeM: N=" << N << ", Nw=" << Nw
+              << ", row 132 maps to wake idx " << row132_wake_idx << std::endl;
+    if (row132_wake_idx >= 0 && row132_wake_idx < Nw) {
+        std::cout << "  CalcUeM debug at wake(" << row132_wake_idx << ",0): CgamBp="
+                  << CgamBp(row132_wake_idx, 0)
+                  << ", Csig=" << Csig(row132_wake_idx, 0)
+                  << ", Dw=" << Dw(row132_wake_idx, 0) << std::endl;
+    } else if (132 < N) {
+        std::cout << "  CalcUeM debug: row 132 is in Bp: Bp(132,0)=" << Bp(132, 0) << std::endl;
+    }
 
     state.vsol.ue_sigma.resize(Nsys, Npanel);
     state.vsol.ue_sigma.topRows(N) = Bp;
@@ -960,11 +1124,45 @@ void CalcUeM(FoilState& state) {
     sgue.tail(Nw).setOnes();
 
     state.vsol.ue_m = sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
+
+    // Debug: check matrix magnitudes
+    double max_ue_sigma = state.vsol.ue_sigma.cwiseAbs().maxCoeff();
+    double max_sigma_m = 0.0;
+    for (int k = 0; k < state.vsol.sigma_m.outerSize(); ++k) {
+        for (SparseMatrixd::InnerIterator it(state.vsol.sigma_m, k); it; ++it) {
+            max_sigma_m = std::max(max_sigma_m, std::abs(it.value()));
+        }
+    }
+    std::cout << "  CalcUeM: max|ue_sigma|=" << max_ue_sigma
+              << ", max|sigma_m|=" << max_sigma_m << std::endl;
 }
 
 void RebuildUeM(FoilState& state) {
     // Rebuild sensitivities after stagnation point move
     CalcUeM(state);
+}
+
+void RebuildIsol(FoilState& state) {
+    // Rebuilds inviscid solution after angle of attack change
+    // Recompute gamma from reference solutions
+
+    double alpha = state.oper.alpha;
+    double cosa = Cosd(alpha);
+    double sina = Sind(alpha);
+
+    // Rebuild gamma on airfoil: gam = gamref[:,0]*cos(alpha) + gamref[:,1]*sin(alpha)
+    int N = state.foil.N;
+    for (int i = 0; i < N; ++i) {
+        state.isol.gam(i) = state.isol.gamref(i, 0) * cosa +
+                            state.isol.gamref(i, 1) * sina;
+    }
+
+    // For viscous flow, may need to rebuild wake and ue_m
+    if (state.oper.viscous && state.oper.redowake) {
+        BuildWake(state);
+        IdentifySurfaces(state);
+        CalcUeM(state);
+    }
 }
 
 }  // namespace cppfoil
