@@ -473,6 +473,18 @@ def extract_all_reference_data(filename):
         tan_eval = mfoil.splinetan(PP, s_test)
         spline_grp.create_dataset('eval_tan', data=tan_eval)
 
+        # Evaluate derivatives (first and second)
+        # Use scipy's CubicSpline.derivative() method
+        DPX = PP['X'].derivative()
+        DPY = PP['Y'].derivative()
+        D2PX = DPX.derivative()  # Second derivative
+        D2PY = DPY.derivative()
+
+        deriv1_eval = np.vstack((DPX(s_test), DPY(s_test)))
+        deriv2_eval = np.vstack((D2PX(s_test), D2PY(s_test)))
+        spline_grp.create_dataset('eval_deriv1', data=deriv1_eval)
+        spline_grp.create_dataset('eval_deriv2', data=deriv2_eval)
+
         # ========== PANEL INFLUENCE - VORTEX FUNCTIONS ==========
         panel_vortex = f.create_group('panel_vortex')
         test_idx = 0
@@ -620,6 +632,83 @@ def extract_all_reference_data(filename):
             grp.create_dataset('rho', data=rho)
             grp.create_dataset('rho_U', data=rho_U)
 
+        # Test get_uk (Karman-Tsien corrected speed)
+        uk_grp = bl_extra.create_group('uk')
+        test_ue_uk = [0.3, 0.5, 0.8, 1.0, 1.2]
+        for i, ue in enumerate(test_ue_uk):
+            uk, uk_U = mfoil.get_uk(ue, param)
+            uk_grp.create_dataset(f'ue_{i}', data=ue)
+            uk_grp.create_dataset(f'uk_{i}', data=uk)
+            uk_grp.create_dataset(f'uk_U_{i}', data=uk_U)
+        uk_grp.attrs['num_tests'] = len(test_ue_uk)
+
+        # Test get_uq (shear lag equilibrium term)
+        uq_grp = bl_extra.create_group('uq')
+        # For get_uq we need intermediate values
+        test_uq_states = [
+            {'th': 0.005, 'ds': 0.015, 'sa': 0.1, 'ue': 0.5, 'turb': True, 'name': 'uq_turb1'},
+            {'th': 0.01, 'ds': 0.025, 'sa': 0.15, 'ue': 0.3, 'turb': True, 'name': 'uq_turb2'},
+        ]
+        for state in test_uq_states:
+            U = np.array([state['th'], state['ds'], state['sa'], state['ue']])
+            param_uq = mfoil.build_param(M, 0)
+            param_uq.turb = state['turb']
+            param_uq.wake = False
+
+            # Compute intermediate values
+            ds, ds_U = state['ds'], np.array([0.0, 1.0, 0.0, 0.0])  # ds_U = [0, 1, 0, 0]
+            cf, cf_U = mfoil.get_cf(U, param_uq)
+            Hk, Hk_U = mfoil.get_Hk(U, param_uq)
+            Ret, Ret_U = mfoil.get_Ret(U, param_uq)
+
+            uq, uq_U = mfoil.get_uq(ds, ds_U, cf, cf_U, Hk, Hk_U, Ret, Ret_U, param_uq)
+
+            grp = uq_grp.create_group(state['name'])
+            grp.create_dataset('U', data=U)
+            grp.create_dataset('ds', data=ds)
+            grp.create_dataset('ds_U', data=ds_U)
+            grp.create_dataset('cf', data=cf)
+            grp.create_dataset('cf_U', data=cf_U)
+            grp.create_dataset('Hk', data=Hk)
+            grp.create_dataset('Hk_U', data=Hk_U)
+            grp.create_dataset('Ret', data=Ret)
+            grp.create_dataset('Ret_U', data=Ret_U)
+            grp.create_dataset('uq', data=uq)
+            grp.create_dataset('uq_U', data=uq_U)
+            grp.attrs['turb'] = state['turb']
+
+        # Test get_cfutstag (cf*ue*theta at stagnation)
+        cfut_grp = bl_extra.create_group('cfutstag')
+        for state in test_uq_states:
+            U = np.array([state['th'], state['ds'], state['sa'], state['ue']])
+            param_stag = mfoil.build_param(M, 0)
+            param_stag.turb = state['turb']
+            param_stag.wake = False
+
+            cfut, cfut_U = mfoil.get_cfutstag(U, param_stag)
+
+            grp = cfut_grp.create_group(state['name'].replace('uq_', 'cfut_'))
+            grp.create_dataset('U', data=U)
+            grp.create_dataset('cfut', data=cfut)
+            grp.create_dataset('cfut_U', data=cfut_U)
+            grp.attrs['turb'] = state['turb']
+
+        # Test get_cdutstag (cDi*ue*theta at stagnation)
+        cdut_grp = bl_extra.create_group('cdutstag')
+        for state in test_uq_states:
+            U = np.array([state['th'], state['ds'], state['sa'], state['ue']])
+            param_stag = mfoil.build_param(M, 0)
+            param_stag.turb = state['turb']
+            param_stag.wake = False
+
+            cdut, cdut_U = mfoil.get_cdutstag(U, param_stag)
+
+            grp = cdut_grp.create_group(state['name'].replace('uq_', 'cdut_'))
+            grp.create_dataset('U', data=U)
+            grp.create_dataset('cdut', data=cdut)
+            grp.create_dataset('cdut_U', data=cdut_U)
+            grp.attrs['turb'] = state['turb']
+
         # ========== TE INFO ==========
         te_info_grp = f.create_group('te_info')
         # TE_info returns: t, hTE, dtdx, tcp, tdp
@@ -629,6 +718,22 @@ def extract_all_reference_data(filename):
         te_info_grp.create_dataset('dtdx', data=dtdx)
         te_info_grp.create_dataset('tcp', data=tcp)
         te_info_grp.create_dataset('tdp', data=tdp)
+
+        # ========== INVISCID SOLVE + FORCES ==========
+        # Create fresh mfoil for inviscid-only solve
+        M_inv = mfoil.mfoil(naca='0012', npanel=130)
+        M_inv.setoper(alpha=2.0, Re=0)  # Re=0 for inviscid
+        M_inv.param.verb = 0
+        mfoil.solve_inviscid(M_inv)  # Inviscid solve only
+        mfoil.calc_force(M_inv)
+
+        inv_forces = f.create_group('inviscid_forces')
+        inv_forces.create_dataset('cl', data=M_inv.post.cl)
+        inv_forces.create_dataset('cd', data=M_inv.post.cd)
+        inv_forces.create_dataset('cm', data=M_inv.post.cm)
+        inv_forces.create_dataset('cp', data=M_inv.post.cp)
+        inv_forces.create_dataset('cpi', data=M_inv.post.cpi)
+        inv_forces.create_dataset('alpha', data=M_inv.oper.alpha)
 
         # ========== FULL VISCOUS SOLVE + FORCES ==========
         # Create a fresh mfoil instance for full solve

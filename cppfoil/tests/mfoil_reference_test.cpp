@@ -1731,3 +1731,149 @@ TEST_F(MfoilReferenceTest, GetRho) {
     EXPECT_NEAR(rho, rho_ref, TOL_NORMAL) << "GetRho mismatch";
     std::cout << "GetRho: " << rho << " (ref=" << rho_ref << ")" << std::endl;
 }
+
+TEST_F(MfoilReferenceTest, GetUk) {
+    H5::Group uk_grp = getFile().openGroup("bl_extra/uk");
+    int num_tests = 0;
+    uk_grp.openAttribute("num_tests").read(H5::PredType::NATIVE_INT, &num_tests);
+
+    Param param;
+    param.Vinf = readScalar<double>(getFile(), "param/Vinf");
+    param.KTb = readScalar<double>(getFile(), "param/KTb");
+    param.KTl = readScalar<double>(getFile(), "param/KTl");
+
+    int passed = 0;
+    int failed = 0;
+
+    for (int t = 0; t < num_tests; ++t) {
+        std::string prefix = "bl_extra/uk/";
+        double ue = readScalar<double>(getFile(), prefix + "ue_" + std::to_string(t));
+        double uk_ref = readScalar<double>(getFile(), prefix + "uk_" + std::to_string(t));
+
+        auto [uk, uk_U] = GetUk(ue, param);
+
+        double err = std::abs(uk - uk_ref);
+        if (err < TOL_NORMAL) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "GetUk test " << t << " FAILED: ue=" << ue
+                      << ", uk=" << uk << ", ref=" << uk_ref << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of " << num_tests << " GetUk tests";
+    std::cout << "GetUk: " << passed << "/" << num_tests << " passed" << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, GetUq) {
+    // Test shear lag equilibrium term
+    VectorXd U = readVector(getFile(), "bl_extra/uq/uq_turb1/U");
+    double ds = readScalar<double>(getFile(), "bl_extra/uq/uq_turb1/ds");
+    VectorXd ds_U_ref = readVector(getFile(), "bl_extra/uq/uq_turb1/ds_U");
+    double cf = readScalar<double>(getFile(), "bl_extra/uq/uq_turb1/cf");
+    VectorXd cf_U_ref = readVector(getFile(), "bl_extra/uq/uq_turb1/cf_U");
+    double Hk = readScalar<double>(getFile(), "bl_extra/uq/uq_turb1/Hk");
+    VectorXd Hk_U_ref = readVector(getFile(), "bl_extra/uq/uq_turb1/Hk_U");
+    double Ret = readScalar<double>(getFile(), "bl_extra/uq/uq_turb1/Ret");
+    VectorXd Ret_U_ref = readVector(getFile(), "bl_extra/uq/uq_turb1/Ret_U");
+    double uq_ref = readScalar<double>(getFile(), "bl_extra/uq/uq_turb1/uq");
+
+    // Convert to Eigen types with 8 elements (for two-station linearization)
+    Vector8d ds_U = Vector8d::Zero();
+    ds_U.head<4>() = ds_U_ref.head<4>();
+    Vector8d cf_U = Vector8d::Zero();
+    cf_U.head<4>() = cf_U_ref.head<4>();
+    Vector8d Hk_U = Vector8d::Zero();
+    Hk_U.head<4>() = Hk_U_ref.head<4>();
+    Vector8d Ret_U = Vector8d::Zero();
+    Ret_U.head<4>() = Ret_U_ref.head<4>();
+
+    Param param;
+    param.turb = true;
+    param.wake = false;
+    param.Vinf = readScalar<double>(getFile(), "param/Vinf");
+    param.muinf = readScalar<double>(getFile(), "param/muinf");
+    param.rho0 = readScalar<double>(getFile(), "param/rho0");
+    param.gam = readScalar<double>(getFile(), "param/gam");
+    param.KTb = readScalar<double>(getFile(), "param/KTb");
+    param.KTl = readScalar<double>(getFile(), "param/KTl");
+
+    auto [uq, uq_U] = GetUq(ds, ds_U, cf, cf_U, Hk, Hk_U, Ret, Ret_U, param);
+
+    EXPECT_NEAR(uq, uq_ref, TOL_NORMAL) << "GetUq value mismatch";
+    std::cout << "GetUq: " << uq << " (ref=" << uq_ref << ")" << std::endl;
+}
+
+// NOTE: GetCfutstag and GetCdutstag not yet implemented in cppfoil
+// These are used in mfoil for stagnation state calculations
+// Tests will be added when these functions are implemented
+
+TEST_F(MfoilReferenceTest, SplineDerivatives) {
+    // Test first and second derivative evaluation
+    VectorXd s_test = readVector(getFile(), "spline/eval_s");
+    MatrixXd deriv1_ref = readMatrix(getFile(), "spline/eval_deriv1");
+    MatrixXd deriv2_ref = readMatrix(getFile(), "spline/eval_deriv2");
+    MatrixXd xy = readMatrix(getFile(), "geometry/x");
+
+    // Create spline from foil coordinates
+    Spline2D spline = Spline2DCreate(xy);
+
+    int passed = 0;
+    int failed = 0;
+
+    for (int i = 0; i < s_test.size(); ++i) {
+        double s = s_test(i);
+
+        // First derivative - use X.EvalDeriv and Y.EvalDeriv
+        double d1_x = spline.X.EvalDeriv(s);
+        double d1_y = spline.Y.EvalDeriv(s);
+        double err1_x = std::abs(d1_x - deriv1_ref(0, i));
+        double err1_y = std::abs(d1_y - deriv1_ref(1, i));
+
+        // Second derivative
+        double d2_x = spline.X.EvalDeriv2(s);
+        double d2_y = spline.Y.EvalDeriv2(s);
+        double err2_x = std::abs(d2_x - deriv2_ref(0, i));
+        double err2_y = std::abs(d2_y - deriv2_ref(1, i));
+
+        if (err1_x < TOL_LOOSE && err1_y < TOL_LOOSE &&
+            err2_x < TOL_LOOSE && err2_y < TOL_LOOSE) {
+            passed++;
+        } else {
+            failed++;
+            if (failed <= 3) {
+                std::cout << "SplineDeriv test " << i << " FAILED at s=" << s << std::endl;
+                std::cout << "  d1: (" << d1_x << ", " << d1_y << ") vs ("
+                          << deriv1_ref(0, i) << ", " << deriv1_ref(1, i) << ")" << std::endl;
+                std::cout << "  d2: (" << d2_x << ", " << d2_y << ") vs ("
+                          << deriv2_ref(0, i) << ", " << deriv2_ref(1, i) << ")" << std::endl;
+            }
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of " << s_test.size() << " spline derivative tests";
+    std::cout << "SplineDerivatives: " << passed << "/" << s_test.size() << " passed" << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, CalcForce_Inviscid) {
+    // Test inviscid-only force calculation
+    double cl_ref = readScalar<double>(getFile(), "inviscid_forces/cl");
+    double cd_ref = readScalar<double>(getFile(), "inviscid_forces/cd");
+    double cm_ref = readScalar<double>(getFile(), "inviscid_forces/cm");
+    double alpha = readScalar<double>(getFile(), "inviscid_forces/alpha");
+
+    // Create fresh state using the Cppfoil class
+    Cppfoil foil("0012", 130);
+    foil.SetOper(alpha, -1.0, 0, 0);  // alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0
+    FoilState& state = foil.GetState();
+
+    SolveInviscid(state);
+    CalcForce(state);
+
+    EXPECT_NEAR(state.post.cl, cl_ref, TOL_LOOSE) << "Inviscid cl mismatch";
+    EXPECT_NEAR(state.post.cm, cm_ref, TOL_LOOSE) << "Inviscid cm mismatch";
+    // Inviscid cd should be ~0 (pressure drag only, no wake for this)
+    std::cout << "CalcForce_Inviscid: cl=" << state.post.cl << " (ref=" << cl_ref << ")"
+              << ", cm=" << state.post.cm << " (ref=" << cm_ref << ")" << std::endl;
+}
