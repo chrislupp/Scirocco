@@ -44,7 +44,23 @@ target_compile_options(cppfoil PRIVATE
 if(CPPFOIL_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
-    if(GTest_FOUND)
+    # HDF5 - use cmake config from homebrew
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/hdf5")
+    find_package(hdf5 CONFIG QUIET)
+    if(GTest_FOUND AND hdf5_FOUND)
+        message(STATUS "Found HDF5: ${hdf5_VERSION}")
+        add_executable(cppfoil_tests
+            tests/spline_test.cpp
+            tests/geometry_test.cpp
+            tests/mfoil_reference_test.cpp
+        )
+        target_link_libraries(cppfoil_tests cppfoil GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(cppfoil_tests PRIVATE
+            MFOIL_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/mfoil_reference.h5"
+        )
+        gtest_discover_tests(cppfoil_tests)
+    elseif(GTest_FOUND)
+        message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests
             tests/spline_test.cpp
             tests/geometry_test.cpp
