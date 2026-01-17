@@ -822,6 +822,169 @@ def extract_all_reference_data(filename):
         spline_curv_grp.create_dataset('S', data=S)
         spline_curv_grp.create_dataset('XS', data=XS)
 
+        # ========== STAGNATION POINT MOVE REFERENCE ==========
+        # Create fresh mfoil for stagnation point move test
+        M_stag = mfoil.mfoil(naca='0012', npanel=130)
+        M_stag.setoper(alpha=2.0, Re=1e6)  # Non-zero alpha to have stagnation point shift
+        M_stag.param.verb = 0
+        M_stag.oper.viscous = True
+        M_stag.oper.initbl = True
+
+        # Initialize through the standard sequence
+        # Note: build_wake must come BEFORE stagpoint_find because
+        # stagpoint_find extends xi to include wake points using wake.s
+        mfoil.init_thermo(M_stag)
+        mfoil.build_gamma(M_stag, M_stag.oper.alpha)
+        mfoil.build_wake(M_stag)
+        mfoil.stagpoint_find(M_stag)
+        mfoil.identify_surfaces(M_stag)
+        mfoil.set_wake_gap(M_stag)
+        mfoil.calc_ue_m(M_stag)
+        mfoil.init_boundary_layer(M_stag)
+        mfoil.build_glob_sys(M_stag)
+
+        stag_move = f.create_group('stag_point_move')
+        stag_move.create_dataset('Istag_before', data=np.array(M_stag.isol.Istag))
+        stag_move.create_dataset('sstag_before', data=M_stag.isol.sstag)
+        stag_move.create_dataset('xi_before', data=M_stag.isol.xi.copy())
+
+        # Do one Newton iteration to get a non-trivial state
+        mfoil.solve_glob(M_stag)
+        mfoil.update_state(M_stag)
+
+        # Save state BEFORE stagpoint_move for exact reproduction
+        stag_move.create_dataset('U_before_move', data=M_stag.glob.U.copy())
+        stag_move.create_dataset('Istag_before_move', data=np.array(M_stag.isol.Istag))
+        stag_move.create_dataset('sstag_before_move', data=M_stag.isol.sstag)
+
+        # Now move stagnation point
+        mfoil.stagpoint_move(M_stag)
+
+        stag_move.create_dataset('Istag_after', data=np.array(M_stag.isol.Istag))
+        stag_move.create_dataset('sstag_after', data=M_stag.isol.sstag)
+        stag_move.create_dataset('xi_after', data=M_stag.isol.xi.copy())
+        stag_move.create_dataset('alpha', data=M_stag.oper.alpha)
+
+        # ========== UPDATE TRANSITION REFERENCE ==========
+        # Use the same state we already have from stag_point_move
+        update_tran = f.create_group('update_transition')
+        update_tran.create_dataset('Xt_before', data=M_stag.vsol.Xt.copy())
+        update_tran.create_dataset('turb_before', data=np.array(M_stag.vsol.turb, dtype=bool))
+        # Export full state for exact reproduction
+        update_tran.create_dataset('U_before', data=M_stag.glob.U.copy())
+        update_tran.create_dataset('Istag', data=np.array(M_stag.isol.Istag))
+        update_tran.create_dataset('sstag', data=M_stag.isol.sstag)
+        update_tran.create_dataset('xi', data=M_stag.isol.xi.copy())
+        update_tran.create_dataset('alpha', data=M_stag.oper.alpha)
+
+        mfoil.update_transition(M_stag)
+
+        update_tran.create_dataset('Xt_after', data=M_stag.vsol.Xt.copy())
+        update_tran.create_dataset('turb_after', data=np.array(M_stag.vsol.turb, dtype=bool))
+        update_tran.create_dataset('U_after', data=M_stag.glob.U.copy())
+
+        # ========== GET DISTRIBUTIONS REFERENCE ==========
+        # Use the fully converged solution from M2 (forces_grp already has cl, cd, etc.)
+        dist_ref = f.create_group('get_distributions')
+        dist_ref.create_dataset('x', data=M2.foil.x)
+        dist_ref.create_dataset('th', data=M2.post.th)
+        dist_ref.create_dataset('ds', data=M2.post.ds)
+        dist_ref.create_dataset('sa', data=M2.post.sa)
+        dist_ref.create_dataset('ue', data=M2.post.ue)
+        dist_ref.create_dataset('cf', data=M2.post.cf)
+        dist_ref.create_dataset('Ret', data=M2.post.Ret)
+        dist_ref.create_dataset('Hk', data=M2.post.Hk)
+        # Export full state for exact reproduction
+        dist_ref.create_dataset('U', data=M2.glob.U.copy())
+        dist_ref.create_dataset('Istag', data=np.array(M2.isol.Istag))
+        dist_ref.create_dataset('sstag', data=M2.isol.sstag)
+        dist_ref.create_dataset('xi', data=M2.isol.xi.copy())
+        dist_ref.create_dataset('turb', data=np.array(M2.vsol.turb, dtype=bool))
+        dist_ref.create_dataset('alpha', data=M2.oper.alpha)
+
+        # ========== SOLVE VISCOUS / SOLVE COUPLED REFERENCE ==========
+        # Create yet another fresh instance to capture iteration history
+        M_visc = mfoil.mfoil(naca='0012', npanel=130)
+        M_visc.setoper(alpha=0.0, Re=1e6)
+        M_visc.param.verb = 0
+        M_visc.oper.viscous = True
+        M_visc.oper.initbl = True
+        M_visc.param.niglob = 25
+        M_visc.param.rtol = 1e-6
+
+        solve_visc = f.create_group('solve_viscous')
+
+        # Initialize (this is what solve_viscous does before solve_coupled)
+        # Note: build_wake must come BEFORE stagpoint_find
+        mfoil.init_thermo(M_visc)
+        mfoil.build_gamma(M_visc, M_visc.oper.alpha)
+        mfoil.build_wake(M_visc)
+        mfoil.stagpoint_find(M_visc)
+        mfoil.identify_surfaces(M_visc)
+        mfoil.set_wake_gap(M_visc)
+        mfoil.calc_ue_m(M_visc)
+        mfoil.init_boundary_layer(M_visc)
+
+        solve_visc.create_dataset('U_init', data=M_visc.glob.U.copy())
+        solve_visc.create_dataset('ue_m', data=M_visc.vsol.ue_m.copy())
+
+        # Run full coupled solve
+        mfoil.solve_coupled(M_visc)
+
+        solve_visc.create_dataset('U_final', data=M_visc.glob.U.copy())
+        solve_visc.create_dataset('converged', data=M_visc.glob.conv)
+        solve_visc.create_dataset('niter', data=M_visc.glob.niter if hasattr(M_visc.glob, 'niter') else 0)
+
+        # Calculate and store forces
+        mfoil.calc_force(M_visc)
+        solve_visc.create_dataset('cl', data=M_visc.post.cl)
+        solve_visc.create_dataset('cd', data=M_visc.post.cd)
+        solve_visc.create_dataset('cm', data=M_visc.post.cm)
+
+        # ========== GEOMETRY MODIFICATION FUNCTIONS REFERENCE ==========
+        # Test mgeom_flap
+        M_flap = mfoil.mfoil(naca='0012', npanel=130)
+        M_flap.param.verb = 0
+        geom_flap = f.create_group('geom_flap')
+        geom_flap.create_dataset('xpoint_before', data=M_flap.geom.xpoint.copy())
+
+        xzhinge = np.array([0.75, 0.0])  # Hinge at 75% chord
+        eta = 10.0  # 10 degrees down
+        mfoil.mgeom_flap(M_flap, xzhinge, eta)
+
+        geom_flap.create_dataset('xpoint_after', data=M_flap.geom.xpoint.copy())
+        geom_flap.create_dataset('x_after', data=M_flap.foil.x.copy())
+        geom_flap.create_dataset('xzhinge', data=xzhinge)
+        geom_flap.create_dataset('eta', data=eta)
+
+        # Test mgeom_addcamber
+        M_camb = mfoil.mfoil(naca='0012', npanel=130)
+        M_camb.param.verb = 0
+        geom_camb = f.create_group('geom_addcamber')
+        geom_camb.create_dataset('xpoint_before', data=M_camb.geom.xpoint.copy())
+
+        # Create a simple parabolic camber increment
+        x_camb = np.linspace(0, 1, 21)
+        z_camb = 0.02 * x_camb * (1 - x_camb)  # Max 0.5% camber at mid-chord
+        xzcamb = np.vstack([x_camb, z_camb])
+        mfoil.mgeom_addcamber(M_camb, xzcamb)
+
+        geom_camb.create_dataset('xpoint_after', data=M_camb.geom.xpoint.copy())
+        geom_camb.create_dataset('x_after', data=M_camb.foil.x.copy())
+        geom_camb.create_dataset('xzcamb', data=xzcamb)
+
+        # Test mgeom_derotate
+        # First create an airfoil that is rotated (use cambered airfoil)
+        M_derot = mfoil.mfoil(naca='2412', npanel=130)
+        M_derot.param.verb = 0
+        geom_derot = f.create_group('geom_derotate')
+        geom_derot.create_dataset('xpoint_before', data=M_derot.geom.xpoint.copy())
+
+        mfoil.mgeom_derotate(M_derot)
+
+        geom_derot.create_dataset('xpoint_after', data=M_derot.geom.xpoint.copy())
+        geom_derot.create_dataset('x_after', data=M_derot.foil.x.copy())
+
     print(f"Reference data saved to {filename}")
     return M
 

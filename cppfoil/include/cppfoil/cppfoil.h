@@ -51,6 +51,19 @@ public:
     const MatrixXd& GetFoilCoords() const { return state_.foil.x; }
     const MatrixXd& GetWakeCoords() const { return state_.wake.x; }
 
+    // Geometry modification functions
+    // Deploy a flap at hinge location with given deflection angle
+    // xzhinge : Hinge location [x, z]
+    // eta : Flap deflection angle in degrees (positive = down)
+    void GeomFlap(const Vector2d& xzhinge, double eta);
+
+    // Add camber to airfoil from given camber line increment
+    // xzcamb : Camber increment points [2 x Nc] (x, z coords)
+    void GeomAddCamber(const MatrixXd& xzcamb);
+
+    // Derotate airfoil to make chord line horizontal
+    void GeomDerotate();
+
     // Access internal state (for advanced use)
     FoilState& GetState() { return state_; }
     const FoilState& GetState() const { return state_; }

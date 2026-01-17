@@ -3,12 +3,29 @@
 // SPDX-License-Identifier: MIT
 
 #include "cppfoil/core/geometry.h"
+#include "cppfoil/data/state.h"
+#include "cppfoil/core/paneling.h"
+#include "cppfoil/core/inviscid.h"
 
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>
+#include <vector>
 
 namespace cppfoil {
+
+namespace {
+
+// Helper: degrees to radians
+constexpr double DEG2RAD = M_PI / 180.0;
+
+// Helper: cos of angle in degrees
+inline double cosd(double deg) { return std::cos(deg * DEG2RAD); }
+
+// Helper: sin of angle in degrees
+inline double sind(double deg) { return std::sin(deg * DEG2RAD); }
+
+}  // anonymous namespace
 
 void NacaPoints(Geom& geom, const std::string& digits) {
     geom.name = "NACA " + digits;
@@ -166,6 +183,156 @@ TEInfo GetTEInfo(const MatrixXd& x) {
     }
 
     return info;
+}
+
+void GeomFlap(FoilState& state, const Vector2d& xzhinge, double eta) {
+    // Deploy a flap at hinge location with given deflection angle
+    // Matches mfoil.mgeom_flap
+
+    MatrixXd X = state.geom.xpoint;  // Make a copy
+    int N = static_cast<int>(X.cols());
+    double xh = xzhinge(0);  // x hinge location
+
+    // Build rotation matrix (positive eta = clockwise when viewed from above)
+    Eigen::Matrix2d R;
+    R << cosd(eta), sind(eta),
+        -sind(eta), cosd(eta);
+
+    // First pass: identify which points are on the flap (x > xh) before rotation
+    std::vector<bool> isFlap(N, false);
+    for (int i = 0; i < N; ++i) {
+        isFlap[i] = (X(0, i) > xh);
+    }
+
+    // Second pass: rotate flap points around hinge
+    for (int i = 0; i < N; ++i) {
+        if (isFlap[i]) {
+            Vector2d p = X.col(i) - xzhinge;
+            X.col(i) = xzhinge + R * p;
+        }
+    }
+
+    // Third pass: identify which points to keep
+    // Keep points that: (a) were not flap points, OR (b) are still right of hinge after rotation
+    std::vector<int> keepIndices;
+    for (int i = 0; i < N; ++i) {
+        if (!isFlap[i] || X(0, i) >= xh) {
+            keepIndices.push_back(i);
+        }
+    }
+
+    // Build new point array with only kept points
+    int Nnew = static_cast<int>(keepIndices.size());
+    MatrixXd Xnew(2, Nnew);
+    for (int i = 0; i < Nnew; ++i) {
+        Xnew.col(i) = X.col(keepIndices[i]);
+    }
+
+    // Store back
+    state.geom.xpoint = Xnew;
+    state.geom.npoint = Nnew;
+
+    // Repanel if panels exist
+    if (state.foil.N > 0) {
+        MakePanels(state.geom, state.foil.N - 1, state.foil);
+    }
+
+    // Clear any existing solution
+    ClearSolution(state);
+}
+
+void GeomAddCamber(FoilState& state, const MatrixXd& xzcamb) {
+    // Add camber to airfoil from given camber line increment
+    // Matches mfoil.mgeom_addcamber
+
+    // Ensure xzcamb is [2 x Nc] (if given as [Nc x 2], transpose)
+    MatrixXd camber = xzcamb;
+    if (camber.rows() > camber.cols()) {
+        camber.transposeInPlace();
+    }
+
+    MatrixXd& X = state.geom.xpoint;
+    int N = static_cast<int>(X.cols());
+    int Nc = static_cast<int>(camber.cols());
+
+    // For each point, interpolate the camber delta at that x location
+    // Using linear interpolation for simplicity
+    for (int i = 0; i < N; ++i) {
+        double x = X(0, i);
+
+        // Find bracketing indices in camber data
+        double dz = 0.0;
+        if (x <= camber(0, 0)) {
+            dz = camber(1, 0);
+        } else if (x >= camber(0, Nc - 1)) {
+            dz = camber(1, Nc - 1);
+        } else {
+            // Linear search for bracket (camber data assumed sorted)
+            for (int j = 0; j < Nc - 1; ++j) {
+                if (x >= camber(0, j) && x <= camber(0, j + 1)) {
+                    // Linear interpolation
+                    double t = (x - camber(0, j)) / (camber(0, j + 1) - camber(0, j));
+                    dz = (1.0 - t) * camber(1, j) + t * camber(1, j + 1);
+                    break;
+                }
+            }
+        }
+
+        // Add camber increment to z coordinate
+        X(1, i) += dz;
+    }
+
+    // Repanel if panels exist
+    if (state.foil.N > 0) {
+        MakePanels(state.geom, state.foil.N - 1, state.foil);
+    }
+
+    // Clear any existing solution
+    ClearSolution(state);
+}
+
+void GeomDerotate(FoilState& state) {
+    // Derotate airfoil to make chord line horizontal
+    // Matches mfoil.mgeom_derotate
+
+    MatrixXd& X = state.geom.xpoint;
+    int N = static_cast<int>(X.cols());
+
+    // Find leading edge (minimum x)
+    int iLE = 0;
+    double xmin = X(0, 0);
+    for (int i = 1; i < N; ++i) {
+        if (X(0, i) < xmin) {
+            xmin = X(0, i);
+            iLE = i;
+        }
+    }
+    Vector2d xLE = X.col(iLE);
+
+    // Trailing edge "point" = average of first and last points
+    Vector2d xTE = 0.5 * (X.col(0) + X.col(N - 1));
+
+    // Rotation angle to make TE-LE horizontal
+    double theta = std::atan2(xTE(1) - xLE(1), xTE(0) - xLE(0));
+
+    // Rotation matrix (negative angle to derotate)
+    Eigen::Matrix2d R;
+    R << std::cos(theta), std::sin(theta),
+        -std::sin(theta), std::cos(theta);
+
+    // Rotate all points about LE
+    for (int i = 0; i < N; ++i) {
+        Vector2d p = X.col(i) - xLE;
+        X.col(i) = xLE + R * p;
+    }
+
+    // Repanel if panels exist
+    if (state.foil.N > 0) {
+        MakePanels(state.geom, state.foil.N - 1, state.foil);
+    }
+
+    // Clear any existing solution
+    ClearSolution(state);
 }
 
 }  // namespace cppfoil

@@ -4,8 +4,10 @@
 
 #include "cppfoil/core/wake.h"
 
+#include <cassert>
 #include <cmath>
 #include <algorithm>
+#include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/util/math_utils.h"
 
@@ -309,30 +311,96 @@ void SetWakeGap(FoilState& state) {
 }
 
 void StagPointMove(FoilState& state) {
-    // Update stagnation point based on viscous solution
+    // Moves the LE stagnation point on the airfoil using the global solution ue
     // This is called during coupled iterations to move the stagnation point
     // based on where the viscous edge velocity goes to zero
 
     int N = state.foil.N;
     int Nw = state.wake.N;
+    (void)state.isol.sstag;  // Original stagnation point (unused but kept for debugging)
 
-    // Re-find stagnation point based on inviscid gamma
-    // (simplified - full version would use viscous ue)
-    StagPointFind(state);
+    // Get edge velocity from global solution
+    VectorXd ue = state.glob.U.row(3).head(N).transpose();
 
-    // Update xi values for foil points (already done in StagPointFind)
-    // Now update wake xi values too
-    if (Nw > 0) {
-        // Resize if needed (StagPointFind only allocates N)
-        if (state.isol.xi.size() < N + Nw) {
-            VectorXd xi_new(N + Nw);
-            xi_new.head(N) = state.isol.xi;
-            state.isol.xi = xi_new;
+    // Current adjacent node indices
+    int I0 = state.isol.Istag[0];
+    int I1 = state.isol.Istag[1];
+
+    bool newpanel = true;
+
+    if (ue(I1) < 0) {
+        // Move stagnation point up (larger s, new panel)
+        int j = I1;
+        for (; j < N; ++j) {
+            if (ue(j) > 0) break;
         }
-        // Wake xi = wake.s - sstag (matching mfoil)
-        for (int i = 0; i < Nw; ++i) {
-            state.isol.xi(N + i) = state.wake.s(i) - state.isol.sstag;
+        assert(j < N && "no stagnation point");
+        int I1_new = j;
+        // Flip sign of ue on points between old and new
+        for (int k = I1; k < I1_new; ++k) {
+            ue(k) *= -1.0;
         }
+        I0 = I1_new - 1;
+        I1 = I1_new;
+    } else if (ue(I0) < 0) {
+        // Move stagnation point down (smaller s, new panel)
+        int j = I0;
+        for (; j >= 0; --j) {
+            if (ue(j) > 0) break;
+        }
+        assert(j > 0 && "no stagnation point");
+        int I0_new = j;
+        // Flip sign of ue on points between old and new
+        for (int k = I0_new + 1; k <= I0; ++k) {
+            ue(k) *= -1.0;
+        }
+        I0 = I0_new;
+        I1 = I0_new + 1;
+    } else {
+        newpanel = false;  // Staying on the current panel
+    }
+
+    // Move point along panel by interpolating where ue = 0
+    double ue0 = ue(I0);
+    double ue1 = ue(I1);
+    double S0 = state.foil.s(I0);
+    double S1 = state.foil.s(I1);
+
+    assert(ue0 > 0 && ue1 > 0 && "stagpoint_move: velocity error");
+
+    double den = ue0 + ue1;
+    double w1 = ue1 / den;
+    double w2 = ue0 / den;
+    state.isol.sstag = w1 * S0 + w2 * S1;
+    state.isol.xstag = state.foil.x.col(I0) * w1 + state.foil.x.col(I1) * w2;
+    state.isol.sstag_ue.resize(2);
+    state.isol.sstag_ue(0) = ue1 * (S1 - S0) / (den * den);
+    state.isol.sstag_ue(1) = -ue0 * (S1 - S0) / (den * den);
+
+    // Set new xi coordinates for every point
+    state.isol.xi.resize(N + Nw);
+    for (int i = 0; i < N; ++i) {
+        state.isol.xi(i) = std::abs(state.foil.s(i) - state.isol.sstag);
+    }
+    for (int i = 0; i < Nw; ++i) {
+        state.isol.xi(N + i) = state.wake.s(i) - state.isol.sstag;
+    }
+
+    // If moving to a new panel, update indices and re-identify surfaces
+    if (newpanel) {
+        state.isol.Istag[0] = I0;
+        state.isol.Istag[1] = I1;
+        for (int i = 0; i <= I0; ++i) {
+            state.isol.sgnue(i) = -1;
+        }
+        for (int i = I0 + 1; i < N; ++i) {
+            state.isol.sgnue(i) = 1;
+        }
+        IdentifySurfaces(state);
+        // Update ue in glob.U with potentially flipped signs
+        state.glob.U.row(3).head(N) = ue.transpose();
+        state.glob.realloc = true;
+        RebuildUeM(state);
     }
 }
 

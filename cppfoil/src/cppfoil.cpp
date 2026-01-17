@@ -11,6 +11,7 @@
 #include "cppfoil/core/wake.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
+#include "cppfoil/data/state.h"
 
 namespace cppfoil {
 
@@ -76,6 +77,18 @@ bool Cppfoil::Solve() {
         CalcForce(state_);
         return true;
     }
+}
+
+void Cppfoil::GeomFlap(const Vector2d& xzhinge, double eta) {
+    cppfoil::GeomFlap(state_, xzhinge, eta);
+}
+
+void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
+    cppfoil::GeomAddCamber(state_, xzcamb);
+}
+
+void Cppfoil::GeomDerotate() {
+    cppfoil::GeomDerotate(state_);
 }
 
 }  // namespace cppfoil

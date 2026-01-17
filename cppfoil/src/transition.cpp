@@ -159,19 +159,42 @@ void UpdateTransition(FoilState& state) {
 }
 
 void StoreTransition(FoilState& state, int si, int i) {
-    // Store transition location
-    if (si < 2) {
-        state.vsol.Xt(si, 0) = state.isol.xi(i);
-        state.vsol.Xt(si, 1) = state.foil.x(0, i);
+    // Store xi and x transition locations using current vsol.xt
+    // si: surface index (0=lower, 1=upper)
+    // i: station index in Is array (transition is between i-1 and i)
+
+    if (si < 2 && i > 0) {
+        double xt = state.vsol.xt;  // Current transition xi location
+
+        const auto& Is = state.vsol.Is[si];
+        int i0 = Is[i - 1];  // Pre-transition node
+        int i1 = Is[i];      // Post-transition node
+
+        double xi0 = state.isol.xi(i0);
+        double xi1 = state.isol.xi(i1);
+
+        // Can only store transition on airfoil
+        if (i0 < state.foil.N && i1 < state.foil.N) {
+            double x0 = state.foil.x(0, i0);
+            double x1 = state.foil.x(0, i1);
+
+            state.vsol.Xt(si, 0) = xt;  // xi location
+            // Interpolate x location
+            if (std::abs(xi1 - xi0) > 1e-12) {
+                state.vsol.Xt(si, 1) = x0 + (xt - xi0) / (xi1 - xi0) * (x1 - x0);
+            } else {
+                state.vsol.Xt(si, 1) = x0;
+            }
+        }
     }
 
     // Mark subsequent stations as turbulent
     const auto& Is = state.vsol.Is[si];
     bool found = false;
-    for (int idx : Is) {
-        if (idx == i) found = true;
-        if (found && idx < static_cast<int>(state.vsol.turb.size())) {
-            state.vsol.turb[idx] = true;
+    for (size_t idx = 0; idx < Is.size(); ++idx) {
+        if (static_cast<int>(idx) == i) found = true;
+        if (found && Is[idx] < static_cast<int>(state.vsol.turb.size())) {
+            state.vsol.turb[Is[idx]] = true;
         }
     }
 }
