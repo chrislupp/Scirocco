@@ -2535,3 +2535,360 @@ TEST_F(MfoilReferenceTest, GeomDerotate) {
     std::cout << "GeomDerotate: max error=" << max_err
               << ", TE y diff=" << y_te_diff << std::endl;
 }
+
+// ============================================================================
+// HIGH-PRIORITY TESTS FOR REMAINING FUNCTIONS
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, InitThermo) {
+    // Test thermodynamic parameter initialization
+
+    // Read reference data for incompressible case
+    double Re_ref = readScalar<double>(getFile(), "init_thermo/Re");
+    double Ma_ref = readScalar<double>(getFile(), "init_thermo/Ma");
+    double Vinf_ref = readScalar<double>(getFile(), "init_thermo/Vinf");
+    double Minf_ref = readScalar<double>(getFile(), "init_thermo/Minf");
+    double muinf_ref = readScalar<double>(getFile(), "init_thermo/muinf");
+    double mu0_ref = readScalar<double>(getFile(), "init_thermo/mu0");
+    double rho0_ref = readScalar<double>(getFile(), "init_thermo/rho0");
+    double H0_ref = readScalar<double>(getFile(), "init_thermo/H0");
+    double KTb_ref = readScalar<double>(getFile(), "init_thermo/KTb");
+    double KTl_ref = readScalar<double>(getFile(), "init_thermo/KTl");
+
+    // Create Cppfoil object with same conditions
+    // SetOper signature: (alpha, cl, Re, Ma)
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, Re_ref, Ma_ref);  // alpha=0, cl=-1(unused), Re, Ma
+    auto& state = foil.GetState();
+
+    // Call InitThermo explicitly (SetOper doesn't call it)
+    InitThermo(state);
+
+    // Check results
+    EXPECT_NEAR(state.param.Vinf, Vinf_ref, TOL_TIGHT)
+        << "Vinf mismatch";
+    EXPECT_NEAR(state.param.Minf, Minf_ref, TOL_TIGHT)
+        << "Minf mismatch";
+    EXPECT_NEAR(state.param.muinf, muinf_ref, TOL_NORMAL)
+        << "muinf mismatch";
+    EXPECT_NEAR(state.param.mu0, mu0_ref, TOL_NORMAL)
+        << "mu0 mismatch";
+    EXPECT_NEAR(state.param.rho0, rho0_ref, TOL_TIGHT)
+        << "rho0 mismatch";
+    EXPECT_NEAR(state.param.H0, H0_ref, TOL_TIGHT)
+        << "H0 mismatch";
+    EXPECT_NEAR(state.param.KTb, KTb_ref, TOL_TIGHT)
+        << "KTb mismatch";
+    EXPECT_NEAR(state.param.KTl, KTl_ref, TOL_TIGHT)
+        << "KTl mismatch";
+
+    std::cout << "InitThermo (incompressible): Vinf=" << state.param.Vinf
+              << ", muinf=" << state.param.muinf
+              << ", KTb=" << state.param.KTb << std::endl;
+
+    // Test compressible case
+    double Ma_comp = readScalar<double>(getFile(), "init_thermo/compressible/Ma");
+    double KTb_comp_ref = readScalar<double>(getFile(), "init_thermo/compressible/KTb");
+    double KTl_comp_ref = readScalar<double>(getFile(), "init_thermo/compressible/KTl");
+    double cps_comp_ref = readScalar<double>(getFile(), "init_thermo/compressible/cps");
+
+    Cppfoil foil_comp("0012", 130);
+    foil_comp.SetOper(0.0, -1.0, Re_ref, Ma_comp);  // alpha=0, cl=-1, Re, Ma=0.5
+    auto& state_comp = foil_comp.GetState();
+
+    // Call InitThermo explicitly
+    InitThermo(state_comp);
+
+    EXPECT_NEAR(state_comp.param.KTb, KTb_comp_ref, TOL_NORMAL)
+        << "Compressible KTb mismatch";
+    EXPECT_NEAR(state_comp.param.KTl, KTl_comp_ref, TOL_NORMAL)
+        << "Compressible KTl mismatch";
+    EXPECT_NEAR(state_comp.param.cps, cps_comp_ref, TOL_NORMAL)
+        << "Compressible cps mismatch";
+
+    std::cout << "InitThermo (Ma=" << Ma_comp << "): KTb=" << state_comp.param.KTb
+              << ", KTl=" << state_comp.param.KTl
+              << ", cps=" << state_comp.param.cps << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, ClearSolution) {
+    // Test that ClearSolution properly resets all solution data
+
+    // Create foil and run a solve to populate solution data
+    // SetOper signature: (alpha, cl, Re, Ma)
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    // Run inviscid solve to populate isol
+    SolveInviscid(state);
+    EXPECT_GT(state.isol.gam.size(), 0) << "gam should be populated after solve";
+    EXPECT_GT(state.isol.gamref.size(), 0) << "gamref should be populated after solve";
+
+    // Clear the solution
+    ClearSolution(state);
+
+    // Verify all solution data is cleared
+    EXPECT_EQ(state.isol.gam.size(), 0) << "gam should be empty after clear";
+    EXPECT_EQ(state.isol.gamref.size(), 0) << "gamref should be empty after clear";
+    EXPECT_EQ(state.vsol.turb.size(), 0) << "turb should be empty after clear";
+    EXPECT_EQ(state.glob.U.size(), 0) << "U should be empty after clear";
+    EXPECT_EQ(state.glob.Nsys, 0) << "Nsys should be 0 after clear";
+    EXPECT_EQ(state.wake.N, 0) << "wake.N should be 0 after clear";
+    EXPECT_EQ(state.wake.x.cols(), 0) << "wake.x should be empty after clear";
+
+    std::cout << "ClearSolution: All solution data properly cleared" << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, RebuildIsol) {
+    // Test that RebuildIsol correctly reconstructs gamma from gamref
+
+    // Read reference data
+    MatrixXd gamref_ref = readMatrix(getFile(), "rebuild_isol/gamref");
+    VectorXd gam_alpha0_ref = readVector(getFile(), "rebuild_isol/gam_alpha0");
+    double test_alpha = readScalar<double>(getFile(), "rebuild_isol/test_alpha");
+    VectorXd gam_alpha5_ref = readVector(getFile(), "rebuild_isol/gam_alpha5");
+    double test_alpha2 = readScalar<double>(getFile(), "rebuild_isol/test_alpha2");
+    VectorXd gam_alpha_neg3_ref = readVector(getFile(), "rebuild_isol/gam_alpha_neg3");
+
+    // Create foil and build gamma at alpha=0
+    // SetOper signature: (alpha, cl, Re, Ma)
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    BuildGamma(state, 0.0);
+
+    // Verify gamref matches
+    double gamref_err = (state.isol.gamref - gamref_ref).norm();
+    EXPECT_LT(gamref_err, TOL_NORMAL) << "gamref mismatch";
+
+    // Verify gamma at alpha=0 matches
+    double gam0_err = (state.isol.gam - gam_alpha0_ref).norm();
+    EXPECT_LT(gam0_err, TOL_NORMAL) << "gam at alpha=0 mismatch";
+
+    // Test RebuildIsol at alpha=5
+    state.oper.alpha = test_alpha;
+    state.oper.viscous = false;  // Don't rebuild wake
+    RebuildIsol(state);
+
+    double gam5_err = (state.isol.gam - gam_alpha5_ref).norm();
+    EXPECT_LT(gam5_err, TOL_NORMAL) << "gam at alpha=" << test_alpha << " mismatch";
+
+    // Test RebuildIsol at alpha=-3
+    state.oper.alpha = test_alpha2;
+    RebuildIsol(state);
+
+    double gam_neg3_err = (state.isol.gam - gam_alpha_neg3_ref).norm();
+    EXPECT_LT(gam_neg3_err, TOL_NORMAL) << "gam at alpha=" << test_alpha2 << " mismatch";
+
+    std::cout << "RebuildIsol: gamref_err=" << gamref_err
+              << ", gam0_err=" << gam0_err
+              << ", gam5_err=" << gam5_err
+              << ", gam_neg3_err=" << gam_neg3_err << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, RebuildUeM) {
+    // Test that RebuildUeM correctly rebuilds ue_m matrix
+    // This test verifies that RebuildUeM produces the same result as CalcUeM
+
+    // Read reference ue_m from existing CalcUeM test data
+    MatrixXd ue_m_ref = readMatrix(getFile(), "ue_m/matrix");
+
+    // Create foil and initialize through the standard sequence
+    // SetOper signature: (alpha, cl, Re, Ma)
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    // Initialize through standard sequence
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    BuildWake(state);
+    StagPointFind(state);
+    IdentifySurfaces(state);
+    SetWakeGap(state);
+
+    // Call RebuildUeM (which calls CalcUeM internally)
+    RebuildUeM(state);
+
+    // Compare ue_m matrix
+    int rows = std::min(static_cast<int>(state.vsol.ue_m.rows()),
+                       static_cast<int>(ue_m_ref.rows()));
+    int cols = std::min(static_cast<int>(state.vsol.ue_m.cols()),
+                       static_cast<int>(ue_m_ref.cols()));
+
+    double max_err = 0.0;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            double err = std::abs(state.vsol.ue_m(i, j) - ue_m_ref(i, j));
+            max_err = std::max(max_err, err);
+        }
+    }
+
+    EXPECT_LT(max_err, TOL_NORMAL) << "RebuildUeM: ue_m matrix mismatch";
+
+    // Also verify dimensions
+    EXPECT_EQ(state.vsol.ue_m.rows(), ue_m_ref.rows())
+        << "ue_m row count mismatch";
+    EXPECT_EQ(state.vsol.ue_m.cols(), ue_m_ref.cols())
+        << "ue_m col count mismatch";
+
+    std::cout << "RebuildUeM: max_err=" << max_err
+              << ", ue_m size=" << state.vsol.ue_m.rows() << "x"
+              << state.vsol.ue_m.cols() << std::endl;
+}
+
+TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
+    // Comprehensive test of InitBoundaryLayer functionality
+    // Note: BL initialization involves iterative Newton solves, so we verify
+    // structural correctness and reasonableness rather than exact values
+
+    // Read reference data
+    int Nsys_ref = readScalar<int>(getFile(), "bl_init/Nsys");
+    MatrixXd U_ref = readMatrix(getFile(), "bl_init/U");
+
+    // Read turbulence flags
+    H5::DataSet turb_ds = getFile().openDataSet("bl_init/turb");
+    H5::DataSpace turb_space = turb_ds.getSpace();
+    hsize_t turb_dims[1];
+    turb_space.getSimpleExtentDims(turb_dims);
+    std::vector<uint8_t> turb_buf(turb_dims[0]);
+    turb_ds.read(turb_buf.data(), H5::PredType::NATIVE_UINT8);
+
+    // Create foil and initialize (use SetOper signature: alpha, cl, Re, Ma)
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+    state.oper.viscous = true;
+    state.oper.initbl = true;
+
+    // Initialize through standard sequence
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    StagPointFind(state);
+    BuildWake(state);
+    ExtendXiToWake(state);
+    IdentifySurfaces(state);
+    SetWakeGap(state);
+    CalcUeM(state);
+
+    // Now call InitBoundaryLayer
+    InitBoundaryLayer(state);
+
+    // Verify Nsys
+    EXPECT_EQ(state.glob.Nsys, Nsys_ref) << "Nsys mismatch";
+
+    // Verify U matrix dimensions
+    EXPECT_EQ(state.glob.U.rows(), 4) << "U should have 4 rows";
+    EXPECT_EQ(state.glob.U.cols(), Nsys_ref) << "U column count mismatch";
+
+    // Compare U values - must match mfoil exactly
+    double max_U_err = 0.0;
+    int max_err_j = 0, max_err_i = 0;
+    int n_cols = std::min(static_cast<int>(state.glob.U.cols()),
+                         static_cast<int>(U_ref.cols()));
+    for (int j = 0; j < n_cols; ++j) {
+        for (int i = 0; i < 4; ++i) {
+            double ref_val = U_ref(i, j);
+            double calc_val = state.glob.U(i, j);
+            double err = std::abs(calc_val - ref_val);
+            if (std::abs(ref_val) > 1e-10) {
+                err /= std::abs(ref_val);  // Relative error
+            }
+            if (err > max_U_err) {
+                max_U_err = err;
+                max_err_j = j;
+                max_err_i = i;
+            }
+        }
+    }
+
+    // Check wake gap values
+    VectorXd wgap_ref = readVector(getFile(), "surfaces/wgap");
+    std::cout << "  wgap ref size=" << wgap_ref.size() << " cpp size=" << state.vsol.wgap.size() << std::endl;
+    double max_wgap_err = 0.0;
+    for (int i = 0; i < std::min(static_cast<int>(wgap_ref.size()), static_cast<int>(state.vsol.wgap.size())); ++i) {
+        double err = std::abs(state.vsol.wgap(i) - wgap_ref(i));
+        if (std::abs(wgap_ref(i)) > 1e-10) err /= std::abs(wgap_ref(i));
+        if (err > max_wgap_err) max_wgap_err = err;
+        if (i < 5) {
+            std::cout << "  wgap[" << i << "]: ref=" << wgap_ref(i) << " cpp=" << state.vsol.wgap(i) << std::endl;
+        }
+    }
+    std::cout << "  max wgap err=" << max_wgap_err << std::endl;
+
+    // Print first few U values and the worst error
+    std::cout << "  U_ref[0:3, 0]: " << U_ref(0,0) << " " << U_ref(1,0) << " " << U_ref(2,0) << " " << U_ref(3,0) << std::endl;
+    std::cout << "  U_cpp[0:3, 0]: " << state.glob.U(0,0) << " " << state.glob.U(1,0) << " " << state.glob.U(2,0) << " " << state.glob.U(3,0) << std::endl;
+    std::cout << "  U_ref[0:3, 1]: " << U_ref(0,1) << " " << U_ref(1,1) << " " << U_ref(2,1) << " " << U_ref(3,1) << std::endl;
+    std::cout << "  U_cpp[0:3, 1]: " << state.glob.U(0,1) << " " << state.glob.U(1,1) << " " << state.glob.U(2,1) << " " << state.glob.U(3,1) << std::endl;
+    std::cout << "  U_ref[0:3, 65]: " << U_ref(0,65) << " " << U_ref(1,65) << " " << U_ref(2,65) << " " << U_ref(3,65) << std::endl;
+    std::cout << "  U_cpp[0:3, 65]: " << state.glob.U(0,65) << " " << state.glob.U(1,65) << " " << state.glob.U(2,65) << " " << state.glob.U(3,65) << std::endl;
+    // Print first wake stations (j=131 is first wake, given N=131)
+    int N = state.foil.N;  // Should be 131
+    std::cout << "  foil.N=" << N << " wake starts at j=" << N << std::endl;
+    for (int j = N; j < std::min(N + 5, n_cols); ++j) {
+        double err_th = std::abs(state.glob.U(0,j) - U_ref(0,j)) / std::max(std::abs(U_ref(0,j)), 1e-10);
+        double err_ds = std::abs(state.glob.U(1,j) - U_ref(1,j)) / std::max(std::abs(U_ref(1,j)), 1e-10);
+        double err_ct = std::abs(state.glob.U(2,j) - U_ref(2,j)) / std::max(std::abs(U_ref(2,j)), 1e-10);
+        std::cout << "  Wake j=" << j << ": th ref=" << U_ref(0,j) << " cpp=" << state.glob.U(0,j) << " err=" << err_th
+                  << " | ds ref=" << U_ref(1,j) << " cpp=" << state.glob.U(1,j) << " err=" << err_ds
+                  << " | ct ref=" << U_ref(2,j) << " cpp=" << state.glob.U(2,j) << " err=" << err_ct << std::endl;
+    }
+    // Print around max error station
+    for (int j = std::max(147, N); j < std::min(152, n_cols); ++j) {
+        double err_th = std::abs(state.glob.U(0,j) - U_ref(0,j)) / std::max(std::abs(U_ref(0,j)), 1e-10);
+        double err_ds = std::abs(state.glob.U(1,j) - U_ref(1,j)) / std::max(std::abs(U_ref(1,j)), 1e-10);
+        double err_ct = std::abs(state.glob.U(2,j) - U_ref(2,j)) / std::max(std::abs(U_ref(2,j)), 1e-10);
+        std::cout << "  Wake j=" << j << ": th ref=" << U_ref(0,j) << " cpp=" << state.glob.U(0,j) << " err=" << err_th
+                  << " | ds ref=" << U_ref(1,j) << " cpp=" << state.glob.U(1,j) << " err=" << err_ds
+                  << " | ct ref=" << U_ref(2,j) << " cpp=" << state.glob.U(2,j) << " err=" << err_ct << std::endl;
+    }
+    // Print last few wake stations
+    for (int j = std::max(n_cols - 3, N); j < n_cols; ++j) {
+        double err_th = std::abs(state.glob.U(0,j) - U_ref(0,j)) / std::max(std::abs(U_ref(0,j)), 1e-10);
+        double err_ds = std::abs(state.glob.U(1,j) - U_ref(1,j)) / std::max(std::abs(U_ref(1,j)), 1e-10);
+        double err_ct = std::abs(state.glob.U(2,j) - U_ref(2,j)) / std::max(std::abs(U_ref(2,j)), 1e-10);
+        std::cout << "  Wake j=" << j << ": th ref=" << U_ref(0,j) << " cpp=" << state.glob.U(0,j) << " err=" << err_th
+                  << " | ds ref=" << U_ref(1,j) << " cpp=" << state.glob.U(1,j) << " err=" << err_ds
+                  << " | ct ref=" << U_ref(2,j) << " cpp=" << state.glob.U(2,j) << " err=" << err_ct << std::endl;
+    }
+    std::cout << "  Max err at j=" << max_err_j << " i=" << max_err_i
+              << ": ref=" << U_ref(max_err_i, max_err_j)
+              << " cpp=" << state.glob.U(max_err_i, max_err_j) << std::endl;
+
+    // Must match exactly (within normal tolerance)
+    EXPECT_LT(max_U_err, TOL_NORMAL) << "U state mismatch in InitBoundaryLayer";
+
+    // Verify turb flags match exactly
+    EXPECT_EQ(state.vsol.turb.size(), turb_buf.size()) << "turb size mismatch";
+
+    int turb_mismatch = 0;
+    size_t n_turb = std::min(state.vsol.turb.size(), turb_buf.size());
+    for (size_t i = 0; i < n_turb; ++i) {
+        if (state.vsol.turb[i] != (turb_buf[i] != 0)) {
+            turb_mismatch++;
+        }
+    }
+
+    EXPECT_EQ(turb_mismatch, 0)
+        << "Turbulence flags mismatch at " << turb_mismatch << " stations";
+
+    // Count turbulent stations for reporting
+    int n_turb_ref = 0;
+    for (size_t i = 0; i < turb_buf.size(); ++i) {
+        if (turb_buf[i] != 0) n_turb_ref++;
+    }
+    int n_turb_calc = 0;
+    for (bool t : state.vsol.turb) {
+        if (t) n_turb_calc++;
+    }
+
+    std::cout << "InitBoundaryLayer_Full: Nsys=" << state.glob.Nsys
+              << ", max_U_err=" << max_U_err
+              << ", turb_mismatch=" << turb_mismatch
+              << ", n_turb=" << n_turb_calc << "/" << state.vsol.turb.size()
+              << " (ref=" << n_turb_ref << ")"
+              << std::endl;
+}

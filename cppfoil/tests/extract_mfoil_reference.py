@@ -985,6 +985,68 @@ def extract_all_reference_data(filename):
         geom_derot.create_dataset('xpoint_after', data=M_derot.geom.xpoint.copy())
         geom_derot.create_dataset('x_after', data=M_derot.foil.x.copy())
 
+        # ========== REBUILD ISOL REFERENCE ==========
+        # Test that gamma can be rebuilt from gamref at different alpha
+        rebuild_isol = f.create_group('rebuild_isol')
+
+        # Create fresh mfoil and build gamma at alpha=0
+        M_reb = mfoil.mfoil(naca='0012', npanel=130)
+        M_reb.setoper(alpha=0.0, Re=1e6)
+        M_reb.param.verb = 0
+        mfoil.build_gamma(M_reb, 0.0)  # Build at alpha=0 to get gamref
+
+        rebuild_isol.create_dataset('gamref', data=M_reb.isol.gamref.copy())
+        rebuild_isol.create_dataset('gam_alpha0', data=M_reb.isol.gam.copy())
+
+        # Now test rebuilding at alpha=5
+        test_alpha = 5.0
+        M_reb.oper.alpha = test_alpha
+        cosa = np.cos(np.radians(test_alpha))
+        sina = np.sin(np.radians(test_alpha))
+        gam_rebuilt = M_reb.isol.gamref[:, 0] * cosa + M_reb.isol.gamref[:, 1] * sina
+
+        rebuild_isol.create_dataset('test_alpha', data=test_alpha)
+        rebuild_isol.create_dataset('gam_alpha5', data=gam_rebuilt)
+
+        # Also test at alpha=-3
+        test_alpha2 = -3.0
+        cosa2 = np.cos(np.radians(test_alpha2))
+        sina2 = np.sin(np.radians(test_alpha2))
+        gam_rebuilt2 = M_reb.isol.gamref[:, 0] * cosa2 + M_reb.isol.gamref[:, 1] * sina2
+
+        rebuild_isol.create_dataset('test_alpha2', data=test_alpha2)
+        rebuild_isol.create_dataset('gam_alpha_neg3', data=gam_rebuilt2)
+
+        # ========== INIT THERMO COMPLETE REFERENCE ==========
+        # Save all thermo parameters for comprehensive InitThermo test
+        init_thermo = f.create_group('init_thermo')
+
+        # Test case 1: Standard conditions (from M above which was set up with alpha=0, Re=1e6)
+        init_thermo.create_dataset('Vinf', data=M.param.Vinf)
+        init_thermo.create_dataset('Minf', data=M.param.Minf)
+        init_thermo.create_dataset('muinf', data=M.param.muinf)
+        init_thermo.create_dataset('mu0', data=M.param.mu0)
+        init_thermo.create_dataset('rho0', data=M.param.rho0)
+        init_thermo.create_dataset('H0', data=M.param.H0)
+        init_thermo.create_dataset('KTb', data=M.param.KTb)
+        init_thermo.create_dataset('KTl', data=M.param.KTl)
+        init_thermo.create_dataset('cps', data=M.param.cps)
+        init_thermo.create_dataset('gam', data=M.param.gam)
+        init_thermo.create_dataset('Re', data=M.oper.Re)
+        init_thermo.create_dataset('Ma', data=M.oper.Ma)
+
+        # Test case 2: Compressible flow
+        M_comp = mfoil.mfoil(naca='0012', npanel=130)
+        M_comp.setoper(alpha=0.0, Re=1e6, Ma=0.5)
+        M_comp.param.verb = 0
+        mfoil.init_thermo(M_comp)
+
+        comp_grp = init_thermo.create_group('compressible')
+        comp_grp.create_dataset('Ma', data=M_comp.oper.Ma)
+        comp_grp.create_dataset('KTb', data=M_comp.param.KTb)
+        comp_grp.create_dataset('KTl', data=M_comp.param.KTl)
+        comp_grp.create_dataset('cps', data=M_comp.param.cps)
+
     print(f"Reference data saved to {filename}")
     return M
 

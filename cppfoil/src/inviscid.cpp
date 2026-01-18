@@ -14,36 +14,51 @@ namespace cppfoil {
 
 void InitThermo(FoilState& state) {
     // Initialize thermodynamic parameters based on operating conditions
+    // Must match mfoil.py init_thermo exactly
     double Ma = state.oper.Ma;
     double gam = state.param.gam;
+    double gmi = gam - 1.0;
+    double rhoinf = state.oper.rho;
+    double Vinf = state.oper.Vinf;
 
     state.param.Minf = Ma;
-    state.param.Vinf = state.oper.Vinf;
+    state.param.Vinf = Vinf;
 
-    // Karman-Tsien compressibility correction
+    // Freestream dynamic viscosity
+    if (state.oper.Re > 0) {
+        state.param.muinf = rhoinf * Vinf * state.geom.chord / state.oper.Re;
+    }
+
+    double finf = 1.0;  // Sutherland's ratio (1 for incompressible)
+
+    // Compressibility corrections (only when Ma > 0)
     if (Ma > 0) {
-        state.param.KTb = std::sqrt(1.0 - Ma * Ma);
-        state.param.KTl = Ma * Ma / ((1.0 + state.param.KTb) * (1.0 + state.param.KTb));
-        state.param.cps = -1.0 / (0.5 * gam * Ma * Ma) *
-                          (std::pow(2.0 / (gam + 1.0), gam / (gam - 1.0)) *
-                           std::pow((gam + 1.0) / (2.0 * gam * Ma * Ma - (gam - 1.0)),
-                                    1.0 / (gam - 1.0)) - 1.0);
+        state.param.KTb = std::sqrt(1.0 - Ma * Ma);  // Karman-Tsien beta
+        state.param.KTl = Ma * Ma / ((1.0 + state.param.KTb) * (1.0 + state.param.KTb));  // KT lambda
+
+        // Stagnation enthalpy: H0 = (1 + 0.5*gmi*Ma²) * Vinf² / (gmi * Ma²)
+        state.param.H0 = (1.0 + 0.5 * gmi * Ma * Ma) * Vinf * Vinf / (gmi * Ma * Ma);
+
+        // Temperature ratio and Sutherland's law
+        double Tr = 1.0 - 0.5 * Vinf * Vinf / state.param.H0;  // T_inf / T_0
+        finf = std::pow(Tr, 1.5) * (1.0 + state.param.Tsrat) / (Tr + state.param.Tsrat);
+
+        // Sonic Cp: cps = 2/(g*Ma²) * (((1+0.5*gmi*Ma²)/(1+0.5*gmi))^(g/gmi) - 1)
+        double ratio = (1.0 + 0.5 * gmi * Ma * Ma) / (1.0 + 0.5 * gmi);
+        state.param.cps = 2.0 / (gam * Ma * Ma) * (std::pow(ratio, gam / gmi) - 1.0);
     } else {
+        // Incompressible case
         state.param.KTb = 1.0;
         state.param.KTl = 0.0;
-        state.param.cps = -1e10;  // Large negative (no sonic point)
+        // H0 stays at default (0) for incompressible flow
+        // cps stays at default for incompressible flow
     }
 
-    // Stagnation quantities
-    state.param.rho0 = state.oper.rho;
-    state.param.H0 = state.oper.Vinf * state.oper.Vinf / 2.0;
+    // Stagnation viscosity (using Sutherland's law)
+    state.param.mu0 = state.param.muinf / finf;
 
-    // Viscosity (simplified Sutherland's law)
-    if (state.oper.Re > 0) {
-        state.param.muinf = state.oper.rho * state.oper.Vinf *
-                            state.geom.chord / state.oper.Re;
-        state.param.mu0 = state.param.muinf;  // Simplified
-    }
+    // Stagnation density: rho0 = rhoinf * (1 + 0.5*gmi*Ma²)^(1/gmi)
+    state.param.rho0 = rhoinf * std::pow(1.0 + 0.5 * gmi * Ma * Ma, 1.0 / gmi);
 }
 
 void ClearSolution(FoilState& state) {

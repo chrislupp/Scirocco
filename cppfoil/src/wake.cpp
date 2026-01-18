@@ -7,7 +7,9 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 #include "cppfoil/core/coupled_solver.h"
+#include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/util/math_utils.h"
 
@@ -290,23 +292,55 @@ void IdentifySurfaces(FoilState& state) {
 }
 
 void SetWakeGap(FoilState& state) {
+    // Sets height (delta*) of dead air in wake
+    // Uses cubic function to extrapolate the TE gap into the wake
+    // See Drela, IBL for Blunt Trailing Edges, 1989, 89-2166-CP
+
     int Nw = state.wake.N;
     if (Nw <= 0) return;
 
-    // TE gap
     int N = state.foil.N;
-    double hTE = (state.foil.x.col(N - 1) - state.foil.x.col(0)).norm();
+
+    // Get TE info including dtdx
+    TEInfo te = GetTEInfo(state.foil.x);
+    double hTE = te.hTE;
     state.geom.hTE = hTE;  // Store in geometry
 
-    // Exponential decay of gap along wake
+    // Length scale factor
+    double flen = 2.5;
+
+    // Clip TE thickness slope
+    double dtdx = std::min(std::max(te.dtdx, -3.0 / flen), 3.0 / flen);
+
+    // Wake length scale
+    double Lw = flen * hTE;
+
+    // Cubic decay of wake gap (matches mfoil exactly)
     state.vsol.wgap.resize(Nw);
-    double decay_rate = 5.0;  // Controls how fast gap closes
+    double xi0 = state.isol.xi(N);  // xi at first wake point
+
+    // Debug output
+    std::cout << "SetWakeGap: hTE=" << hTE << " Lw=" << Lw << " dtdx=" << dtdx << " xi0=" << xi0 << std::endl;
 
     for (int i = 0; i < Nw; ++i) {
-        double s = state.wake.s(i);
-        double smax = state.wake.s(Nw - 1);
-        double xi = s / std::max(smax, 1e-10);
-        state.vsol.wgap(i) = hTE * std::exp(-decay_rate * xi);
+        double xi_wake = state.isol.xi(N + i);
+        double xib = (xi_wake - xi0) / std::max(Lw, 1e-10);
+
+        if (i < 3) {
+            std::cout << "  wgap calc i=" << i << " xi_wake=" << xi_wake << " xib=" << xib;
+        }
+
+        if (xib <= 1.0) {
+            // Cubic formula from Drela
+            state.vsol.wgap(i) = hTE * (1.0 + (2.0 + flen * dtdx) * xib) *
+                                  (1.0 - xib) * (1.0 - xib);
+        } else {
+            state.vsol.wgap(i) = 0.0;
+        }
+
+        if (i < 3) {
+            std::cout << " wgap=" << state.vsol.wgap(i) << std::endl;
+        }
     }
 }
 

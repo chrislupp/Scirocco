@@ -5,7 +5,6 @@
 #include "cppfoil/core/boundary_layer.h"
 
 #include <cmath>
-#include <iostream>
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -123,10 +122,6 @@ void InitBoundaryLayer(FoilState& state) {
                 K = ue(0) / std::max(xi(0), 1e-12);
                 hitstag = false;
             }
-            std::cout << "  BL init si=" << si << " hitstag=" << hitstag
-                      << " xi(0)=" << xi(0) << " xi(Nsurf-1)=" << xi(Nsurf-1)
-                      << " K=" << K << std::endl;
-
             // Thwaites initialization
             auto [th, ds] = ThwaitesInit(K, nu);
             double xst = 1e-6;  // Small but nonzero
@@ -184,6 +179,9 @@ void InitBoundaryLayer(FoilState& state) {
             // Wake: initialize from TE states
             i0 = 0;  // Reset for wake
             auto wres = WakeSys(state, param);
+            // WakeSys modifies param.wake to false for cttr calculation;
+            // reset it to true for wake marching (matches mfoil behavior)
+            param.wake = true;
             Vector4d Uw = state.glob.U.col(Is[0]);
             Uw.head<3>() -= wres.R;
             Uw(3) = ue(0);
@@ -197,21 +195,15 @@ void InitBoundaryLayer(FoilState& state) {
         bool tran = false;  // Transition flag
         int i = i0 + 1;
 
-        if (si == 1) {
-            std::cout << "  BL march si=" << si << " starting at i=" << i << " (i0=" << i0 << ")" << std::endl;
-        }
-
         while (i < Nsurf) {
             // Initialize with previous state and new ue
             U.col(i) = U.col(i - 1);
             U(3, i) = ue(i);
 
-            // Set ctau at transition and switch to turbulent mode
+            // Set ctau at transition (but don't set param.turb yet - matches mfoil)
             if (tran) {
                 auto [ct, ct_U] = GetCttr(U.col(i), param);
-                std::cout << "  cttr from GetCttr: " << ct << " (Hk will determine this)" << std::endl;
                 U(2, i) = ct;
-                param.turb = true;  // Set turb BEFORE Newton so we use turbulent residuals
             }
 
             state.vsol.turb[Is[i]] = (tran || param.turb);
@@ -231,20 +223,8 @@ void InitBoundaryLayer(FoilState& state) {
                 ResidualLin res;
                 if (tran) {
                     res = ResidualTransition(state, param, xpair, Upair, Auxpair);
-                    if (iNewton == 0) {
-                        std::cout << "  Tran Newton start: ctau=" << U(2,i) << " R=("
-                                  << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")"
-                                  << " |R|=" << res.value.norm() << std::endl;
-                    }
                 } else {
                     res = ResidualStation(param, xpair, Upair, Auxpair);
-                }
-
-                // Debug for first few stations
-                if (si == 1 && i <= 3 && iNewton == 0) {
-                    std::cout << "  Init si=" << si << " i=" << i << " |R|=" << res.value.norm()
-                              << " R=(" << res.value(0) << "," << res.value(1) << "," << res.value(2) << ")"
-                              << " th=" << U(0,i) << " ds=" << U(1,i) << std::endl;
                 }
 
                 if (res.value.norm() < 1e-10) {
@@ -258,10 +238,6 @@ void InitBoundaryLayer(FoilState& state) {
                     Matrix3d A = res.lin_U.block<3, 3>(0, 4);
                     dU.head<3>() = A.partialPivLu().solve(-res.value);
                     dU(3) = 0.0;
-                    if (tran && iNewton < 5) {
-                        std::cout << "  Tran Newton[" << iNewton << "] dU=(" << dU(0) << "," << dU(1) << "," << dU(2) << ")"
-                                  << " A(2,2)=" << A(2,2) << " ctau_before=" << U(2,i) << std::endl;
-                    }
                 } else {
                     // Inverse mode: prescribe Hk, solve for th, ds, sa, ue
                     auto [Hk, Hk_U] = GetHk(U.col(i), param);
@@ -285,6 +261,7 @@ void InitBoundaryLayer(FoilState& state) {
                 else if (direct) dm = std::max(dm, std::abs(dU(2) / 10.0));
 
                 double omega = (dm > 0.3) ? 0.3 / dm : 1.0;
+
                 dU *= omega;
 
                 // Trial update
@@ -330,10 +307,6 @@ void InitBoundaryLayer(FoilState& state) {
                 } else {
                     U.col(i) = Ui;
                 }
-                if (tran && iNewton < 5) {
-                    std::cout << "  Tran Newton[" << iNewton << "] ctau_after=" << U(2,i)
-                              << " omega=" << omega << " direct=" << direct << std::endl;
-                }
             }
 
             // If not converged, extrapolate or use fallback
@@ -345,37 +318,24 @@ void InitBoundaryLayer(FoilState& state) {
                 if (tran) {
                     auto [ct, ct_U] = GetCttr(U.col(i), param);
                     U(2, i) = ct;
-                } else if (si < 2 && xi(i) > 1e-10) {
-                    // Check if we're right after stagnation (tiny xi_prev)
-                    if (xi(i - 1) < 1e-8 * xi(Nsurf - 1)) {
-                        // Use Thwaites initialization at this station
-                        double K_local = ue(i) / std::max(xi(i), 1e-12);
-                        auto [th_new, ds_new] = ThwaitesInit(K_local, nu);
-                        U(0, i) = th_new;
-                        U(1, i) = ds_new;
-                    } else {
-                        // Extrapolate theta and delta* along surface
-                        double xratio = std::sqrt(xi(i) / xi(i - 1));
-                        U(0, i) = U(0, i - 1) * xratio;
-                        U(1, i) = U(1, i - 1) * xratio;
-                    }
                 }
+                // Extrapolate theta and delta* (matches mfoil: si<3 is always true)
+                double xratio = std::sqrt(xi(i) / xi(i - 1));
+                U(0, i) = U(0, i - 1) * xratio;
+                U(1, i) = U(1, i - 1) * xratio;
             }
 
             // Check for transition (laminar only)
             if (!param.turb && !tran && U(2, i) > param.ncrit) {
                 tran = true;
-                std::cout << "  Transition detected: si=" << si << " i=" << i
-                          << " Is[i]=" << Is[i] << " n=" << U(2,i) << std::endl;
                 continue;  // Redo station with transition
             }
 
             if (tran) {
-                // Store transition location (param.turb already set before Newton)
+                // Store transition location and set turbulent flag (matches mfoil)
                 state.vsol.Xt(si, 0) = 0.5 * (xi(i - 1) + xi(i));
+                param.turb = true;
                 tran = false;
-                std::cout << "  Transition applied: si=" << si << " i=" << i
-                          << " ctau=" << U(2,i) << std::endl;
             }
 
             ++i;

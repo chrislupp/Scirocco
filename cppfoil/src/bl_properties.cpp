@@ -334,6 +334,39 @@ static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
     return {cDi, cDi_U};
 }
 
+// Helper: laminar wake dissipation (matches mfoil get_cDi_lamwake)
+static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
+    // Force laminar mode for sub-function calls
+    Param param = paramin;
+    param.turb = false;
+
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+
+    double HsRet = Hs * Ret;
+    Vector4d HsRet_U = Hs_U * Ret + Hs * Ret_U;
+
+    // Limit Hk
+    if (Hk < 1.05) {
+        Hk = 1.05;
+        Hk_U.setZero();
+    }
+
+    // num = 2*1.1*(1-1/Hk)^2*(1/Hk)
+    double Hk_inv = 1.0 / Hk;
+    double one_minus_Hk_inv = 1.0 - Hk_inv;
+    double num = 2.0 * 1.1 * one_minus_Hk_inv * one_minus_Hk_inv * Hk_inv;
+    // d(num)/dHk = 2*1.1 * (2*(1-1/Hk)*(1/Hk^2)*(1/Hk) + (1-1/Hk)^2*(-1/Hk^2))
+    double num_Hk = 2.0 * 1.1 * (2.0 * one_minus_Hk_inv * (Hk_inv * Hk_inv) * Hk_inv +
+                                  one_minus_Hk_inv * one_minus_Hk_inv * (-Hk_inv * Hk_inv));
+
+    double cDi = num / HsRet;
+    Vector4d cDi_U = num_Hk * Hk_U / HsRet - num / (HsRet * HsRet) * HsRet_U;
+
+    return {cDi, cDi_U};
+}
+
 ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
     // Dissipation function cDi = 2*cD/H* (matches mfoil get_cDi)
     if (param.turb) {
@@ -358,7 +391,8 @@ ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
         cDi_U += cDi_lamstress_U;
 
         // Maximum check against laminar value
-        auto [cDil, cDil_U] = GetCDi_Lam(U, param);
+        // (use laminar wake dissipation in wake, normal laminar otherwise)
+        auto [cDil, cDil_U] = param.wake ? GetCDi_LamWake(U, param) : GetCDi_Lam(U, param);
         if (cDil > cDi) {
             cDi = cDil;
             cDi_U = cDil_U;
