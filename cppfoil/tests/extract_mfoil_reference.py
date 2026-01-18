@@ -1017,6 +1017,193 @@ def extract_all_reference_data(filename):
         rebuild_isol.create_dataset('test_alpha2', data=test_alpha2)
         rebuild_isol.create_dataset('gam_alpha_neg3', data=gam_rebuilt2)
 
+        # ========== SOLVE INVISCID DEDICATED TEST ==========
+        # Create fresh mfoil for inviscid solve reference data
+        solve_inv = f.create_group('solve_inviscid')
+        M_sinv = mfoil.mfoil(naca='0012', npanel=130)
+        M_sinv.setoper(alpha=2.0, Re=0)  # Re=0 for inviscid
+        M_sinv.param.verb = 0
+        mfoil.solve_inviscid(M_sinv)
+
+        solve_inv.create_dataset('gamma', data=M_sinv.isol.gam)
+        solve_inv.create_dataset('gamref', data=M_sinv.isol.gamref)
+        solve_inv.create_dataset('sgnue', data=M_sinv.isol.sgnue)
+        solve_inv.create_dataset('alpha', data=M_sinv.oper.alpha)
+        # AIC matrix is built internally during solve - we can verify by rebuilding gamma
+        cosa = np.cos(np.radians(2.0))
+        sina = np.sin(np.radians(2.0))
+        gam_check = M_sinv.isol.gamref[:, 0] * cosa + M_sinv.isol.gamref[:, 1] * sina
+        solve_inv.create_dataset('gam_from_gamref', data=gam_check)
+
+        # ========== GET CFXT DEDICATED TEST ==========
+        # Test GetCfxt with explicit laminar and turbulent states
+        cfxt_grp = f.create_group('get_cfxt')
+
+        # Laminar test cases
+        lam_states = [
+            {'th': 0.001, 'ds': 0.003, 'sa': 0.0, 'ue': 1.0, 'x': 0.3, 'name': 'laminar_1'},
+            {'th': 0.0015, 'ds': 0.004, 'sa': 0.5, 'ue': 0.9, 'x': 0.5, 'name': 'laminar_2'},
+        ]
+        for state in lam_states:
+            U = np.array([state['th'], state['ds'], state['sa'], state['ue']])
+            param = mfoil.build_param(M, 0)
+            param.turb = False
+            param.wake = False
+            cfxt, cfxt_U, cfxt_x = mfoil.get_cfxt(U, state['x'], param)
+            grp = cfxt_grp.create_group(state['name'])
+            grp.create_dataset('U', data=U)
+            grp.create_dataset('x', data=state['x'])
+            grp.create_dataset('cfxt', data=cfxt)
+            grp.create_dataset('cfxt_U', data=cfxt_U)
+            grp.create_dataset('cfxt_x', data=cfxt_x)
+            grp.attrs['turb'] = False
+
+        # Turbulent test cases
+        turb_states = [
+            {'th': 0.005, 'ds': 0.015, 'sa': 0.1, 'ue': 0.5, 'x': 0.5, 'name': 'turb_1'},
+            {'th': 0.01, 'ds': 0.025, 'sa': 0.15, 'ue': 0.3, 'x': 0.7, 'name': 'turb_2'},
+        ]
+        for state in turb_states:
+            U = np.array([state['th'], state['ds'], state['sa'], state['ue']])
+            param = mfoil.build_param(M, 0)
+            param.turb = True
+            param.wake = False
+            cfxt, cfxt_U, cfxt_x = mfoil.get_cfxt(U, state['x'], param)
+            grp = cfxt_grp.create_group(state['name'])
+            grp.create_dataset('U', data=U)
+            grp.create_dataset('x', data=state['x'])
+            grp.create_dataset('cfxt', data=cfxt)
+            grp.create_dataset('cfxt_U', data=cfxt_U)
+            grp.create_dataset('cfxt_x', data=cfxt_x)
+            grp.attrs['turb'] = True
+
+        # ========== UPWIND DEDICATED TEST ==========
+        upwind_grp = f.create_group('upwind')
+        # Test Upwind function with explicit states
+        upwind_tests = [
+            {'U1': [0.001, 0.003, 0.0, 1.0], 'U2': [0.0012, 0.0035, 0.0, 0.95], 'turb': False, 'name': 'laminar'},
+            {'U1': [0.005, 0.015, 0.1, 0.5], 'U2': [0.006, 0.018, 0.12, 0.45], 'turb': True, 'name': 'turbulent'},
+        ]
+        for test in upwind_tests:
+            U1 = np.array(test['U1'])
+            U2 = np.array(test['U2'])
+            param = mfoil.build_param(M, 0)
+            param.turb = test['turb']
+            param.wake = False
+            upw, upw_U = mfoil.get_upw(U1, U2, param)
+            grp = upwind_grp.create_group(test['name'])
+            grp.create_dataset('U1', data=U1)
+            grp.create_dataset('U2', data=U2)
+            grp.create_dataset('upw', data=upw)
+            grp.create_dataset('upw_U', data=upw_U)
+            grp.attrs['turb'] = test['turb']
+
+        # ========== EXTEND XI TO WAKE DEDICATED TEST ==========
+        xi_wake_grp = f.create_group('extend_xi_to_wake')
+        # Create fresh mfoil for this test
+        M_xi = mfoil.mfoil(naca='0012', npanel=130)
+        M_xi.setoper(alpha=0.0, Re=1e6)
+        M_xi.param.verb = 0
+        mfoil.init_thermo(M_xi)
+        mfoil.build_gamma(M_xi, M_xi.oper.alpha)
+        mfoil.build_wake(M_xi)
+        mfoil.stagpoint_find(M_xi)
+        # Save state BEFORE extending xi
+        xi_before = M_xi.foil.s.copy()  # s values before extension
+        N_before = M_xi.foil.N
+        # Extend xi
+        # In mfoil, xi is extended implicitly - we need to call identify_surfaces which does it
+        mfoil.identify_surfaces(M_xi)
+        xi_wake_grp.create_dataset('xi', data=M_xi.isol.xi)
+        xi_wake_grp.create_dataset('N_foil', data=M_xi.foil.N)
+        xi_wake_grp.create_dataset('N_wake', data=M_xi.wake.N)
+        xi_wake_grp.create_dataset('foil_s', data=M_xi.foil.s)
+        xi_wake_grp.create_dataset('wake_s', data=M_xi.wake.s)
+        xi_wake_grp.create_dataset('sstag', data=M_xi.isol.sstag)
+
+        # ========== IDENTIFY SURFACES DEDICATED TEST ==========
+        surfaces_grp = f.create_group('identify_surfaces')
+        surfaces_grp.create_dataset('Is_lower', data=np.array(list(M_xi.vsol.Is[0])))
+        surfaces_grp.create_dataset('Is_upper', data=np.array(list(M_xi.vsol.Is[1])))
+        surfaces_grp.create_dataset('Is_wake', data=np.array(list(M_xi.vsol.Is[2])))
+        surfaces_grp.create_dataset('Istag', data=np.array(M_xi.isol.Istag))
+
+        # ========== SET WAKE GAP DEDICATED TEST ==========
+        wgap_grp = f.create_group('set_wake_gap')
+        mfoil.set_wake_gap(M_xi)
+        wgap_grp.create_dataset('wgap', data=M_xi.vsol.wgap)
+        wgap_grp.create_dataset('Is_wake', data=np.array(list(M_xi.vsol.Is[2])))
+
+        # ========== STORE TRANSITION DEDICATED TEST ==========
+        store_tran = f.create_group('store_transition')
+        # Initialize BL to get transition data
+        mfoil.calc_ue_m(M_xi)
+        M_xi.oper.viscous = True
+        M_xi.oper.initbl = True
+        mfoil.init_boundary_layer(M_xi)
+        # Get transition location after BL initialization
+        store_tran.create_dataset('Xt', data=M_xi.vsol.Xt)
+        store_tran.create_dataset('turb', data=np.array(M_xi.vsol.turb, dtype=bool))
+        store_tran.create_dataset('Is_lower', data=np.array(list(M_xi.vsol.Is[0])))
+        store_tran.create_dataset('Is_upper', data=np.array(list(M_xi.vsol.Is[1])))
+        store_tran.create_dataset('ncrit', data=M_xi.param.ncrit)
+
+        # ========== NACA POINTS DEDICATED TEST ==========
+        naca_grp = f.create_group('naca_points')
+        # Test various NACA airfoils
+        naca_codes = ['0012', '2412', '4415', '0006']
+        for code in naca_codes:
+            M_naca = mfoil.mfoil(naca=code, npanel=100)
+            grp = naca_grp.create_group(code)
+            grp.create_dataset('xpoint', data=M_naca.geom.xpoint)
+            grp.create_dataset('npoint', data=M_naca.geom.npoint)
+
+        # ========== SET COORDS DEDICATED TEST ==========
+        setcoords_grp = f.create_group('set_coords')
+        # Test SetCoords by creating a foil and checking the result
+        M_coords = mfoil.mfoil(naca='0012', npanel=130)
+        setcoords_grp.create_dataset('x', data=M_coords.foil.x)
+        setcoords_grp.create_dataset('s', data=M_coords.foil.s)
+        setcoords_grp.create_dataset('t', data=M_coords.foil.t)
+        setcoords_grp.create_dataset('N', data=M_coords.foil.N)
+        setcoords_grp.create_dataset('xpoint', data=M_coords.geom.xpoint)
+
+        # ========== SPLINE 1D CREATE DEDICATED TEST ==========
+        spline1d_grp = f.create_group('spline1d')
+        # Create 1D spline from arc length vs x coordinate
+        from scipy.interpolate import CubicSpline
+        s_vals = M_coords.foil.s
+        x_vals = M_coords.foil.x[0, :]  # x coordinates
+        y_vals = M_coords.foil.x[1, :]  # y coordinates
+
+        # Create spline
+        spline_x = CubicSpline(s_vals, x_vals)
+        spline_y = CubicSpline(s_vals, y_vals)
+
+        # Save spline data
+        spline1d_grp.create_dataset('s', data=s_vals)
+        spline1d_grp.create_dataset('x_vals', data=x_vals)
+        spline1d_grp.create_dataset('y_vals', data=y_vals)
+        spline1d_grp.create_dataset('x_coeffs', data=spline_x.c)
+        spline1d_grp.create_dataset('y_coeffs', data=spline_y.c)
+
+        # Evaluate at test points
+        s_test = np.linspace(0, s_vals[-1], 50)
+        x_eval = spline_x(s_test)
+        y_eval = spline_y(s_test)
+        dx_eval = spline_x(s_test, 1)  # First derivative
+        dy_eval = spline_y(s_test, 1)
+        d2x_eval = spline_x(s_test, 2)  # Second derivative
+        d2y_eval = spline_y(s_test, 2)
+
+        spline1d_grp.create_dataset('s_test', data=s_test)
+        spline1d_grp.create_dataset('x_eval', data=x_eval)
+        spline1d_grp.create_dataset('y_eval', data=y_eval)
+        spline1d_grp.create_dataset('dx_eval', data=dx_eval)
+        spline1d_grp.create_dataset('dy_eval', data=dy_eval)
+        spline1d_grp.create_dataset('d2x_eval', data=d2x_eval)
+        spline1d_grp.create_dataset('d2y_eval', data=d2y_eval)
+
         # ========== INIT THERMO COMPLETE REFERENCE ==========
         # Save all thermo parameters for comprehensive InitThermo test
         init_thermo = f.create_group('init_thermo')

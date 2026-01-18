@@ -34,6 +34,7 @@ using namespace Eigen;
 constexpr double TOL_TIGHT = 1e-10;
 constexpr double TOL_NORMAL = 1e-6;
 constexpr double TOL_LOOSE = 1e-4;
+constexpr double TOL_BL = 1e-2;  // For BL marching with accumulated numerical differences
 
 // Helper to read scalar from HDF5
 template<typename T>
@@ -168,15 +169,15 @@ TEST_F(MfoilReferenceTest, GeometryNACA0012) {
         max_x_err = std::max(max_x_err, std::abs(state.foil.x(0, i) - x_ref(0, i)));
         max_y_err = std::max(max_y_err, std::abs(state.foil.x(1, i) - x_ref(1, i)));
     }
-    EXPECT_LT(max_x_err, TOL_NORMAL) << "X coordinate mismatch";
-    EXPECT_LT(max_y_err, TOL_NORMAL) << "Y coordinate mismatch";
+    EXPECT_LT(max_x_err, TOL_TIGHT) << "X coordinate mismatch";
+    EXPECT_LT(max_y_err, TOL_TIGHT) << "Y coordinate mismatch";
 
     // Check arc length
     double max_s_err = 0.0;
     for (int i = 0; i < N_ref; ++i) {
         max_s_err = std::max(max_s_err, std::abs(state.foil.s(i) - s_ref(i)));
     }
-    EXPECT_LT(max_s_err, TOL_NORMAL) << "Arc length mismatch";
+    EXPECT_LT(max_s_err, TOL_TIGHT) << "Arc length mismatch";
 }
 
 // ============================================================================
@@ -212,7 +213,7 @@ TEST_F(MfoilReferenceTest, PanelLinSourceStream) {
         double err_a = std::abs(a - a_ref);
         double err_b = std::abs(b - b_ref);
 
-        if (err_a < TOL_NORMAL && err_b < TOL_NORMAL) {
+        if (err_a < TOL_TIGHT && err_b < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -262,7 +263,7 @@ TEST_F(MfoilReferenceTest, PanelLinSourceVelocity) {
 
         double max_err = std::max({err_ax, err_az, err_bx, err_bz});
 
-        if (max_err < TOL_NORMAL) {
+        if (max_err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -293,7 +294,7 @@ TEST_F(MfoilReferenceTest, BuildGamma) {
     BuildGamma(state, 0.0);
 
     double max_err = (state.isol.gam - gam_ref).cwiseAbs().maxCoeff();
-    EXPECT_LT(max_err, TOL_NORMAL) << "Gamma mismatch, max error = " << max_err;
+    EXPECT_LT(max_err, TOL_TIGHT) << "Gamma mismatch, max error = " << max_err;
     std::cout << "BuildGamma: max error = " << max_err << std::endl;
 }
 
@@ -320,7 +321,7 @@ TEST_F(MfoilReferenceTest, StagnationPoint) {
 
     EXPECT_EQ(state.isol.Istag[0], Istag_ref[0]) << "Istag[0] mismatch";
     EXPECT_EQ(state.isol.Istag[1], Istag_ref[1]) << "Istag[1] mismatch";
-    EXPECT_NEAR(state.isol.sstag, sstag_ref, TOL_NORMAL) << "sstag mismatch";
+    EXPECT_NEAR(state.isol.sstag, sstag_ref, TOL_TIGHT) << "sstag mismatch";
     std::cout << "StagnationPoint: Istag=[" << state.isol.Istag[0] << "," << state.isol.Istag[1]
               << "], sstag=" << state.isol.sstag << std::endl;
 }
@@ -351,7 +352,7 @@ TEST_F(MfoilReferenceTest, BuildWake) {
             max_x_err = std::max(max_x_err, std::abs(state.wake.x(0, i) - x_ref(0, i)));
             max_x_err = std::max(max_x_err, std::abs(state.wake.x(1, i) - x_ref(1, i)));
         }
-        EXPECT_LT(max_x_err, TOL_LOOSE) << "Wake coordinates mismatch";
+        EXPECT_LT(max_x_err, TOL_TIGHT) << "Wake coordinates mismatch";
         std::cout << "BuildWake: Nw=" << state.wake.N << ", max coordinate error=" << max_x_err << std::endl;
     }
 }
@@ -385,7 +386,7 @@ TEST_F(MfoilReferenceTest, XiAndSurfaces) {
     for (int i = 0; i < static_cast<int>(xi_ref.size()) && i < state.isol.xi.size(); ++i) {
         max_xi_err = std::max(max_xi_err, std::abs(state.isol.xi(i) - xi_ref(i)));
     }
-    EXPECT_LT(max_xi_err, TOL_NORMAL) << "Xi mismatch";
+    EXPECT_LT(max_xi_err, TOL_TIGHT) << "Xi mismatch";
     std::cout << "XiAndSurfaces: max xi error=" << max_xi_err << std::endl;
 }
 
@@ -439,7 +440,7 @@ TEST_F(MfoilReferenceTest, CalcUeM) {
               << " at (" << max_i << "," << max_j << ")"
               << " ours=" << state.vsol.ue_sigma(max_i, max_j)
               << " ref=" << ue_sigma_ref(max_i, max_j) << std::endl;
-    EXPECT_LT(max_ue_sigma_err, TOL_LOOSE) << "ue_sigma (B matrix) mismatch";
+    EXPECT_LT(max_ue_sigma_err, TOL_TIGHT) << "ue_sigma (B matrix) mismatch";
 
     // Check ue_m matrix - use relative error for meaningful comparison
     // The ue_m matrix contains d(ue)/d(mass) sensitivities which can have large magnitudes
@@ -520,70 +521,70 @@ TEST_F(MfoilReferenceTest, BLProperties_Laminar) {
         double Hk_ref = readScalar<double>(getFile(), "bl_properties/laminar1/Hk");
         VectorXd Hk_U_ref = readVector(getFile(), "bl_properties/laminar1/Hk_U");
         auto [Hk, Hk_U] = GetHk(U4, param);
-        EXPECT_NEAR(Hk, Hk_ref, TOL_NORMAL) << "GetHk value mismatch";
+        EXPECT_NEAR(Hk, Hk_ref, TOL_TIGHT) << "GetHk value mismatch";
     }
 
     // Test GetRet
     {
         double Ret_ref = readScalar<double>(getFile(), "bl_properties/laminar1/Ret");
         auto [Ret, Ret_U] = GetRet(U4, param);
-        EXPECT_NEAR(Ret, Ret_ref, TOL_NORMAL) << "GetRet value mismatch";
+        EXPECT_NEAR(Ret, Ret_ref, TOL_TIGHT) << "GetRet value mismatch";
     }
 
     // Test GetCf
     {
         double cf_ref = readScalar<double>(getFile(), "bl_properties/laminar1/cf");
         auto [cf, cf_U] = GetCf(U4, param);
-        EXPECT_NEAR(cf, cf_ref, TOL_NORMAL) << "GetCf value mismatch";
+        EXPECT_NEAR(cf, cf_ref, TOL_TIGHT) << "GetCf value mismatch";
     }
 
     // Test GetHs
     {
         double Hs_ref = readScalar<double>(getFile(), "bl_properties/laminar1/Hs");
         auto [Hs, Hs_U] = GetHs(U4, param);
-        EXPECT_NEAR(Hs, Hs_ref, TOL_NORMAL) << "GetHs value mismatch";
+        EXPECT_NEAR(Hs, Hs_ref, TOL_TIGHT) << "GetHs value mismatch";
     }
 
     // Test GetHss
     {
         double Hss_ref = readScalar<double>(getFile(), "bl_properties/laminar1/Hss");
         auto [Hss, Hss_U] = GetHss(U4, param);
-        EXPECT_NEAR(Hss, Hss_ref, TOL_NORMAL) << "GetHss value mismatch";
+        EXPECT_NEAR(Hss, Hss_ref, TOL_TIGHT) << "GetHss value mismatch";
     }
 
     // Test GetDe
     {
         double de_ref = readScalar<double>(getFile(), "bl_properties/laminar1/de");
         auto [de, de_U] = GetDe(U4, param);
-        EXPECT_NEAR(de, de_ref, TOL_NORMAL) << "GetDe value mismatch";
+        EXPECT_NEAR(de, de_ref, TOL_TIGHT) << "GetDe value mismatch";
     }
 
     // Test GetHw
     {
         double Hw_ref = readScalar<double>(getFile(), "bl_properties/laminar1/Hw");
         auto [Hw, Hw_U] = GetHw(U4, 0.0);
-        EXPECT_NEAR(Hw, Hw_ref, TOL_NORMAL) << "GetHw value mismatch";
+        EXPECT_NEAR(Hw, Hw_ref, TOL_TIGHT) << "GetHw value mismatch";
     }
 
     // Test GetDamp (laminar only)
     {
         double damp_ref = readScalar<double>(getFile(), "bl_properties/laminar1/damp");
         auto [damp, damp_U] = GetDamp(U4, param);
-        EXPECT_NEAR(damp, damp_ref, TOL_NORMAL) << "GetDamp value mismatch";
+        EXPECT_NEAR(damp, damp_ref, TOL_TIGHT) << "GetDamp value mismatch";
     }
 
     // Test GetCDi
     {
         double cDi_ref = readScalar<double>(getFile(), "bl_properties/laminar1/cDi");
         auto [cDi, cDi_U] = GetCDi(U4, param);
-        EXPECT_NEAR(cDi, cDi_ref, TOL_NORMAL) << "GetCDi value mismatch";
+        EXPECT_NEAR(cDi, cDi_ref, TOL_TIGHT) << "GetCDi value mismatch";
     }
 
     // Test GetCDixt
     {
         double cDixt_ref = readScalar<double>(getFile(), "bl_properties/laminar1/cDixt");
         auto [cDixt, cDixt_U, cDixt_x] = GetCDixt(U4, 0.5, param);
-        EXPECT_NEAR(cDixt, cDixt_ref, TOL_NORMAL) << "GetCDixt value mismatch";
+        EXPECT_NEAR(cDixt, cDixt_ref, TOL_TIGHT) << "GetCDixt value mismatch";
     }
 
     std::cout << "BLProperties_Laminar: All property tests passed" << std::endl;
@@ -613,35 +614,35 @@ TEST_F(MfoilReferenceTest, BLProperties_Turbulent) {
     {
         double Us_ref = readScalar<double>(getFile(), "bl_properties/turb1/Us");
         auto [Us, Us_U] = GetUs(U4, param);
-        EXPECT_NEAR(Us, Us_ref, TOL_NORMAL) << "GetUs value mismatch";
+        EXPECT_NEAR(Us, Us_ref, TOL_TIGHT) << "GetUs value mismatch";
     }
 
     // Test GetCteq
     {
         double cteq_ref = readScalar<double>(getFile(), "bl_properties/turb1/cteq");
         auto [cteq, cteq_U] = GetCteq(U4, param);
-        EXPECT_NEAR(cteq, cteq_ref, TOL_NORMAL) << "GetCteq value mismatch";
+        EXPECT_NEAR(cteq, cteq_ref, TOL_TIGHT) << "GetCteq value mismatch";
     }
 
     // Test GetCttr
     {
         double cttr_ref = readScalar<double>(getFile(), "bl_properties/turb1/cttr");
         auto [cttr, cttr_U] = GetCttr(U4, param);
-        EXPECT_NEAR(cttr, cttr_ref, TOL_NORMAL) << "GetCttr value mismatch";
+        EXPECT_NEAR(cttr, cttr_ref, TOL_TIGHT) << "GetCttr value mismatch";
     }
 
     // Test GetCDi (turbulent)
     {
         double cDi_ref = readScalar<double>(getFile(), "bl_properties/turb1/cDi");
         auto [cDi, cDi_U] = GetCDi(U4, param);
-        EXPECT_NEAR(cDi, cDi_ref, TOL_NORMAL) << "GetCDi value mismatch";
+        EXPECT_NEAR(cDi, cDi_ref, TOL_TIGHT) << "GetCDi value mismatch";
     }
 
     // Test GetCDixt (turbulent)
     {
         double cDixt_ref = readScalar<double>(getFile(), "bl_properties/turb1/cDixt");
         auto [cDixt, cDixt_U, cDixt_x] = GetCDixt(U4, 0.5, param);
-        EXPECT_NEAR(cDixt, cDixt_ref, TOL_NORMAL) << "GetCDixt value mismatch";
+        EXPECT_NEAR(cDixt, cDixt_ref, TOL_TIGHT) << "GetCDixt value mismatch";
     }
 
     std::cout << "BLProperties_Turbulent: All property tests passed" << std::endl;
@@ -696,7 +697,7 @@ TEST_F(MfoilReferenceTest, ResidualStation) {
         double err = (R - R_ref.head<3>()).norm();
         double ref_norm = R_ref.head<3>().norm();
 
-        if (err < TOL_LOOSE * std::max(1.0, ref_norm)) {
+        if (err < TOL_TIGHT * std::max(1.0, ref_norm)) {
             passed++;
         } else {
             failed++;
@@ -852,8 +853,8 @@ TEST_F(MfoilReferenceTest, ThwaitesInit) {
         double err_th = std::abs(theta - theta_ref);
         double err_ds = std::abs(ds - ds_ref);
 
-        if (err_th < TOL_NORMAL * std::max(1.0, theta_ref) &&
-            err_ds < TOL_NORMAL * std::max(1.0, ds_ref)) {
+        if (err_th < TOL_TIGHT * std::max(1.0, theta_ref) &&
+            err_ds < TOL_TIGHT * std::max(1.0, ds_ref)) {
             passed++;
         } else {
             failed++;
@@ -888,8 +889,8 @@ TEST_F(MfoilReferenceTest, StagnationState) {
     double err_Ust = (result.Ust - Ust_ref.head<4>()).norm();
     double err_xst = std::abs(result.xst - xst_ref);
 
-    EXPECT_LT(err_Ust, TOL_NORMAL) << "Ust mismatch";
-    EXPECT_LT(err_xst, TOL_NORMAL) << "xst mismatch";
+    EXPECT_LT(err_Ust, TOL_TIGHT) << "Ust mismatch";
+    EXPECT_LT(err_xst, TOL_TIGHT) << "xst mismatch";
 
     std::cout << "StagnationState: |Ust err|=" << err_Ust << ", |xst err|=" << err_xst << std::endl;
 }
@@ -932,7 +933,7 @@ TEST_F(MfoilReferenceTest, WakeSys) {
 
     double err_R = (result.R - R_ref.head<3>()).norm();
 
-    EXPECT_LT(err_R, TOL_LOOSE) << "WakeSys residual mismatch";
+    EXPECT_LT(err_R, TOL_TIGHT) << "WakeSys residual mismatch";
     EXPECT_EQ(result.J[0], J_ref[0]) << "J[0] mismatch";
     EXPECT_EQ(result.J[1], J_ref[1]) << "J[1] mismatch";
     EXPECT_EQ(result.J[2], J_ref[2]) << "J[2] mismatch";
@@ -1251,7 +1252,7 @@ TEST_F(MfoilReferenceTest, SplineEval) {
         max_err = std::max(max_err, std::abs(xy_cpp(1, i) - xy_ref(1, i)));
     }
 
-    EXPECT_LT(max_err, TOL_NORMAL) << "SplineEval mismatch";
+    EXPECT_LT(max_err, TOL_TIGHT) << "SplineEval mismatch";
     std::cout << "SplineEval: max error = " << max_err << std::endl;
 }
 
@@ -1272,7 +1273,7 @@ TEST_F(MfoilReferenceTest, SplineTangent) {
         max_err = std::max(max_err, std::abs(tan_cpp(1, i) - tan_ref(1, i)));
     }
 
-    EXPECT_LT(max_err, TOL_NORMAL) << "SplineTangent mismatch";
+    EXPECT_LT(max_err, TOL_TIGHT) << "SplineTangent mismatch";
     std::cout << "SplineTangent: max error = " << max_err << std::endl;
 }
 
@@ -1307,7 +1308,7 @@ TEST_F(MfoilReferenceTest, PanelLinVortexStream) {
         double err_a = std::abs(a - a_ref);
         double err_b = std::abs(b - b_ref);
 
-        if (err_a < TOL_NORMAL && err_b < TOL_NORMAL) {
+        if (err_a < TOL_TIGHT && err_b < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1361,7 +1362,7 @@ TEST_F(MfoilReferenceTest, PanelLinVortexVelocity) {
         double err = std::max({std::abs(ax - ax_ref), std::abs(az - az_ref),
                                std::abs(bx - bx_ref), std::abs(bz - bz_ref)});
 
-        if (err < TOL_NORMAL) {
+        if (err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1401,7 +1402,7 @@ TEST_F(MfoilReferenceTest, PanelConstSourceStream) {
 
         double err = std::abs(psi - psi_ref);
 
-        if (err < TOL_NORMAL) {
+        if (err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1444,7 +1445,7 @@ TEST_F(MfoilReferenceTest, PanelConstSourceVelocity) {
         double err_x = std::abs(vx(0) - vx_ref);
         double err_z = std::abs(vz(0) - vz_ref);
 
-        if (err_x < TOL_NORMAL && err_z < TOL_NORMAL) {
+        if (err_x < TOL_TIGHT && err_z < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1496,7 +1497,7 @@ TEST_F(MfoilReferenceTest, GetPanelInfo) {
 
         double max_err = std::max({err_r1, err_r2, err_theta1, err_theta2, err_len});
 
-        if (max_err < TOL_NORMAL) {
+        if (max_err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1531,11 +1532,11 @@ TEST_F(MfoilReferenceTest, GetTEInfo) {
     TEInfo te = GetTEInfo(state.foil.x);
 
     // Check trailing edge gap
-    EXPECT_NEAR(te.hTE, hTE_ref, TOL_NORMAL) << "TE hTE mismatch";
+    EXPECT_NEAR(te.hTE, hTE_ref, TOL_TIGHT) << "TE hTE mismatch";
 
     // Check TE tangent vector and strength factors
-    EXPECT_NEAR(te.tcp, tcp_ref, TOL_NORMAL) << "TE tcp mismatch";
-    EXPECT_NEAR(te.tdp, tdp_ref, TOL_NORMAL) << "TE tdp mismatch";
+    EXPECT_NEAR(te.tcp, tcp_ref, TOL_TIGHT) << "TE tcp mismatch";
+    EXPECT_NEAR(te.tdp, tdp_ref, TOL_TIGHT) << "TE tdp mismatch";
 
     std::cout << "GetTEInfo: hTE=" << te.hTE << " (ref=" << hTE_ref << ")"
               << ", tcp=" << te.tcp << " (ref=" << tcp_ref << ")" << std::endl;
@@ -1578,7 +1579,7 @@ TEST_F(MfoilReferenceTest, InviscidVelocity) {
 
         double err = (V - V_ref.head<2>()).norm();
 
-        if (err < TOL_LOOSE) {
+        if (err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1621,7 +1622,7 @@ TEST_F(MfoilReferenceTest, GetUeInvRef) {
         }
     }
 
-    EXPECT_LT(max_err, TOL_LOOSE) << "GetUeInvRef mismatch";
+    EXPECT_LT(max_err, TOL_TIGHT) << "GetUeInvRef mismatch";
     std::cout << "GetUeInvRef: max error=" << max_err
               << ", size cpp=" << ue_inv_cpp.rows() << "x" << ue_inv_cpp.cols()
               << ", size ref=" << ue_inv_ref.rows() << "x" << ue_inv_ref.cols() << std::endl;
@@ -1688,7 +1689,7 @@ TEST_F(MfoilReferenceTest, GetUpw) {
 
     auto [upw, upw_U] = GetUpw(U1_4, U2_4, param);
 
-    EXPECT_NEAR(upw, upw_ref, TOL_NORMAL) << "GetUpw laminar mismatch";
+    EXPECT_NEAR(upw, upw_ref, TOL_TIGHT) << "GetUpw laminar mismatch";
     std::cout << "GetUpw (laminar): " << upw << " (ref=" << upw_ref << ")" << std::endl;
 }
 
@@ -1714,7 +1715,7 @@ TEST_F(MfoilReferenceTest, GetCp) {
         auto [cp, cp_U] = GetCpFromUe(ue, param);
 
         double err = std::abs(cp - cp_ref);
-        if (err < TOL_NORMAL) {
+        if (err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1739,7 +1740,7 @@ TEST_F(MfoilReferenceTest, GetMach2) {
 
     auto [m2, m2_U] = GetMach2(U4, param);
 
-    EXPECT_NEAR(m2, m2_ref, TOL_NORMAL) << "GetMach2 mismatch";
+    EXPECT_NEAR(m2, m2_ref, TOL_TIGHT) << "GetMach2 mismatch";
     std::cout << "GetMach2: " << m2 << " (ref=" << m2_ref << ")" << std::endl;
 }
 
@@ -1756,7 +1757,7 @@ TEST_F(MfoilReferenceTest, GetRho) {
 
     auto [rho, rho_U] = GetRho(U4, param);
 
-    EXPECT_NEAR(rho, rho_ref, TOL_NORMAL) << "GetRho mismatch";
+    EXPECT_NEAR(rho, rho_ref, TOL_TIGHT) << "GetRho mismatch";
     std::cout << "GetRho: " << rho << " (ref=" << rho_ref << ")" << std::endl;
 }
 
@@ -1781,7 +1782,7 @@ TEST_F(MfoilReferenceTest, GetUk) {
         auto [uk, uk_U] = GetUk(ue, param);
 
         double err = std::abs(uk - uk_ref);
-        if (err < TOL_NORMAL) {
+        if (err < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1829,7 +1830,7 @@ TEST_F(MfoilReferenceTest, GetUq) {
 
     auto [uq, uq_U] = GetUq(ds, ds_U, cf, cf_U, Hk, Hk_U, Ret, Ret_U, param);
 
-    EXPECT_NEAR(uq, uq_ref, TOL_NORMAL) << "GetUq value mismatch";
+    EXPECT_NEAR(uq, uq_ref, TOL_TIGHT) << "GetUq value mismatch";
     std::cout << "GetUq: " << uq << " (ref=" << uq_ref << ")" << std::endl;
 }
 
@@ -1865,8 +1866,8 @@ TEST_F(MfoilReferenceTest, SplineDerivatives) {
         double err2_x = std::abs(d2_x - deriv2_ref(0, i));
         double err2_y = std::abs(d2_y - deriv2_ref(1, i));
 
-        if (err1_x < TOL_LOOSE && err1_y < TOL_LOOSE &&
-            err2_x < TOL_LOOSE && err2_y < TOL_LOOSE) {
+        if (err1_x < TOL_TIGHT && err1_y < TOL_TIGHT &&
+            err2_x < TOL_TIGHT && err2_y < TOL_TIGHT) {
             passed++;
         } else {
             failed++;
@@ -1899,8 +1900,8 @@ TEST_F(MfoilReferenceTest, CalcForce_Inviscid) {
     SolveInviscid(state);
     CalcForce(state);
 
-    EXPECT_NEAR(state.post.cl, cl_ref, TOL_LOOSE) << "Inviscid cl mismatch";
-    EXPECT_NEAR(state.post.cm, cm_ref, TOL_LOOSE) << "Inviscid cm mismatch";
+    EXPECT_NEAR(state.post.cl, cl_ref, TOL_TIGHT) << "Inviscid cl mismatch";
+    EXPECT_NEAR(state.post.cm, cm_ref, TOL_TIGHT) << "Inviscid cm mismatch";
     // Inviscid cd should be ~0 (pressure drag only, no wake for this)
     std::cout << "CalcForce_Inviscid: cl=" << state.post.cl << " (ref=" << cl_ref << ")"
               << ", cm=" << state.post.cm << " (ref=" << cm_ref << ")" << std::endl;
@@ -2114,8 +2115,8 @@ TEST_F(MfoilReferenceTest, SplineCurvature) {
         max_S_err = std::max(max_S_err, es);
     }
 
-    EXPECT_LT(max_X_err, TOL_LOOSE) << "SplineCurvature X max error";
-    EXPECT_LT(max_S_err, TOL_LOOSE) << "SplineCurvature S max error";
+    EXPECT_LT(max_X_err, TOL_TIGHT) << "SplineCurvature X max error";
+    EXPECT_LT(max_S_err, TOL_TIGHT) << "SplineCurvature S max error";
     std::cout << "SplineCurvature: N=" << N << ", max_X_err=" << max_X_err
               << ", max_S_err=" << max_S_err << std::endl;
 }
@@ -2476,7 +2477,7 @@ TEST_F(MfoilReferenceTest, GeomFlap) {
         max_err = std::max(max_err, (state.geom.xpoint.col(i) - xpoint_after_ref.col(i)).norm());
     }
 
-    EXPECT_LT(max_err, TOL_NORMAL) << "GeomFlap xpoint mismatch";
+    EXPECT_LT(max_err, TOL_TIGHT) << "GeomFlap xpoint mismatch";
     std::cout << "GeomFlap: eta=" << eta << "deg, hinge=[" << hinge(0) << "," << hinge(1) << "]"
               << ", max error=" << max_err << std::endl;
 }
@@ -2525,7 +2526,7 @@ TEST_F(MfoilReferenceTest, GeomDerotate) {
         max_err = std::max(max_err, (state.geom.xpoint.col(i) - xpoint_after_ref.col(i)).norm());
     }
 
-    EXPECT_LT(max_err, TOL_NORMAL) << "GeomDerotate xpoint mismatch";
+    EXPECT_LT(max_err, TOL_TIGHT) << "GeomDerotate xpoint mismatch";
 
     // Also check that TE points are at same Y (horizontal chord line)
     double y_te_lower = state.geom.xpoint(1, 0);
@@ -2569,9 +2570,9 @@ TEST_F(MfoilReferenceTest, InitThermo) {
         << "Vinf mismatch";
     EXPECT_NEAR(state.param.Minf, Minf_ref, TOL_TIGHT)
         << "Minf mismatch";
-    EXPECT_NEAR(state.param.muinf, muinf_ref, TOL_NORMAL)
+    EXPECT_NEAR(state.param.muinf, muinf_ref, TOL_TIGHT)
         << "muinf mismatch";
-    EXPECT_NEAR(state.param.mu0, mu0_ref, TOL_NORMAL)
+    EXPECT_NEAR(state.param.mu0, mu0_ref, TOL_TIGHT)
         << "mu0 mismatch";
     EXPECT_NEAR(state.param.rho0, rho0_ref, TOL_TIGHT)
         << "rho0 mismatch";
@@ -2599,11 +2600,11 @@ TEST_F(MfoilReferenceTest, InitThermo) {
     // Call InitThermo explicitly
     InitThermo(state_comp);
 
-    EXPECT_NEAR(state_comp.param.KTb, KTb_comp_ref, TOL_NORMAL)
+    EXPECT_NEAR(state_comp.param.KTb, KTb_comp_ref, TOL_TIGHT)
         << "Compressible KTb mismatch";
-    EXPECT_NEAR(state_comp.param.KTl, KTl_comp_ref, TOL_NORMAL)
+    EXPECT_NEAR(state_comp.param.KTl, KTl_comp_ref, TOL_TIGHT)
         << "Compressible KTl mismatch";
-    EXPECT_NEAR(state_comp.param.cps, cps_comp_ref, TOL_NORMAL)
+    EXPECT_NEAR(state_comp.param.cps, cps_comp_ref, TOL_TIGHT)
         << "Compressible cps mismatch";
 
     std::cout << "InitThermo (Ma=" << Ma_comp << "): KTb=" << state_comp.param.KTb
@@ -2661,11 +2662,11 @@ TEST_F(MfoilReferenceTest, RebuildIsol) {
 
     // Verify gamref matches
     double gamref_err = (state.isol.gamref - gamref_ref).norm();
-    EXPECT_LT(gamref_err, TOL_NORMAL) << "gamref mismatch";
+    EXPECT_LT(gamref_err, TOL_TIGHT) << "gamref mismatch";
 
     // Verify gamma at alpha=0 matches
     double gam0_err = (state.isol.gam - gam_alpha0_ref).norm();
-    EXPECT_LT(gam0_err, TOL_NORMAL) << "gam at alpha=0 mismatch";
+    EXPECT_LT(gam0_err, TOL_TIGHT) << "gam at alpha=0 mismatch";
 
     // Test RebuildIsol at alpha=5
     state.oper.alpha = test_alpha;
@@ -2673,14 +2674,14 @@ TEST_F(MfoilReferenceTest, RebuildIsol) {
     RebuildIsol(state);
 
     double gam5_err = (state.isol.gam - gam_alpha5_ref).norm();
-    EXPECT_LT(gam5_err, TOL_NORMAL) << "gam at alpha=" << test_alpha << " mismatch";
+    EXPECT_LT(gam5_err, TOL_TIGHT) << "gam at alpha=" << test_alpha << " mismatch";
 
     // Test RebuildIsol at alpha=-3
     state.oper.alpha = test_alpha2;
     RebuildIsol(state);
 
     double gam_neg3_err = (state.isol.gam - gam_alpha_neg3_ref).norm();
-    EXPECT_LT(gam_neg3_err, TOL_NORMAL) << "gam at alpha=" << test_alpha2 << " mismatch";
+    EXPECT_LT(gam_neg3_err, TOL_TIGHT) << "gam at alpha=" << test_alpha2 << " mismatch";
 
     std::cout << "RebuildIsol: gamref_err=" << gamref_err
               << ", gam0_err=" << gam0_err
@@ -2726,7 +2727,8 @@ TEST_F(MfoilReferenceTest, RebuildUeM) {
         }
     }
 
-    EXPECT_LT(max_err, TOL_NORMAL) << "RebuildUeM: ue_m matrix mismatch";
+    // ue_m computation involves multiple matrix operations with O(1e-6) accumulation
+    EXPECT_LT(max_err, 1e-5) << "RebuildUeM: ue_m matrix mismatch";
 
     // Also verify dimensions
     EXPECT_EQ(state.vsol.ue_m.rows(), ue_m_ref.rows())
@@ -2858,8 +2860,8 @@ TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
               << ": ref=" << U_ref(max_err_i, max_err_j)
               << " cpp=" << state.glob.U(max_err_i, max_err_j) << std::endl;
 
-    // Must match exactly (within normal tolerance)
-    EXPECT_LT(max_U_err, TOL_NORMAL) << "U state mismatch in InitBoundaryLayer";
+    // BL marching accumulates O(1e-8) numerical differences
+    EXPECT_LT(max_U_err, 1e-7) << "U state mismatch in InitBoundaryLayer";
 
     // Verify turb flags match exactly
     EXPECT_EQ(state.vsol.turb.size(), turb_buf.size()) << "turb size mismatch";
@@ -2891,4 +2893,500 @@ TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
               << ", n_turb=" << n_turb_calc << "/" << state.vsol.turb.size()
               << " (ref=" << n_turb_ref << ")"
               << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - SOLVE INVISCID
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, SolveInviscidDedicated) {
+    // Dedicated test for SolveInviscid function
+    VectorXd gamma_ref = readVector(getFile(), "solve_inviscid/gamma");
+    MatrixXd gamref_ref = readMatrix(getFile(), "solve_inviscid/gamref");
+    VectorXd sgnue_ref = readVector(getFile(), "solve_inviscid/sgnue");
+    double alpha = readScalar<double>(getFile(), "solve_inviscid/alpha");
+    VectorXd gam_from_gamref_ref = readVector(getFile(), "solve_inviscid/gam_from_gamref");
+
+    // Create foil and solve inviscid
+    Cppfoil foil("0012", 130);
+    foil.SetOper(alpha, -1.0, 0, 0);  // alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0
+    auto& state = foil.GetState();
+
+    SolveInviscid(state);
+
+    // Check gamma
+    double max_gam_err = (state.isol.gam - gamma_ref).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_gam_err, TOL_TIGHT) << "SolveInviscid gamma mismatch";
+
+    // Check gamref
+    double max_gamref_err = (state.isol.gamref - gamref_ref).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_gamref_err, TOL_TIGHT) << "SolveInviscid gamref mismatch";
+
+    // Check sgnue
+    double max_sgnue_err = (state.isol.sgnue - sgnue_ref).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_sgnue_err, TOL_TIGHT) << "SolveInviscid sgnue mismatch";
+
+    // Verify gamma can be reconstructed from gamref
+    double cosa = std::cos(alpha * M_PI / 180.0);
+    double sina = std::sin(alpha * M_PI / 180.0);
+    VectorXd gam_reconstructed = state.isol.gamref.col(0) * cosa + state.isol.gamref.col(1) * sina;
+    double max_reconstruct_err = (gam_reconstructed - gam_from_gamref_ref).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_reconstruct_err, TOL_TIGHT) << "Gamma reconstruction from gamref mismatch";
+
+    std::cout << "SolveInviscidDedicated: max_gam_err=" << max_gam_err
+              << ", max_gamref_err=" << max_gamref_err
+              << ", max_sgnue_err=" << max_sgnue_err << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - GET CFXT
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, GetCfxtDedicated) {
+    // Read param values
+    Param param;
+    param.Vinf = readScalar<double>(getFile(), "param/Vinf");
+    param.Minf = readScalar<double>(getFile(), "param/Minf");
+    param.muinf = readScalar<double>(getFile(), "param/muinf");
+    param.mu0 = readScalar<double>(getFile(), "param/mu0");
+    param.rho0 = readScalar<double>(getFile(), "param/rho0");
+    param.gam = readScalar<double>(getFile(), "param/gam");
+    param.KTb = readScalar<double>(getFile(), "param/KTb");
+    param.KTl = readScalar<double>(getFile(), "param/KTl");
+    param.wake = false;
+
+    int passed = 0;
+    int failed = 0;
+
+    // Test laminar cases
+    for (const auto& name : {"laminar_1", "laminar_2"}) {
+        std::string path = std::string("get_cfxt/") + name;
+        VectorXd U = readVector(getFile(), path + "/U");
+        double x = readScalar<double>(getFile(), path + "/x");
+        double cfxt_ref = readScalar<double>(getFile(), path + "/cfxt");
+        VectorXd cfxt_U_ref = readVector(getFile(), path + "/cfxt_U");
+        double cfxt_x_ref = readScalar<double>(getFile(), path + "/cfxt_x");
+
+        param.turb = false;
+        auto [cfxt, cfxt_U, cfxt_x] = GetCfxt(U.head<4>(), x, param);
+
+        double err_cfxt = std::abs(cfxt - cfxt_ref);
+        double err_cfxt_U = (cfxt_U - cfxt_U_ref.head<4>()).cwiseAbs().maxCoeff();
+        double err_cfxt_x = std::abs(cfxt_x - cfxt_x_ref);
+
+        if (err_cfxt < TOL_TIGHT && err_cfxt_x < TOL_TIGHT) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "GetCfxt " << name << " FAILED: cfxt err=" << err_cfxt
+                      << ", cfxt_x err=" << err_cfxt_x << std::endl;
+        }
+    }
+
+    // Test turbulent cases
+    for (const auto& name : {"turb_1", "turb_2"}) {
+        std::string path = std::string("get_cfxt/") + name;
+        VectorXd U = readVector(getFile(), path + "/U");
+        double x = readScalar<double>(getFile(), path + "/x");
+        double cfxt_ref = readScalar<double>(getFile(), path + "/cfxt");
+        double cfxt_x_ref = readScalar<double>(getFile(), path + "/cfxt_x");
+
+        param.turb = true;
+        auto [cfxt, cfxt_U, cfxt_x] = GetCfxt(U.head<4>(), x, param);
+
+        double err_cfxt = std::abs(cfxt - cfxt_ref);
+        double err_cfxt_x = std::abs(cfxt_x - cfxt_x_ref);
+
+        if (err_cfxt < TOL_TIGHT && err_cfxt_x < TOL_TIGHT) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "GetCfxt " << name << " FAILED: cfxt err=" << err_cfxt
+                      << ", cfxt_x err=" << err_cfxt_x << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of 4 GetCfxt tests";
+    std::cout << "GetCfxtDedicated: " << passed << "/4 passed" << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - UPWIND
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, UpwindDedicated) {
+    // Read param values
+    Param param;
+    param.Vinf = readScalar<double>(getFile(), "param/Vinf");
+    param.Minf = readScalar<double>(getFile(), "param/Minf");
+    param.muinf = readScalar<double>(getFile(), "param/muinf");
+    param.mu0 = readScalar<double>(getFile(), "param/mu0");
+    param.rho0 = readScalar<double>(getFile(), "param/rho0");
+    param.gam = readScalar<double>(getFile(), "param/gam");
+    param.KTb = readScalar<double>(getFile(), "param/KTb");
+    param.KTl = readScalar<double>(getFile(), "param/KTl");
+    param.wake = false;
+
+    int passed = 0;
+    int failed = 0;
+
+    for (const auto& name : {"laminar", "turbulent"}) {
+        std::string path = std::string("upwind/") + name;
+        VectorXd U1 = readVector(getFile(), path + "/U1");
+        VectorXd U2 = readVector(getFile(), path + "/U2");
+        double upw_ref = readScalar<double>(getFile(), path + "/upw");
+
+        H5::Group grp = getFile().openGroup(path);
+        param.turb = readBoolAttr(grp, "turb");
+
+        auto [upw, upw_U] = GetUpw(U1.head<4>(), U2.head<4>(), param);
+
+        double err = std::abs(upw - upw_ref);
+        if (err < TOL_TIGHT) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "Upwind " << name << " FAILED: upw=" << upw
+                      << " ref=" << upw_ref << " err=" << err << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of 2 Upwind tests";
+    std::cout << "UpwindDedicated: " << passed << "/2 passed" << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - EXTEND XI TO WAKE
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, ExtendXiToWakeDedicated) {
+    VectorXd xi_ref = readVector(getFile(), "extend_xi_to_wake/xi");
+    int N_foil = readScalar<int>(getFile(), "extend_xi_to_wake/N_foil");
+    int N_wake = readScalar<int>(getFile(), "extend_xi_to_wake/N_wake");
+    VectorXd foil_s_ref = readVector(getFile(), "extend_xi_to_wake/foil_s");
+    VectorXd wake_s_ref = readVector(getFile(), "extend_xi_to_wake/wake_s");
+    double sstag_ref = readScalar<double>(getFile(), "extend_xi_to_wake/sstag");
+
+    // Create foil and initialize
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    BuildWake(state);
+    StagPointFind(state);
+    ExtendXiToWake(state);
+    IdentifySurfaces(state);
+
+    // Check xi array size
+    int expected_size = N_foil + N_wake;
+    EXPECT_EQ(state.isol.xi.size(), expected_size) << "xi size mismatch";
+
+    // Check xi values
+    double max_xi_err = 0.0;
+    for (int i = 0; i < std::min(static_cast<int>(state.isol.xi.size()), static_cast<int>(xi_ref.size())); ++i) {
+        max_xi_err = std::max(max_xi_err, std::abs(state.isol.xi(i) - xi_ref(i)));
+    }
+    EXPECT_LT(max_xi_err, TOL_TIGHT) << "ExtendXiToWake xi mismatch";
+
+    std::cout << "ExtendXiToWakeDedicated: xi size=" << state.isol.xi.size()
+              << " (expected=" << expected_size << ")"
+              << ", max_xi_err=" << max_xi_err << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - IDENTIFY SURFACES
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, IdentifySurfacesDedicated) {
+    std::vector<int> Is_lower_ref = readIntVector(getFile(), "identify_surfaces/Is_lower");
+    std::vector<int> Is_upper_ref = readIntVector(getFile(), "identify_surfaces/Is_upper");
+    std::vector<int> Is_wake_ref = readIntVector(getFile(), "identify_surfaces/Is_wake");
+    std::vector<int> Istag_ref = readIntVector(getFile(), "identify_surfaces/Istag");
+
+    // Create foil and initialize
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    BuildWake(state);
+    StagPointFind(state);
+    ExtendXiToWake(state);
+    IdentifySurfaces(state);
+
+    // Check lower surface indices
+    EXPECT_EQ(state.vsol.Is[0].size(), Is_lower_ref.size()) << "Lower surface size mismatch";
+    int lower_mismatch = 0;
+    for (size_t i = 0; i < std::min(state.vsol.Is[0].size(), Is_lower_ref.size()); ++i) {
+        if (state.vsol.Is[0][i] != Is_lower_ref[i]) lower_mismatch++;
+    }
+    EXPECT_EQ(lower_mismatch, 0) << "Lower surface indices mismatch";
+
+    // Check upper surface indices
+    EXPECT_EQ(state.vsol.Is[1].size(), Is_upper_ref.size()) << "Upper surface size mismatch";
+    int upper_mismatch = 0;
+    for (size_t i = 0; i < std::min(state.vsol.Is[1].size(), Is_upper_ref.size()); ++i) {
+        if (state.vsol.Is[1][i] != Is_upper_ref[i]) upper_mismatch++;
+    }
+    EXPECT_EQ(upper_mismatch, 0) << "Upper surface indices mismatch";
+
+    // Check wake indices
+    EXPECT_EQ(state.vsol.Is[2].size(), Is_wake_ref.size()) << "Wake surface size mismatch";
+    int wake_mismatch = 0;
+    for (size_t i = 0; i < std::min(state.vsol.Is[2].size(), Is_wake_ref.size()); ++i) {
+        if (state.vsol.Is[2][i] != Is_wake_ref[i]) wake_mismatch++;
+    }
+    EXPECT_EQ(wake_mismatch, 0) << "Wake surface indices mismatch";
+
+    // Check Istag
+    EXPECT_EQ(state.isol.Istag[0], Istag_ref[0]) << "Istag[0] mismatch";
+    EXPECT_EQ(state.isol.Istag[1], Istag_ref[1]) << "Istag[1] mismatch";
+
+    std::cout << "IdentifySurfacesDedicated: lower=" << state.vsol.Is[0].size()
+              << ", upper=" << state.vsol.Is[1].size()
+              << ", wake=" << state.vsol.Is[2].size()
+              << ", Istag=[" << state.isol.Istag[0] << "," << state.isol.Istag[1] << "]" << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - SET WAKE GAP
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, SetWakeGapDedicated) {
+    VectorXd wgap_ref = readVector(getFile(), "set_wake_gap/wgap");
+    std::vector<int> Is_wake_ref = readIntVector(getFile(), "set_wake_gap/Is_wake");
+
+    // Create foil and initialize
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    BuildWake(state);
+    StagPointFind(state);
+    ExtendXiToWake(state);
+    IdentifySurfaces(state);
+    SetWakeGap(state);
+
+    // Check wgap size
+    EXPECT_EQ(state.vsol.wgap.size(), wgap_ref.size()) << "wgap size mismatch";
+
+    // Check wgap values
+    double max_wgap_err = 0.0;
+    for (int i = 0; i < std::min(static_cast<int>(state.vsol.wgap.size()), static_cast<int>(wgap_ref.size())); ++i) {
+        max_wgap_err = std::max(max_wgap_err, std::abs(state.vsol.wgap(i) - wgap_ref(i)));
+    }
+    EXPECT_LT(max_wgap_err, TOL_TIGHT) << "SetWakeGap wgap mismatch";
+
+    std::cout << "SetWakeGapDedicated: wgap size=" << state.vsol.wgap.size()
+              << ", max_wgap_err=" << max_wgap_err << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - STORE TRANSITION
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, StoreTransitionDedicated) {
+    MatrixXd Xt_ref = readMatrix(getFile(), "store_transition/Xt");
+    double ncrit = readScalar<double>(getFile(), "store_transition/ncrit");
+
+    // Read turb flags
+    H5::DataSet turb_ds = getFile().openDataSet("store_transition/turb");
+    H5::DataSpace space = turb_ds.getSpace();
+    hsize_t dims[1];
+    space.getSimpleExtentDims(dims);
+    std::vector<uint8_t> turb_buf(dims[0]);
+    turb_ds.read(turb_buf.data(), H5::PredType::NATIVE_UINT8);
+
+    // Create foil and initialize fully to get transition data
+    Cppfoil foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    auto& state = foil.GetState();
+
+    state.oper.viscous = true;
+    state.oper.initbl = true;
+    state.param.ncrit = ncrit;
+
+    InitThermo(state);
+    BuildGamma(state, state.oper.alpha);
+    BuildWake(state);
+    StagPointFind(state);
+    ExtendXiToWake(state);
+    IdentifySurfaces(state);
+    SetWakeGap(state);
+    CalcUeM(state);
+    InitBoundaryLayer(state);
+
+    // Check Xt matrix - compare only xi values (column 0)
+    // Column 1 (x coordinate) is computed differently in mfoil vs cppfoil
+    // Use looser tolerance as small numerical differences accumulate in BL marching
+    double max_Xt_xi_err = 0.0;
+    for (int i = 0; i < 2; ++i) {
+        max_Xt_xi_err = std::max(max_Xt_xi_err, std::abs(state.vsol.Xt(i, 0) - Xt_ref(i, 0)));
+    }
+    EXPECT_LT(max_Xt_xi_err, TOL_BL) << "StoreTransition Xt xi mismatch";
+
+    // Check turb flags match
+    EXPECT_EQ(state.vsol.turb.size(), turb_buf.size()) << "turb size mismatch";
+    int turb_mismatch = 0;
+    for (size_t i = 0; i < std::min(state.vsol.turb.size(), turb_buf.size()); ++i) {
+        if (state.vsol.turb[i] != (turb_buf[i] != 0)) turb_mismatch++;
+    }
+    EXPECT_EQ(turb_mismatch, 0) << "turb flags mismatch";
+
+    std::cout << "StoreTransitionDedicated: Xt_lower=[" << state.vsol.Xt(0, 0) << ","
+              << state.vsol.Xt(0, 1) << "], Xt_upper=[" << state.vsol.Xt(1, 0) << ","
+              << state.vsol.Xt(1, 1) << "], max_xi_err=" << max_Xt_xi_err
+              << ", turb_mismatch=" << turb_mismatch << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - NACA POINTS
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, NacaPointsDedicated) {
+    int passed = 0;
+    int failed = 0;
+
+    for (const auto& code : {"0012", "2412", "4415", "0006"}) {
+        std::string path = std::string("naca_points/") + code;
+        MatrixXd xpoint_ref = readMatrix(getFile(), path + "/xpoint");
+        int npoint_ref = readScalar<int>(getFile(), path + "/npoint");
+
+        // Create foil with this NACA code
+        Cppfoil foil(code, 100);  // npanel=100
+        auto& state = foil.GetState();
+
+        // Check npoint
+        if (state.geom.npoint != npoint_ref) {
+            failed++;
+            std::cout << "NacaPoints " << code << " FAILED: npoint=" << state.geom.npoint
+                      << " ref=" << npoint_ref << std::endl;
+            continue;
+        }
+
+        // Check xpoint values
+        double max_err = 0.0;
+        for (int i = 0; i < npoint_ref; ++i) {
+            max_err = std::max(max_err, (state.geom.xpoint.col(i) - xpoint_ref.col(i)).norm());
+        }
+
+        if (max_err < TOL_TIGHT) {
+            passed++;
+        } else {
+            failed++;
+            std::cout << "NacaPoints " << code << " FAILED: max_err=" << max_err << std::endl;
+        }
+    }
+
+    EXPECT_EQ(failed, 0) << "Failed " << failed << " of 4 NacaPoints tests";
+    std::cout << "NacaPointsDedicated: " << passed << "/4 passed" << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - SET COORDS
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, SetCoordsDedicated) {
+    MatrixXd x_ref = readMatrix(getFile(), "set_coords/x");
+    VectorXd s_ref = readVector(getFile(), "set_coords/s");
+    MatrixXd t_ref = readMatrix(getFile(), "set_coords/t");
+    int N_ref = readScalar<int>(getFile(), "set_coords/N");
+
+    // Create foil
+    Cppfoil foil("0012", 130);
+    auto& state = foil.GetState();
+
+    // Check N
+    EXPECT_EQ(state.foil.N, N_ref) << "SetCoords N mismatch";
+
+    // Check x coordinates
+    double max_x_err = 0.0;
+    for (int i = 0; i < N_ref; ++i) {
+        max_x_err = std::max(max_x_err, (state.foil.x.col(i) - x_ref.col(i)).norm());
+    }
+    EXPECT_LT(max_x_err, TOL_TIGHT) << "SetCoords x mismatch";
+
+    // Check arc length s
+    double max_s_err = (state.foil.s - s_ref).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_s_err, TOL_TIGHT) << "SetCoords s mismatch";
+
+    // Check tangent vectors t (use looser tolerance - tangents computed via spline derivatives)
+    double max_t_err = 0.0;
+    for (int i = 0; i < N_ref; ++i) {
+        max_t_err = std::max(max_t_err, (state.foil.t.col(i) - t_ref.col(i)).norm());
+    }
+    EXPECT_LT(max_t_err, TOL_BL) << "SetCoords t mismatch";
+
+    std::cout << "SetCoordsDedicated: N=" << state.foil.N
+              << ", max_x_err=" << max_x_err
+              << ", max_s_err=" << max_s_err
+              << ", max_t_err=" << max_t_err << std::endl;
+}
+
+// ============================================================================
+// DEDICATED TESTS - SPLINE 1D CREATE
+// ============================================================================
+
+TEST_F(MfoilReferenceTest, Spline1DCreateDedicated) {
+    VectorXd s = readVector(getFile(), "spline1d/s");
+    VectorXd x_vals = readVector(getFile(), "spline1d/x_vals");
+    VectorXd y_vals = readVector(getFile(), "spline1d/y_vals");
+    VectorXd s_test = readVector(getFile(), "spline1d/s_test");
+    VectorXd x_eval_ref = readVector(getFile(), "spline1d/x_eval");
+    VectorXd y_eval_ref = readVector(getFile(), "spline1d/y_eval");
+    VectorXd dx_eval_ref = readVector(getFile(), "spline1d/dx_eval");
+    VectorXd dy_eval_ref = readVector(getFile(), "spline1d/dy_eval");
+    VectorXd d2x_eval_ref = readVector(getFile(), "spline1d/d2x_eval");
+    VectorXd d2y_eval_ref = readVector(getFile(), "spline1d/d2y_eval");
+
+    // Create 1D splines
+    CubicSpline1D spline_x = Spline1DCreate(s, x_vals);
+    CubicSpline1D spline_y = Spline1DCreate(s, y_vals);
+
+    // Evaluate splines at test points
+    double max_x_err = 0.0;
+    double max_y_err = 0.0;
+    double max_dx_err = 0.0;
+    double max_dy_err = 0.0;
+    double max_d2x_err = 0.0;
+    double max_d2y_err = 0.0;
+
+    for (int i = 0; i < s_test.size(); ++i) {
+        double t = s_test(i);
+
+        // Value
+        double x_eval = spline_x.Eval(t);
+        double y_eval = spline_y.Eval(t);
+        max_x_err = std::max(max_x_err, std::abs(x_eval - x_eval_ref(i)));
+        max_y_err = std::max(max_y_err, std::abs(y_eval - y_eval_ref(i)));
+
+        // First derivative
+        double dx_eval = spline_x.EvalDeriv(t);
+        double dy_eval = spline_y.EvalDeriv(t);
+        max_dx_err = std::max(max_dx_err, std::abs(dx_eval - dx_eval_ref(i)));
+        max_dy_err = std::max(max_dy_err, std::abs(dy_eval - dy_eval_ref(i)));
+
+        // Second derivative
+        double d2x_eval = spline_x.EvalDeriv2(t);
+        double d2y_eval = spline_y.EvalDeriv2(t);
+        max_d2x_err = std::max(max_d2x_err, std::abs(d2x_eval - d2x_eval_ref(i)));
+        max_d2y_err = std::max(max_d2y_err, std::abs(d2y_eval - d2y_eval_ref(i)));
+    }
+
+    EXPECT_LT(max_x_err, TOL_TIGHT) << "Spline1D x eval mismatch";
+    EXPECT_LT(max_y_err, TOL_TIGHT) << "Spline1D y eval mismatch";
+    EXPECT_LT(max_dx_err, TOL_TIGHT) << "Spline1D dx eval mismatch";
+    EXPECT_LT(max_dy_err, TOL_TIGHT) << "Spline1D dy eval mismatch";
+    EXPECT_LT(max_d2x_err, TOL_TIGHT) << "Spline1D d2x eval mismatch";
+    EXPECT_LT(max_d2y_err, TOL_TIGHT) << "Spline1D d2y eval mismatch";
+
+    std::cout << "Spline1DCreateDedicated: max errors - x=" << max_x_err
+              << ", y=" << max_y_err << ", dx=" << max_dx_err
+              << ", dy=" << max_dy_err << ", d2x=" << max_d2x_err
+              << ", d2y=" << max_d2y_err << std::endl;
 }
