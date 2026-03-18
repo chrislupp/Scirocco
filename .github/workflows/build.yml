@@ -13,11 +13,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install clang-format-17
+      run: |
+        wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 17
+        sudo apt-get install -y clang-format-17
+
     - name: Check Formatting
       run: |
         find cppfoil/include cppfoil/src cppfoil/tests cppfoil/examples \
           -name '*.h' -o -name '*.cpp' | \
-          xargs clang-format-18 --dry-run --Werror
+          xargs clang-format-17 --dry-run --Werror
 
   build:
     needs: [format]
