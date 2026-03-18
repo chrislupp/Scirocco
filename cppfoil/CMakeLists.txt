@@ -70,6 +70,13 @@ if(CPPFOIL_BUILD_TESTS)
     else()
         message(STATUS "Google Test not found, tests will not be built")
     endif()
+
+    # Ping tests: self-validating derivative checks (no HDF5 needed)
+    if(GTest_FOUND)
+        add_executable(cppfoil_ping_tests tests/ping_test.cpp)
+        target_link_libraries(cppfoil_ping_tests cppfoil GTest::gtest_main)
+        gtest_discover_tests(cppfoil_ping_tests)
+    endif()
 endif()
 
 # Examples
