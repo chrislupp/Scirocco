@@ -5,6 +5,7 @@
 #include "cppfoil/core/forces.h"
 
 #include <cmath>
+#include "cppfoil/core/boundary_layer.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
@@ -183,30 +184,43 @@ void GetDistributions(FoilState& state) {
         return;
     }
 
-    int N = state.glob.Nsys;
+    int N = static_cast<int>(state.glob.U.cols());
 
     state.post.th = state.glob.U.row(0).transpose();
     state.post.ds = state.glob.U.row(1).transpose();
     state.post.sa = state.glob.U.row(2).transpose();
 
-    // Edge velocity (compressible)
+    // Edge velocity (compressible, Karman-Tsien correction)
     state.post.ue.resize(N);
     for (int i = 0; i < N; ++i) {
-        double uk = state.glob.U(3, i);
-        // Apply compressibility correction if needed
+        auto [uk, uk_U] = GetUk(state.glob.U(3, i), state.param);
         state.post.ue(i) = uk;
     }
 
     // Inviscid edge velocity
     state.post.uei = GetUeInv(state);
 
-    // TODO: Compute cf, Ret, Hk distributions
-    state.post.cf.resize(N);
-    state.post.cf.setZero();
-    state.post.Ret.resize(N);
-    state.post.Ret.setZero();
-    state.post.Hk.resize(N);
-    state.post.Hk.setZero();
+    // Compute cf, Ret, Hk distributions
+    state.post.cf.resize(N);  state.post.cf.setZero();
+    state.post.Ret.resize(N); state.post.Ret.setZero();
+    state.post.Hk.resize(N);  state.post.Hk.setZero();
+
+    for (int si = 0; si < 3; ++si) {
+        const auto& Is = state.vsol.Is[si];
+        Param param = BuildParam(state, si);
+        for (int idx = 0; idx < static_cast<int>(Is.size()); ++idx) {
+            int j = Is[idx];
+            Vector4d Uj = state.glob.U.col(j);
+            StationParam(state, param, j);
+            auto [uk, uk_U] = GetUk(Uj(3), param);
+            auto [cfloc, cf_U] = GetCf(Uj, param);
+            state.post.cf(j) = cfloc * uk * uk / (param.Vinf * param.Vinf);
+            auto [ret, Ret_U] = GetRet(Uj, param);
+            state.post.Ret(j) = ret;
+            auto [hk, Hk_U] = GetHk(Uj, param);
+            state.post.Hk(j) = hk;
+        }
+    }
 }
 
 }  // namespace cppfoil
