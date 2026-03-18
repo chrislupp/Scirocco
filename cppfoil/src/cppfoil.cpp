@@ -31,12 +31,13 @@
 #include "cppfoil/cppfoil.h"
 
 #include <iostream>
-#include "cppfoil/core/geometry.h"
-#include "cppfoil/core/paneling.h"
-#include "cppfoil/core/inviscid.h"
-#include "cppfoil/core/wake.h"
+
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
+#include "cppfoil/core/geometry.h"
+#include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/paneling.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/data/state.h"
 
 namespace cppfoil {
@@ -81,7 +82,7 @@ bool Cppfoil::Solve() {
     if (state_.oper.viscous) {
         // Initialize parameters for viscous solve
         state_.oper.initbl = true;
-        state_.param.verb = 1;  // Normal verbose output
+        state_.param.verb = 1;     // Normal verbose output
         state_.param.niglob = 25;  // Max iterations
         state_.param.rtol = 1e-6;  // Convergence tolerance
 
@@ -115,8 +116,6 @@ void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
     cppfoil::GeomAddCamber(state_, xzcamb);
 }
 
-void Cppfoil::GeomDerotate() {
-    cppfoil::GeomDerotate(state_);
-}
+void Cppfoil::GeomDerotate() { cppfoil::GeomDerotate(state_); }
 
 }  // namespace cppfoil

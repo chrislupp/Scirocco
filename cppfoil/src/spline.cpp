@@ -57,8 +57,8 @@ int FindSegment(const VectorXd& s, double sval) {
     return lo;
 }
 
-// Build cubic spline with not-a-knot boundary conditions (like scipy.CubicSpline)
-// Returns coefficient matrix [4 x (N-1)]
+// Build cubic spline with not-a-knot boundary conditions (like
+// scipy.CubicSpline) Returns coefficient matrix [4 x (N-1)]
 MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     int n = static_cast<int>(s.size());
     if (n < 2) {
@@ -97,7 +97,8 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
             A(i, i - 1) = h(i - 1);
             A(i, i) = 2.0 * (h(i - 1) + h(i));
             A(i, i + 1) = h(i);
-            rhs(i) = 6.0 * ((y(i + 1) - y(i)) / h(i) - (y(i) - y(i - 1)) / h(i - 1));
+            rhs(i) =
+                6.0 * ((y(i + 1) - y(i)) / h(i) - (y(i) - y(i - 1)) / h(i - 1));
         }
 
         // Not-a-knot at left: third derivative continuous at s[1]
@@ -122,11 +123,11 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     MatrixXd c(4, n - 1);
     for (int i = 0; i < n - 1; ++i) {
         double hi = h(i);
-        c(3, i) = y(i);                             // constant term
+        c(3, i) = y(i);  // constant term
         c(2, i) = (y(i + 1) - y(i)) / hi -
                   hi * (2.0 * d2y(i) + d2y(i + 1)) / 6.0;  // linear term
-        c(1, i) = d2y(i) / 2.0;                     // quadratic term
-        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);     // cubic term
+        c(1, i) = d2y(i) / 2.0;                            // quadratic term
+        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);      // cubic term
     }
 
     return c;
@@ -157,9 +158,9 @@ void QuadSeg(VectorXd& xq, VectorXd& wq) {
     xq.resize(5);
     wq.resize(5);
     xq << 0.046910077030668, 0.230765344947158, 0.500000000000000,
-          0.769234655052842, 0.953089922969332;
+        0.769234655052842, 0.953089922969332;
     wq << 0.118463442528095, 0.239314335249683, 0.284444444444444,
-          0.239314335249683, 0.118463442528095;
+        0.239314335249683, 0.118463442528095;
 }
 
 Spline2D Spline2DCreate(const MatrixXd& points) {

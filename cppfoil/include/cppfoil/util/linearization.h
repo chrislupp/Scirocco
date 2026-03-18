@@ -37,7 +37,7 @@ namespace cppfoil {
 
 // Result containing value and its linearization (derivative)
 // V = value type, L = linearization type
-template<typename V, typename L>
+template <typename V, typename L>
 struct LinResult {
     V value;
     L lin;  // Linearization w.r.t. state U
@@ -55,7 +55,7 @@ using ScalarLin8 = LinResult<double, Vector8d>;
 using Vec3Lin8 = LinResult<Vector3d, Matrix38d>;
 
 // For properties that also depend on x (arc length)
-template<typename V, typename LinU, typename LinX>
+template <typename V, typename LinU, typename LinX>
 struct LinResultWithX {
     V value;
     LinU lin_U;  // Linearization w.r.t. U

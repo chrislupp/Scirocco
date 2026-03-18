@@ -29,8 +29,9 @@
     control over the information you may find at these locations.
 */
 
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+
 #include "cppfoil/cppfoil.h"
 
 int main() {
@@ -53,10 +54,9 @@ int main() {
         foil.Solve();
 
         // Print results
-        std::cout << std::setw(7) << alpha << "  "
-                  << std::setw(8) << foil.GetCl() << "  "
-                  << std::setw(8) << foil.GetCd() << "  "
-                  << std::setw(8) << foil.GetCm() << std::endl;
+        std::cout << std::setw(7) << alpha << "  " << std::setw(8)
+                  << foil.GetCl() << "  " << std::setw(8) << foil.GetCd()
+                  << "  " << std::setw(8) << foil.GetCm() << std::endl;
     }
 
     std::cout << std::endl;

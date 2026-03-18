@@ -37,11 +37,11 @@ namespace cppfoil {
 
 // Panel geometry information
 struct PanelInfo {
-    double r1, r2;       // Distances from xi to panel endpoints
+    double r1, r2;          // Distances from xi to panel endpoints
     double theta1, theta2;  // Angles from xi to panel endpoints
-    double x1, x2;       // Local x coordinates (along panel)
-    double y;            // Local y coordinate (perpendicular to panel)
-    double len;          // Panel length
+    double x1, x2;          // Local x coordinates (along panel)
+    double y;               // Local y coordinate (perpendicular to panel)
+    double len;             // Panel length
 };
 
 // Compute panel geometry information
@@ -56,13 +56,13 @@ PanelInfo GetPanelInfo(const Matrix2d& Xj, const Vector2d& xi);
 // INPUT:
 //   Xj : Panel endpoint coordinates [2 x 2]
 //   xi : Evaluation point
-//   vdir : Optional velocity direction for projection (nullptr for both components)
-//   onmid : True if xi is at panel midpoint (use limit values)
+//   vdir : Optional velocity direction for projection (nullptr for both
+//   components) onmid : True if xi is at panel midpoint (use limit values)
 // OUTPUT:
 //   a, b : Influence coefficients for left and right vortex strengths
 void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                             const Vector2d* vdir, bool onmid,
-                             Vector2d& a, Vector2d& b);
+                            const Vector2d* vdir, bool onmid, Vector2d& a,
+                            Vector2d& b);
 
 // Linear vortex panel streamfunction influence
 // INPUT:
@@ -70,18 +70,19 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
 //   xi : Evaluation point
 // OUTPUT:
 //   a, b : Influence coefficients for left and right vortex strengths
-void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi,
-                           double& a, double& b);
+void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
+                          double& b);
 
 // Constant source panel velocity influence
 // INPUT:
 //   Xj : Panel endpoint coordinates [2 x 2]
 //   xi : Evaluation point
-//   vdir : Optional velocity direction for projection (nullptr for both components)
+//   vdir : Optional velocity direction for projection (nullptr for both
+//   components)
 // OUTPUT:
 //   Velocity influence (or scalar if vdir provided)
 Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                                   const Vector2d* vdir);
+                                  const Vector2d* vdir);
 
 // Constant source panel streamfunction influence
 // INPUT:
@@ -97,8 +98,8 @@ double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi);
 //   xi : Evaluation point
 // OUTPUT:
 //   a, b : Influence coefficients for left and right source strengths
-void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
-                           double& a, double& b);
+void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
+                          double& b);
 
 // Linear source panel velocity influence
 // INPUT:
@@ -106,8 +107,8 @@ void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
 //   xi : Evaluation point
 // OUTPUT:
 //   a, b : Velocity influence vectors for left and right source strengths
-void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                             Vector2d& a, Vector2d& b);
+void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi, Vector2d& a,
+                            Vector2d& b);
 
 }  // namespace cppfoil
 

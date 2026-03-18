@@ -31,6 +31,7 @@
 #include "cppfoil/core/forces.h"
 
 #include <cmath>
+
 #include "cppfoil/core/boundary_layer.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
@@ -79,7 +80,8 @@ void CalcForce(FoilState& state) {
 
     for (int i = 0; i < N; ++i) {
         state.post.cp(i) = GetCp(ue(i), Vinf, state.param.KTb, state.param.KTl);
-        state.post.cpi(i) = GetCp(ueinv(i), Vinf, state.param.KTb, state.param.KTl);
+        state.post.cpi(i) =
+            GetCp(ueinv(i), Vinf, state.param.KTb, state.param.KTl);
     }
 
     // Integrate forces by panel integration
@@ -115,13 +117,14 @@ void CalcForce(FoilState& state) {
         state.post.cl_ue(i) += dx * 0.5 * dcp_due;
 
         // Linearization w.r.t. alpha
-        cl_alpha += cpbar * (Sind(alpha) * dxv(0) - Cosd(alpha) * dxv(1)) * kDegToRad;
+        cl_alpha +=
+            cpbar * (Sind(alpha) * dxv(0) - Cosd(alpha) * dxv(1)) * kDegToRad;
 
         // Moment (about xref)
         double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
         double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
-        cm += cp1 * dx1nds / 3.0 + cp1 * dx2nds / 6.0 +
-              cp2 * dx1nds / 6.0 + cp2 * dx2nds / 3.0;
+        cm += cp1 * dx1nds / 3.0 + cp1 * dx2nds / 6.0 + cp2 * dx1nds / 6.0 +
+              cp2 * dx2nds / 3.0;
 
         // Near-field pressure drag
         cdpi += dz * cpbar;
@@ -141,7 +144,8 @@ void CalcForce(FoilState& state) {
     state.post.cdf = 0.0;
     state.post.cdp = 0.0;
 
-    if (state.oper.viscous && state.glob.U.cols() > 0 && !state.vsol.Is.empty()) {
+    if (state.oper.viscous && state.glob.U.cols() > 0 &&
+        !state.vsol.Is.empty()) {
         // Squire-Young relation for total drag (from wake trailing edge)
         if (state.vsol.Is.size() > 2 && !state.vsol.Is[2].empty()) {
             int iw = state.vsol.Is[2].back();  // End of wake
@@ -151,7 +155,8 @@ void CalcForce(FoilState& state) {
                 auto [uk, uk_U] = GetUk(Uw(3), state.param);
                 double uk_Vinf = uk / Vinf;
 
-                state.post.cd = 2.0 * Uw(0) * std::pow(uk_Vinf, (5.0 + H) / 2.0);
+                state.post.cd =
+                    2.0 * Uw(0) * std::pow(uk_Vinf, (5.0 + H) / 2.0);
             }
         }
 
@@ -191,7 +196,8 @@ void CalcForce(FoilState& state) {
                 Vector2d dxv = x2 - x1;
                 double dx_proj = dxv(0) * Cosd(alpha) + dxv(1) * Sind(alpha);
 
-                Df += 0.25 * (rho1 * cf1 * ue1 * ue1 + rho2 * cf2 * ue2 * ue2) * dx_proj;
+                Df += 0.25 * (rho1 * cf1 * ue1 * ue1 + rho2 * cf2 * ue2 * ue2) *
+                      dx_proj;
 
                 cf1 = cf2;
                 ue1 = ue2;
@@ -227,9 +233,12 @@ void GetDistributions(FoilState& state) {
     state.post.uei = GetUeInv(state);
 
     // Compute cf, Ret, Hk distributions
-    state.post.cf.resize(N);  state.post.cf.setZero();
-    state.post.Ret.resize(N); state.post.Ret.setZero();
-    state.post.Hk.resize(N);  state.post.Hk.setZero();
+    state.post.cf.resize(N);
+    state.post.cf.setZero();
+    state.post.Ret.resize(N);
+    state.post.Ret.setZero();
+    state.post.Hk.resize(N);
+    state.post.Hk.setZero();
 
     for (int si = 0; si < 3; ++si) {
         const auto& Is = state.vsol.Is[si];
