@@ -31,3 +31,6 @@ CTestTestfile.cmake
 # Package files
 *.tar.gz
 *.zip
+
+# Analysis output
+pa_output/

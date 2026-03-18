@@ -1,0 +1,141 @@
+# Papercut - Full Configuration Example
+# This file demonstrates all available configuration options
+# Run from repo root: cargo run --release -- -c examples/full_config.yaml
+
+
+cover_page:
+  enabled: true
+
+  title: "CppFoil"
+
+  # Authors field supports multi-line text with paragraph breaks (double newlines)
+  authors: |
+    Christopher A. Lupp
+
+  description: |
+    cppfoil provides computational tools for analyzing airfoil performance
+    across different operating conditions. It predicts aerodynamic coefficients
+    (lift, drag, moment) and boundary layer distributions using panel methods
+    coupled with integral boundary layer equations.
+
+    cppfoil (Project Trysil) is a C++ port of Prof. Fidkowski's airfoil panel
+    code implementation, mfoil. It implements the same theoretical formulation
+    as Mark Drela's XFOIL, while improving its convergence behavior.
+
+    The code was developed completely outside the author's employment.
+
+  location: "https://github.com/chrislupp/ProjectTrysil"
+
+  include_toc: true
+  title_font_size: 24
+  text_font_size: 12
+
+  # Optional: Override header/footer for cover page only
+  # If not set, uses the main header/footer config
+  header:
+    enabled: false  # No header on cover page
+  footer:
+    enabled: true
+    text: |
+      Distribution A: This work has been cleared for public release,
+      distribution unlimited, case number: AFRL-2026-XXXX. The views expressed
+      are those of the authors and do not reflect the official guidance or
+      position of the United States Government, the Department of Defense or of
+      the United States Air Force.
+
+      Statement from DoD: The Appearance of external hyperlinks does not
+      constitute endorsement by the United States Department of Defense (DoD) of
+      the linked websites, of the information, products, or services contained
+      therein. The DoD does not exercise any editorial, security, or other
+      control over the information you may find at these locations.
+    font_size: 8
+    # Optional: Override margins for this header/footer
+    margins:
+      left: "0.5 in"
+      right: "0.5 in"
+      bottom: "2 in"
+
+output:
+  mode: single
+  directory: ./pa_output
+  filename: trysil_source.pdf
+
+# ===== FILES TO CONVERT =====
+files:
+  # List of source code files/patterns to convert to PDF
+  # Supports: individual files, glob patterns, directories
+
+  # Example 1: Directory scanning with filters
+  # Scans the entire 'src' directory recursively
+  - path: ./
+    # Only include Rust files
+    include_types: ["h", "cpp", "txt"]
+    # Exclude test files and build artifacts
+    exclude:
+      - "./temp/**"
+      - "./.claude/**"
+      - "./build/**"
+      - "./cppfoil/build/**"
+    title: "Source Code"
+
+  # Example 2: Glob pattern to match multiple files
+  # Matches all YAML files in examples/ directory
+  - path: "examples/*.yaml"
+    title: "Configuration Examples"
+
+  # Example 3: Individual files with custom titles
+  - path: README.md
+    title: "Project Documentation"
+
+  # - path: LICENSE
+  #   title: "License Agreement"
+
+  # Example 4: Pattern with wildcards
+  # Matches all markdown files in docs directory
+  # - path: "docs/*.md"
+  #   title: "Documentation"
+
+# ===== SYNTAX HIGHLIGHTING =====
+syntax_highlighting:
+  # Enable or disable syntax highlighting
+  # Requires the 'syntax-highlighting' feature to be enabled (default)
+  enabled: true
+
+  # Syntax highlighting theme name
+  # Run 'papercut --list-themes' to see all available themes
+  # Built-in presets: vscode-dark, vscode-light, jetbrains-darcula, jetbrains-light
+  theme: vscode-light
+
+# ===== PAGE SETTINGS =====
+page:
+  size: Letter
+
+  margins:
+    top: "1 in"
+    bottom: "1 in"
+    left: 2.0
+    right: 2.0
+
+header:
+  enabled: true
+  center: "{filename}"
+  right: "Page {page}/{total}"
+  font_size: 8
+
+footer:
+  enabled: true
+  # Use 'text' for full-width wrapping (takes precedence over left/center/right)
+  # Double newlines create paragraph breaks
+  center: |
+    Distribution A: Distribution Unlimited
+  font_size: 8
+
+metadata:
+  # PDF document subject (appears in PDF properties)
+  subject: "Paper Cut PA Review"
+
+  # PDF document keywords (array of strings)
+  keywords:
+    - source code
+    - papercut
+    - public release
