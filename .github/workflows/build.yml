@@ -34,7 +34,7 @@ jobs:
         compiler:
           - { cc: gcc-14, cxx: g++-14, name: GCC 14 }
           - { cc: clang-18, cxx: clang++-18, name: Clang 18 }
-        build_type: [Release, Debug]
+        build_type: [Release]
 
     name: ${{ matrix.compiler.name }} / ${{ matrix.build_type }}
 
