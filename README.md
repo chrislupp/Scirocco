@@ -194,8 +194,8 @@ The test suite validates against reference data from mfoil to ensure numerical a
 
 ## License
 
-MIT License
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-This library is validated against [mfoil](https://github.com/), a Python aerodynamic analysis tool, ensuring numerical accuracy and consistency.
+cppfoil is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html) by Krzysztof J. Fidkowski. The original mfoil is a Python implementation of subsonic airfoil analysis and is licensed under the MIT License. See [NOTICE](NOTICE) for details.
