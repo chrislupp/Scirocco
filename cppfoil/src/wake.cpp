@@ -33,7 +33,6 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
-#include <iostream>
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
@@ -345,16 +344,9 @@ void SetWakeGap(FoilState& state) {
     state.vsol.wgap.resize(Nw);
     double xi0 = state.isol.xi(N);  // xi at first wake point
 
-    // Debug output
-    std::cout << "SetWakeGap: hTE=" << hTE << " Lw=" << Lw << " dtdx=" << dtdx << " xi0=" << xi0 << std::endl;
-
     for (int i = 0; i < Nw; ++i) {
         double xi_wake = state.isol.xi(N + i);
         double xib = (xi_wake - xi0) / std::max(Lw, 1e-10);
-
-        if (i < 3) {
-            std::cout << "  wgap calc i=" << i << " xi_wake=" << xi_wake << " xib=" << xib;
-        }
 
         if (xib <= 1.0) {
             // Cubic formula from Drela
@@ -362,10 +354,6 @@ void SetWakeGap(FoilState& state) {
                                   (1.0 - xib) * (1.0 - xib);
         } else {
             state.vsol.wgap(i) = 0.0;
-        }
-
-        if (i < 3) {
-            std::cout << " wgap=" << state.vsol.wgap(i) << std::endl;
         }
     }
 }
