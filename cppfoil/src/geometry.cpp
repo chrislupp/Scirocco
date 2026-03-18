@@ -29,14 +29,15 @@
     control over the information you may find at these locations.
 */
 #include "cppfoil/core/geometry.h"
-#include "cppfoil/data/state.h"
-#include "cppfoil/core/paneling.h"
-#include "cppfoil/core/inviscid.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <algorithm>
 #include <vector>
+
+#include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/paneling.h"
+#include "cppfoil/data/state.h"
 
 namespace cppfoil {
 
@@ -79,7 +80,8 @@ void NacaPoints(Geom& geom, const std::string& digits) {
 
     // Scale by max thickness
     if (digits.length() < 2) {
-        throw std::invalid_argument("NACA digits must have at least 2 characters");
+        throw std::invalid_argument(
+            "NACA digits must have at least 2 characters");
     }
     double tmax = std::stod(digits.substr(digits.length() - 2)) * 0.01;
     t = t * (tmax / 0.2);
@@ -124,9 +126,8 @@ void NacaPoints(Geom& geom, const std::string& digits) {
         for (int i = 0; i <= N; ++i) {
             double xi = x(i);
             if (xi <= m_val) {
-                c(i) = (cc / 6.0) *
-                       (xi * xi * xi - 3.0 * m_val * xi * xi +
-                        m_val * m_val * (3.0 - m_val) * xi);
+                c(i) = (cc / 6.0) * (xi * xi * xi - 3.0 * m_val * xi * xi +
+                                     m_val * m_val * (3.0 - m_val) * xi);
             } else {
                 c(i) = (cc / 6.0) * m_val * m_val * m_val * (1.0 - xi);
             }
@@ -170,10 +171,11 @@ TEInfo GetTEInfo(const MatrixXd& x) {
     TEInfo info;
     int N = static_cast<int>(x.cols());
 
-    // Tangent directions at TE (matching Python: pointing toward TE from interior)
-    // t1: lower surface tangent (from node 1 toward node 0, i.e., toward lower TE)
-    // t2: upper surface tangent (from node N-2 toward node N-1, i.e., toward upper TE)
-    Vector2d t1 = x.col(0) - x.col(1);       // Lower: toward TE
+    // Tangent directions at TE (matching Python: pointing toward TE from
+    // interior) t1: lower surface tangent (from node 1 toward node 0, i.e.,
+    // toward lower TE) t2: upper surface tangent (from node N-2 toward node
+    // N-1, i.e., toward upper TE)
+    Vector2d t1 = x.col(0) - x.col(1);          // Lower: toward TE
     Vector2d t2 = x.col(N - 1) - x.col(N - 2);  // Upper: toward TE
     t1.normalize();
     t2.normalize();
@@ -221,10 +223,10 @@ void GeomFlap(FoilState& state, const Vector2d& xzhinge, double eta) {
 
     // Build rotation matrix (positive eta = clockwise when viewed from above)
     Eigen::Matrix2d R;
-    R << cosd(eta), sind(eta),
-        -sind(eta), cosd(eta);
+    R << cosd(eta), sind(eta), -sind(eta), cosd(eta);
 
-    // First pass: identify which points are on the flap (x > xh) before rotation
+    // First pass: identify which points are on the flap (x > xh) before
+    // rotation
     std::vector<bool> isFlap(N, false);
     for (int i = 0; i < N; ++i) {
         isFlap[i] = (X(0, i) > xh);
@@ -239,7 +241,8 @@ void GeomFlap(FoilState& state, const Vector2d& xzhinge, double eta) {
     }
 
     // Third pass: identify which points to keep
-    // Keep points that: (a) were not flap points, OR (b) are still right of hinge after rotation
+    // Keep points that: (a) were not flap points, OR (b) are still right of
+    // hinge after rotation
     std::vector<int> keepIndices;
     for (int i = 0; i < N; ++i) {
         if (!isFlap[i] || X(0, i) >= xh) {
@@ -297,7 +300,8 @@ void GeomAddCamber(FoilState& state, const MatrixXd& xzcamb) {
             for (int j = 0; j < Nc - 1; ++j) {
                 if (x >= camber(0, j) && x <= camber(0, j + 1)) {
                     // Linear interpolation
-                    double t = (x - camber(0, j)) / (camber(0, j + 1) - camber(0, j));
+                    double t =
+                        (x - camber(0, j)) / (camber(0, j + 1) - camber(0, j));
                     dz = (1.0 - t) * camber(1, j) + t * camber(1, j + 1);
                     break;
                 }
@@ -343,8 +347,7 @@ void GeomDerotate(FoilState& state) {
 
     // Rotation matrix (negative angle to derotate)
     Eigen::Matrix2d R;
-    R << std::cos(theta), std::sin(theta),
-        -std::sin(theta), std::cos(theta);
+    R << std::cos(theta), std::sin(theta), -std::sin(theta), std::cos(theta);
 
     // Rotate all points about LE
     for (int i = 0; i < N; ++i) {

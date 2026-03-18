@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <stdexcept>
+
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/panel_influence.h"
 #include "cppfoil/util/math_utils.h"
@@ -60,18 +61,24 @@ void InitThermo(FoilState& state) {
     // Compressibility corrections (only when Ma > 0)
     if (Ma > 0) {
         state.param.KTb = std::sqrt(1.0 - Ma * Ma);  // Karman-Tsien beta
-        state.param.KTl = Ma * Ma / ((1.0 + state.param.KTb) * (1.0 + state.param.KTb));  // KT lambda
+        state.param.KTl =
+            Ma * Ma /
+            ((1.0 + state.param.KTb) * (1.0 + state.param.KTb));  // KT lambda
 
         // Stagnation enthalpy: H0 = (1 + 0.5*gmi*Ma²) * Vinf² / (gmi * Ma²)
-        state.param.H0 = (1.0 + 0.5 * gmi * Ma * Ma) * Vinf * Vinf / (gmi * Ma * Ma);
+        state.param.H0 =
+            (1.0 + 0.5 * gmi * Ma * Ma) * Vinf * Vinf / (gmi * Ma * Ma);
 
         // Temperature ratio and Sutherland's law
         double Tr = 1.0 - 0.5 * Vinf * Vinf / state.param.H0;  // T_inf / T_0
-        finf = std::pow(Tr, 1.5) * (1.0 + state.param.Tsrat) / (Tr + state.param.Tsrat);
+        finf = std::pow(Tr, 1.5) * (1.0 + state.param.Tsrat) /
+               (Tr + state.param.Tsrat);
 
-        // Sonic Cp: cps = 2/(g*Ma²) * (((1+0.5*gmi*Ma²)/(1+0.5*gmi))^(g/gmi) - 1)
+        // Sonic Cp: cps = 2/(g*Ma²) * (((1+0.5*gmi*Ma²)/(1+0.5*gmi))^(g/gmi) -
+        // 1)
         double ratio = (1.0 + 0.5 * gmi * Ma * Ma) / (1.0 + 0.5 * gmi);
-        state.param.cps = 2.0 / (gam * Ma * Ma) * (std::pow(ratio, gam / gmi) - 1.0);
+        state.param.cps =
+            2.0 / (gam * Ma * Ma) * (std::pow(ratio, gam / gmi) - 1.0);
     } else {
         // Incompressible case
         state.param.KTb = 1.0;
@@ -177,9 +184,9 @@ void BuildGamma(FoilState& state, double alpha) {
                      state.isol.gamref.col(1) * Sind(alpha);
 }
 
-Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G,
-                           double Vinf, double alpha, const Vector2d& xi,
-                           bool compute_lin, MatrixXd* V_G) {
+Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G, double Vinf,
+                          double alpha, const Vector2d& xi, bool compute_lin,
+                          MatrixXd* V_G) {
     int N = static_cast<int>(X.cols());
     Vector2d V = Vector2d::Zero();
 
@@ -221,7 +228,8 @@ Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G,
     }
 
     // TE vortex panel contribution
-    // Each node has its own factor: node 0 gets +0.5*tdp, node N-1 gets -0.5*tdp
+    // Each node has its own factor: node 0 gets +0.5*tdp, node N-1 gets
+    // -0.5*tdp
     Vector2d a_vor, b_vor;
     PanelLinVortexVelocity(XjTE, xi, nullptr, false, a_vor, b_vor);
     Vector2d f_vor = a_vor + b_vor;
@@ -248,8 +256,7 @@ VectorXd GetUeInv(const FoilState& state) {
     Vector2d cs(Cosd(alpha), Sind(alpha));
 
     // Airfoil edge velocity from gamma (tangential velocity = gamma)
-    VectorXd uea = state.isol.sgnue.array() *
-                   (state.isol.gamref * cs).array();
+    VectorXd uea = state.isol.sgnue.array() * (state.isol.gamref * cs).array();
 
     // Wake edge velocity
     VectorXd uew;

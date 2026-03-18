@@ -31,6 +31,7 @@
 #include "cppfoil/core/panel_influence.h"
 
 #include <cmath>
+
 #include "cppfoil/util/math_utils.h"
 
 namespace cppfoil {
@@ -71,8 +72,8 @@ PanelInfo GetPanelInfo(const Matrix2d& Xj, const Vector2d& xi) {
 }
 
 void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                             const Vector2d* vdir, bool onmid,
-                             Vector2d& a, Vector2d& b) {
+                            const Vector2d* vdir, bool onmid, Vector2d& a,
+                            Vector2d& b) {
     // Linear vortex panel: gamma varies linearly from ga at x1 to gb at x2
     // Velocity at xi due to this distribution
 
@@ -112,8 +113,9 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
 
         // Linear vortex velocity (matching mfoil formulas)
         // temp1 = dtheta/(2*pi)
-        // temp2 = (2*z*log(r1/r2) - 2*x*dtheta)/(4*pi*d) = (-z*logr - x*dtheta)/(2*pi*d)
-        // ug1 = temp1 + temp2 = (d*dtheta - z*logr - x*dtheta)/(2*pi*d)
+        // temp2 = (2*z*log(r1/r2) - 2*x*dtheta)/(4*pi*d) = (-z*logr -
+        // x*dtheta)/(2*pi*d) ug1 = temp1 + temp2 = (d*dtheta - z*logr -
+        // x*dtheta)/(2*pi*d)
         //                     = ((d-x)*dtheta - z*logr)/(2*pi*d)
         // ug2 = -temp2 = (z*logr + x*dtheta)/(2*pi*d)
         double temp1 = dtheta * inv_2pi;
@@ -122,8 +124,9 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
         u_b = -temp2;
 
         // temp1 = logr/(2*pi)
-        // temp2 = (x*log(r1/r2) - d + z*dtheta)/(2*pi*d) = (-x*logr - d + z*dtheta)/(2*pi*d)
-        // wg1 = temp1 + temp2 = (d*logr - x*logr - d + z*dtheta)/(2*pi*d)
+        // temp2 = (x*log(r1/r2) - d + z*dtheta)/(2*pi*d) = (-x*logr - d +
+        // z*dtheta)/(2*pi*d) wg1 = temp1 + temp2 = (d*logr - x*logr - d +
+        // z*dtheta)/(2*pi*d)
         //                     = ((d-x)*logr - d + z*dtheta)/(2*pi*d)
         // wg2 = -temp2 = (x*logr + d - z*dtheta)/(2*pi*d)
         temp1 = logr * inv_2pi;
@@ -144,8 +147,8 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
     }
 }
 
-void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi,
-                           double& a, double& b) {
+void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
+                          double& b) {
     // Streamfunction influence from linear vortex panel
     // Matches Python: P1, P2 formulas with a = P1 - P2/d, b = P2/d
 
@@ -183,7 +186,7 @@ void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi,
 }
 
 Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                                   const Vector2d* vdir) {
+                                  const Vector2d* vdir) {
     // Velocity from constant source panel
 
     PanelInfo info = GetPanelInfo(Xj, xi);
@@ -253,7 +256,8 @@ double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi) {
     }
 
     // P = (x*(theta1-theta2) + d*theta2 + z*logr1 - z*logr2)/(2*pi)
-    double P = (x * (theta1 - theta2) + d * theta2 + z * logr1 - z * logr2) / (2.0 * kPi);
+    double P = (x * (theta1 - theta2) + d * theta2 + z * logr1 - z * logr2) /
+               (2.0 * kPi);
 
     // dP = d; adjust P based on theta sum
     double dP = d;
@@ -266,8 +270,8 @@ double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi) {
     return P;
 }
 
-void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
-                           double& a, double& b) {
+void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
+                          double& b) {
     // Streamfunction from linear source panel
     // Matches mfoil panel_linsource_stream
 
@@ -313,16 +317,18 @@ void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi,
     double inv_2pi = 0.5 / kPi;
 
     // Streamfunction components (mfoil formula)
-    double P1 = inv_2pi * (x * (theta1 - theta2) + theta2 * d + z * logr1 - z * logr2);
-    double P2 = x * P1 + inv_2pi * (0.5 * r2 * r2 * theta2 - 0.5 * r1 * r1 * theta1 - 0.5 * z * d);
+    double P1 =
+        inv_2pi * (x * (theta1 - theta2) + theta2 * d + z * logr1 - z * logr2);
+    double P2 = x * P1 + inv_2pi * (0.5 * r2 * r2 * theta2 -
+                                    0.5 * r1 * r1 * theta1 - 0.5 * z * d);
 
     // Influence coefficients
     a = P1 - P2 / d;
     b = P2 / d;
 }
 
-void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
-                             Vector2d& a, Vector2d& b) {
+void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi, Vector2d& a,
+                            Vector2d& b) {
     // Velocity from linear source panel
     // Matches mfoil panel_linsource_velocity
 

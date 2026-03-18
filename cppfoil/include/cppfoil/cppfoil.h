@@ -32,6 +32,7 @@
 #define CPPFOIL_CPPFOIL_H
 
 #include <string>
+
 #include "cppfoil/config.h"
 #include "cppfoil/data/state.h"
 
@@ -39,7 +40,7 @@ namespace cppfoil {
 
 // Main cppfoil solver class
 class Cppfoil {
-public:
+   public:
     // Construct from NACA digits
     explicit Cppfoil(const std::string& naca = "0012", int npanel = 199);
 
@@ -51,8 +52,8 @@ public:
     // cl : Target lift coefficient (if set, alpha is computed)
     // Re : Reynolds number (enables viscous analysis)
     // Ma : Mach number
-    void SetOper(double alpha = 0.0, double cl = -1.0,
-                 double Re = 0.0, double Ma = 0.0);
+    void SetOper(double alpha = 0.0, double cl = -1.0, double Re = 0.0,
+                 double Ma = 0.0);
 
     // Solve the current operating point
     // Returns true if converged (always true for inviscid)
@@ -94,7 +95,7 @@ public:
     FoilState& GetState() { return state_; }
     const FoilState& GetState() const { return state_; }
 
-private:
+   private:
     FoilState state_;
 };
 
