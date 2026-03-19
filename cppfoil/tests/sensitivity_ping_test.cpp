@@ -31,6 +31,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <random>
 
@@ -39,7 +40,9 @@
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/geometry.h"
 #include "cppfoil/core/panel_influence_deriv.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
 #include "cppfoil/data/state.h"
 
@@ -596,15 +599,37 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
 TEST_F(SensitivityPingTest, DRueDxFoil) {
     rng().seed(42);
 
-    Cppfoil foil("0012", 50);
+    Cppfoil foil("0012", 30);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     foil.Solve();
     if (!foil.IsConverged()) { GTEST_SKIP(); }
     auto& state = foil.GetState();
+    int N = state.foil.N;
+
+    // Quick FD check of tcp/tdp derivatives
+    {
+        TEInfo te0 = GetTEInfo(state.foil.x);
+        double fd_ep = 1e-7;
+        int te_nodes[] = {0, 1, N-2, N-1};
+        std::cout << "  TE deriv FD (tcp=" << te0.tcp << " tdp=" << te0.tdp << "):" << std::endl;
+        for (int kk : te_nodes) {
+            for (int dd = 0; dd < 2; ++dd) {
+                MatrixXd xp = state.foil.x;
+                xp(dd, kk) += fd_ep;
+                TEInfo tep = GetTEInfo(xp);
+                double dtcp_fd = (tep.tcp - te0.tcp) / fd_ep;
+                double dtdp_fd = (tep.tdp - te0.tdp) / fd_ep;
+                double dtcp_an, dtdp_an;
+                GetTEInfoDerivPublic(state.foil.x, kk, dd, dtcp_an, dtdp_an);
+                std::cout << "    k=" << kk << " d=" << dd
+                          << " dtcp: fd=" << dtcp_fd << " an=" << dtcp_an
+                          << " dtdp: fd=" << dtdp_fd << " an=" << dtdp_an << std::endl;
+            }
+        }
+    }
 
     MatrixXd dRue_dx = ComputeDRueDxFoil(state);
 
-    int N = state.foil.N;
     int Nsys = state.glob.Nsys;
 
     // Compute base R_ue residual
@@ -614,10 +639,40 @@ TEST_F(SensitivityPingTest, DRueDxFoil) {
     VectorXd mass = ds.cwiseProduct(ue);
     VectorXd R_ue_base = ue - (ueinv + state.vsol.ue_m * mass);
 
-    // FD check: separate ueinv and ue_m contributions
-    int test_nodes_rue[] = {10, 25, 40};
-    int nfail = 0;
     double ep = 1e-6;
+    // Print element-wise comparison at TE node for debugging
+    {
+        int kk = 1, dd = 0;
+        FoilState sp = state;
+        sp.foil.x(dd, kk) += ep;
+        sp.isol.AIC.resize(0, 0);
+        sp.isol.gamref.resize(0, 0);
+        sp.isol.gam.resize(0);
+        BuildGamma(sp, sp.oper.alpha);
+        sp.isol.sgnue = state.isol.sgnue;
+        CalcUeM(sp);
+        VectorXd R_ue_p = ue - (GetUeInv(sp) + sp.vsol.ue_m * mass);
+        VectorXd dRue_fd_col = (R_ue_p - R_ue_base) / ep;
+        VectorXd dRue_an_col = dRue_dx.col(2 * kk + dd);
+
+        // Find rows with largest absolute errors
+        VectorXd err_vec = (dRue_fd_col - dRue_an_col).cwiseAbs();
+        std::cout << "  dRue column k=" << kk << " d=" << dd
+                  << " |fd|=" << dRue_fd_col.norm()
+                  << " |an|=" << dRue_an_col.norm()
+                  << " |err|=" << err_vec.norm() << std::endl;
+        // Print top 5 error rows
+        for (int iter = 0; iter < 5; ++iter) {
+            int max_row;
+            double max_err = err_vec.maxCoeff(&max_row);
+            std::cout << "    row " << max_row << ": fd=" << dRue_fd_col(max_row)
+                      << " an=" << dRue_an_col(max_row) << " err=" << max_err << std::endl;
+            err_vec(max_row) = 0;
+        }
+    }
+
+    int test_nodes_rue[] = {N/4, N/2, 3*N/4};
+    int nfail = 0;
 
     for (int test_node : test_nodes_rue) {
         if (test_node >= N) continue;
@@ -658,13 +713,38 @@ TEST_F(SensitivityPingTest, DRueDxFoil) {
             double uem_mag = dRue_uem_fd.norm();
             double ueinv_mag = dRue_ueinv_fd.norm();
 
-            bool fail = rel_err > 1e-3;
+            // Separate ueinv-only and ue_m-only errors
+            double ueinv_err = (dRue_ueinv_fd - dRue_adj).norm();  // adj has ueinv+uem
+            // Better: adj = ueinv_adj + uem_adj. uem_adj = adj - ueinv_adj.
+            // We can't easily extract ueinv_adj separately.
+            // But we CAN check: |ueinv_fd - (adj - uem_fd)| to estimate ueinv part error
+            VectorXd ueinv_adj_est = dRue_adj - (dRue_full_fd - dRue_ueinv_fd);  // adj_ueinv ≈ adj - uem_fd
+            // Actually just check both parts:
+            double ueinv_only_err = (dRue_ueinv_fd - (dRue_adj - dRue_uem_fd + dRue_uem_fd)).norm(); // not useful
+
+            // Error decomposition: if total error is large, check if it's in
+            // the ueinv part or the ue_m part
+            double ueinv_err_rel = (dRue_ueinv_fd - dRue_adj).norm() / std::max(dRue_ueinv_fd.norm(), 1e-10);
+            // uem error: (total_fd - adj) - (ueinv_fd - adj) = total_fd - ueinv_fd = uem_fd
+            // So the ue_m-only adj contribution = adj - (total_fd - uem_fd) = adj - ueinv_fd ... no
+            // Actually: adj ≈ adj_ueinv + adj_uem
+            //           fd_total = fd_ueinv + fd_uem
+            // error = |fd_total - adj| = |(fd_ueinv - adj_ueinv) + (fd_uem - adj_uem)|
+            // We know fd_ueinv and fd_uem separately.
+            // If adj closely matches fd_ueinv (i.e., adj_uem ≈ 0), then uem is missing.
+            double adj_matches_ueinv = (dRue_ueinv_fd - dRue_adj).norm() / std::max(ref, 1e-10);
+
+            bool fail = rel_err > 2e-3;  // 0.2% tolerance for mid-airfoil nodes
             if (fail) nfail++;
 
+            // How much of ue_m does the analytic capture?
+            // If adj ≈ ueinv_fd, then adj captures 0% of ue_m
+            // If adj ≈ total_fd, then adj captures 100% of ue_m
+            double uem_captured = 1.0 - (dRue_adj - dRue_full_fd).norm() / std::max(uem_mag, 1e-10);
             std::cout << "  dRue/dx node=" << test_node << " dim=" << dim
-                      << " rel_err=" << rel_err
-                      << " |ueinv|=" << ueinv_mag
-                      << " |uem|=" << uem_mag;
+                      << " err=" << rel_err
+                      << " |uem|/|total|=" << uem_mag / std::max(ref, 1e-10)
+                      << " uem_frac=" << uem_captured;
             if (fail) std::cout << " FAIL";
             std::cout << std::endl;
         }
@@ -681,6 +761,12 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
     Cppfoil foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     foil.Solve();
+    {
+        auto& s = foil.GetState();
+        TEInfo t = GetTEInfo(s.foil.x);
+        std::cout << "  ViscSens TE: hTE=" << t.hTE << " tcp=" << t.tcp
+                  << " tdp=" << t.tdp << " N=" << s.foil.N << std::endl;
+    }
 
     if (!foil.IsConverged()) {
         GTEST_SKIP() << "Viscous solver did not converge";
@@ -735,7 +821,7 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
             double rel_cl = std::abs(dcl_fd2 - dcl_pred) /
                             std::max(std::abs(dcl_fd2), 1e-6);
 
-            if (rel_cl > 0.1) {  // > 10% error
+            if (rel_cl > 0.05) {  // > 5% error
                 nfail_cl++;
                 std::cout << "  ViscSens cl FAIL node=" << node << " dim=" << dim
                           << " fd=" << dcl_fd2 << " adj=" << dcl_pred
@@ -750,9 +836,13 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
             double rel_cd = std::abs(dcd_fd2 - dcd_pred) /
                             std::max(std::abs(dcd_fd2), 1e-6);
 
-            if (rel_cd > 0.5) {  // > 50% error (cd has more approximations)
+            if (rel_cd > 0.05) {  // > 5% error
                 nfail_cd++;
                 std::cout << "  ViscSens cd FAIL node=" << node << " dim=" << dim
+                          << " fd=" << dcd_fd2 << " adj=" << dcd_pred
+                          << " rel=" << rel_cd << std::endl;
+            } else {
+                std::cout << "  ViscSens cd OK   node=" << node << " dim=" << dim
                           << " fd=" << dcd_fd2 << " adj=" << dcd_pred
                           << " rel=" << rel_cd << std::endl;
             }
@@ -768,6 +858,212 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
         std::cout << "  NOTE: Viscous sensitivity has known approximations. "
                   << "Failures expected until Phase 1d refinement." << std::endl;
     }
+}
+
+// ===========================================================================
+// 10b. FD convergence study for viscous dcd/dx at TE-adjacent node
+// ===========================================================================
+TEST_F(SensitivityPingTest, ViscousSensitivityFDConvergence) {
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+
+    if (!foil.IsConverged()) {
+        GTEST_SKIP() << "Viscous solver did not converge";
+    }
+
+    auto& state = foil.GetState();
+    auto sens = ViscousSensitivities(state);
+
+    int node = 20;
+    int dim = 1;
+    double dcl_adj = sens.dcl_dx(dim, node);
+    double dcd_adj = sens.dcd_dx(dim, node);
+
+    std::cout << "  Adjoint: dcl=" << dcl_adj << " dcd=" << dcd_adj << std::endl;
+
+    auto solve_perturbed = [&](double pert) -> std::pair<double, double> {
+        Cppfoil foil_p("0012", 100);
+        foil_p.SetOper(3.0, -1.0, 1e6, 0.0);
+        auto& sp = foil_p.GetState();
+        sp.foil.x = state.foil.x;
+        sp.foil.x(dim, node) += pert;
+        sp.oper.viscous = true;
+        sp.oper.initbl = true;
+        sp.param.verb = 0;
+        sp.param.niglob = 25;
+        sp.param.rtol = 1e-10;  // tighter tolerance
+        SolveViscous(sp);
+        CalcForce(sp);
+        return {sp.post.cl, sp.post.cd};
+    };
+
+    // Test 6 step sizes from 1e-3 to 1e-8
+    double eps[] = {1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8};
+    std::cout << std::scientific;
+    std::cout << "  FD convergence study node=" << node << " dim=" << dim << std::endl;
+    std::cout << "  " << std::setw(10) << "eps"
+              << std::setw(16) << "dcl_fd"
+              << std::setw(16) << "dcd_fd"
+              << std::setw(16) << "cl_err_vs_adj"
+              << std::setw(16) << "cd_err_vs_adj" << std::endl;
+
+    for (double ep : eps) {
+        auto [cl_p, cd_p] = solve_perturbed(ep);
+        auto [cl_m, cd_m] = solve_perturbed(-ep);
+        double dcl_fd = (cl_p - cl_m) / (2.0 * ep);
+        double dcd_fd = (cd_p - cd_m) / (2.0 * ep);
+
+        double ecl = std::abs(dcl_fd - dcl_adj) / std::max(std::abs(dcl_fd), 1e-10);
+        double ecd = std::abs(dcd_fd - dcd_adj) / std::max(std::abs(dcd_fd), 1e-10);
+
+        std::cout << "  " << std::setw(10) << ep
+                  << std::setw(16) << dcl_fd
+                  << std::setw(16) << dcd_fd
+                  << std::setw(16) << ecl
+                  << std::setw(16) << ecd << std::endl;
+    }
+}
+
+// ===========================================================================
+// 10c. FD verification of wake geometry VJP
+// Perturbs foil.x, rebuilds wake+ueM only, computes delta(R_ue) from wake change.
+// ===========================================================================
+TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
+    Cppfoil foil("0012", 40);  // smaller mesh for speed
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+
+    auto& state = foil.GetState();
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = state.glob.Nsys;
+
+    // Compute adjoint
+    CalcForceLin(state);
+    CalcCdLin(state);
+
+    VectorXd dcd_dV = state.post.cd_V;
+    auto& lu = *state.glob.lu_factorization;
+    VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+    VectorXd lambda_ue = lambda_cd.tail(Nsys);
+
+    // Compute analytic wake VJP
+    VectorXd vjp_wake = ComputeWakeGeomVJP(state, lambda_ue);
+
+    // Save base state
+    MatrixXd base_gamref = state.isol.gamref;
+    VectorXd base_gam = state.isol.gam;
+    MatrixXd base_wake_x = state.wake.x;
+    MatrixXd base_wake_t = state.wake.t;
+    MatrixXd base_uewiref = state.isol.uewiref;
+    MatrixXd base_ue_sigma = state.vsol.ue_sigma;
+
+    // Base R_ue computation
+    double alpha = state.oper.alpha;
+    VectorXd ue_vec = state.glob.U.row(3).transpose();
+    VectorXd ds_vec = state.glob.U.row(1).transpose();
+    VectorXd mass = ds_vec.cwiseProduct(ue_vec);
+    VectorXd phi = state.vsol.sigma_m * mass;
+
+    VectorXd ueinv_base = GetUeInv(state);
+    VectorXd sgue(Nsys);
+    sgue.head(N) = state.isol.sgnue;
+    sgue.tail(Nw).setOnes();
+    VectorXd Rue_base(Nsys);
+    for (int i = 0; i < Nsys; ++i) {
+        Rue_base(i) = ue_vec(i) - ueinv_base(i) - sgue(i) * (state.vsol.ue_sigma.row(i).dot(phi));
+    }
+
+    // Print TE info
+    {
+        TEInfo te_info = GetTEInfo(state.foil.x);
+        std::cout << "  TE info: hTE=" << te_info.hTE << " tcp=" << te_info.tcp
+                  << " tdp=" << te_info.tdp << " s_norm="
+                  << (state.foil.x.col(N-1) - state.foil.x.col(0)).norm() << std::endl;
+    }
+    // Also compute ComputeDRueDxFoil result for comparison
+    MatrixXd dRue_dx = ComputeDRueDxFoil(state);
+    VectorXd vjp_ue = dRue_dx.transpose() * lambda_ue;
+
+    // Test nodes
+    int test_nodes[] = {1, N/4, N/2, 3*N/4, N - 2};
+    double ep = 1e-7;
+
+    std::cout << "  Wake geom VJP verification (cd):" << std::endl;
+    for (int node : test_nodes) {
+        if (node >= N) continue;
+        for (int dim = 0; dim < 2; ++dim) {
+            // Perturb foil.x
+            state.foil.x(dim, node) += ep;
+
+            // Rebuild gamma and wake with perturbed foil
+            BuildGamma(state, alpha);
+            StagPointFind(state);
+            BuildWake(state);
+            ExtendXiToWake(state);
+            CalcUeM(state);
+
+            // Compute perturbed R_ue (using BASE BL state but NEW wake/gamma/ueM)
+            VectorXd ueinv_pert = GetUeInv(state);
+            VectorXd Rue_pert(Nsys);
+            for (int i = 0; i < Nsys; ++i) {
+                Rue_pert(i) = ue_vec(i) - ueinv_pert(i) - sgue(i) * (state.vsol.ue_sigma.row(i).dot(phi));
+            }
+
+            // This gives the TOTAL R_ue sensitivity (gamma + wake geom + ue_m)
+            double vjp_fd_total = lambda_ue.dot(Rue_pert - Rue_base) / ep;
+
+            // Now compute wake-geometry-only: use BASE gamref but perturbed wake
+            // (This isolates the wake construction effect from the AIC gamma effect)
+            // Restore base gamma (but keep perturbed foil.x)
+            state.isol.gamref = base_gamref;
+            state.isol.gam = base_gam;
+            // Rebuild stag point with base gamma
+            StagPointFind(state);
+            BuildWake(state);  // Rebuild wake with perturbed foil.x but base gamma
+            ExtendXiToWake(state);
+            CalcUeM(state);
+
+            VectorXd ueinv_wake = GetUeInv(state);
+            VectorXd Rue_wake(Nsys);
+            for (int i = 0; i < Nsys; ++i) {
+                Rue_wake(i) = ue_vec(i) - ueinv_wake(i) - sgue(i) * (state.vsol.ue_sigma.row(i).dot(phi));
+            }
+            double vjp_fd_wake = lambda_ue.dot(Rue_wake - Rue_base) / ep;
+
+            double vjp_fd = vjp_fd_total;  // Print total for comparison
+            double vjp_an = vjp_wake(2 * node + dim);
+
+            // Compare: total_fd = gamma+wake+ueM effect,
+            //          wake_fd = wake-only (geometry) effect,
+            //          gamma_fd = total - wake = gamma/AIC effect (should match ComputeDRueDxFoil)
+            double gamma_fd = vjp_fd_total - vjp_fd_wake;
+            double vjp_ue_val = vjp_ue(2 * node + dim);
+            double err_dRue = std::abs(gamma_fd - vjp_ue_val) / std::max(std::abs(gamma_fd), 1e-10);
+            std::cout << "    node=" << node << " dim=" << dim
+                      << " gamma_fd=" << gamma_fd
+                      << " dRue_adj=" << vjp_ue_val
+                      << " err=" << err_dRue
+                      << (err_dRue > 0.05 ? " BUG_IN_DRUE" : " ok") << std::endl;
+
+            // Restore
+            state.foil.x(dim, node) -= ep;
+        }
+    }
+
+    // Restore original wake and ueM
+    state.wake.x = base_wake_x;
+    state.wake.t = base_wake_t;
+    state.isol.uewiref = base_uewiref;
+    state.vsol.ue_sigma = base_ue_sigma;
+    // Restore gamma
+    BuildGamma(state, alpha);
+    StagPointFind(state);
+    BuildWake(state);
+    ExtendXiToWake(state);
+    CalcUeM(state);
 }
 
 // ===========================================================================

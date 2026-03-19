@@ -178,6 +178,87 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
         sens(2 * i + 1) += lam_i * cosa;
     }
 
+    // --- (5) TE factor derivatives: d(tcp)/dx and d(tdp)/dx ---
+    // The TE source/vortex panel strengths are proportional to tcp/tdp,
+    // which depend on nodes 0, 1, N-2, N-1.
+    {
+        Vector2d s = state.foil.x.col(N - 1) - state.foil.x.col(0);
+        double sn = s.norm();
+        if (sn > 1e-10) {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+
+            // Precompute TE influence at each node, weighted by lambda
+            // TE source: sum_i lambda(i) * a_src(i) * 0.5 * (gam(N-1)-gam(0))
+            // TE vortex: sum_i lambda(i) * (a_vor+b_vor)(i) * 0.5 * (gam(0)-gam(N-1))
+            double tcp_sum = 0.0, tdp_sum = 0.0;
+            for (int i = 0; i < N; ++i) {
+                if (std::abs(lambda(i)) < 1e-20) continue;
+                Vector2d xi_i = state.foil.x.col(i);
+                double a_src = PanelConstSourceStream(XjTE, xi_i);
+                tcp_sum += lambda(i) * a_src;
+                double a_v, b_v;
+                PanelLinVortexStream(XjTE, xi_i, a_v, b_v);
+                tdp_sum += lambda(i) * (a_v + b_v);
+            }
+            tcp_sum *= 0.5 * (gam(N - 1) - gam(0));
+            tdp_sum *= 0.5 * (gam(0) - gam(N - 1));
+
+            // For each TE-affecting node, add dtcp*tcp_sum + dtdp*tdp_sum
+            int te_nodes[] = {0, 1, N - 2, N - 1};
+            for (int kk : te_nodes) {
+                if (kk < 0 || kk >= N) continue;
+                for (int dd = 0; dd < 2; ++dd) {
+                    // Compute d(tcp)/d(x[kk]_dd) and d(tdp)/d(x[kk]_dd)
+                    // Inline the derivative computation
+                    Vector2d v1 = state.foil.x.col(0) - state.foil.x.col(1);
+                    Vector2d v2 = state.foil.x.col(N-1) - state.foil.x.col(N-2);
+                    double v1n = v1.norm(), v2n = v2.norm();
+                    if (v1n < 1e-10 || v2n < 1e-10) continue;
+                    Vector2d t1 = v1/v1n, t2 = v2/v2n;
+                    Vector2d traw = 0.5*(t1+t2);
+                    double tnorm = traw.norm();
+                    if (tnorm < 1e-10) continue;
+                    Vector2d tvec = traw/tnorm;
+                    Vector2d pvec = s/sn;
+
+                    // dt1/d(x[kk]_dd)
+                    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1*t1.transpose())/v1n;
+                    Vector2d dv1 = Vector2d::Zero();
+                    if (kk == 0) dv1(dd) = 1.0;
+                    else if (kk == 1) dv1(dd) = -1.0;
+                    Vector2d dt1_d = dt1_dv1 * dv1;
+
+                    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2*t2.transpose())/v2n;
+                    Vector2d dv2 = Vector2d::Zero();
+                    if (kk == N-1) dv2(dd) = 1.0;
+                    else if (kk == N-2) dv2(dd) = -1.0;
+                    Vector2d dt2_d = dt2_dv2 * dv2;
+
+                    Vector2d dtraw_d = 0.5*(dt1_d + dt2_d);
+                    Matrix2d dt_dtraw = (Matrix2d::Identity() - tvec*tvec.transpose())/tnorm;
+                    Vector2d dt_d = dt_dtraw * dtraw_d;
+
+                    Vector2d ds_d = Vector2d::Zero();
+                    if (kk == N-1) ds_d(dd) = 1.0;
+                    else if (kk == 0) ds_d(dd) = -1.0;
+                    Matrix2d dp_ds = (Matrix2d::Identity() - pvec*pvec.transpose())/sn;
+                    Vector2d dp_d = dp_ds * ds_d;
+
+                    double cross_val = tvec(0)*pvec(1) - tvec(1)*pvec(0);
+                    double sign_c = (cross_val >= 0) ? 1.0 : -1.0;
+                    double dcross = dt_d(0)*pvec(1) + tvec(0)*dp_d(1)
+                                  - dt_d(1)*pvec(0) - tvec(1)*dp_d(0);
+                    double dtcp_d = sign_c * dcross;
+                    double dtdp_d = dt_d.dot(pvec) + tvec.dot(dp_d);
+
+                    sens(2*kk + dd) += dtcp_d * tcp_sum + dtdp_d * tdp_sum;
+                }
+            }
+        }
+    }
+
     return sens;
 }
 

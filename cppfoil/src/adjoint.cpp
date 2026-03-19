@@ -44,6 +44,97 @@
 namespace cppfoil {
 
 // ============================================================================
+// TE geometry derivatives: d(tcp)/d(x[k]) and d(tdp)/d(x[k])
+// tcp and tdp depend on nodes 0, 1, N-2, N-1 through:
+//   t1 = normalize(x[0] - x[1]), t2 = normalize(x[N-1] - x[N-2])
+//   t = normalize(0.5*(t1+t2))
+//   s = x[N-1] - x[0], p = s/|s|
+//   tcp = |t × p|, tdp = t · p
+//
+// Returns d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) for a given node k and dim.
+// Only nonzero for k ∈ {0, 1, N-2, N-1}.
+// ============================================================================
+static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim,
+                            double& dtcp, double& dtdp) {
+    int N = static_cast<int>(x.cols());
+    dtcp = 0.0;
+    dtdp = 0.0;
+
+    // Only nodes 0, 1, N-2, N-1 affect tcp/tdp
+    if (k != 0 && k != 1 && k != N - 2 && k != N - 1) return;
+
+    // --- Forward computation (mirrors GetTEInfo) ---
+    Vector2d v1 = x.col(0) - x.col(1);
+    Vector2d v2 = x.col(N - 1) - x.col(N - 2);
+    double v1n = v1.norm();
+    double v2n = v2.norm();
+    if (v1n < 1e-10 || v2n < 1e-10) return;
+
+    Vector2d t1 = v1 / v1n;
+    Vector2d t2 = v2 / v2n;
+
+    Vector2d t_raw = 0.5 * (t1 + t2);
+    double tn = t_raw.norm();
+    if (tn < 1e-10) return;
+    Vector2d t = t_raw / tn;
+
+    Vector2d s = x.col(N - 1) - x.col(0);
+    double sn = s.norm();
+    if (sn < 1e-10) return;
+    Vector2d p = s / sn;
+
+    double cross = t(0) * p(1) - t(1) * p(0);
+    double tcp_val = std::abs(cross);
+    double sign_cross = (cross >= 0) ? 1.0 : -1.0;
+    // double tdp_val = t.dot(p);
+
+    // --- d(t1)/d(x[k]_dim) ---
+    // t1 = v1/|v1|, v1 = x[0]-x[1]
+    // d(v1)/d(x[0]_dim) = e_dim, d(v1)/d(x[1]_dim) = -e_dim
+    // d(t1)/d(v1) = (I - t1*t1^T)/|v1|
+    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
+    Vector2d dv1(0, 0);
+    if (k == 0) dv1(dim) = 1.0;
+    else if (k == 1) dv1(dim) = -1.0;
+    Vector2d dt1 = dt1_dv1 * dv1;  // d(t1)/d(x[k]_dim)
+
+    // --- d(t2)/d(x[k]_dim) ---
+    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
+    Vector2d dv2(0, 0);
+    if (k == N - 1) dv2(dim) = 1.0;
+    else if (k == N - 2) dv2(dim) = -1.0;
+    Vector2d dt2 = dt2_dv2 * dv2;
+
+    // --- d(t)/d(x[k]_dim) ---
+    // t = normalize(0.5*(t1+t2))
+    Vector2d dt_raw = 0.5 * (dt1 + dt2);
+    Matrix2d dt_dtraw = (Matrix2d::Identity() - t * t.transpose()) / tn;
+    Vector2d dt = dt_dtraw * dt_raw;
+
+    // --- d(p)/d(x[k]_dim) ---
+    // p = s/|s|, s = x[N-1]-x[0]
+    Vector2d ds(0, 0);
+    if (k == N - 1) ds(dim) = 1.0;
+    else if (k == 0) ds(dim) = -1.0;
+    Matrix2d dp_ds = (Matrix2d::Identity() - p * p.transpose()) / sn;
+    Vector2d dp = dp_ds * ds;
+
+    // --- d(tcp)/d(x[k]_dim) ---
+    // tcp = |cross| where cross = t(0)*p(1) - t(1)*p(0)
+    double dcross = dt(0) * p(1) + t(0) * dp(1) - dt(1) * p(0) - t(1) * dp(0);
+    dtcp = sign_cross * dcross;
+
+    // --- d(tdp)/d(x[k]_dim) ---
+    // tdp = t·p
+    dtdp = dt.dot(p) + t.dot(dp);
+}
+
+void GetTEInfoDerivPublic(const MatrixXd& x, int k, int dim,
+                           double& dtcp, double& dtdp) {
+    GetTEInfoDeriv(x, k, dim, dtcp, dtdp);
+}
+
+// ============================================================================
 // CalcForceLin: compute partial derivatives of cl, cm, cdpi w.r.t. foil.x
 // holding ue (gamma) fixed. Also computes cm_ue and cdpi_ue linearizations.
 // ============================================================================
@@ -532,6 +623,47 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
                 }
             }
 
+            // --- (d) TE factor derivatives: d(tcp)/dx and d(tdp)/dx ---
+            // tcp and tdp enter the AIC through the TE source/vortex panels.
+            // When tcp or tdp change, the AIC matrix changes at ALL rows.
+            // Nodes 0, 1, N-2, N-1 can affect tcp/tdp.
+            {
+                double dtcp_dk, dtdp_dk;
+                GetTEInfoDeriv(state.foil.x, k, dim, dtcp_dk, dtdp_dk);
+
+                if (std::abs(dtcp_dk) > 1e-20 || std::abs(dtdp_dk) > 1e-20) {
+                    Matrix2d XjTE;
+                    XjTE.col(0) = state.foil.x.col(N - 1);
+                    XjTE.col(1) = state.foil.x.col(0);
+
+                    for (int i = 0; i < N; ++i) {
+                        if (nogap && i == N - 1) continue;
+                        Vector2d xi = state.foil.x.col(i);
+
+                        // TE source: A contribution = a_src * 0.5*tcp*(gamref(N-1,c)-gamref(0,c))
+                        // d/d(tcp) → a_src * 0.5*(gamref(N-1,c)-gamref(0,c)) * dtcp_dk
+                        double a_src = PanelConstSourceStream(XjTE, xi);
+                        for (int c = 0; c < 2; ++c) {
+                            double dsigma = 0.5 * dtcp_dk *
+                                (state.isol.gamref(N - 1, c) - state.isol.gamref(0, c));
+                            if (c == 0) dAgam0(i) += a_src * dsigma;
+                            else dAgam1(i) += a_src * dsigma;
+                        }
+
+                        // TE vortex: A contribution = (a_vor+b_vor) * 0.5*tdp*(gamref(0,c)-gamref(N-1,c))
+                        double a_vor, b_vor;
+                        PanelLinVortexStream(XjTE, xi, a_vor, b_vor);
+                        double ab = a_vor + b_vor;
+                        for (int c = 0; c < 2; ++c) {
+                            double dgam = 0.5 * dtdp_dk *
+                                (state.isol.gamref(0, c) - state.isol.gamref(N - 1, c));
+                            if (c == 0) dAgam0(i) += ab * dgam;
+                            else dAgam1(i) += ab * dgam;
+                        }
+                    }
+                }
+            }
+
             // --- RHS derivatives ---
             // rhs(k,0) = -xi_z, rhs(k,1) = xi_x (only row k affected)
             if (dim == 0) {
@@ -544,11 +676,25 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
             VectorXd dgamref0 = -Ainv * dAgam0;
             VectorXd dgamref1 = -Ainv * dAgam1;
 
+
+
+
             // dRue(i)/dx_k = -dueinv(i)/dx_k
             // dueinv(i) = sgnue(i) * (cosa*gamref0(i) + sina*gamref1(i))
             for (int i = 0; i < N; ++i) {
                 dRue_dx(i, xidx) -= state.isol.sgnue(i) *
                     (cosa * dgamref0(i) + sina * dgamref1(i));
+            }
+
+            // Wake ueinv derivatives (missing from original code)
+            // Wake station 0: continuity ueinv(N) = sgnue(N-1) * gamref(N-1,:) * cs
+            if (state.wake.N > 0) {
+                dRue_dx(N, xidx) -= state.isol.sgnue(N - 1) *
+                    (cosa * dgamref0(N - 1) + sina * dgamref1(N - 1));
+
+                // Wake stations i > 0: uewiref is treated as frozen w.r.t. foil.x
+                // (uewiref is computed during BuildWake using the velocity field at
+                // wake points; differentiating through it is handled by ComputeWakeGeomVJP)
             }
         }
     }
@@ -574,7 +720,7 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
     // at wake evaluation points from foil panels.
 
     int Nw = state.wake.N;
-    if (Nw > 0) {
+    if (Nw > 0) {  // Re-enabled
         // Compute phi = sigma_m * mass [N+Nw-2]
         VectorXd ue_vec = state.glob.U.row(3).transpose();
         VectorXd ds_vec = state.glob.U.row(1).transpose();
@@ -700,6 +846,7 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
                 for (int j = std::max(0, k - 1); j <= std::min(N - 2, k); ++j) {
                     int xj_idx = (k == j) ? dim : 2 + dim;
                     for (int i = 0; i < N; ++i) {
+                        if (nogap && i == N - 1) continue;  // no-gap: row N-1 is extrapolation, not streamfn
                         Vector2d xi_eval = state.foil.x.col(i);
                         Matrix2d Xj;
                         Xj.col(0) = state.foil.x.col(j);
@@ -710,6 +857,8 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
                 }
 
                 // xi evaluation point contributions (row k, ALL panels in B)
+                // Skip for no-gap row N-1 (extrapolation, not streamfunction)
+                if (!nogap || k != N - 1)
                 {
                     Vector2d xi_eval = state.foil.x.col(k);
 
@@ -826,6 +975,28 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
                     }
                 }
 
+                // --- TE factor derivatives for dAIC_Bpphi ---
+                {
+                    double dtcp_dk, dtdp_dk;
+                    GetTEInfoDeriv(state.foil.x, k, dim, dtcp_dk, dtdp_dk);
+                    if (std::abs(dtcp_dk) > 1e-20 || std::abs(dtdp_dk) > 1e-20) {
+                        Matrix2d XjTE;
+                        XjTE.col(0) = state.foil.x.col(N - 1);
+                        XjTE.col(1) = state.foil.x.col(0);
+                        for (int i = 0; i < N; ++i) {
+                            if (nogap && i == N - 1) continue;
+                            Vector2d xi_eval = state.foil.x.col(i);
+                            double a_src = PanelConstSourceStream(XjTE, xi_eval);
+                            dAIC_Bpphi(i) += a_src * 0.5 * dtcp_dk *
+                                (Bp_phi_full(N - 1) - Bp_phi_full(0));
+                            double a_v, b_v;
+                            PanelLinVortexStream(XjTE, xi_eval, a_v, b_v);
+                            dAIC_Bpphi(i) += (a_v + b_v) * 0.5 * dtdp_dk *
+                                (Bp_phi_full(0) - Bp_phi_full(N - 1));
+                        }
+                    }
+                }
+
                 // d(Bp*phi)/dx_k = -Ainv * (dBphi + dAIC_Bpphi)
                 VectorXd dBpphi_full = -Ainv * (dBphi + dAIC_Bpphi);
                 VectorXd dBpphi = dBpphi_full.head(N);
@@ -876,6 +1047,25 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
                         Vector2d fvor = vvd.a_Xj.col(te_idx) + vvd.b_Xj.col(te_idx);
                         double gam_te = 0.5 * te.tdp * (Bp_phi(0) - Bp_phi(N - 1));
                         dCgam_Bpphi(i) += fvor.dot(ti_w) * gam_te;
+                    }
+
+                    // TE factor derivatives for Cgam
+                    {
+                        double dtcp_dk, dtdp_dk;
+                        GetTEInfoDeriv(state.foil.x, k, dim, dtcp_dk, dtdp_dk);
+                        if (std::abs(dtcp_dk) > 1e-20 || std::abs(dtdp_dk) > 1e-20) {
+                            Matrix2d XjTE;
+                            XjTE.col(0) = state.foil.x.col(N - 1);
+                            XjTE.col(1) = state.foil.x.col(0);
+                            Vector2d v_src = PanelConstSourceVelocity(XjTE, xi_w, nullptr);
+                            dCgam_Bpphi(i) += v_src.dot(ti_w) * 0.5 * dtcp_dk *
+                                (Bp_phi(N - 1) - Bp_phi(0));
+                            Vector2d a_vor, b_vor;
+                            PanelLinVortexVelocity(XjTE, xi_w, nullptr, false, a_vor, b_vor);
+                            Vector2d fv = a_vor + b_vor;
+                            dCgam_Bpphi(i) += fv.dot(ti_w) * 0.5 * dtdp_dk *
+                                (Bp_phi(0) - Bp_phi(N - 1));
+                        }
                     }
                 }
 
@@ -982,6 +1172,948 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
     }
 
     return dRue_dx;
+}
+
+// ============================================================================
+// ComputeWakeGeomVJP: VJP through wake geometry dependence on foil.x
+//
+// The 4th equation R_ue at wake stations depends on wake.x and wake.t through:
+//   uewiref[i,c] = V_c(wake.x[i]) · wake.t[i]
+//   Cgam(i,j) and Csig(i,j): velocity influences at wake.x[i] projected onto wake.t[i]
+//
+// ComputeDRueDxFoil treats wake.x and wake.t as constants.  The missing terms are:
+//   ∂R_ue/∂x_foil|_full = ∂R_ue/∂x_foil|_{wake fixed}     [already computed]
+//                        + ∂R_ue/∂wake.x · dwake.x/dx_foil  [this function]
+//                        + ∂R_ue/∂wake.t · dwake.t/dx_foil  [this function]
+//
+// For the adjoint, we compute the VJP: λ_ue^T · (missing terms).
+// ============================================================================
+VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue) {
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    double alpha = state.oper.alpha;
+    double Vinf = state.oper.Vinf;
+    double cosa = Cosd(alpha);
+    double sina = Sind(alpha);
+
+    VectorXd vjp = VectorXd::Zero(2 * N);
+
+    if (Nw <= 0) return vjp;
+
+    // Gamma adjoint accumulator: every velocity evaluation V(x, gamma) in the
+    // wake construction chain generates mu_gamma += V_G^T * mu_V.
+    // At the end, we solve AIC^T * mu_AIC = mu_gamma and add the AIC VJP.
+    VectorXd mu_gamma = VectorXd::Zero(N + 1);
+
+    // Helper: accumulate mu_V into vjp (via panel _Xj) and mu_gamma (via V_G)
+    // for a velocity evaluation at point xi using gamma values gam_vec.
+    auto accum_muV_to_foilx = [&](const Vector2d& mu_V, const Vector2d& xi_pt,
+                                   const VectorXd& gam_vec) {
+        TEInfo te_loc = GetTEInfo(state.foil.x);
+        // Panel _Xj contributions → vjp
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            auto vd = PanelLinVortexVelocityDeriv(Xj, xi_pt);
+            double gj = gam_vec(j);
+            double gjp = gam_vec(j + 1);
+            for (int k = 0; k < 4; ++k) {
+                Vector2d dV_dXjk = vd.a_Xj.col(k) * gj + vd.b_Xj.col(k) * gjp;
+                double contrib = mu_V.dot(dV_dXjk);
+                int node = (k < 2) ? j : j + 1;
+                int dim = k % 2;
+                vjp(2 * node + dim) += contrib;
+            }
+        }
+        // TE source panel
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+            auto svd = PanelConstSourceVelocityDeriv(XjTE, xi_pt);
+            double sigma_te = 0.5 * te_loc.tcp * (gam_vec(N - 1) - gam_vec(0));
+            for (int k = 0; k < 4; ++k) {
+                double contrib = mu_V.dot(svd.val_Xj.col(k)) * sigma_te;
+                int node = (k < 2) ? N - 1 : 0;
+                int dim = k % 2;
+                vjp(2 * node + dim) += contrib;
+            }
+        }
+        // TE vortex panel
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+            auto vvd = PanelLinVortexVelocityDeriv(XjTE, xi_pt);
+            double gam_te = 0.5 * te_loc.tdp * (gam_vec(0) - gam_vec(N - 1));
+            for (int k = 0; k < 4; ++k) {
+                Vector2d fvor_Xjk = vvd.a_Xj.col(k) + vvd.b_Xj.col(k);
+                double contrib = mu_V.dot(fvor_Xjk) * gam_te;
+                int node = (k < 2) ? N - 1 : 0;
+                int dim = k % 2;
+                vjp(2 * node + dim) += contrib;
+            }
+        }
+        // Gamma chain: V_G^T * mu_V
+        MatrixXd V_G;
+        InviscidVelocity(state.foil.x, gam_vec, 0.0, 0.0, xi_pt, true, &V_G);
+        // V_G is [2 x N], mu_gamma += V_G^T * mu_V gives [N]
+        // But mu_gamma is [N+1] to match AIC dimension
+        mu_gamma.head(N) += V_G.transpose() * mu_V;
+    };
+
+    // Extract wake portion of lambda_ue
+    VectorXd lam_w = lambda_ue.tail(Nw);
+
+    // =========================================================================
+    // Step 1: Compute wake adjoints μ_x[i] and μ_t[i]
+    //
+    // For each wake point i, compute how R_ue (weighted by lambda_ue) depends
+    // on wake.x[i] and wake.t[i].
+    //
+    // R_ue at wake point i has two main dependencies on wake geometry:
+    // (A) ueinv contribution: uewiref[i,c] = V_c(wake.x[i]) · wake.t[i]
+    // (B) ue_m contribution: through Cgam and Csig at wake points
+    // =========================================================================
+
+    // mu_x[i] = adjoint w.r.t. wake.x[i] (2-vector per wake point)
+    // mu_t[i] = adjoint w.r.t. wake.t[i] (2-vector per wake point)
+    MatrixXd mu_x = MatrixXd::Zero(2, Nw);
+    MatrixXd mu_t = MatrixXd::Zero(2, Nw);
+
+    // --- (A) ueinv contribution ---
+    // R_ue(N+i) has term -ueinv(N+i) = -(uewiref(i,0)*cos(a) + uewiref(i,1)*sin(a))
+    // uewiref(i,c) = V_c(wake.x[i]) · wake.t[i]
+    //
+    // ∂R_ue(N+i)/∂wake.x[i] = -(dV_c/dxi(wake.x[i]) · wake.t[i]) * [cos(a), sin(a)]
+    // ∂R_ue(N+i)/∂wake.t[i] = -V_c(wake.x[i]) * [cos(a), sin(a)]
+    //
+    // Skip i=0: first wake point uses continuity (uewiref overridden by last airfoil)
+
+    for (int i = 0; i < Nw; ++i) {
+        double lam_i = lam_w(i);
+        if (std::abs(lam_i) < 1e-20) continue;
+
+        // The i=0 wake point: ueinv(N+0) = ueinv(N-1) (continuity override)
+        // So ∂R_ue(N+0)/∂wake geometry through ueinv = 0
+        // But Cgam/Csig contributions to ue_m at i=0 are also overridden (Dw(0)=Bp(N-1))
+        // So i=0 has NO wake geometry dependence at all
+        if (i == 0) continue;
+
+        Vector2d xi_w = state.wake.x.col(i);
+        Vector2d ti_w = state.wake.t.col(i);
+
+        // Compute velocity and velocity gradient at wake point for each reference
+        for (int c = 0; c < 2; ++c) {
+            double wt = (c == 0) ? cosa : sina;  // weight for this reference
+
+            // V_c(xi_w) is the velocity from gamref[:,c] + freestream at ref alpha
+            Vector2d Vc = InviscidVelocity(state.foil.x, state.isol.gamref.col(c),
+                                           Vinf, (c == 0) ? 0.0 : 90.0, xi_w);
+
+            // ∂uewiref(i,c)/∂wake.t[i] = V_c
+            // So ∂R_ue(N+i)/∂wake.t[i] contribution = -wt * V_c * lam_i
+            mu_t.col(i) -= lam_i * wt * Vc;
+
+            // ∂uewiref(i,c)/∂wake.x[i] = (dV_c/dxi) · t_i
+            // Need dV/dxi: velocity gradient at evaluation point
+            // Use panel influence derivatives with _xi terms
+            TEInfo te = GetTEInfo(state.foil.x);
+
+            // Accumulate dV/dxi for all panels
+            Matrix2d dVdxi = Matrix2d::Zero();  // dV/dxi [2x2]
+
+            for (int j = 0; j < N - 1; ++j) {
+                Matrix2d Xj;
+                Xj.col(0) = state.foil.x.col(j);
+                Xj.col(1) = state.foil.x.col(j + 1);
+
+                auto vd = PanelLinVortexVelocityDeriv(Xj, xi_w);
+                double gj = state.isol.gamref(j, c);
+                double gjp = state.isol.gamref(j + 1, c);
+
+                // dV/dxi from this panel: a_xi * gj + b_xi * gjp
+                // a_xi, b_xi are [2x2] matrices
+                dVdxi += vd.a_xi * gj + vd.b_xi * gjp;
+            }
+
+            // TE source panel
+            {
+                Matrix2d XjTE;
+                XjTE.col(0) = state.foil.x.col(N - 1);
+                XjTE.col(1) = state.foil.x.col(0);
+
+                auto svd = PanelConstSourceVelocityDeriv(XjTE, xi_w);
+                double sigma_te = 0.5 * te.tcp * (state.isol.gamref(N - 1, c) -
+                                                   state.isol.gamref(0, c));
+                dVdxi += svd.val_xi * sigma_te;
+            }
+
+            // TE vortex panel
+            {
+                Matrix2d XjTE;
+                XjTE.col(0) = state.foil.x.col(N - 1);
+                XjTE.col(1) = state.foil.x.col(0);
+
+                auto vvd = PanelLinVortexVelocityDeriv(XjTE, xi_w);
+                double gam_factor = 0.5 * te.tdp *
+                    (state.isol.gamref(0, c) - state.isol.gamref(N - 1, c));
+                Matrix2d fvor_xi = vvd.a_xi + vvd.b_xi;
+                dVdxi += fvor_xi * gam_factor;
+            }
+
+            // ∂uewiref(i,c)/∂wake.x[i] = dVdxi^T · t_i (chain rule)
+            // Actually: uewiref = V · t, so d(uewiref)/d(xi_k) = dV_k/dxi_k · t
+            // dVdxi is [2x2]: dVdxi(component, xi_dim)
+            // d(V·t)/d(xi_dim) = sum_k dV_k/d(xi_dim) * t_k = dVdxi^T * t
+            Vector2d duewiref_dxi = dVdxi.transpose() * ti_w;
+
+            // R_ue(N+i) has -uewiref * wt, so:
+            mu_x.col(i) -= lam_i * wt * duewiref_dxi;
+        }
+    }
+
+    // --- (B) ue_m contribution ---
+    // ue_m at wake rows depends on Cgam and Csig, which are evaluated at wake points.
+    // The full ue_m VJP through wake geometry is more complex: it involves
+    // differentiating Cgam(i,j) and Csig(i,j) w.r.t. wake.x[i] and wake.t[i].
+    //
+    // Cgam(i,j) = (a_j(wake.x[i]) · wake.t[i]) (vortex panel j influence at wake point i)
+    // d(Cgam(i,j))/d(wake.x[i]) = dV_j/dxi · t_i  (from a_xi/b_xi)
+    // d(Cgam(i,j))/d(wake.t[i]) = V_j(wake.x[i])  (velocity vector from panel j)
+    //
+    // Similarly for Csig (source panel influences at wake points).
+    //
+    // The ue_m contribution is: -sgnue * ue_sigma * sigma_m * mass
+    // At wake station i: R_ue(N+i) += -ue_sigma(N+i,:) * phi
+    // where phi = sigma_m * mass, and ue_sigma(N+i,:) = Dw(i,:)
+    // Dw = Cgam*Bp + Csig, with Dw(0) = Bp(N-1)
+    //
+    // For the adjoint through wake geometry, we need:
+    //   lambda_ue(N+i) * sgnue(N+i) * d(Dw(i,:)*phi)/d(wake.x[i])
+    //   lambda_ue(N+i) * sgnue(N+i) * d(Dw(i,:)*phi)/d(wake.t[i])
+    //
+    // d(Dw(i,:)*phi)/d(wake.x[i]) has contributions from both Cgam and Csig.
+    // Csig at wake points involves wake source panels (frozen geometry) and
+    // foil source panels (evaluation point changes). For non-self wake source
+    // panels, the Xj endpoints are functions of wake.x, but we account for that
+    // in the backward sweep.
+
+    // Compute phi = sigma_m * mass (same as in ComputeDRueDxFoil)
+    VectorXd ue_vec = state.glob.U.row(3).transpose();
+    VectorXd ds_vec = state.glob.U.row(1).transpose();
+    VectorXd mass = ds_vec.cwiseProduct(ue_vec);
+    VectorXd phi = state.vsol.sigma_m * mass;
+
+    // Compute Bp_phi = -(AIC^{-1} * B * phi)(0:N-1) for Cgam contribution
+    // Actually we need Bp * phi directly. Bp = state.vsol.ue_sigma.topRows(N)
+    VectorXd Bp_phi = state.vsol.ue_sigma.topRows(N) * phi;
+
+    // sgnue for wake points is always +1
+    // lambda_ue at wake station i is lam_w(i)
+
+    TEInfo te = GetTEInfo(state.foil.x);
+
+    for (int i = 1; i < Nw; ++i) {  // skip i=0 (Dw(0) = Bp(N-1), no wake geom dep)
+        double lam_i = lam_w(i);
+        if (std::abs(lam_i) < 1e-20) continue;
+
+        Vector2d xi_w = state.wake.x.col(i);
+        Vector2d ti_w = state.wake.t.col(i);
+
+        // d(Cgam(i,:)*Bp_phi)/d(wake.x[i]) and d(wake.t[i])
+        // Cgam(i,:)*Bp_phi = V_Bp(wake.x[i]) · wake.t[i]
+        // where V_Bp is the velocity from treating Bp_phi as gamma strengths
+
+        // Velocity from Bp_phi vortices
+        Vector2d V_Bp = InviscidVelocity(state.foil.x, Bp_phi, 0.0, 0.0,
+                                          xi_w, false, nullptr);
+
+        // d(V_Bp · t)/d(t) = V_Bp
+        mu_t.col(i) -= lam_i * V_Bp;
+
+        // d(V_Bp · t)/d(xi) = dV_Bp/dxi^T * t
+        Matrix2d dVBp_dxi = Matrix2d::Zero();
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+
+            auto vd = PanelLinVortexVelocityDeriv(Xj, xi_w);
+            dVBp_dxi += vd.a_xi * Bp_phi(j) + vd.b_xi * Bp_phi(j + 1);
+        }
+        // TE panels
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+
+            auto svd = PanelConstSourceVelocityDeriv(XjTE, xi_w);
+            double sigma_te = 0.5 * te.tcp * (Bp_phi(N - 1) - Bp_phi(0));
+            dVBp_dxi += svd.val_xi * sigma_te;
+
+            auto vvd = PanelLinVortexVelocityDeriv(XjTE, xi_w);
+            double gam_te = 0.5 * te.tdp * (Bp_phi(0) - Bp_phi(N - 1));
+            dVBp_dxi += (vvd.a_xi + vvd.b_xi) * gam_te;
+        }
+        mu_x.col(i) -= lam_i * (dVBp_dxi.transpose() * ti_w);
+
+        // d(Csig(i,:)*phi)/d(wake.x[i]) and d(wake.t[i])
+        // Csig has foil source panels evaluated at wake.x[i] projected onto wake.t[i]
+        // d(Csig(i,j)*phi(j))/d(wake.x[i]) = d(v_src(j,wake.x[i]) · t) / d(xi) * phi(j)
+        // d(Csig(i,j)*phi(j))/d(wake.t[i]) = v_src(j,wake.x[i]) * phi(j)
+        int jstart = (i == 0) ? 1 : 0;
+        int jend = (i == 0) ? N - 2 : N - 1;
+        for (int j = jstart; j < jend; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+
+            auto svd = PanelConstSourceVelocityDeriv(Xj, xi_w);
+
+            // val_xi is [2x2]: d(velocity)/d(xi)
+            // Csig(i,j) = v · t, so d(Csig)/d(xi) = (dv/dxi)^T * t
+            Vector2d dCsig_dxi = svd.val_xi.transpose() * ti_w;
+            mu_x.col(i) -= lam_i * dCsig_dxi * phi(j);
+
+            // d(Csig)/d(t) = v_src
+            mu_t.col(i) -= lam_i * svd.val * phi(j);
+        }
+
+        // Wake source panel contributions to Csig at non-self points
+        // These involve wake Xj endpoints and wake.t projection —
+        // we'll handle the wake.x dependence of wake source Xj endpoints
+        // in the backward sweep (Step 3) since those are functions of other
+        // wake.x values, not the evaluation point itself.
+        // The evaluation-point xi sensitivity for wake source panels:
+        for (int j = 0; j < Nw; ++j) {
+            if (i == j) continue;  // self-influence has special formula
+            int il = std::max(j - 1, 0);
+            int im = j;
+            int ir = std::min(j + 1, Nw - 1);
+
+            Vector2d Xl = 0.5 * (state.wake.x.col(il) + state.wake.x.col(im));
+            Vector2d Xm = state.wake.x.col(im);
+            Vector2d Xr = 0.5 * (state.wake.x.col(im) + state.wake.x.col(ir));
+            if (j == Nw - 1) Xr = 2.0 * Xm - Xl;
+
+            if (j == 0) {
+                // LinSourceVelocity from [Xm, Xr]
+                Matrix2d Xj_src;
+                Xj_src.col(0) = Xm;
+                Xj_src.col(1) = Xr;
+                auto lsvd = PanelLinSourceVelocityDeriv(Xj_src, xi_w);
+
+                // Csig(i, N-1) += b·t, Csig(i, 0) += a·t, Csig(i, N-2) += a·t
+                // d(a·t)/dxi = a_xi^T * t, d(b·t)/dxi = b_xi^T * t
+                Vector2d da_dxi = lsvd.a_xi.transpose() * ti_w;
+                Vector2d db_dxi = lsvd.b_xi.transpose() * ti_w;
+                mu_x.col(i) -= lam_i * (da_dxi * (phi(0) + phi(N - 2)) +
+                                         db_dxi * phi(N - 1));
+                // d/dt
+                mu_t.col(i) -= lam_i * (lsvd.a * (phi(0) + phi(N - 2)) +
+                                         lsvd.b * phi(N - 1));
+            } else if (j == Nw - 1) {
+                // ConstSourceVelocity from [Xl, Xr]
+                Matrix2d Xj_src;
+                Xj_src.col(0) = Xl;
+                Xj_src.col(1) = Xr;
+                auto csvd = PanelConstSourceVelocityDeriv(Xj_src, xi_w);
+                Vector2d dv_dxi = csvd.val_xi.transpose() * ti_w;
+                mu_x.col(i) -= lam_i * dv_dxi * phi(N + Nw - 3);
+                mu_t.col(i) -= lam_i * csvd.val * phi(N + Nw - 3);
+            } else {
+                // Two half-panels: [Xl,Xm] and [Xm,Xr]
+                Matrix2d Xj_l, Xj_r;
+                Xj_l.col(0) = Xl;
+                Xj_l.col(1) = Xm;
+                Xj_r.col(0) = Xm;
+                Xj_r.col(1) = Xr;
+
+                auto lsvd1 = PanelLinSourceVelocityDeriv(Xj_l, xi_w);
+                auto lsvd2 = PanelLinSourceVelocityDeriv(Xj_r, xi_w);
+
+                // Csig(i, N-1+j-1) += a1·t + 0.5*b1·t
+                // Csig(i, N-1+j) += 0.5*a2·t + b2·t
+                double phi_jm1 = phi(N - 1 + j - 1);
+                double phi_j = phi(N - 1 + j);
+
+                Vector2d da1_dxi = lsvd1.a_xi.transpose() * ti_w;
+                Vector2d db1_dxi = lsvd1.b_xi.transpose() * ti_w;
+                Vector2d da2_dxi = lsvd2.a_xi.transpose() * ti_w;
+                Vector2d db2_dxi = lsvd2.b_xi.transpose() * ti_w;
+
+                mu_x.col(i) -= lam_i * ((da1_dxi + 0.5 * db1_dxi) * phi_jm1 +
+                                         (0.5 * da2_dxi + db2_dxi) * phi_j);
+                mu_t.col(i) -= lam_i * ((lsvd1.a + 0.5 * lsvd1.b) * phi_jm1 +
+                                         (0.5 * lsvd2.a + lsvd2.b) * phi_j);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Step 1b: B matrix wake source panel sensitivity → mu_x
+    // (disabled: secondary effect, needs separate verification)
+    if (false)
+    //
+    // ue_m at foil stations depends on Bp = -AIC^{-1}*B. The B matrix has
+    // wake source panel contributions that depend on wake.x through the panel
+    // endpoints. When wake.x changes, B changes → Bp changes → R_ue changes.
+    //
+    // VJP: v = sgnue_foil .* lambda_ue_foil + Cgam^T * lam_wake + e_{N-1}*lam_w(0),
+    //       w = AIC^{-T} * [v; 0]
+    //       mu_wake_x[k] += w^T * d(B*phi)/d(wake.x[k])
+    // =========================================================================
+    //
+    // ue_m at foil stations depends on Bp = -AIC^{-1}*B. The B matrix has
+    // wake source panel contributions that depend on wake.x through the panel
+    // endpoints. When wake.x changes, B changes → Bp changes → R_ue changes.
+    //
+    // VJP: v = sgnue_foil .* lambda_ue_foil + Cgam^T * lam_wake,
+    //       w = AIC^{-T} * [v; 0]
+    //       mu_wake_x[k] += w^T * d(B*phi)/d(wake.x[k])
+    // =========================================================================
+    {
+        // Build the combined adjoint for Bp sensitivity
+        VectorXd v_ext = VectorXd::Zero(N + 1);
+        VectorXd lambda_ue_foil = lambda_ue.head(N);
+        for (int i = 0; i < N; ++i) {
+            v_ext(i) = state.isol.sgnue(i) * lambda_ue_foil(i);
+        }
+
+        // Wake station contributions through Cgam*Bp:
+        for (int i = 1; i < Nw; ++i) {
+            double lam_i = lam_w(i);
+            if (std::abs(lam_i) < 1e-20) continue;
+            Vector2d xi_w = state.wake.x.col(i);
+            Vector2d ti_w = state.wake.t.col(i);
+            MatrixXd V_G;
+            InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi_w,
+                             true, &V_G);
+            for (int jj = 0; jj < N; ++jj) {
+                v_ext(jj) += lam_i * (V_G(0, jj) * ti_w(0) + V_G(1, jj) * ti_w(1));
+            }
+        }
+
+        // Dw(0) = Bp(N-1) override: wake station 0 uses Bp(N-1,:) directly
+        v_ext(N - 1) += lam_w(0);
+
+        MatrixXd AIC_T_b = state.isol.AIC.transpose();
+        VectorXd w = AIC_T_b.partialPivLu().solve(v_ext);
+
+        // For each wake panel j, compute the full d(B*phi)/d(wake.x[k]) including
+        // ALL B columns that the panel contributes to (N-1+j-1, N-1+j, N-1+j+1).
+        for (int j = 0; j < Nw - 1; ++j) {
+            Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
+            Vector2d X_right;
+            if (j == Nw - 2) {
+                X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+            } else {
+                X_right = state.wake.x.col(j + 1);
+            }
+
+            // Phi values for the columns this panel writes to
+            double phi_jm1 = (j > 0) ? phi(N - 1 + j - 1) : 0.0;
+            double phi_j = phi(N - 1 + j);
+            double phi_jp1 = (j < Nw - 2) ? phi(N - 1 + j + 1) : 0.0;
+
+            for (int i = 0; i < N; ++i) {
+                if (std::abs(w(i)) < 1e-20) continue;
+                Vector2d xi_eval = state.foil.x.col(i);
+
+                Matrix2d Xj_l;
+                Xj_l.col(0) = state.wake.x.col(j);
+                Xj_l.col(1) = Xm;
+                auto ld = PanelLinSourceStreamDeriv(Xj_l, xi_eval);
+
+                Matrix2d Xj_r;
+                Xj_r.col(0) = Xm;
+                Xj_r.col(1) = X_right;
+                auto rd = PanelLinSourceStreamDeriv(Xj_r, xi_eval);
+
+                // Left half: a_l, b_l map to columns:
+                //   j>0: col N-1+j gets (0.5*a_l+b_l), col N-1+j-1 gets 0.5*a_l
+                //   j==0: col N-1+j gets b_l
+                // Right half: a_r, b_r map to columns:
+                //   col N-1+j gets (a_r + 0.5*b_r)
+                //   j<Nw-2: col N-1+j+1 gets 0.5*b_r
+                //   j==Nw-2: col N-1+j gets extra 0.5*b_r
+
+                // Weighted sum: B(i,:)*phi contribution from this panel
+                // W = left_col_jm1*phi_jm1 + left_col_j*phi_j + right_col_j*phi_j + right_col_jp1*phi_jp1
+
+                for (int dim = 0; dim < 2; ++dim) {
+                    // d(a_l)/d(wake.x[j]_dim) = a_Xj(dim) + 0.5*a_Xj(2+dim)
+                    // d(b_l)/d(wake.x[j]_dim) = b_Xj(dim) + 0.5*b_Xj(2+dim)
+                    double da_l_dj = ld.a_Xj(dim) + 0.5 * ld.a_Xj(2 + dim);
+                    double db_l_dj = ld.b_Xj(dim) + 0.5 * ld.b_Xj(2 + dim);
+
+                    // d(a_r)/d(wake.x[j]_dim) = 0.5*a_Xj(dim) (through Xm in col 0)
+                    double da_r_dj = 0.5 * rd.a_Xj(dim);
+                    double db_r_dj = 0.5 * rd.b_Xj(dim);
+                    if (j == Nw - 2) {
+                        da_r_dj += -0.5 * rd.a_Xj(2 + dim);
+                        db_r_dj += -0.5 * rd.b_Xj(2 + dim);
+                    }
+
+                    // Total d(B*phi)/d(wake.x[j]_dim) from this panel
+                    double dWj = 0.0;
+                    if (j > 0) {
+                        dWj += 0.5 * da_l_dj * phi_jm1;  // col N-1+j-1
+                        dWj += (0.5 * da_l_dj + db_l_dj) * phi_j;  // col N-1+j from left
+                    } else {
+                        dWj += db_l_dj * phi_j;  // col N-1+j from left
+                    }
+                    dWj += (da_r_dj + 0.5 * db_r_dj) * phi_j;  // col N-1+j from right
+                    if (j < Nw - 2) {
+                        dWj += 0.5 * db_r_dj * phi_jp1;  // col N-1+j+1
+                    } else {
+                        dWj += 0.5 * db_r_dj * phi_j;  // ghost fold-back
+                    }
+
+                    mu_x(dim, j) += w(i) * dWj;
+
+                    // d/d(wake.x[j+1]_dim)
+                    double da_l_djp1 = 0.5 * ld.a_Xj(2 + dim);
+                    double db_l_djp1 = 0.5 * ld.b_Xj(2 + dim);
+
+                    double da_r_djp1 = 0.5 * rd.a_Xj(dim);
+                    double db_r_djp1 = 0.5 * rd.b_Xj(dim);
+                    if (j < Nw - 2) {
+                        da_r_djp1 += rd.a_Xj(2 + dim);
+                        db_r_djp1 += rd.b_Xj(2 + dim);
+                    } else {
+                        da_r_djp1 += 1.5 * rd.a_Xj(2 + dim);
+                        db_r_djp1 += 1.5 * rd.b_Xj(2 + dim);
+                    }
+
+                    double dWjp1 = 0.0;
+                    if (j > 0) {
+                        dWjp1 += 0.5 * da_l_djp1 * phi_jm1;
+                        dWjp1 += (0.5 * da_l_djp1 + db_l_djp1) * phi_j;
+                    } else {
+                        dWjp1 += db_l_djp1 * phi_j;
+                    }
+                    dWjp1 += (da_r_djp1 + 0.5 * db_r_djp1) * phi_j;
+                    if (j < Nw - 2) {
+                        dWjp1 += 0.5 * db_r_djp1 * phi_jp1;
+                    } else {
+                        dWjp1 += 0.5 * db_r_djp1 * phi_j;
+                    }
+
+                    mu_x(dim, j + 1) += w(i) * dWjp1;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Step 2: Chain μ_t through tangent normalization
+    //
+    // wake.t[i] = V(wake.x[i]) / |V(wake.x[i])|
+    // (except t[0] from velocity at wake.x[0], t[Nw-1] = t[Nw-2])
+    //
+    // dt/dV = (I - t·t^T) / |V|
+    // So μ_t[i] generates contributions to μ_x[i] (through evaluation point of V)
+    // and to foil.x (through panel endpoint dependence of V).
+    // =========================================================================
+
+    // For each wake point, the tangent comes from the predictor-corrector step.
+    // wake.t[i-1] = normalize(0.5*(V0 + V1)) for i >= 2
+    // where V0 = V(wake.x[i-1]), V1 = V(x_pred)
+    // wake.t[0] = normalize(V(wake.x[0]))
+    // wake.t[Nw-1] = wake.t[Nw-2]
+    //
+    // The tangent normalization derivative is:
+    // d(normalize(v))/dv = (I - n*n^T) / |v| where n = v/|v|
+
+    // Handle t[Nw-1] = t[Nw-2] first
+    if (Nw >= 2) {
+        mu_t.col(Nw - 2) += mu_t.col(Nw - 1);
+        mu_t.col(Nw - 1).setZero();
+    }
+
+    // Process tangent adjoint for each wake point
+    // wake.t[0] = V(wake.x[0]) / |V(wake.x[0])|
+    {
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
+                                        alpha, state.wake.x.col(0));
+        double V0mag = V0.norm();
+        if (V0mag < 1e-10) V0mag = 1e-10;
+        Vector2d t0 = V0 / V0mag;
+
+        // dt/dV = (I - t*t^T) / |V|
+        Matrix2d dtdV = (Matrix2d::Identity() - t0 * t0.transpose()) / V0mag;
+        // mu_V = dtdV^T * mu_t[0]
+        Vector2d mu_V0 = dtdV.transpose() * mu_t.col(0);
+
+        // mu_V0 propagates to mu_x[0] (evaluation point sensitivity)
+        // and to foil.x (panel endpoint sensitivity)
+        // dV/dxi at wake.x[0]:
+        Matrix2d dVdxi = Matrix2d::Zero();
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            auto vd = PanelLinVortexVelocityDeriv(Xj, state.wake.x.col(0));
+            dVdxi += vd.a_xi * state.isol.gam(j) + vd.b_xi * state.isol.gam(j + 1);
+        }
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+            auto svd = PanelConstSourceVelocityDeriv(XjTE, state.wake.x.col(0));
+            double sigma_te = 0.5 * te.tcp * (state.isol.gam(N - 1) - state.isol.gam(0));
+            dVdxi += svd.val_xi * sigma_te;
+            auto vvd = PanelLinVortexVelocityDeriv(XjTE, state.wake.x.col(0));
+            double gam_te = 0.5 * te.tdp * (state.isol.gam(0) - state.isol.gam(N - 1));
+            dVdxi += (vvd.a_xi + vvd.b_xi) * gam_te;
+        }
+        mu_x.col(0) += dVdxi.transpose() * mu_V0;
+
+        // Panel endpoint + gamma chain → vjp and mu_gamma
+        accum_muV_to_foilx(mu_V0, state.wake.x.col(0), state.isol.gam);
+    }
+
+    // For i >= 1: wake.t[i-1] = normalize(t_avg) where t_avg = 0.5*(V0/|V0| + V1/|V1|)
+    // with V0 = V(wake.x[i-1]), V1 = V(x_pred), x_pred = wake.x[i-1] + ds*V0/|V0|
+    // This is the tangent assigned at index i-1 during the construction of wake point i.
+    //
+    // The tangent normalization for these is more complex since it involves two
+    // velocities. We handled t[0] above separately.
+    // For i >= 1, wake.t[i-1] is set during the loop iteration for wake point i.
+    // The mu_t contributions for indices 1..Nw-2 will be handled in Step 3 backward sweep.
+
+    // =========================================================================
+    // Step 3: Backward sweep through streamline tracing
+    //
+    // Wake construction recurrence:
+    //   wake.x[0] = 0.5*(foil.x[0] + foil.x[N-1]) + eps*t_te*chord
+    //   wake.x[i] = wake.x[i-1] + ds * normalize(0.5*(t0 + t1))
+    //     where t0 = V(wake.x[i-1])/|V(...)| , x_pred = wake.x[i-1] + ds*t0
+    //           t1 = V(x_pred)/|V(...)| , t_avg = 0.5*(t0+t1)
+    //           wake.x[i] = wake.x[i-1] + ds * normalize(t_avg)
+    //
+    // We sweep backward from i = Nw-1 to i = 1, propagating mu_x[i] to
+    // mu_x[i-1] and to foil.x VJP.
+    // =========================================================================
+
+    // First, read the SpaceGeom spacing used in BuildWake
+    double wakelen = state.geom.wakelen;
+    double chord = state.geom.chord;
+    int Nw_calc = static_cast<int>(std::ceil(N / 10.0 + 10.0 * wakelen));
+    (void)Nw_calc;
+
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                         (state.foil.s(N - 1) - state.foil.s(N - 2)));
+
+    // Recompute spacing (same as BuildWake)
+    // SpaceGeom returns sv[0..Nw-1], ds_i = sv[i] - sv[i-1]
+    // We need to recompute these for the backward sweep.
+    // Rather than rewriting SpaceGeom, store the ds values.
+    VectorXd sv(Nw);
+    {
+        // Replicate SpaceGeom logic
+        int Np = Nw;
+        double L = wakelen * chord;
+        if (Np <= 1) {
+            sv(0) = 0.0;
+        } else {
+            int Nseg = Np - 1;
+            double d = L / ds1;
+            double a = Nseg * (Nseg - 1.0) * (Nseg - 2.0) / 6.0;
+            double b = Nseg * (Nseg - 1.0) / 2.0;
+            double c_coeff = Nseg - d;
+            double disc = std::max(b * b - 4.0 * a * c_coeff, 0.0);
+            double r = 1.0 + (-b + std::sqrt(disc)) / (2.0 * a);
+            for (int k = 0; k < 10; ++k) {
+                double rN = std::pow(r, Nseg);
+                double R = rN - 1.0 - d * (r - 1.0);
+                double R_r = Nseg * std::pow(r, Nseg - 1) - d;
+                double dr = -R / R_r;
+                if (std::abs(dr) < 1e-6) break;
+                r += dr;
+            }
+            sv(0) = 0.0;
+            double dx_s = ds1;
+            for (int ii = 1; ii < Np; ++ii) {
+                sv(ii) = sv(ii - 1) + dx_s;
+                dx_s *= r;
+            }
+        }
+    }
+
+    // Backward sweep
+    for (int i = Nw - 1; i >= 1; --i) {
+        // mu_x[i] is the adjoint w.r.t. wake.x[i]
+        // wake.x[i] = wake.x[i-1] + ds * normalize(t_avg)
+        // where t_avg = 0.5*(t0 + t1)
+        // t0 = V0/|V0|, V0 = V(wake.x[i-1])
+        // x_pred = wake.x[i-1] + ds*t0
+        // t1 = V1/|V1|, V1 = V(x_pred)
+
+        double ds = sv(i) - sv(i - 1);
+        Vector2d x0 = state.wake.x.col(i - 1);
+
+        // Recompute predictor-corrector at this step
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x0);
+        double V0mag = V0.norm();
+        if (V0mag < 1e-10) V0mag = 1e-10;
+        Vector2d t0 = V0 / V0mag;
+
+        Vector2d x_pred = x0 + ds * t0;
+        Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x_pred);
+        double V1mag = V1.norm();
+        if (V1mag < 1e-10) V1mag = 1e-10;
+        Vector2d t1 = V1 / V1mag;
+
+        Vector2d t_avg = 0.5 * (t0 + t1);
+        double tmag = t_avg.norm();
+        if (tmag < 1e-10) tmag = 1e-10;
+        Vector2d t_hat = t_avg / tmag;
+
+        // wake.x[i] = x0 + ds * t_hat
+        // d(wake.x[i])/d(x0) = I + ds * d(t_hat)/d(x0)
+        // d(wake.x[i])/d(t_avg) = ds * d(t_hat)/d(t_avg)
+        // d(t_hat)/d(t_avg) = (I - t_hat*t_hat^T) / tmag
+        Matrix2d dthat_dtavg = (Matrix2d::Identity() - t_hat * t_hat.transpose()) / tmag;
+
+        // Tangent adjoint contribution for wake.t[i-1]
+        // During BuildWake, wake.t[i-1] = t_hat (the normalized average tangent)
+        // (except i=1 case where t[0] was handled separately above)
+        // Actually in BuildWake: state.wake.t.col(i - 1) = t_avg (already normalized)
+        // Wait, let me re-read: state.wake.t.col(i - 1) = t_avg where t_avg was already
+        // divided by tmag. So wake.t[i-1] = t_hat.
+        // For i >= 2, mu_t[i-1] needs to chain through the tangent normalization
+        // as part of the predictor-corrector at step i.
+        Vector2d mu_tavg = Vector2d::Zero();
+        if (i >= 2) {
+            // wake.t[i-1] = t_hat = t_avg / |t_avg|
+            // mu_t[i-1] propagates through normalization to mu_tavg
+            mu_tavg = dthat_dtavg.transpose() * mu_t.col(i - 1);
+        }
+
+        // wake.x[i] = x0 + ds * t_hat
+        // mu_x[i] propagates:
+        //   to mu_x0 (= mu_x[i-1]) via d(wake.x[i])/d(x0)
+        //   to mu_tavg via ds * d(t_hat)/d(t_avg) * mu_x[i]
+        mu_tavg += dthat_dtavg.transpose() * mu_x.col(i) * ds;
+
+        // mu_tavg = d_loss/d(t_avg)
+        // t_avg = 0.5*(t0 + t1)
+        Vector2d mu_t0_from_avg = 0.5 * mu_tavg;
+        Vector2d mu_t1_from_avg = 0.5 * mu_tavg;
+
+        // t0 = V0/|V0|, chain through normalization
+        Matrix2d dt0_dV0 = (Matrix2d::Identity() - t0 * t0.transpose()) / V0mag;
+        Vector2d mu_V0 = dt0_dV0.transpose() * mu_t0_from_avg;
+
+        // t1 = V1/|V1|, chain through normalization
+        Matrix2d dt1_dV1 = (Matrix2d::Identity() - t1 * t1.transpose()) / V1mag;
+        Vector2d mu_V1 = dt1_dV1.transpose() * mu_t1_from_avg;
+
+        // V1 = V(x_pred), x_pred = x0 + ds*t0
+        // mu_V1 propagates to mu_xpred through dV1/dxi
+        Matrix2d dV1dxi = Matrix2d::Zero();
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            auto vd = PanelLinVortexVelocityDeriv(Xj, x_pred);
+            dV1dxi += vd.a_xi * state.isol.gam(j) + vd.b_xi * state.isol.gam(j + 1);
+        }
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+            auto svd = PanelConstSourceVelocityDeriv(XjTE, x_pred);
+            double sigma_te = 0.5 * te.tcp * (state.isol.gam(N - 1) - state.isol.gam(0));
+            dV1dxi += svd.val_xi * sigma_te;
+            auto vvd = PanelLinVortexVelocityDeriv(XjTE, x_pred);
+            double gam_te = 0.5 * te.tdp * (state.isol.gam(0) - state.isol.gam(N - 1));
+            dV1dxi += (vvd.a_xi + vvd.b_xi) * gam_te;
+        }
+        Vector2d mu_xpred = dV1dxi.transpose() * mu_V1;
+
+        // Panel endpoint + gamma chain for V1 at x_pred
+        accum_muV_to_foilx(mu_V1, x_pred, state.isol.gam);
+
+        // x_pred = x0 + ds * t0 => mu_xpred propagates to mu_x0 and mu_t0
+        // d(x_pred)/d(x0) = I + ds * dt0/dV0 * dV0/dx0
+        // But for the adjoint we just accumulate:
+        Vector2d mu_x0_from_xpred = mu_xpred;  // d(x_pred)/d(x0) = I
+        // Plus the ds * dt0/dx0 term (through V0):
+        // x_pred depends on x0 also through t0 = V(x0)/|V(x0)|
+        // d(x_pred)/d(x0) = I + ds * dt0/dV0 * dV0/dx0
+        // So total mu_x0 contribution from x_pred = mu_xpred (from identity)
+        //   + ds * (dV0/dx0)^T * dt0_dV0^T * mu_xpred
+        // But mu_xpred already went through dV1dxi. The chain is:
+        // mu_xpred needs to propagate through d(x_pred)/d(t0) = ds * I_tang ... no wait
+        // x_pred = x0 + ds * t0, where t0 = V0/|V0|
+        // dx_pred/dx0 = I + ds * dt0/dx0
+        // dt0/dx0 = dt0/dV0 * dV0/dx0
+        // So mu_x0 += (I + ds * (dV0/dx0)^T * dt0_dV0^T)^T * mu_xpred
+        //           = mu_xpred + ds * dV0/dx0^T * dt0_dV0^T * mu_xpred
+
+        // dV0/dx0 is the velocity gradient at x0
+        Matrix2d dV0dxi = Matrix2d::Zero();
+        for (int j = 0; j < N - 1; ++j) {
+            Matrix2d Xj;
+            Xj.col(0) = state.foil.x.col(j);
+            Xj.col(1) = state.foil.x.col(j + 1);
+            auto vd = PanelLinVortexVelocityDeriv(Xj, x0);
+            dV0dxi += vd.a_xi * state.isol.gam(j) + vd.b_xi * state.isol.gam(j + 1);
+        }
+        {
+            Matrix2d XjTE;
+            XjTE.col(0) = state.foil.x.col(N - 1);
+            XjTE.col(1) = state.foil.x.col(0);
+            auto svd_te = PanelConstSourceVelocityDeriv(XjTE, x0);
+            double sigma_te = 0.5 * te.tcp * (state.isol.gam(N - 1) - state.isol.gam(0));
+            dV0dxi += svd_te.val_xi * sigma_te;
+            auto vvd_te = PanelLinVortexVelocityDeriv(XjTE, x0);
+            double gam_te = 0.5 * te.tdp * (state.isol.gam(0) - state.isol.gam(N - 1));
+            dV0dxi += (vvd_te.a_xi + vvd_te.b_xi) * gam_te;
+        }
+
+        // Total mu_V0 contributions:
+        // From tangent averaging: mu_V0 (already computed above)
+        // From x_pred evaluation point: ds * dt0_dV0^T * mu_xpred
+        mu_V0 += ds * dt0_dV0.transpose() * mu_xpred;
+
+        // mu_V0 propagates to mu_x[i-1] (through dV0/dxi) and to foil.x (through dV0/dXj)
+        mu_x.col(i - 1) += mu_x.col(i);  // identity part of d(wake.x[i])/d(wake.x[i-1])
+        mu_x.col(i - 1) += dV0dxi.transpose() * mu_V0;  // V0 evaluation point sensitivity
+        mu_x.col(i - 1) += mu_x0_from_xpred;  // x_pred identity contribution
+
+        // Panel endpoint + gamma chain for V0 at x0
+        accum_muV_to_foilx(mu_V0, x0, state.isol.gam);
+    }
+
+    // After backward sweep, mu_x[0] propagates to foil.x through the initial wake point:
+    // wake.x[0] = 0.5*(foil.x[0] + foil.x[N-1]) + eps*t_te*chord
+    // where t_te is derived from the TE geometry
+    // d(wake.x[0])/d(foil.x[0]) = 0.5*I + eps*chord*d(t_te)/d(foil.x[0])
+    // d(wake.x[0])/d(foil.x[N-1]) = 0.5*I + eps*chord*d(t_te)/d(foil.x[N-1])
+    //
+    // t_te direction: n = foil.x[N-1] - foil.x[0], t_te = (n(1), -n(0))
+    // if t_te(0) < 0: t_te = -t_te
+    {
+        Vector2d xy1 = state.foil.x.col(0);
+        Vector2d xyN = state.foil.x.col(N - 1);
+        Vector2d n = xyN - xy1;
+        Vector2d t_te_raw(n(1), -n(0));
+        double sign = (t_te_raw(0) < 0) ? -1.0 : 1.0;
+
+        double eps_wake = 1e-5;
+
+        // d(t_te)/d(foil.x[0]) contribution:
+        // n = xyN - xy1, dn/d(xy1) = -I
+        // t_te_raw = (n(1), -n(0)), dt_te_raw/dn = [[0,1],[-1,0]]
+        // dt_te/d(xy1) = sign * [[0,1],[-1,0]] * (-I) = sign * [[0,-1],[1,0]]
+        Matrix2d dtTE_dxy1;
+        dtTE_dxy1 << 0, -sign, sign, 0;
+        // d(wake.x[0])/d(foil.x[0]) = 0.5*I + eps*chord*dtTE_dxy1
+        Matrix2d dwx0_dxy1 = 0.5 * Matrix2d::Identity() + eps_wake * chord * dtTE_dxy1;
+
+        Matrix2d dtTE_dxyN;
+        dtTE_dxyN << 0, sign, -sign, 0;
+        Matrix2d dwx0_dxyN = 0.5 * Matrix2d::Identity() + eps_wake * chord * dtTE_dxyN;
+
+        Vector2d mu0 = mu_x.col(0);
+        vjp(0) += mu0.dot(dwx0_dxy1.col(0));
+        vjp(1) += mu0.dot(dwx0_dxy1.col(1));
+        vjp(2 * (N - 1)) += mu0.dot(dwx0_dxyN.col(0));
+        vjp(2 * (N - 1) + 1) += mu0.dot(dwx0_dxyN.col(1));
+    }
+
+    // =========================================================================
+    // Step 4: Resolve accumulated gamma adjoint through AIC system
+    //
+    // mu_gamma was accumulated from all V(gamma) evaluations in the backward
+    // sweep. Now solve AIC^T * mu_AIC = mu_gamma and compute AIC VJP.
+    // =========================================================================
+    if (mu_gamma.norm() > 1e-20) {
+        MatrixXd AIC_T = state.isol.AIC.transpose();
+        VectorXd mu_AIC = AIC_T.partialPivLu().solve(mu_gamma);
+        vjp += AICResidualSensVJP(state, mu_AIC, alpha);
+    }
+
+    return vjp;
+}
+
+// ============================================================================
+// ComputeXiVJP: VJP through stagnation point location
+//
+// xi = |s - sstag| for foil points, xi = wake.s - sstag for wake points
+// sstag depends on gamma through linear interpolation: sstag = f(gam(I0), gam(I1))
+// gamma depends on foil.x through the AIC system.
+//
+// Returns lambda_bl^T * R_x * (∂xi/∂sstag · dsstag/dx_foil) [2*N]
+// ============================================================================
+VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl) {
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    int Nw = state.wake.N;
+    double alpha = state.oper.alpha;
+
+    VectorXd vjp = VectorXd::Zero(2 * N);
+
+    // Compute c = lambda_bl^T * R_x * x_st
+    // where x_st = ∂xi/∂sstag [Nsys]
+    // For foil points: ∂xi(i)/∂sstag = -sgnue(i) (since xi = |s - sstag|)
+    // For wake points: ∂xi(N+i)/∂sstag = -1 (since xi = wake.s - sstag)
+    VectorXd dxi_dsstag = VectorXd::Zero(Nsys);
+    for (int i = 0; i < N; ++i) {
+        dxi_dsstag(i) = -state.isol.sgnue(i);
+    }
+    for (int i = 0; i < Nw; ++i) {
+        dxi_dsstag(N + i) = -1.0;
+    }
+
+    // R_x is [3*Nsys x Nsys], dxi_dsstag is [Nsys]
+    // c = lambda_bl^T * R_x * dxi_dsstag (scalar)
+    double c = lambda_bl.dot(state.glob.R_x * dxi_dsstag);
+
+    if (std::abs(c) < 1e-20) return vjp;
+
+    // Now chain through sstag → gamma → foil.x
+    // sstag is linearly interpolated between gammas at Istag[0] and Istag[1]
+    // In the viscous solver (StagPointMove):
+    //   ue0, ue1 are the viscous edge velocities at Istag nodes
+    //   sstag = (ue1*s0 + ue0*s1) / (ue0 + ue1)
+    //   sstag_ue = [ue1*(s1-s0)/(ue0+ue1)^2, -ue0*(s1-s0)/(ue0+ue1)^2]
+    //
+    // The ue values at stagnation are in turn functions of the BL state,
+    // but for coordinate sensitivities, the stagnation location is
+    // determined by where gamma = 0, which depends on gamma through the AIC.
+    //
+    // Use the initial stagnation formula (from StagPointFind):
+    //   sstag depends on gam(I0) and gam(I1) through linear interpolation:
+    //   sstag_g = [sstag_g(0), sstag_g(1)] = d(sstag)/d(gam) at Istag nodes
+    //
+    // VJP: d_sstag = c (scalar); adjoint in gamma space has 2 nonzero entries:
+    //   d[Istag[0]] = c * sstag_g[0]
+    //   d[Istag[1]] = c * sstag_g[1]
+    //
+    // Then solve AIC^T * mu = d and compute AIC VJP.
+
+    int I0 = state.isol.Istag[0];
+    int I1 = state.isol.Istag[1];
+
+    VectorXd d = VectorXd::Zero(N + 1);
+    d(I0) = c * state.isol.sstag_g(0);
+    d(I1) = c * state.isol.sstag_g(1);
+
+    // Solve AIC^T * mu = d
+    MatrixXd AIC_T = state.isol.AIC.transpose();
+    VectorXd mu = AIC_T.partialPivLu().solve(d);
+
+    // Compute VJP through AIC residual
+    vjp = AICResidualSensVJP(state, mu, alpha);
+
+    return vjp;
 }
 
 // ============================================================================
@@ -1144,14 +2276,20 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         VectorXd lambda_bl = lambda.head(3 * Nsys);
         VectorXd lambda_ue = lambda.tail(Nsys);
 
-        // BL contribution: lambda_bl^T * R_x * dxi/dx
+        // BL contribution: lambda_bl^T * R_x * dxi/dx (currently zero — see below)
         VectorXd vjp_bl = (lambda_bl.transpose() * state.glob.R_x * dxi_dx)
                               .transpose();
 
-        // 4th equation contribution: lambda_ue^T * dRue/dx
+        // 4th equation contribution: lambda_ue^T * dRue/dx (wake-fixed terms)
         VectorXd vjp_ue = dRue_dx.transpose() * lambda_ue;
 
-        return vjp_bl + vjp_ue;
+        // Wake geometry chain rule: lambda_ue^T * (dR_ue/dwake · dwake/dx_foil)
+        VectorXd vjp_wake = ComputeWakeGeomVJP(state, lambda_ue);
+
+        // Stagnation point chain rule: lambda_bl^T * R_x * (dxi/dsstag · dsstag/dx_foil)
+        VectorXd vjp_xi = ComputeXiVJP(state, lambda_bl);
+
+        return vjp_bl + vjp_ue + vjp_wake + vjp_xi;
     };
 
     VectorXd vjp_cl = computeVJP(lambda_cl);

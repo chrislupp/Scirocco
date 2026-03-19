@@ -85,6 +85,32 @@ SparseMatrixd ComputeDxiDxFoil(const FoilState& state);
 // Returns dense matrix [Nsys x 2*N]
 MatrixXd ComputeDRueDxFoil(FoilState& state);
 
+// Compute VJP of wake geometry through R_ue equation.
+// Returns lambda_ue^T * (∂R_ue/∂wake.x · dwake.x/dx_foil + ∂R_ue/∂wake.t · dwake.t/dx_foil)
+// This captures the missing chain rule terms where wake positions and tangents
+// depend on foil coordinates through streamline tracing.
+// INPUT:
+//   state : FoilState with converged viscous solution
+//   lambda_ue : Adjoint vector for the ue equation [Nsys]
+// OUTPUT:
+//   VJP vector [2*N] in foil.x space
+VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue);
+
+// Compute VJP of stagnation point location through xi coordinate.
+// Returns lambda_bl^T * R_x * (∂xi/∂sstag · dsstag/dx_foil)
+// This captures the sensitivity of BL arc-length coordinate xi to the
+// stagnation point location, which depends on gamma which depends on foil.x.
+// INPUT:
+//   state : FoilState with converged viscous solution
+//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
+// OUTPUT:
+//   VJP vector [2*N] in foil.x space
+VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl);
+
+// Compute d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) analytically
+void GetTEInfoDerivPublic(const MatrixXd& x, int k, int dim,
+                           double& dtcp, double& dtdp);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_ADJOINT_H
