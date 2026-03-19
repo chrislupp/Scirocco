@@ -32,6 +32,7 @@
 
 #include <iostream>
 
+#include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/geometry.h"
@@ -117,5 +118,14 @@ void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
 }
 
 void Cppfoil::GeomDerotate() { cppfoil::GeomDerotate(state_); }
+
+Sensitivity Cppfoil::ComputeSensitivities() {
+    if (!state_.oper.viscous) {
+        sensitivity_ = InviscidSensitivities(state_);
+    } else {
+        sensitivity_ = ViscousSensitivities(state_);
+    }
+    return sensitivity_;
+}
 
 }  // namespace cppfoil

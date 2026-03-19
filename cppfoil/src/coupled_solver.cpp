@@ -102,6 +102,11 @@ void SolveViscous(FoilState& state) {
     // Solve coupled system
     SolveCoupled(state);
 
+    // Store LU factorization for adjoint solves
+    if (state.glob.conv) {
+        StoreAdjointFactorization(state);
+    }
+
     // Calculate forces
     CalcForce(state);
     GetDistributions(state);
@@ -926,6 +931,67 @@ void CalcUeM(FoilState& state) {
 void RebuildUeM(FoilState& state) {
     // Rebuild sensitivities after stagnation point move
     CalcUeM(state);
+}
+
+void StoreAdjointFactorization(FoilState& state) {
+    // Rebuild R_V at converged state and store SparseLU factorization
+    // for use in adjoint transpose solves.
+
+    int Nsys = state.glob.Nsys;
+
+    // Rebuild global system at converged state to get current R_U
+    BuildGlobSys(state);
+
+    // Rebuild R_V (same assembly as SolveGlob but without solving)
+    VectorXd ue = state.glob.U.row(3).transpose();
+    VectorXd ds = state.glob.U.row(1).transpose();
+    double uemax = ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < Nsys; ++i) {
+        ue(i) = std::max(ue(i), 1e-10 * uemax);
+    }
+
+    int NN = 4 * Nsys;  // No cl-alpha for adjoint
+    state.glob.R_V.resize(NN, NN);
+
+    std::vector<Triplet> triplets;
+    triplets.reserve(state.glob.R_U.nonZeros() + 4 * Nsys);
+
+    // Copy R_U entries (first 3*Nsys rows)
+    for (int k = 0; k < state.glob.R_U.outerSize(); ++k) {
+        for (SparseMatrixd::InnerIterator it(state.glob.R_U, k); it; ++it) {
+            triplets.emplace_back(it.row(), it.col(), it.value());
+        }
+    }
+
+    // Fourth equation: R_ue = ue - ueinv - ue_m * (ds .* ue)
+    for (int i = 0; i < Nsys; ++i) {
+        int row = 3 * Nsys + i;
+        int ue_idx = 4 * i + 3;
+        triplets.emplace_back(row, ue_idx, 1.0);
+
+        for (int j = 0; j < Nsys; ++j) {
+            double ue_m_ij = state.vsol.ue_m(i, j);
+            if (std::abs(ue_m_ij) > 1e-15) {
+                triplets.emplace_back(row, 4 * j + 3, -ue_m_ij * ds(j));
+                triplets.emplace_back(row, 4 * j + 1, -ue_m_ij * ue(j));
+            }
+        }
+    }
+
+    state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
+
+    // Factor and store
+    auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
+    lu->compute(state.glob.R_V);
+    if (lu->info() == Eigen::Success) {
+        state.glob.lu_factorization = lu;
+    } else {
+        state.glob.lu_factorization = nullptr;
+        if (state.param.verb >= 1) {
+            std::cerr << "  Warning: adjoint LU factorization failed"
+                      << std::endl;
+        }
+    }
 }
 
 void RebuildIsol(FoilState& state) {

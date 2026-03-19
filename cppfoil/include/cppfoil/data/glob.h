@@ -31,6 +31,8 @@
 #ifndef CPPFOIL_DATA_GLOB_H
 #define CPPFOIL_DATA_GLOB_H
 
+#include <memory>
+
 #include "cppfoil/config.h"
 
 namespace cppfoil {
@@ -47,6 +49,9 @@ struct Glob {
     SparseMatrixd R_x;     // Residual Jacobian w.r.t. xi [3*Nsys x Nsys]
     SparseMatrixd R_V;     // Global Jacobian [4*Nsys x 4*Nsys]
     bool realloc = false;  // If true, system Jacobians will be reallocated
+
+    // Stored SparseLU factorization of R_V for adjoint solves
+    std::shared_ptr<Eigen::SparseLU<SparseMatrixd>> lu_factorization;
 };
 
 }  // namespace cppfoil

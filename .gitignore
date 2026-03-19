@@ -34,3 +34,7 @@ CTestTestfile.cmake
 
 # Analysis output
 pa_output/
+
+# Plans and theory
+plans/
+theory/

@@ -49,6 +49,15 @@ struct Post {
     double cdf = 0.0;       // Skin friction drag coefficient
     double cdp = 0.0;       // Pressure drag coefficient
 
+    // Force partial derivatives w.r.t. panel coordinates (holding ue/gamma fixed)
+    MatrixXd dcl_dx_partial;   // [2 x N]
+    MatrixXd dcm_dx_partial;   // [2 x N]
+    MatrixXd dcdpi_dx_partial; // [2 x N]
+    VectorXd cm_ue;            // Linearization of cm w.r.t. ue [N]
+    VectorXd cdpi_ue;          // Linearization of cdpi w.r.t. ue [N]
+    VectorXd cd_V;             // Full dcd/dV linearization [4*Nsys]
+    MatrixXd dcd_dx_partial;   // Partial dcd/dx (holding V fixed) [2 x N]
+
     // Distributions
     VectorXd th;   // Momentum thickness distribution
     VectorXd ds;   // Displacement thickness distribution

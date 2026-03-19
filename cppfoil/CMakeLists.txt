@@ -19,12 +19,15 @@ set(CPPFOIL_SOURCES
     src/geometry.cpp
     src/paneling.cpp
     src/panel_influence.cpp
+    src/panel_influence_deriv.cpp
     src/inviscid.cpp
+    src/inviscid_deriv.cpp
     src/wake.cpp
     src/boundary_layer.cpp
     src/transition.cpp
     src/coupled_solver.cpp
     src/forces.cpp
+    src/adjoint.cpp
     src/bl_properties.cpp
     src/cppfoil.cpp
 )
@@ -76,6 +79,10 @@ if(CPPFOIL_BUILD_TESTS)
         add_executable(cppfoil_ping_tests tests/ping_test.cpp)
         target_link_libraries(cppfoil_ping_tests cppfoil GTest::gtest_main)
         gtest_discover_tests(cppfoil_ping_tests)
+
+        add_executable(cppfoil_sensitivity_tests tests/sensitivity_ping_test.cpp)
+        target_link_libraries(cppfoil_sensitivity_tests cppfoil GTest::gtest_main)
+        gtest_discover_tests(cppfoil_sensitivity_tests)
     endif()
 endif()
 
