@@ -125,6 +125,7 @@ Sensitivity Cppfoil::ComputeSensitivities() {
     } else {
         sensitivity_ = ViscousSensitivities(state_);
     }
+    AlphaSensitivities(state_, sensitivity_);
     return sensitivity_;
 }
 

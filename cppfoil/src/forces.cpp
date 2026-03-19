@@ -89,6 +89,7 @@ void CalcForce(FoilState& state) {
     state.post.cl_ue.resize(N);
     state.post.cl_ue.setZero();
     double cl_alpha = 0.0;
+    double cdpi_alpha = 0.0;
 
     for (int i0 = 1; i0 <= N; ++i0) {
         int i = (i0 == N) ? 0 : i0;
@@ -120,6 +121,12 @@ void CalcForce(FoilState& state) {
         cl_alpha +=
             cpbar * (Sind(alpha) * dxv(0) - Cosd(alpha) * dxv(1)) * kDegToRad;
 
+        // cdpi_alpha: d(dz)/dalpha = (-dxv(1)*sina - dxv(0)*cosa) * deg2rad ... wait
+        // dz = dxv(1)*cos(a) - dxv(0)*sin(a)
+        // d(dz)/da = (-dxv(1)*sin(a) - dxv(0)*cos(a)) * deg2rad
+        cdpi_alpha +=
+            cpbar * (-dxv(1) * Sind(alpha) - dxv(0) * Cosd(alpha)) * kDegToRad;
+
         // Moment (about xref)
         double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
         double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
@@ -138,6 +145,7 @@ void CalcForce(FoilState& state) {
     state.post.cl_alpha = cl_alpha;
     state.post.cm = cm;
     state.post.cdpi = cdpi;
+    state.post.cdpi_alpha = cdpi_alpha;
 
     // Viscous drag (if viscous solution exists)
     state.post.cd = 0.0;

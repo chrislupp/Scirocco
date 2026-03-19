@@ -61,6 +61,12 @@ void CalcForceLin(FoilState& state);
 // Compute full dcd/dV [4*Nsys] linearization for Squire-Young + skin friction
 void CalcCdLin(FoilState& state);
 
+// Compute sensitivities of cl, cd, cm w.r.t. angle of attack (alpha).
+// Must be called after CalcForce() and CalcForceLin().
+// For inviscid: uses stored gamref and cl_ue/cm_ue/cdpi_ue.
+// For viscous: also uses stored LU factorization for adjoint solve.
+void AlphaSensitivities(FoilState& state, Sensitivity& sens);
+
 // Compute dxi/dx_foil: sensitivity of arc-length coordinate xi to panel coords
 // Returns sparse matrix [Nsys x 2*N]
 SparseMatrixd ComputeDxiDxFoil(const FoilState& state);

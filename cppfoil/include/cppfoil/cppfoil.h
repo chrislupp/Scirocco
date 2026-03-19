@@ -102,6 +102,11 @@ class Cppfoil {
     const MatrixXd& GetDcdDx() const { return sensitivity_.dcd_dx; }
     const MatrixXd& GetDcmDx() const { return sensitivity_.dcm_dx; }
 
+    // Scalar operating-condition sensitivities
+    double GetDclDalpha() const { return sensitivity_.dcl_dalpha; }
+    double GetDcdDalpha() const { return sensitivity_.dcd_dalpha; }
+    double GetDcmDalpha() const { return sensitivity_.dcm_dalpha; }
+
     // Access internal state (for advanced use)
     FoilState& GetState() { return state_; }
     const FoilState& GetState() const { return state_; }

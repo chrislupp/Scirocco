@@ -43,7 +43,8 @@ struct Post {
     VectorXd cl_ue;         // Linearization of cl w.r.t. ue [N, airfoil only]
     double cl_alpha = 0.0;  // Linearization of cl w.r.t. alpha
     double cm = 0.0;        // Moment coefficient
-    double cdpi = 0.0;      // Near-field pressure drag coefficient
+    double cdpi = 0.0;       // Near-field pressure drag coefficient
+    double cdpi_alpha = 0.0;  // Linearization of cdpi w.r.t. alpha
     double cd = 0.0;        // Total drag coefficient
     Vector4d cd_U;          // Linearization of cd w.r.t. last wake state [4]
     double cdf = 0.0;       // Skin friction drag coefficient

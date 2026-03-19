@@ -769,3 +769,139 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
                   << "Failures expected until Phase 1d refinement." << std::endl;
     }
 }
+
+// ===========================================================================
+// 11. Inviscid Alpha Sensitivity: dcl/dalpha, dcm/dalpha
+// ===========================================================================
+TEST_F(SensitivityPingTest, InviscidAlphaSensitivity) {
+    Cppfoil foil("2412", 80);
+    foil.SetOper(5.0);
+    foil.Solve();
+
+    auto sens = foil.ComputeSensitivities();
+
+    double dcl_dalpha_adj = sens.dcl_dalpha;
+    double dcm_dalpha_adj = sens.dcm_dalpha;
+
+    // Central FD at two step sizes
+    int nfail = 0;
+    for (int ie = 0; ie < 2; ++ie) {
+        double ep = (ie == 0) ? 1e-4 : 5e-5;
+
+        Cppfoil foil_p("2412", 80);
+        foil_p.SetOper(5.0 + ep);
+        foil_p.Solve();
+        Cppfoil foil_m("2412", 80);
+        foil_m.SetOper(5.0 - ep);
+        foil_m.Solve();
+
+        double dcl_fd = (foil_p.GetCl() - foil_m.GetCl()) / (2.0 * ep);
+        double dcm_fd = (foil_p.GetCm() - foil_m.GetCm()) / (2.0 * ep);
+
+        double ecl = std::abs(dcl_fd - dcl_dalpha_adj);
+        double ecm = std::abs(dcm_fd - dcm_dalpha_adj);
+
+        std::cout << "  InvAlpha ep=" << ep
+                  << " dcl: fd=" << dcl_fd << " adj=" << dcl_dalpha_adj << " err=" << ecl
+                  << " dcm: fd=" << dcm_fd << " adj=" << dcm_dalpha_adj << " err=" << ecm
+                  << std::endl;
+
+        if (ie == 1) {
+            // Check relative error < 0.1%
+            double rel_cl = ecl / std::max(std::abs(dcl_fd), 1e-10);
+            double rel_cm = ecm / std::max(std::abs(dcm_fd), 1e-10);
+            if (rel_cl > 1e-3) {
+                nfail++;
+                ADD_FAILURE() << "dcl/dalpha rel_err=" << rel_cl;
+            }
+            if (rel_cm > 1e-3) {
+                nfail++;
+                ADD_FAILURE() << "dcm/dalpha rel_err=" << rel_cm;
+            }
+        }
+    }
+    std::cout << "InviscidAlphaSensitivity: " << nfail << " failures" << std::endl;
+}
+
+// ===========================================================================
+// 12. Viscous Alpha Sensitivity: dcl/dalpha, dcd/dalpha, dcm/dalpha
+// ===========================================================================
+TEST_F(SensitivityPingTest, ViscousAlphaSensitivity) {
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+
+    auto sens = foil.ComputeSensitivities();
+
+    double dcl_adj = sens.dcl_dalpha;
+    double dcd_adj = sens.dcd_dalpha;
+    double dcm_adj = sens.dcm_dalpha;
+
+    // Central FD at two step sizes
+    double eps[] = {1e-4, 5e-5};
+    double ecl[2], ecd[2], ecm[2];
+    double dcl_fd2 = 0, dcd_fd2 = 0, dcm_fd2 = 0;
+
+    for (int ie = 0; ie < 2; ++ie) {
+        double ep = eps[ie];
+
+        Cppfoil foil_p("0012", 100);
+        foil_p.SetOper(3.0 + ep, -1.0, 1e6, 0.0);
+        foil_p.GetState().param.verb = 0;
+        foil_p.Solve();
+        Cppfoil foil_m("0012", 100);
+        foil_m.SetOper(3.0 - ep, -1.0, 1e6, 0.0);
+        foil_m.GetState().param.verb = 0;
+        foil_m.Solve();
+
+        if (!foil_p.IsConverged() || !foil_m.IsConverged()) {
+            GTEST_SKIP() << "FD solve did not converge";
+        }
+
+        double dcl_fd = (foil_p.GetCl() - foil_m.GetCl()) / (2.0 * ep);
+        double dcd_fd = (foil_p.GetCd() - foil_m.GetCd()) / (2.0 * ep);
+        double dcm_fd = (foil_p.GetCm() - foil_m.GetCm()) / (2.0 * ep);
+
+        ecl[ie] = std::abs(dcl_fd - dcl_adj);
+        ecd[ie] = std::abs(dcd_fd - dcd_adj);
+        ecm[ie] = std::abs(dcm_fd - dcm_adj);
+
+        if (ie == 1) {
+            dcl_fd2 = dcl_fd;
+            dcd_fd2 = dcd_fd;
+            dcm_fd2 = dcm_fd;
+        }
+
+        std::cout << "  ViscAlpha ep=" << ep
+                  << " dcl: fd=" << dcl_fd << " adj=" << dcl_adj
+                  << " dcd: fd=" << dcd_fd << " adj=" << dcd_adj
+                  << " dcm: fd=" << dcm_fd << " adj=" << dcm_adj
+                  << std::endl;
+    }
+
+    // Check relative error of finer FD vs adjoint
+    int nfail = 0;
+    double rel_cl = ecl[1] / std::max(std::abs(dcl_fd2), 1e-6);
+    double rel_cd = ecd[1] / std::max(std::abs(dcd_fd2), 1e-6);
+    double rel_cm = ecm[1] / std::max(std::abs(dcm_fd2), 1e-6);
+
+    std::cout << "  ViscAlpha rel: cl=" << rel_cl << " cd=" << rel_cd
+              << " cm=" << rel_cm << std::endl;
+
+    if (rel_cl > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcl/dalpha viscous rel_err=" << rel_cl;
+    }
+    if (rel_cd > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcd/dalpha viscous rel_err=" << rel_cd;
+    }
+    // cm has tighter coupling through BL; 1% tolerance accommodates
+    // adjoint approximations (frozen wake, simplified ue_m)
+    if (rel_cm > 0.01) {
+        nfail++;
+        ADD_FAILURE() << "dcm/dalpha viscous rel_err=" << rel_cm;
+    }
+    std::cout << "ViscousAlphaSensitivity: " << nfail << " failures" << std::endl;
+}

@@ -982,6 +982,106 @@ MatrixXd ComputeDRueDxFoil(FoilState& state) {
 }
 
 // ============================================================================
+// AlphaSensitivities: compute dJ/dalpha for cl, cd, cm
+// ============================================================================
+void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
+    int N = state.foil.N;
+    double alpha = state.oper.alpha;
+    double cosa = Cosd(alpha);
+    double sina = Sind(alpha);
+
+    // dgam/dalpha = gamref[:,0]*(-sin a) + gamref[:,1]*(cos a), times deg2rad
+    VectorXd dgam_dalpha = (-sina * state.isol.gamref.col(0) +
+                             cosa * state.isol.gamref.col(1)) * kDegToRad;
+
+    if (!state.oper.viscous) {
+        // --- Inviscid path ---
+        // Force rotation partials are already in post: cl_alpha, cdpi_alpha
+        // cm_alpha = 0 (moment arm is alpha-independent when xref is fixed)
+        //
+        // dueinv/dalpha = sgnue .* dgam/dalpha
+        // dJ/dalpha = J_alpha_rotation + J_ue * dueinv/dalpha
+        VectorXd dueinv_dalpha = state.isol.sgnue.cwiseProduct(dgam_dalpha);
+
+        sens.dcl_dalpha = state.post.cl_alpha +
+                          state.post.cl_ue.dot(dueinv_dalpha);
+        sens.dcm_dalpha = 0.0 + state.post.cm_ue.dot(dueinv_dalpha);
+        sens.dcd_dalpha = state.post.cdpi_alpha +
+                          state.post.cdpi_ue.dot(dueinv_dalpha);
+    } else {
+        // --- Viscous path ---
+        // Need adjoint vectors from stored LU factorization
+        if (!state.glob.lu_factorization) {
+            throw std::runtime_error(
+                "AlphaSensitivities: no LU factorization stored");
+        }
+
+        int Nsys = state.glob.Nsys;
+        int Nw = state.wake.N;
+
+        // Ensure force linearizations are computed
+        CalcForceLin(state);
+        CalcCdLin(state);
+
+        // Build dJ/dV for each objective (interleaved column ordering)
+        VectorXd dcl_dV = VectorXd::Zero(4 * Nsys);
+        VectorXd dcm_dV = VectorXd::Zero(4 * Nsys);
+        VectorXd dcd_dV = state.post.cd_V;
+        for (int i = 0; i < N; ++i) {
+            dcl_dV(4 * i + 3) = state.post.cl_ue(i);
+            dcm_dV(4 * i + 3) = state.post.cm_ue(i);
+        }
+
+        // Solve adjoint: R_V^T * lambda = dJ/dV
+        // lambda has block row ordering: [BL(3*Nsys) | ue(Nsys)]
+        auto& lu = *state.glob.lu_factorization;
+        VectorXd lambda_cl = lu.transpose().solve(dcl_dV);
+        VectorXd lambda_cm = lu.transpose().solve(dcm_dV);
+        VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+
+        // Compute dR_ue/dalpha [Nsys]
+        // BL residuals don't depend on alpha directly: dR_BL/dalpha = 0
+        // 4th equation: R_ue = ue - ueinv - ue_m*mass
+        // dR_ue/dalpha = -dueinv/dalpha
+        VectorXd dRue_dalpha = VectorXd::Zero(Nsys);
+
+        // Airfoil: dueinv/dalpha = sgnue .* dgam/dalpha
+        VectorXd dueinv_dalpha = state.isol.sgnue.cwiseProduct(dgam_dalpha);
+        dRue_dalpha.head(N) = -dueinv_dalpha;
+
+        // Wake: dueinv_wake/dalpha = uewiref * [-sin a, cos a]^T * deg2rad
+        if (Nw > 0 && state.isol.uewiref.rows() > 0) {
+            Vector2d dcs(-sina * kDegToRad, cosa * kDegToRad);
+            VectorXd dueinv_wake_dalpha = state.isol.uewiref * dcs;
+            // First wake point = last airfoil point (continuity)
+            dueinv_wake_dalpha(0) = dueinv_dalpha(N - 1);
+            dRue_dalpha.tail(Nw) = -dueinv_wake_dalpha;
+        }
+
+        // R_V has block row ordering: [BL(3*Nsys) | ue(Nsys)]
+        // lambda from R_V^T solve has same ordering
+        // dR/dalpha = [0_{3*Nsys}; dRue_dalpha_{Nsys}] (block ordered)
+        // So lambda^T * dR/dalpha = lambda_ue^T * dRue_dalpha
+        VectorXd lambda_cl_ue = lambda_cl.tail(Nsys);
+        VectorXd lambda_cm_ue = lambda_cm.tail(Nsys);
+        VectorXd lambda_cd_ue = lambda_cd.tail(Nsys);
+
+        // Partial force derivatives w.r.t. alpha (rotation terms)
+        // cl: cl_alpha from force integration rotation
+        // cm: 0 (moment arm is alpha-independent)
+        // cd: 0 (Squire-Young drag has no direct alpha dependence)
+        double dcl_dalpha_partial = state.post.cl_alpha;
+        double dcm_dalpha_partial = 0.0;
+        double dcd_dalpha_partial = 0.0;
+
+        // Total: dJ/dalpha = partial - lambda_ue^T * dRue/dalpha
+        sens.dcl_dalpha = dcl_dalpha_partial - lambda_cl_ue.dot(dRue_dalpha);
+        sens.dcm_dalpha = dcm_dalpha_partial - lambda_cm_ue.dot(dRue_dalpha);
+        sens.dcd_dalpha = dcd_dalpha_partial - lambda_cd_ue.dot(dRue_dalpha);
+    }
+}
+
+// ============================================================================
 // ViscousSensitivities: compute dJ/dx using the viscous adjoint method
 // ============================================================================
 Sensitivity ViscousSensitivities(FoilState& state) {

@@ -42,6 +42,11 @@ struct Sensitivity {
     MatrixXd dcd_dx;   // d(cd)/d(foil.x) [2 x N]
     MatrixXd dcm_dx;   // d(cm)/d(foil.x) [2 x N]
     MatrixXd dcdpi_dx; // d(cdpi)/d(foil.x) [2 x N] (inviscid pressure drag)
+
+    // Scalar operating-condition sensitivities
+    double dcl_dalpha = 0.0;  // d(cl)/d(alpha) [per degree]
+    double dcd_dalpha = 0.0;  // d(cd)/d(alpha) [per degree]
+    double dcm_dalpha = 0.0;  // d(cm)/d(alpha) [per degree]
 };
 
 }  // namespace cppfoil
