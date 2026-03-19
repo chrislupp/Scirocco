@@ -33,6 +33,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "cppfoil/core/boundary_layer.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/inviscid_deriv.h"
@@ -179,8 +180,10 @@ void CalcForceLin(FoilState& state) {
         double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
         double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
 
-        double dcp_due_ip = -2.0 * ue(ip) / (Vinf * Vinf);
-        double dcp_due_i = -2.0 * ue(i) / (Vinf * Vinf);
+        auto [cp_val_ip, cp_U_ip] = GetCpFromUe(ue(ip), state.param);
+        auto [cp_val_i, cp_U_i] = GetCpFromUe(ue(i), state.param);
+        double dcp_due_ip = cp_U_ip(3);
+        double dcp_due_i = cp_U_i(3);
 
         state.post.cm_ue(ip) += (dcp_due_ip / 3.0 * dx1nds + dcp_due_ip / 6.0 * dx2nds) * inv_chord2;
         state.post.cm_ue(i) += (dcp_due_i / 6.0 * dx1nds + dcp_due_i / 3.0 * dx2nds) * inv_chord2;
@@ -1167,6 +1170,1421 @@ Sensitivity ViscousSensitivities(FoilState& state) {
     }
 
     return sens;
+}
+
+// ============================================================================
+// Mach and Reynolds Sensitivity Infrastructure
+// ============================================================================
+
+// Derivative of thermodynamic parameters w.r.t. a single "param perturbation"
+// For Mach: dMinf=1, drho0 and dmu0 computed from init_thermo chain rule
+// For Re: dMinf=0, drho0=0, dmu0=-mu0/Re
+struct ParamDeriv {
+    double dMinf;
+    double drho0;
+    double dmu0;
+};
+
+// Compute ParamDeriv for Mach sensitivity (differentiate InitThermo w.r.t. Ma)
+static ParamDeriv InitThermoDeriv_Ma(const Param& param, double Ma, double Re,
+                                     double rhoinf, double Vinf, double chord) {
+    ParamDeriv pd;
+    pd.dMinf = 1.0;  // dMinf/dMa = 1
+
+    double gam = param.gam;
+    double gmi = gam - 1.0;
+
+    if (Ma > 0) {
+        // drho0/dMa: rho0 = rhoinf * (1 + 0.5*gmi*Ma^2)^(1/gmi)
+        // drho0/dMa = rhoinf * (1/gmi) * (1 + 0.5*gmi*Ma^2)^(1/gmi - 1) * gmi * Ma
+        //           = rhoinf * Ma * (1 + 0.5*gmi*Ma^2)^(1/gmi - 1)
+        double fac = 1.0 + 0.5 * gmi * Ma * Ma;
+        pd.drho0 = rhoinf * Ma * std::pow(fac, 1.0 / gmi - 1.0);
+
+        // dmu0/dMa: mu0 = muinf / finf
+        // muinf = rhoinf * Vinf * chord / Re (independent of Ma)
+        // finf = Tr^1.5 * (1 + Tsrat) / (Tr + Tsrat)
+        // Tr = 1 - 0.5 * Vinf^2 / H0
+        // H0 = (1 + 0.5*gmi*Ma^2) * Vinf^2 / (gmi * Ma^2)
+        double muinf = rhoinf * Vinf * chord / Re;
+
+        double H0 = (1.0 + 0.5 * gmi * Ma * Ma) * Vinf * Vinf / (gmi * Ma * Ma);
+        // dH0/dMa = d/dMa[ Vinf^2/(gmi*Ma^2) + 0.5*Vinf^2/gmi ]
+        //         = Vinf^2/(gmi) * d/dMa[1/Ma^2] = Vinf^2/(gmi) * (-2/Ma^3)
+        //         = -2*Vinf^2 / (gmi * Ma^3)
+        double dH0 = -2.0 * Vinf * Vinf / (gmi * Ma * Ma * Ma);
+
+        double Tr = 1.0 - 0.5 * Vinf * Vinf / H0;
+        // dTr/dMa = 0.5 * Vinf^2 / H0^2 * dH0
+        double dTr = 0.5 * Vinf * Vinf / (H0 * H0) * dH0;
+
+        double Tsrat = param.Tsrat;
+        double finf = std::pow(Tr, 1.5) * (1.0 + Tsrat) / (Tr + Tsrat);
+        // dfinf/dTr = 1.5*Tr^0.5*(1+Tsrat)/(Tr+Tsrat) - Tr^1.5*(1+Tsrat)/(Tr+Tsrat)^2
+        //           = finf * (1.5/Tr - 1/(Tr+Tsrat))
+        double dfinf_dTr = finf * (1.5 / Tr - 1.0 / (Tr + Tsrat));
+        double dfinf = dfinf_dTr * dTr;
+
+        // mu0 = muinf / finf => dmu0/dMa = -muinf / finf^2 * dfinf
+        pd.dmu0 = -muinf / (finf * finf) * dfinf;
+    } else {
+        // Ma=0: rho0 = rhoinf, mu0 = muinf (both constant)
+        pd.drho0 = 0.0;
+        pd.dmu0 = 0.0;
+    }
+
+    return pd;
+}
+
+// ============================================================================
+// Leaf-level dMa companions (Level 0)
+// ============================================================================
+
+// dM2/dMa: M2 = ue^2 * Minf^2 / Vinf^2
+// dM2/dMa = 2*M2/Minf * dMinf (since dMinf/dMa = 1 for Ma sensitivities)
+static double GetMach2_dMa(const Vector4d& U, const Param& param,
+                           const ParamDeriv& pd) {
+    if (param.Minf <= 0) return 0.0;
+    auto [M2, M2_U] = GetMach2(U, param);
+    return 2.0 * M2 / param.Minf * pd.dMinf;
+}
+
+// dRet/dMa: Ret = rho0 * |ue| * th / mu0
+// dRet/dMa = Ret/rho0 * drho0 - Ret/mu0 * dmu0
+static double GetRet_dMa(const Vector4d& U, const Param& param,
+                         const ParamDeriv& pd) {
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dRet = 0.0;
+    if (param.rho0 > 0) dRet += Ret / param.rho0 * pd.drho0;
+    if (param.mu0 > 0) dRet -= Ret / param.mu0 * pd.dmu0;
+    return dRet;
+}
+
+// ============================================================================
+// Level 1: GetHk_dMa
+// ============================================================================
+static double GetHk_dMa(const Vector4d& U, const Param& param,
+                        const ParamDeriv& pd) {
+    if (param.Minf <= 0) return 0.0;
+
+    auto [H, H_U] = GetH(U);
+    auto [M2, M2_U] = GetMach2(U, param);
+    double dM2 = GetMach2_dMa(U, param, pd);
+
+    // Hk = (H - 0.29*M2) / (1 + 0.113*M2)
+    double den = 1.0 + 0.113 * M2;
+    double Hk = (H - 0.29 * M2) / den;
+
+    // dHk/dMa = (-0.29*dM2)/den - Hk/den * 0.113*dM2
+    return (-0.29 * dM2 - Hk * 0.113 * dM2) / den;
+}
+
+// ============================================================================
+// Level 2: GetHs_dMa, GetHss_dMa, GetDe_dMa, GetDamp_dMa
+// ============================================================================
+static double GetHs_dMa(const Vector4d& U, const Param& param,
+                        const ParamDeriv& pd) {
+    auto [Hk, Hk_U] = GetHk(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+
+    // Limit Hk (matching primal)
+    if (param.wake && Hk < 1.00005) { dHk = 0.0; Hk = 1.00005; }
+    if (!param.wake && Hk < 1.05) { dHk = 0.0; Hk = 1.05; }
+
+    double dHs;
+
+    if (param.turb) {
+        auto [Ret, Ret_U] = GetRet(U, param);
+        double dRet = GetRet_dMa(U, param, pd);
+
+        double Ho = 4.0;
+        double dHo = 0.0;
+        if (Ret > 400.0) {
+            Ho = 3.0 + 400.0 / Ret;
+            dHo = -400.0 / (Ret * Ret) * dRet;
+        }
+
+        double Reb = Ret;
+        double dReb = dRet;
+        if (Ret < 200.0) { Reb = 200.0; dReb = 0.0; }
+
+        double Hs_val;
+        if (Hk < Ho) {
+            double Hr = (Ho - Hk) / (Ho - 1.0);
+            double dHr = (dHo - dHk) / (Ho - 1.0) -
+                         (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * dHo;
+
+            double aa = (2.0 - 1.5 - 4.0 / Reb) * Hr * Hr;
+            double daa = (4.0 / (Reb * Reb) * dReb) * Hr * Hr +
+                         (2.0 - 1.5 - 4.0 / Reb) * 2.0 * Hr * dHr;
+
+            Hs_val = 1.5 + 4.0 / Reb + aa * 1.5 / (Hk + 0.5);
+            dHs = -4.0 / (Reb * Reb) * dReb + daa * 1.5 / (Hk + 0.5) -
+                  aa * 1.5 / ((Hk + 0.5) * (Hk + 0.5)) * dHk;
+        } else {
+            double lrb = std::log(Reb);
+            double dlrb = dReb / Reb;
+
+            double aa = Hk - Ho + 4.0 / lrb;
+            double daa = dHk - dHo - 4.0 / (lrb * lrb) * dlrb;
+
+            double bb = 0.007 * lrb / (aa * aa) + 0.015 / Hk;
+            double dbb = 0.007 * (dlrb / (aa * aa) -
+                                  2.0 * lrb / (aa * aa * aa) * daa) -
+                         0.015 / (Hk * Hk) * dHk;
+
+            Hs_val = 1.5 + 4.0 / Reb + (Hk - Ho) * (Hk - Ho) * bb;
+            dHs = -4.0 / (Reb * Reb) * dReb +
+                  2.0 * (Hk - Ho) * (dHk - dHo) * bb +
+                  (Hk - Ho) * (Hk - Ho) * dbb;
+        }
+
+        // Mach correction: Hs = (Hs + 0.028*M2) / (1 + 0.014*M2)
+        auto [M2, M2_U2] = GetMach2(U, param);
+        double dM2 = GetMach2_dMa(U, param, pd);
+        double den = 1.0 + 0.014 * M2;
+        Hs_val = (Hs_val + 0.028 * M2) / den;
+        dHs = (dHs + 0.028 * dM2) / den - Hs_val / den * 0.014 * dM2;
+    } else {
+        // Laminar: Hs depends only on Hk
+        double a = Hk - 4.35;
+        double Hs_Hk;
+
+        if (Hk < 4.35) {
+            double num = 0.0111 * a * a - 0.0278 * a * a * a;
+            Hs_Hk = (0.0111 * 2.0 * a - 0.0278 * 3.0 * a * a) / (Hk + 1.0) -
+                    num / ((Hk + 1.0) * (Hk + 1.0)) -
+                    0.0002 * 2.0 * a * Hk * (Hk + a);
+        } else {
+            Hs_Hk = 0.015 * 2.0 * a / Hk - 0.015 * a * a / (Hk * Hk);
+        }
+        dHs = Hs_Hk * dHk;
+    }
+
+    return dHs;
+}
+
+static double GetHss_dMa(const Vector4d& U, const Param& param,
+                         const ParamDeriv& pd) {
+    // Hss = M2 * (0.064/(Hk-0.8) + 0.251)
+    auto [M2, M2_U] = GetMach2(U, param);
+    auto [Hk, Hk_U] = GetHk(U, param);
+    double dM2 = GetMach2_dMa(U, param, pd);
+    double dHk = GetHk_dMa(U, param, pd);
+
+    double num = 0.064 / (Hk - 0.8) + 0.251;
+    double dnum = -0.064 / ((Hk - 0.8) * (Hk - 0.8)) * dHk;
+
+    return dM2 * num + M2 * dnum;
+}
+
+static double GetDe_dMa(const Vector4d& U, const Param& param,
+                        const ParamDeriv& pd) {
+    // de depends on Hk through aa = 3.15 + 1.72/(Hk-1)
+    auto [Hk, Hk_U] = GetHk(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double th = std::max(U(0), 1e-12);
+    double ds = U(1);
+
+    double aa = 3.15 + 1.72 / (Hk - 1.0);
+    double daa = -1.72 / ((Hk - 1.0) * (Hk - 1.0)) * dHk;
+
+    double de = th * aa + ds;
+    double dde = th * daa;
+
+    // Cap check
+    if (de > 12.0 * th) {
+        dde = 0.0;  // de = 12*th, no param dependence
+    }
+
+    return dde;
+}
+
+static double GetDamp_dMa(const Vector4d& U, const Param& param,
+                          const ParamDeriv& pd) {
+    // Amplification rate dn/dx
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+    double th = U(0);
+
+    // Limit Hk
+    if (Hk < 1.05) { Hk = 1.05; dHk = 0.0; }
+
+    double Hmi = 1.0 / (Hk - 1.0);
+    double dHmi = -Hmi * Hmi * dHk;
+
+    double aa = 2.492 * std::pow(Hmi, 0.43);
+    double daa = 0.43 * aa / Hmi * dHmi;
+
+    double bb = std::tanh(14.0 * Hmi - 9.24);
+    double dbb = (1.0 - bb * bb) * 14.0 * dHmi;
+
+    double lrc = aa + 0.7 * (bb + 1.0);
+    double dlrc = daa + 0.7 * dbb;
+
+    constexpr double lten = 2.302585092994046;
+    double lr = std::log(Ret) / lten;
+    double dlr = (1.0 / Ret) * dRet / lten;
+
+    double ddamp = 0.0;
+
+    constexpr double dl = 0.1;
+    if (lr >= lrc - dl) {
+        double rn = (lr - (lrc - dl)) / (2.0 * dl);
+        double drn = (dlr - dlrc) / (2.0 * dl);
+
+        double rf, drf_coeff;
+        if (rn >= 1.0) {
+            rf = 1.0;
+            drf_coeff = 0.0;
+        } else {
+            rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
+            drf_coeff = 6.0 * rn - 6.0 * rn * rn;
+        }
+        double drf = drf_coeff * drn;
+
+        double ar = 3.87 * Hmi - 2.52;
+        double dar = 3.87 * dHmi;
+
+        double ex = std::exp(-ar * ar);
+        double dex = ex * (-2.0 * ar * dar);
+
+        double da = 0.028 * (Hk - 1.0) - 0.0345 * ex;
+        double dda = 0.028 * dHk - 0.0345 * dex;
+
+        double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi +
+                    3.0 * Hmi * Hmi * Hmi + 0.1 * std::exp(-20.0 * Hmi);
+        double daf =
+            (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi - 2.0 * std::exp(-20.0 * Hmi)) *
+            dHmi;
+
+        ddamp = (drf * af * da + rf * daf * da + rf * af * dda) / th;
+        // damp_U(0) -= damp / th is for dth, not for dMa
+    }
+
+    // Extra amplification: depends on param.ncrit which doesn't change with Ma
+    // ed = eex * 0.001 / th where eex depends only on U(2) and ncrit
+    // No Ma contribution from ed.
+
+    return ddamp;
+}
+
+// ============================================================================
+// Level 3: GetUs_dMa, GetCf_dMa, GetCDi_Lam_dMa, GetCteq_dMa
+// ============================================================================
+static double GetUs_dMa(const Vector4d& U, const Param& param,
+                        const ParamDeriv& pd) {
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [H, H_U] = GetH(U);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dHk = GetHk_dMa(U, param, pd);
+    // dH = 0 (H = ds/th, no param dependence)
+
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) { Hk = Hk_lim; dHk = 0.0; }
+
+    double beta = param.GB;
+    double bi = 1.0 / beta;
+
+    double Us = 0.5 * Hs * (1.0 - bi * (Hk - 1.0) / H);
+    double dUs = 0.5 * dHs * (1.0 - bi * (Hk - 1.0) / H) +
+                 0.5 * Hs * (-bi * dHk / H);
+    // dH = 0, so the H term in Us_U drops out
+
+    if (!param.wake && Us > 0.98) {
+        dUs = 0.0;
+    }
+
+    return dUs;
+}
+
+static double GetCf_dMa(const Vector4d& U, const Param& param,
+                        const ParamDeriv& pd) {
+    if (param.wake) return 0.0;
+
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+
+    double dcf;
+
+    if (param.turb) {
+        auto [M2, M2_U] = GetMach2(U, param);
+        double dM2 = GetMach2_dMa(U, param, pd);
+
+        double Fc = std::sqrt(1.0 + 0.5 * (param.gam - 1.0) * M2);
+        double dFc = 0.5 / Fc * 0.5 * (param.gam - 1.0) * dM2;
+
+        double aa = -1.33 * Hk;
+        double daa = -1.33 * dHk;
+        if (aa < -17.0) {
+            double old_aa = aa;
+            aa = -20.0 + 3.0 * std::exp((old_aa + 17.0) / 3.0);
+            daa = (aa + 20.0) / 3.0 * daa;
+        }
+
+        double bb = std::log(Ret / Fc);
+        double dbb = dRet / Ret - dFc / Fc;
+        if (bb < 3.0) { bb = 3.0; dbb = 0.0; }
+        bb /= std::log(10.0);
+        dbb /= std::log(10.0);
+
+        double cc = -1.74 - 0.31 * Hk;
+        double dcc = -0.31 * dHk;
+
+        double dd = std::tanh(4.0 - Hk / 0.875);
+        double ddd = (1.0 - dd * dd) * (-dHk / 0.875);
+
+        double cf0 = 0.3 * std::exp(aa) * std::pow(bb, cc);
+        double dcf0 = cf0 * daa +
+                      0.3 * std::exp(aa) * cc * std::pow(bb, cc - 1.0) * dbb +
+                      cf0 * std::log(bb) * dcc;
+
+        double cf = (cf0 + 1.1e-4 * (dd - 1.0)) / Fc;
+        dcf = (dcf0 + 1.1e-4 * ddd) / Fc - cf / Fc * dFc;
+    } else {
+        // Laminar cf
+        double num, num_Hk;
+        if (Hk < 5.5) {
+            double term = std::pow(5.5 - Hk, 3) / (Hk + 1.0);
+            num = 0.0727 * term - 0.07;
+            num_Hk =
+                0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
+                          std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
+        } else {
+            double invterm = 1.0 - 1.0 / (Hk - 4.5);
+            num = 0.015 * invterm * invterm - 0.07;
+            num_Hk = 0.015 * 2.0 * invterm / std::pow(Hk - 4.5, 2);
+        }
+        dcf = num_Hk * dHk / Ret - num / (Ret * Ret) * dRet;
+    }
+
+    return dcf;
+}
+
+static double GetCDi_Lam_dMa(const Vector4d& U, const Param& param,
+                              const ParamDeriv& pd) {
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+
+    double num, num_Hk;
+    if (Hk < 4.0) {
+        num = 0.00205 * std::pow(4.0 - Hk, 5.5) + 0.207;
+        num_Hk = 0.00205 * 5.5 * std::pow(4.0 - Hk, 4.5) * (-1.0);
+    } else {
+        double Hk1 = Hk - 4.0;
+        double denom = 1.0 + 0.02 * Hk1 * Hk1;
+        num = -0.0016 * Hk1 * Hk1 / denom + 0.207;
+        num_Hk = -0.0016 * (2.0 * Hk1 / denom -
+                            Hk1 * Hk1 / (denom * denom) * 0.02 * 2.0 * Hk1);
+    }
+
+    return num_Hk * dHk / Ret - num / (Ret * Ret) * dRet;
+}
+
+static double GetCteq_dMa(const Vector4d& U, const Param& param,
+                          const ParamDeriv& pd) {
+    double CC = 0.5 / (param.GA * param.GA * param.GB);
+    double C = param.GC;
+
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [H, H_U] = GetH(U);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+    double dUs = GetUs_dMa(U, param, pd);
+    // dH = 0
+
+    double Hkc;
+    double dHkc;
+    if (param.wake) {
+        if (Hk < 1.00005) { Hk = 1.00005; dHk = 0.0; }
+        Hkc = Hk - 1.0;
+        dHkc = dHk;
+    } else {
+        if (Hk < 1.05) { Hk = 1.05; dHk = 0.0; }
+        Hkc = Hk - 1.0 - C / Ret;
+        dHkc = dHk + C / (Ret * Ret) * dRet;
+        if (Hkc < 0.01) { Hkc = 0.01; dHkc = 0.0; }
+    }
+
+    double num = CC * Hs * (Hk - 1.0) * Hkc * Hkc;
+    double dnum = CC * (dHs * (Hk - 1.0) * Hkc * Hkc + Hs * dHk * Hkc * Hkc +
+                        Hs * (Hk - 1.0) * 2.0 * Hkc * dHkc);
+
+    double den = (1.0 - Us) * H * Hk * Hk;
+    double dden = (-dUs) * H * Hk * Hk + (1.0 - Us) * H * 2.0 * Hk * dHk;
+    // dH = 0
+
+    double cteq = std::sqrt(num / den);
+    return 0.5 / cteq * (dnum / den - num / (den * den) * dden);
+}
+
+// ============================================================================
+// Level 4: GetCDi_TurbWall_dMa, GetCDi_Outer_dMa, GetCDi_LamStress_dMa,
+//          GetCDi_LamWake_dMa
+// ============================================================================
+static double GetCDi_TurbWall_dMa(const Vector4d& U, const Param& param,
+                                   const ParamDeriv& pd) {
+    if (param.wake) return 0.0;
+
+    auto [cf, cf_U] = GetCf(U, param);
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dcf = GetCf_dMa(U, param, pd);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dUs = GetUs_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+
+    double lr = std::log(Ret);
+    double dlr = dRet / Ret;
+
+    double Hmin = 1.0 + 2.1 / lr;
+    double dHmin = -2.1 / (lr * lr) * dlr;
+
+    double aa = std::tanh((Hk - 1.0) / (Hmin - 1.0));
+    double fac = 0.5 + 0.5 * aa;
+    double dfac = 0.5 * (1.0 - aa * aa) *
+                  (dHk / (Hmin - 1.0) -
+                   (Hk - 1.0) / ((Hmin - 1.0) * (Hmin - 1.0)) * dHmin);
+
+    double cDi = 0.5 * cf * Us * (2.0 / Hs) * fac;
+    return dcf * Us / Hs * fac + cf * dUs / Hs * fac -
+           cDi / Hs * dHs + cf * Us / Hs * dfac;
+}
+
+static double GetCDi_Outer_dMa(const Vector4d& U, const Param& param,
+                                const ParamDeriv& pd) {
+    if (!param.turb) return 0.0;
+
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dUs = GetUs_dMa(U, param, pd);
+
+    double ct = U(2) * U(2);  // sa^2, no param dependence
+
+    return ct * (-dUs) * 2.0 / Hs - ct * (0.995 - Us) * 2.0 / (Hs * Hs) * dHs;
+}
+
+static double GetCDi_LamStress_dMa(const Vector4d& U, const Param& param,
+                                    const ParamDeriv& pd) {
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Us, Us_U] = GetUs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dUs = GetUs_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+
+    double HsRet = Hs * Ret;
+    double dHsRet = dHs * Ret + Hs * dRet;
+
+    double num = 0.15 * (0.995 - Us) * (0.995 - Us) * 2.0;
+    double dnum = 0.15 * 2.0 * (0.995 - Us) * (-1.0) * 2.0 * dUs;
+
+    return dnum / HsRet - num / (HsRet * HsRet) * dHsRet;
+}
+
+static double GetCDi_LamWake_dMa(const Vector4d& U, const Param& paramin,
+                                  const ParamDeriv& pd) {
+    // Force laminar mode
+    Param param = paramin;
+    param.turb = false;
+
+    auto [Hk, Hk_U] = GetHk(U, param);
+    auto [Hs, Hs_U] = GetHs(U, param);
+    auto [Ret, Ret_U] = GetRet(U, param);
+    double dHk = GetHk_dMa(U, param, pd);
+    double dHs = GetHs_dMa(U, param, pd);
+    double dRet = GetRet_dMa(U, param, pd);
+
+    double HsRet = Hs * Ret;
+    double dHsRet = dHs * Ret + Hs * dRet;
+
+    if (Hk < 1.05) { Hk = 1.05; dHk = 0.0; }
+
+    double Hk_inv = 1.0 / Hk;
+    double one_m = 1.0 - Hk_inv;
+    double num = 2.0 * 1.1 * one_m * one_m * Hk_inv;
+    double num_Hk = 2.0 * 1.1 *
+                    (2.0 * one_m * (Hk_inv * Hk_inv) * Hk_inv +
+                     one_m * one_m * (-Hk_inv * Hk_inv));
+
+    return num_Hk * dHk / HsRet - num / (HsRet * HsRet) * dHsRet;
+}
+
+// ============================================================================
+// Level 5: GetCDi_dMa, GetUpw_dMa, GetCfxt_dMa, GetCDixt_dMa
+// ============================================================================
+static double GetCDi_dMa(const Vector4d& U, const Param& param,
+                          const ParamDeriv& pd) {
+    if (param.turb) {
+        double dcDi_turb = 0.0;
+
+        if (!param.wake) {
+            dcDi_turb += GetCDi_TurbWall_dMa(U, param, pd);
+        }
+        dcDi_turb += GetCDi_Outer_dMa(U, param, pd);
+        dcDi_turb += GetCDi_LamStress_dMa(U, param, pd);
+
+        // Check against laminar floor using the public GetCDi
+        // GetCDi internally computes turbulent sum and compares with laminar floor.
+        // To determine which branch wins, compare laminar value with turbulent sum.
+        // Reconstruct turbulent sum value:
+        // We can't call the static helpers, but we can evaluate GetCDi and check
+        // if the laminar branch derivative should be used.
+
+        // Compute laminar floor value
+        Param param_lam = param;
+        double cDi_lam;
+        if (param.wake) {
+            // LamWake: force laminar mode for sub-functions
+            param_lam.turb = false;
+            auto [Hk, Hk_U] = GetHk(U, param_lam);
+            auto [Hs, Hs_U] = GetHs(U, param_lam);
+            auto [Ret, Ret_U] = GetRet(U, param_lam);
+            if (Hk < 1.05) Hk = 1.05;
+            double Hk_inv = 1.0 / Hk;
+            double one_m = 1.0 - Hk_inv;
+            double num = 2.0 * 1.1 * one_m * one_m * Hk_inv;
+            cDi_lam = num / (Hs * Ret);
+        } else {
+            param_lam.turb = false;
+            auto [Hk, Hk_U] = GetHk(U, param_lam);
+            auto [Ret, Ret_U] = GetRet(U, param_lam);
+            double num;
+            if (Hk < 4.0) {
+                num = 0.00205 * std::pow(4.0 - Hk, 5.5) + 0.207;
+            } else {
+                double Hk1 = Hk - 4.0;
+                double denom = 1.0 + 0.02 * Hk1 * Hk1;
+                num = -0.0016 * Hk1 * Hk1 / denom + 0.207;
+            }
+            cDi_lam = num / Ret;
+        }
+
+        // Compute turbulent sum (without laminar floor)
+        // The turbulent value is GetCDi - cDi_lam when cDi_lam is the floor
+        // Actually, we need the sum before the max check.
+        // Use GetCDi to get the final value and compare with cDi_lam.
+        auto [cDi_total, cDi_total_U] = GetCDi(U, param);
+        // If wake, cDi_total includes the 2x factor, and cDi_lam doesn't.
+        double cDi_lam_adj = param.wake ? 2.0 * cDi_lam : cDi_lam;
+
+        // If the laminar floor dominates, use laminar derivative
+        // The total value equals cDi_lam_adj when floor wins
+        double dcDi;
+        if (std::abs(cDi_total - cDi_lam_adj) < 1e-15 * std::max(1.0, std::abs(cDi_total))) {
+            // Laminar floor wins
+            dcDi = param.wake ? GetCDi_LamWake_dMa(U, param, pd)
+                              : GetCDi_Lam_dMa(U, param, pd);
+            if (param.wake) dcDi *= 2.0;
+        } else {
+            dcDi = dcDi_turb;
+            if (param.wake) dcDi *= 2.0;
+        }
+
+        return dcDi;
+    } else {
+        return GetCDi_Lam_dMa(U, param, pd);
+    }
+}
+
+// GetUpw_dMa: upwinding depends only on Hk which depends on Ma through M2
+static double GetUpw_dMa(const Vector4d& U1, const Vector4d& U2,
+                          const Param& param, const ParamDeriv& pd) {
+    auto [Hk1, Hk1_U] = GetHk(U1, param);
+    auto [Hk2, Hk2_U] = GetHk(U2, param);
+    double dHk1 = GetHk_dMa(U1, param, pd);
+    double dHk2 = GetHk_dMa(U2, param, pd);
+
+    double C = param.wake ? 1.0 : 5.0;
+    double Huc = C * 1.0 / (Hk2 * Hk2);
+    double dHuc = -2.0 * Huc / Hk2 * dHk2;
+
+    double aa = (Hk2 - 1.0) / (Hk1 - 1.0);
+    double sga = (aa >= 0) ? 1.0 : -1.0;
+    double la = std::log(sga * aa);
+    double dla = -dHk1 / (Hk1 - 1.0) + dHk2 / (Hk2 - 1.0);
+
+    double Hls = la * la;
+    double dHls = 2.0 * la * dla;
+    if (Hls > 15.0) { Hls = 15.0; dHls = 0.0; }
+
+    return -0.5 * std::exp(-Hls * Huc) * (-dHls * Huc - Hls * dHuc);
+}
+
+static double GetCfxt_dMa(const Vector4d& U, double x, const Param& param,
+                           const ParamDeriv& pd) {
+    double dcf = GetCf_dMa(U, param, pd);
+    double th = std::max(U(0), 1e-12);
+    return dcf * x / th;
+}
+
+static double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
+                            const ParamDeriv& pd) {
+    double dcDi = GetCDi_dMa(U, param, pd);
+    double th = std::max(U(0), 1e-12);
+    return dcDi * x / th;
+}
+
+// ============================================================================
+// Level 6: GetUq_dMa
+// ============================================================================
+static double GetUq_dMa(double ds, double /*cf*/, double dcf_dMa,
+                        double Hk, double dHk_dMa,
+                        double Ret, double dRet_dMa,
+                        const Param& param) {
+    double beta = param.GB;
+    double A = param.GA;
+    double C = param.GC;
+
+    if (param.wake) { A *= param.Dlr; C = 0.0; }
+
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) { Hk = Hk_lim; dHk_dMa = 0.0; }
+
+    double Hkc = Hk - 1.0 - C / std::max(Ret, 1e-10);
+    double dHkc = dHk_dMa + C / (Ret * Ret) * dRet_dMa;
+    if (Hkc < 0.01) { Hkc = 0.01; dHkc = 0.0; }
+
+    double dut = 0.5 * dcf_dMa -
+                 2.0 * (Hkc / (A * Hk)) *
+                     (dHkc / (A * Hk) - Hkc / (A * Hk * Hk) * dHk_dMa);
+
+    double ds_safe = std::max(ds, 1e-12);
+    // uq = ut / (beta * ds_safe), ds has no param dependence here (it's averaged from U)
+    return dut / (beta * ds_safe);
+}
+
+// ============================================================================
+// Top level: ResidualStation_dMa — computes 3-component dR/dMa at one station
+// ============================================================================
+static Vector3d ResidualStation_dMa(const Param& param, const Vector2d& x,
+                                     const Matrix42d& Uin, const Vector2d& Aux,
+                                     const ParamDeriv& pd) {
+    // Copy and modify for wake gap (same as primal)
+    Matrix42d U = Uin;
+    U.row(1) -= Aux.transpose();
+
+    Vector4d U1 = U.col(0);
+    Vector4d U2 = U.col(1);
+
+    auto [uk1, uk1_U] = GetUk(U1(3), param);
+    auto [uk2, uk2_U] = GetUk(U2(3), param);
+    // GetUk is a stub: uk = ue, no Ma dependence => duk_dMa = 0
+    // So uelog_dMa = 0
+
+    // Similarity handling
+    bool simi = param.simi;
+
+    double dx = simi ? 0.5 * (x(0) + x(1)) : (x(1) - x(0));
+
+    // Upwinding
+    auto [upw, upw_U] = GetUpw(U1, U2, param);
+    double dupw = GetUpw_dMa(U1, U2, param, pd);
+
+    // --- Momentum equation dRmom/dMa ---
+    // Rmom = thlog + (2+H+Hw-Ms)*uelog - 0.5*xlog*cfxt
+    // thlog, uelog, xlog have no Ma dependence
+    // H has no Ma dependence (H = ds/th)
+    // Hw has no Ma dependence
+    // Ms (Mach^2) depends on Ma
+    // cfxt depends on Ma
+    double dMs1 = GetMach2_dMa(U1, param, pd);
+    double dMs2 = GetMach2_dMa(U2, param, pd);
+    double dMs = 0.5 * (dMs1 + dMs2);  // simple average
+
+    double uelog;
+    if (simi) {
+        uelog = 1.0;
+    } else {
+        uelog = std::log(std::max(uk2, 1e-12) / std::max(uk1, 1e-12));
+    }
+
+    double xlog;
+    if (simi) {
+        xlog = 1.0;
+    } else {
+        xlog = std::log(std::max(x(1), 1e-12) / std::max(x(0), 1e-12));
+    }
+
+    // cfxt = 0.25*cfxt1 + 0.5*cfxtm + 0.25*cfxt2
+    double dcfxt1 = GetCfxt_dMa(U1, x(0), param, pd);
+    double xm = 0.5 * (x(0) + x(1));
+    Vector4d Um = 0.5 * (U1 + U2);
+    double dcfxtm = GetCfxt_dMa(Um, xm, param, pd);
+    double dcfxt2 = GetCfxt_dMa(U2, x(1), param, pd);
+    double dcfxt = 0.25 * dcfxt1 + 0.5 * dcfxtm + 0.25 * dcfxt2;
+
+    double dRmom = -dMs * uelog - 0.5 * xlog * dcfxt;
+
+    // --- Shape parameter equation dRshape/dMa ---
+    // Rshape = Hslog + (2*Hss/Hs + 1 - H - Hw)*uelog + xlog*(0.5*cfxtu - cDixt)
+    auto [Hs1, Hs1_U] = GetHs(U1, param);
+    auto [Hs2, Hs2_U] = GetHs(U2, param);
+    double dHs1 = GetHs_dMa(U1, param, pd);
+    double dHs2 = GetHs_dMa(U2, param, pd);
+
+    // Hslog = log(Hs2/Hs1)
+    double dHslog = simi ? 0.0 : (dHs2 / std::max(Hs2, 1e-12) - dHs1 / std::max(Hs1, 1e-12));
+
+    double Hs = 0.5 * (Hs1 + Hs2);
+    double dHs = 0.5 * (dHs1 + dHs2);
+
+    auto [Hss1, Hss1_U] = GetHss(U1, param);
+    auto [Hss2, Hss2_U] = GetHss(U2, param);
+    double dHss1 = GetHss_dMa(U1, param, pd);
+    double dHss2 = GetHss_dMa(U2, param, pd);
+    double Hss = 0.5 * (Hss1 + Hss2);
+    double dHss = 0.5 * (dHss1 + dHss2);
+
+    // Upwinded cDixt
+    auto [cDixt1, cDixt1_U, cDixt1_x] = GetCDixt(U1, x(0), param);
+    auto [cDixt2, cDixt2_U, cDixt2_x] = GetCDixt(U2, x(1), param);
+    double dcDixt1 = GetCDixt_dMa(U1, x(0), param, pd);
+    double dcDixt2 = GetCDixt_dMa(U2, x(1), param, pd);
+    double dcDixt = (1.0 - upw) * dcDixt1 + upw * dcDixt2 +
+                    dupw * (cDixt2 - cDixt1);
+
+    // Upwinded cfxtu
+    auto [cfxt1_val, cfxt1_val_U, cfxt1_val_x] = GetCfxt(U1, x(0), param);
+    auto [cfxt2_val, cfxt2_val_U, cfxt2_val_x] = GetCfxt(U2, x(1), param);
+    double dcfxtu1 = GetCfxt_dMa(U1, x(0), param, pd);
+    double dcfxtu2 = GetCfxt_dMa(U2, x(1), param, pd);
+    double dcfxtu = (1.0 - upw) * dcfxtu1 + upw * dcfxtu2 +
+                    dupw * (cfxt2_val - cfxt1_val);
+
+    double dRshape = dHslog +
+                     (2.0 * dHss / Hs - 2.0 * Hss / (Hs * Hs) * dHs) * uelog +
+                     xlog * (0.5 * dcfxtu - dcDixt);
+
+    // --- Lag equation dRlag/dMa ---
+    double dRlag;
+
+    if (param.turb) {
+        auto [de1, de1_U] = GetDe(U1, param);
+        auto [de2, de2_U] = GetDe(U2, param);
+        double dde1 = GetDe_dMa(U1, param, pd);
+        double dde2 = GetDe_dMa(U2, param, pd);
+        double de = 0.5 * (de1 + de2);
+        double dde = 0.5 * (dde1 + dde2);
+
+        auto [Us1, Us1_U] = GetUs(U1, param);
+        auto [Us2, Us2_U] = GetUs(U2, param);
+        double dUs1 = GetUs_dMa(U1, param, pd);
+        double dUs2 = GetUs_dMa(U2, param, pd);
+        double Us_upw = 0.5 * (Us1 + Us2);
+        double dUs_upw = 0.5 * (dUs1 + dUs2);
+
+        auto [Hk1, Hk1_U] = GetHk(U1, param);
+        auto [Hk2, Hk2_U] = GetHk(U2, param);
+        double dHk1 = GetHk_dMa(U1, param, pd);
+        double dHk2 = GetHk_dMa(U2, param, pd);
+        auto [Hk_upw_bind, Hk_upw_U] = Upwind(upw, upw_U, Hk1, Hk1_U, Hk2, Hk2_U);
+        double Hk_upw = Hk_upw_bind;
+        double dHk_upw = (1.0 - upw) * dHk1 + upw * dHk2 + dupw * (Hk2 - Hk1);
+
+        auto [Ret1, Ret1_U] = GetRet(U1, param);
+        auto [Ret2, Ret2_U] = GetRet(U2, param);
+        double dRet1 = GetRet_dMa(U1, param, pd);
+        double dRet2 = GetRet_dMa(U2, param, pd);
+        double Ret_avg = 0.5 * (Ret1 + Ret2);
+        double dRet_avg = 0.5 * (dRet1 + dRet2);
+
+        auto [cf1, cf1_U] = GetCf(U1, param);
+        auto [cf2, cf2_U] = GetCf(U2, param);
+        double dcf1 = GetCf_dMa(U1, param, pd);
+        double dcf2 = GetCf_dMa(U2, param, pd);
+        double cf_upw = (1.0 - upw) * cf1 + upw * cf2;
+        double dcf_upw = (1.0 - upw) * dcf1 + upw * dcf2 + dupw * (cf2 - cf1);
+
+        // ds averaged (no param dep)
+        double dsa_avg = 0.5 * (U1(1) + U2(1));
+
+        // uq
+        double uq_val = [&]() {
+            auto [uq, uq_U] = GetUq(dsa_avg, Vector8d::Zero(), cf_upw, Vector8d::Zero(),
+                                     Hk_upw, Vector8d::Zero(), Ret_avg, Vector8d::Zero(), param);
+            return uq;
+        }();
+        double duq = GetUq_dMa(dsa_avg, cf_upw, dcf_upw, Hk_upw, dHk_upw,
+                                Ret_avg, dRet_avg, param);
+
+        auto [cteq1, cteq1_U] = GetCteq(U1, param);
+        auto [cteq2, cteq2_U] = GetCteq(U2, param);
+        double dcteq1 = GetCteq_dMa(U1, param, pd);
+        double dcteq2 = GetCteq_dMa(U2, param, pd);
+        double cteq_upw = (1.0 - upw) * cteq1 + upw * cteq2;
+        double dcteq_upw = (1.0 - upw) * dcteq1 + upw * dcteq2 +
+                           dupw * (cteq2 - cteq1);
+
+        // saa upwinded (sa values, no param dep => dsaa = dupw*(sa2-sa1))
+        double sa1 = std::max(U1(2), 1e-12);
+        double sa2 = std::max(U2(2), 1e-12);
+        double saa = (1.0 - upw) * sa1 + upw * sa2;
+        double dsaa = dupw * (sa2 - sa1);
+
+        double Klag = param.SlagK;
+        double beta = param.GB;
+        double Clag = Klag / beta / (1.0 + Us_upw);
+        double dClag = -Clag / (1.0 + Us_upw) * dUs_upw;
+
+        double ald = param.wake ? param.Dlr : 1.0;
+        double Cuq = param.Cuq;
+
+        // salog has no Ma dependency
+        double salog = std::log(std::max(sa2, 1e-10) / std::max(sa1, 1e-10));
+
+        // Rlag = Clag*(cteq - ald*saa)*dx - 2*de*salog + 2*de*(uq*dx - uelog)*Cuq
+        dRlag = dClag * (cteq_upw - ald * saa) * dx +
+                Clag * (dcteq_upw - ald * dsaa) * dx -
+                2.0 * dde * salog +
+                2.0 * dde * (uq_val * dx - uelog) * Cuq +
+                2.0 * de * (duq * dx) * Cuq;
+        // uelog_dMa = 0 since GetUk is stub
+    } else {
+        if (simi) {
+            dRlag = 0.0;
+        } else {
+            double ddamp1 = GetDamp_dMa(U1, param, pd);
+            double ddamp2 = GetDamp_dMa(U2, param, pd);
+            double ddamp = 0.5 * (ddamp1 + ddamp2);
+            // Rlag = sa2 - sa1 - damp*dx => dRlag/dMa = -ddamp*dx
+            dRlag = -ddamp * dx;
+        }
+    }
+
+    return Vector3d(dRmom, dRshape, dRlag);
+}
+
+// Helper: d(cttr)/dMa (transition initial ctau)
+static double GetCttr_dMa(const Vector4d& Ut, const Param& paramin,
+                           const ParamDeriv& pd) {
+    // cttr = CtauC * exp(-CtauE/(Hk-1)) * cteq
+    Param p = paramin;
+    p.wake = false;
+
+    auto [Hk, Hk_U] = GetHk(Ut, p);
+    double dHk = GetHk_dMa(Ut, p, pd);
+    auto [cteq, cteq_U] = GetCteq(Ut, p);
+    double dcteq = GetCteq_dMa(Ut, p, pd);
+
+    if (Hk < 1.05) { Hk = 1.05; dHk = 0.0; }
+
+    double E = p.CtauE;
+    double c = p.CtauC * std::exp(-E / (Hk - 1.0));
+    double dc = c * E / ((Hk - 1.0) * (Hk - 1.0)) * dHk;
+
+    return dc * cteq + c * dcteq;
+}
+
+// ============================================================================
+// ResidualTransition_dMa: fully analytical dR/dMa at a transition station
+//
+// R = R_lam(param_lam, x1, xt, U1, Utl) + R_turb(param_turb, xt, x2, Utt, U2)
+// where xt satisfies Rxt(xt, U, x, param) = ncrit - sa1 - 0.5*(xt-x1)*(damp1+dampt) = 0
+//
+// dR/dMa = ∂R_lam/∂Ma + ∂R_turb/∂Ma
+//        + (Rl_x(:,1) + Rt_x(:,0)) * dxt/dMa
+//        + Rl_Utl * dUtl/dMa + Rt_Utt * dUtt/dMa
+// ============================================================================
+static Vector3d ResidualTransition_dMa(FoilState& /*state*/, const Param& param_base,
+                                        const Vector2d& x, const Matrix42d& U,
+                                        const Vector2d& Aux,
+                                        const ParamDeriv& pd) {
+    Vector4d U1 = U.col(0);
+    Vector4d U2 = U.col(1);
+    double x1 = x(0), x2 = x(1);
+    double dx = x2 - x1;
+    double ncrit = param_base.ncrit;
+
+    // Reconstruct converged transition location (same Newton as primal)
+    double xt = x1 + 0.5 * dx;
+    for (int iN = 0; iN < 20; ++iN) {
+        double w2t = (xt - x1) / dx, w1t = 1.0 - w2t;
+        Vector4d Utt = w1t * U1 + w2t * U2;
+        Utt(2) = ncrit;
+        Vector4d Ut_xt_t = (U2 - U1) / dx;
+        Ut_xt_t(2) = 0.0;
+
+        Param pm = param_base; pm.turb = false;
+        auto [d1, d1u] = GetDamp(U1, pm);
+        auto [dt, dtu] = GetDamp(Utt, pm);
+        double Rxt = ncrit - U1(2) - 0.5 * (xt - x1) * (d1 + dt);
+        double Rxt_xt = -0.5 * (d1 + dt) - 0.5 * (xt - x1) * dtu.dot(Ut_xt_t);
+        double step = -Rxt / Rxt_xt;
+        double dmax = 0.2 * dx * (1.1 - static_cast<double>(iN) / 20);
+        if (std::abs(step) > dmax) step = step * dmax / std::abs(step);
+        if (std::abs(Rxt) < 1e-10) break;
+        if (iN < 19) xt += step;
+    }
+
+    // At converged xt, set up interpolated state
+    double w2 = (xt - x1) / dx, w1 = 1.0 - w2;
+    Vector4d Ut = w1 * U1 + w2 * U2;
+    Vector4d Ut_xt = (U2 - U1) / dx;
+    Ut(2) = ncrit;
+    Ut_xt(2) = 0.0;
+
+    Param param_lam = param_base; param_lam.turb = false;
+    auto [damp1, damp1_U1] = GetDamp(U1, param_lam);
+    auto [dampt, dampt_Ut] = GetDamp(Ut, param_lam);
+    dampt_Ut(2) = 0.0;
+
+    double Rxt_xt = -0.5 * (damp1 + dampt) -
+                    0.5 * (xt - x1) * dampt_Ut.dot(Ut_xt);
+
+    // dxt/dMa from implicit function theorem on Rxt = 0
+    // ∂Rxt/∂Ma|_{xt fixed} = -0.5*(xt-x1)*(∂damp1/∂Ma + ∂dampt/∂Ma)
+    double ddamp1_dMa = GetDamp_dMa(U1, param_lam, pd);
+    double ddampt_dMa = GetDamp_dMa(Ut, param_lam, pd);
+    double dRxt_dMa = -0.5 * (xt - x1) * (ddamp1_dMa + ddampt_dMa);
+    double dxt_dMa = -dRxt_dMa / Rxt_xt;
+
+    // dUtl/dMa = Ut_xt * dxt_dMa (with sa = 0, since sa = ncrit always)
+    Vector4d dUtl_dMa = Ut_xt * dxt_dMa;
+    dUtl_dMa(2) = 0.0;
+
+    // dUtt/dMa: position shift + cttr param change
+    Param param_turb = param_base; param_turb.turb = true;
+    auto [cttr, cttr_Ut] = GetCttr(Ut, param_turb);
+    double dcttr_direct = GetCttr_dMa(Ut, param_turb, pd);
+    Vector4d dUtt_dMa = Ut_xt * dxt_dMa;
+    dUtt_dMa(2) = cttr_Ut.dot(Ut_xt * dxt_dMa) + dcttr_direct;
+
+    // Build transition states
+    Vector4d Utl = Ut; Utl(2) = ncrit;
+    Vector4d Utt = Ut; Utt(2) = cttr;
+
+    // Laminar half residual and direct Ma derivative
+    param_lam.turb = false;
+    Matrix42d U_lam; U_lam.col(0) = U1; U_lam.col(1) = Utl;
+    Vector2d x_lam(x1, xt);
+    auto Rl = ResidualStation(param_lam, x_lam, U_lam, Aux);
+    Vector3d dRl_direct = ResidualStation_dMa(param_lam, x_lam, U_lam, Aux, pd);
+
+    // Turbulent half residual and direct Ma derivative
+    param_turb.turb = true;
+    Matrix42d U_turb; U_turb.col(0) = Utt; U_turb.col(1) = U2;
+    Vector2d x_turb(xt, x2);
+    auto Rt = ResidualStation(param_turb, x_turb, U_turb, Aux);
+    Vector3d dRt_direct = ResidualStation_dMa(param_turb, x_turb, U_turb, Aux, pd);
+
+    // Chain rule assembly
+    Matrix34d Rl_Utl = Rl.lin_U.block<3, 4>(0, 4);
+    Matrix34d Rt_Utt = Rt.lin_U.block<3, 4>(0, 0);
+
+    return dRl_direct + dRt_direct +
+           (Rl.lin_x.col(1) + Rt.lin_x.col(0)) * dxt_dMa +
+           Rl_Utl * dUtl_dMa + Rt_Utt * dUtt_dMa;
+}
+
+// ============================================================================
+// ComputeDRblDMa: assemble dR_BL/dMa vector [3*Nsys]
+// Mirrors BuildGlobSys exactly for station ordering and stagnation handling.
+// ============================================================================
+static VectorXd ComputeDRblDMa(FoilState& state, const ParamDeriv& pd) {
+    int Nsys = state.glob.Nsys;
+    VectorXd dR(3 * Nsys);
+    dR.setZero();
+
+    for (int si = 0; si < 3; ++si) {
+        const auto& Is = state.vsol.Is[si];
+        if (Is.empty()) continue;
+        int Ns = static_cast<int>(Is.size());
+
+        Param param = BuildParam(state, si);
+
+        // Local xi and Aux, matching BuildGlobSys exactly
+        VectorXd xi(Ns);
+        for (int idx = 0; idx < Ns; ++idx) xi(idx) = state.isol.xi(Is[idx]);
+
+        VectorXd Aux_surf = VectorXd::Zero(Ns);
+        if (si == 2 && state.vsol.wgap.size() > 0) {
+            for (int idx = 0;
+                 idx < Ns && idx < static_cast<int>(state.vsol.wgap.size());
+                 ++idx) {
+                Aux_surf(idx) = state.vsol.wgap(idx);
+            }
+        }
+
+        int i0 = (si < 2 && xi(0) < 1e-8 * xi(Ns - 1)) ? 1 : 0;
+
+        if (si < 2) {
+            // Stagnation: similarity residual at extrapolated Ust
+            int ip0 = i0, ip1 = i0 + 1;
+            Matrix42d Uin;
+            Uin.col(0) = state.glob.U.col(Is[ip0]);
+            Uin.col(1) = state.glob.U.col(Is[ip1]);
+            Vector2d xin(xi(ip0), xi(ip1));
+
+            auto stag = StagnationState(Uin, xin);  // No param dependence
+
+            param.turb = false;
+            param.simi = true;
+            Matrix42d Ust_pair;
+            Ust_pair.col(0) = stag.Ust;
+            Ust_pair.col(1) = stag.Ust;
+            Vector2d xst_pair(stag.xst, stag.xst);
+            Vector2d Aux_pair(Aux_surf(ip0), Aux_surf(ip0));
+
+            Vector3d dRs = ResidualStation_dMa(param, xst_pair, Ust_pair,
+                                                Aux_pair, pd);
+            dR.segment<3>(3 * Is[ip1]) = dRs;
+            param.simi = false;
+
+            // Constraint U[Is[i0]] = Ust at first node: no param dependence → dR = 0
+        } else {
+            // Wake init: WakeSys
+            int il = state.vsol.Is[0].back();
+            int iu = state.vsol.Is[1].back();
+            int iw = Is[0];
+
+            double th_l = state.glob.U(0, il);
+            double th_u = state.glob.U(0, iu);
+            double wl = th_l / (th_l + th_u);
+            double wu = th_u / (th_l + th_u);
+
+            // R1,R2 = theta/ds sums: no param dep
+            // R3 = sa_w - weighted ctau: ctl/ctu depend on param if laminar
+            double dctl = 0.0;
+            if (il < static_cast<int>(state.vsol.turb.size()) &&
+                !state.vsol.turb[il]) {
+                Param p = param; p.wake = false;
+                StationParam(state, p, il); p.wake = false;
+                dctl = GetCttr_dMa(state.glob.U.col(il), p, pd);
+            }
+            double dctu = 0.0;
+            if (iu < static_cast<int>(state.vsol.turb.size()) &&
+                !state.vsol.turb[iu]) {
+                Param p = param; p.wake = false;
+                StationParam(state, p, iu); p.wake = false;
+                dctu = GetCttr_dMa(state.glob.U.col(iu), p, pd);
+            }
+
+            dR(3 * iw + 2) = -(wl * dctl + wu * dctu);
+            param.turb = true;
+            param.wake = true;
+        }
+
+        // March through remaining stations
+        int idx_start = (si < 2) ? i0 + 2 : 1;
+        for (int idx = idx_start; idx < Ns; ++idx) {
+            int ip = idx - 1;
+            int i_glob = Is[idx];
+            int ip_glob = Is[ip];
+
+            Vector2d xin(xi(ip), xi(idx));
+            Matrix42d Uin;
+            Uin.col(0) = state.glob.U.col(ip_glob);
+            Uin.col(1) = state.glob.U.col(i_glob);
+            Vector2d Aux_in(Aux_surf(ip), Aux_surf(idx));
+
+            bool tran = (ip_glob < static_cast<int>(state.vsol.turb.size()) &&
+                         i_glob < static_cast<int>(state.vsol.turb.size())) &&
+                        (state.vsol.turb[ip_glob] != state.vsol.turb[i_glob]);
+
+            Vector3d dRs;
+            if (tran) {
+                dRs = ResidualTransition_dMa(state, param, xin, Uin, Aux_in, pd);
+                param.turb = true;
+            } else {
+                StationParam(state, param, i_glob);
+                dRs = ResidualStation_dMa(param, xin, Uin, Aux_in, pd);
+            }
+            dR.segment<3>(3 * i_glob) = dRs;
+        }
+    }
+
+    return dR;
+}
+
+// ============================================================================
+// ComputeDcpDMa: d(cp)/d(Ma) at each panel node (KT correction differentiation)
+// For the force partials w.r.t. Ma
+// ============================================================================
+static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
+                               double& dcp_dMa, double& d2cp_duedMa) {
+    double Vinf = std::max(param.Vinf, 1e-10);
+    double cp_inc = 1.0 - (ue / Vinf) * (ue / Vinf);
+    double dcp_due_inc = -2.0 * ue / (Vinf * Vinf);
+
+    if (Ma <= 0 || param.KTl <= 0) {
+        dcp_dMa = 0.0;
+        d2cp_duedMa = 0.0;
+        return;
+    }
+
+    double b = param.KTb;  // sqrt(1-Ma^2)
+    double l = param.KTl;  // Ma^2/(1+b)^2
+
+    // db/dMa = -Ma/b
+    double db = -Ma / b;
+    // dl/dMa = 2*Ma/(1+b)^2 - 2*Ma^2/(1+b)^3 * db
+    //        = 2*Ma/(1+b)^2 + 2*Ma^3/((1+b)^3 * b)
+    double opb = 1.0 + b;
+    double dl = 2.0 * Ma / (opb * opb) + 2.0 * Ma * Ma * Ma / (opb * opb * opb * b);
+
+    double den = b + 0.5 * l * (1.0 + b) * cp_inc;
+    double den_cp = 0.5 * l * (1.0 + b);
+
+    // cp = cp_inc / den
+    double cp = cp_inc / den;
+
+    // dden/dMa = db + 0.5*(dl*(1+b) + l*db)*cp_inc
+    double dden_dMa = db + 0.5 * (dl * opb + l * db) * cp_inc;
+    // dden_cp/dMa = 0.5*(dl*(1+b) + l*db)
+    double dden_cp_dMa = 0.5 * (dl * opb + l * db);
+
+    // dcp/dMa = -cp_inc / den^2 * dden_dMa  (cp_inc doesn't depend on Ma)
+    dcp_dMa = -cp / den * dden_dMa;
+
+    // d(dcp/due)/dMa: dcp/due = dcp_due_inc * (1 - cp*den_cp) / den
+    // d(dcp/due)/dMa = dcp_due_inc * d/dMa[(1 - cp*den_cp)/den]
+    double dfac_dMa = (-(dcp_dMa * den_cp + cp * dden_cp_dMa) * den -
+                       (1.0 - cp * den_cp) * dden_dMa) / (den * den);
+    d2cp_duedMa = dcp_due_inc * dfac_dMa;
+}
+
+// ============================================================================
+// MachSensitivities: compute dJ/dMa for cl, cd, cm
+// ============================================================================
+void MachSensitivities(FoilState& state, Sensitivity& sens) {
+    int N = state.foil.N;
+    double Ma = state.oper.Ma;
+    double chord = state.geom.chord;
+    double alpha = state.oper.alpha;
+
+    if (!state.oper.viscous) {
+        // --- Inviscid path ---
+        // Only the KT correction on cp depends on Ma
+        if (Ma <= 0) {
+            sens.dcl_dMa = 0.0;
+            sens.dcd_dMa = 0.0;
+            sens.dcm_dMa = 0.0;
+            return;
+        }
+
+        VectorXd ue = GetUeInv(state);
+
+        double dcl = 0.0, dcm = 0.0, dcdpi = 0.0;
+        double cosa = Cosd(alpha);
+        double sina = Sind(alpha);
+        Vector2d xref = state.geom.xref;
+
+        for (int i0 = 1; i0 <= N; ++i0) {
+            int i = (i0 == N) ? 0 : i0;
+            int ip = (i0 == N) ? N - 1 : i0 - 1;
+
+            Vector2d x1 = state.foil.x.col(ip);
+            Vector2d x2 = state.foil.x.col(i);
+            Vector2d dxv = x2 - x1;
+            Vector2d dx1 = x1 - xref;
+            Vector2d dx2 = x2 - xref;
+
+            double dx_lift = -dxv(0) * cosa - dxv(1) * sina;
+            double dz = dxv(1) * cosa - dxv(0) * sina;
+
+            double dcp_ip, d2cp_ip;
+            double dcp_i, d2cp_i;
+            ComputeCpDerivsMa(ue(ip), state.param, Ma, dcp_ip, d2cp_ip);
+            ComputeCpDerivsMa(ue(i), state.param, Ma, dcp_i, d2cp_i);
+
+            double dcpbar = 0.5 * (dcp_ip + dcp_i);
+            dcl += dx_lift * dcpbar;
+            dcdpi += dz * dcpbar;
+
+            double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
+            double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
+            dcm += dcp_ip / 3.0 * dx1nds + dcp_ip / 6.0 * dx2nds +
+                   dcp_i / 6.0 * dx1nds + dcp_i / 3.0 * dx2nds;
+        }
+
+        sens.dcl_dMa = dcl / chord;
+        sens.dcm_dMa = dcm / (chord * chord);
+        sens.dcd_dMa = dcdpi / chord;
+    } else {
+        // --- Viscous path ---
+        // dJ/dMa = ∂J/∂Ma_partial − λ^T · ∂R/∂Ma
+        // ∂J/∂Ma_partial: from KT correction (same as inviscid but with viscous ue)
+        // ∂R/∂Ma: [dR_BL/dMa; dR_ue/dMa] where dR_ue/dMa = 0
+
+        if (!state.glob.lu_factorization) {
+            throw std::runtime_error(
+                "MachSensitivities: no LU factorization stored");
+        }
+
+        int Nsys = state.glob.Nsys;
+
+        CalcForceLin(state);
+        CalcCdLin(state);
+
+        // Compute force partials w.r.t. Ma (KT correction)
+        VectorXd ue;
+        if (state.glob.U.cols() > 0) {
+            ue = state.glob.U.row(3).transpose();
+        } else {
+            ue = GetUeInv(state);
+        }
+
+        double dcl_partial = 0.0, dcm_partial = 0.0;
+        double cosa = Cosd(alpha);
+        double sina = Sind(alpha);
+        Vector2d xref = state.geom.xref;
+
+        // Also compute d(cl_ue)/dMa for the cross-term
+        // (not needed: cl_ue * due/dMa = 0 since ue equation doesn't depend on Ma)
+        // The partial is just the direct cp-Ma dependency at fixed ue
+
+        for (int i0 = 1; i0 <= N; ++i0) {
+            int i = (i0 == N) ? 0 : i0;
+            int ip = (i0 == N) ? N - 1 : i0 - 1;
+
+            Vector2d x1 = state.foil.x.col(ip);
+            Vector2d x2 = state.foil.x.col(i);
+            Vector2d dxv = x2 - x1;
+            Vector2d dx1 = x1 - xref;
+            Vector2d dx2 = x2 - xref;
+
+            double dx_lift = -dxv(0) * cosa - dxv(1) * sina;
+
+            double dcp_ip, d2cp_ip;
+            double dcp_i, d2cp_i;
+            ComputeCpDerivsMa(ue(ip), state.param, Ma, dcp_ip, d2cp_ip);
+            ComputeCpDerivsMa(ue(i), state.param, Ma, dcp_i, d2cp_i);
+
+            double dcpbar = 0.5 * (dcp_ip + dcp_i);
+            dcl_partial += dx_lift * dcpbar;
+
+            double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
+            double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
+            dcm_partial += dcp_ip / 3.0 * dx1nds + dcp_ip / 6.0 * dx2nds +
+                           dcp_i / 6.0 * dx1nds + dcp_i / 3.0 * dx2nds;
+        }
+        dcl_partial /= chord;
+        dcm_partial /= (chord * chord);
+        double dcd_partial = 0.0;  // Squire-Young cd has no direct Ma partial
+
+        // Build dJ/dV for adjoint solve (same as alpha sensitivities)
+        VectorXd dcl_dV = VectorXd::Zero(4 * Nsys);
+        VectorXd dcm_dV = VectorXd::Zero(4 * Nsys);
+        VectorXd dcd_dV = state.post.cd_V;
+
+        // Need to include d(cl_ue)/dMa * ue_i contribution
+        // But wait: the ue values in dJ/dV are the standard cl_ue linearizations.
+        // The Ma partial from force is separate from the adjoint term.
+        // The adjoint term handles: lambda^T * dR/dMa
+        // dR/dMa = [dR_BL/dMa; 0] (ue equation doesn't depend on Ma)
+
+        for (int i = 0; i < N; ++i) {
+            dcl_dV(4 * i + 3) = state.post.cl_ue(i);
+            dcm_dV(4 * i + 3) = state.post.cm_ue(i);
+        }
+
+        // However, we also need to account for d(cl_ue)/dMa (the KT correction
+        // changes how cl relates to ue). This enters as:
+        // dcl/dMa = dcl/dMa|_ue_fixed + (dcl_ue/dMa) * ue + cl_ue * (due/dMa)
+        // Since due/dMa = 0 (ue equation doesn't depend on Ma), the second term
+        // is zero. The third term: (dcl_ue/dMa) * ue is already part of dcl_partial.
+        // Actually dcl_partial already captures all force-Ma partial at fixed ue.
+
+        auto& lu = *state.glob.lu_factorization;
+        VectorXd lambda_cl = lu.transpose().solve(dcl_dV);
+        VectorXd lambda_cm = lu.transpose().solve(dcm_dV);
+        VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+
+        // Compute dR_BL/dMa [3*Nsys]
+        ParamDeriv pd_ma = InitThermoDeriv_Ma(
+            state.param, Ma, state.oper.Re, state.oper.rho,
+            state.oper.Vinf, chord);
+        VectorXd dRbl_dMa = ComputeDRblDMa(state, pd_ma);
+
+        // dR/dMa = [dRbl_dMa; 0_{Nsys}] (block ordered)
+        // lambda^T * dR/dMa = lambda_bl^T * dRbl_dMa
+        VectorXd lambda_cl_bl = lambda_cl.head(3 * Nsys);
+        VectorXd lambda_cm_bl = lambda_cm.head(3 * Nsys);
+        VectorXd lambda_cd_bl = lambda_cd.head(3 * Nsys);
+
+        sens.dcl_dMa = dcl_partial - lambda_cl_bl.dot(dRbl_dMa);
+        sens.dcm_dMa = dcm_partial - lambda_cm_bl.dot(dRbl_dMa);
+        sens.dcd_dMa = dcd_partial - lambda_cd_bl.dot(dRbl_dMa);
+    }
+}
+
+// ============================================================================
+// ReSensitivities: compute dJ/dRe for cl, cd, cm
+// ============================================================================
+void ReSensitivities(FoilState& state, Sensitivity& sens) {
+    // Re enters only through mu0: dmu0/dRe = -mu0/Re
+    // For inviscid: no Re dependence
+    if (!state.oper.viscous) {
+        sens.dcl_dRe = 0.0;
+        sens.dcd_dRe = 0.0;
+        sens.dcm_dRe = 0.0;
+        return;
+    }
+
+    if (!state.glob.lu_factorization) {
+        throw std::runtime_error(
+            "ReSensitivities: no LU factorization stored");
+    }
+
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    double Re = state.oper.Re;
+
+    CalcForceLin(state);
+    CalcCdLin(state);
+
+    // ParamDeriv for Re: dMinf=0, drho0=0, dmu0=-mu0/Re
+    ParamDeriv pd_re;
+    pd_re.dMinf = 0.0;
+    pd_re.drho0 = 0.0;
+    pd_re.dmu0 = -state.param.mu0 / Re;
+
+    // dR_BL/dRe uses the same _dMa companion functions with Re-specific ParamDeriv
+    VectorXd dRbl_dRe = ComputeDRblDMa(state, pd_re);
+
+    // Force partials: no direct Re dependence in forces
+    // (cp from ue has no Re; Squire-Young cd depends on BL state, not Re directly)
+    double dcl_partial = 0.0;
+    double dcm_partial = 0.0;
+    double dcd_partial = 0.0;
+
+    // Adjoint solve
+    VectorXd dcl_dV = VectorXd::Zero(4 * Nsys);
+    VectorXd dcm_dV = VectorXd::Zero(4 * Nsys);
+    VectorXd dcd_dV = state.post.cd_V;
+    for (int i = 0; i < N; ++i) {
+        dcl_dV(4 * i + 3) = state.post.cl_ue(i);
+        dcm_dV(4 * i + 3) = state.post.cm_ue(i);
+    }
+
+    auto& lu = *state.glob.lu_factorization;
+    VectorXd lambda_cl = lu.transpose().solve(dcl_dV);
+    VectorXd lambda_cm = lu.transpose().solve(dcm_dV);
+    VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+
+    VectorXd lambda_cl_bl = lambda_cl.head(3 * Nsys);
+    VectorXd lambda_cm_bl = lambda_cm.head(3 * Nsys);
+    VectorXd lambda_cd_bl = lambda_cd.head(3 * Nsys);
+
+    sens.dcl_dRe = dcl_partial - lambda_cl_bl.dot(dRbl_dRe);
+    sens.dcm_dRe = dcm_partial - lambda_cm_bl.dot(dRbl_dRe);
+    sens.dcd_dRe = dcd_partial - lambda_cd_bl.dot(dRbl_dRe);
 }
 
 }  // namespace cppfoil

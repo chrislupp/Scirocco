@@ -455,6 +455,17 @@ ScalarLin4 GetCpFromUe(double ue, const Param& param) {
 
     double dcp_due = -2.0 * ue / (Vinf * Vinf);
 
+    // Apply KT correction to dcp/due (matches mfoil get_cp)
+    if (param.KTl > 0) {
+        double b = param.KTb;
+        double l = param.KTl;
+        double den = b + 0.5 * l * (1.0 + b) * cp;
+        double den_cp = 0.5 * l * (1.0 + b);
+        if (std::abs(den) > 1e-10) {
+            dcp_due *= (1.0 - cp * den_cp) / den;
+        }
+    }
+
     Vector4d cp_U = Vector4d::Zero();
     cp_U(3) = dcp_due;
 

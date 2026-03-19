@@ -111,11 +111,11 @@ void CalcForce(FoilState& state) {
 
         cl += dx * cpbar;
 
-        // Linearization w.r.t. ue (through cp)
-        double dcp_due = -2.0 * ue(ip) / (Vinf * Vinf);
-        state.post.cl_ue(ip) += dx * 0.5 * dcp_due;
-        dcp_due = -2.0 * ue(i) / (Vinf * Vinf);
-        state.post.cl_ue(i) += dx * 0.5 * dcp_due;
+        // Linearization w.r.t. ue (through cp, with KT correction)
+        auto [cp_ip_val, cp_ip_U] = GetCpFromUe(ue(ip), state.param);
+        state.post.cl_ue(ip) += dx * 0.5 * cp_ip_U(3);
+        auto [cp_i_val, cp_i_U] = GetCpFromUe(ue(i), state.param);
+        state.post.cl_ue(i) += dx * 0.5 * cp_i_U(3);
 
         // Linearization w.r.t. alpha
         cl_alpha +=

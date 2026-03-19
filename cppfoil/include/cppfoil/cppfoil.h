@@ -107,6 +107,14 @@ class Cppfoil {
     double GetDcdDalpha() const { return sensitivity_.dcd_dalpha; }
     double GetDcmDalpha() const { return sensitivity_.dcm_dalpha; }
 
+    double GetDclDMa() const { return sensitivity_.dcl_dMa; }
+    double GetDcdDMa() const { return sensitivity_.dcd_dMa; }
+    double GetDcmDMa() const { return sensitivity_.dcm_dMa; }
+
+    double GetDclDRe() const { return sensitivity_.dcl_dRe; }
+    double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
+    double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
+
     // Access internal state (for advanced use)
     FoilState& GetState() { return state_; }
     const FoilState& GetState() const { return state_; }

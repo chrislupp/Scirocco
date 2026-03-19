@@ -67,6 +67,16 @@ void CalcCdLin(FoilState& state);
 // For viscous: also uses stored LU factorization for adjoint solve.
 void AlphaSensitivities(FoilState& state, Sensitivity& sens);
 
+// Compute sensitivities of cl, cd, cm w.r.t. Mach number.
+// Inviscid: differentiates KT compressibility correction analytically.
+// Viscous: also computes dR_BL/dMa and uses adjoint solve.
+void MachSensitivities(FoilState& state, Sensitivity& sens);
+
+// Compute sensitivities of cl, cd, cm w.r.t. Reynolds number.
+// Inviscid: zero (Re doesn't affect inviscid solution).
+// Viscous: Re enters through mu0; reuses Mach companion functions.
+void ReSensitivities(FoilState& state, Sensitivity& sens);
+
 // Compute dxi/dx_foil: sensitivity of arc-length coordinate xi to panel coords
 // Returns sparse matrix [Nsys x 2*N]
 SparseMatrixd ComputeDxiDxFoil(const FoilState& state);

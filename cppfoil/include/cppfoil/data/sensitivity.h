@@ -47,6 +47,14 @@ struct Sensitivity {
     double dcl_dalpha = 0.0;  // d(cl)/d(alpha) [per degree]
     double dcd_dalpha = 0.0;  // d(cd)/d(alpha) [per degree]
     double dcm_dalpha = 0.0;  // d(cm)/d(alpha) [per degree]
+
+    double dcl_dMa = 0.0;  // d(cl)/d(Ma)
+    double dcd_dMa = 0.0;  // d(cd)/d(Ma)
+    double dcm_dMa = 0.0;  // d(cm)/d(Ma)
+
+    double dcl_dRe = 0.0;  // d(cl)/d(Re)
+    double dcd_dRe = 0.0;  // d(cd)/d(Re)
+    double dcm_dRe = 0.0;  // d(cm)/d(Re)
 };
 
 }  // namespace cppfoil

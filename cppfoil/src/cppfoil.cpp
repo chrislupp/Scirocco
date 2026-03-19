@@ -126,6 +126,10 @@ Sensitivity Cppfoil::ComputeSensitivities() {
         sensitivity_ = ViscousSensitivities(state_);
     }
     AlphaSensitivities(state_, sensitivity_);
+    MachSensitivities(state_, sensitivity_);
+    if (state_.oper.viscous) {
+        ReSensitivities(state_, sensitivity_);
+    }
     return sensitivity_;
 }
 

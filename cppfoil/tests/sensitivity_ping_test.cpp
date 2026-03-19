@@ -905,3 +905,244 @@ TEST_F(SensitivityPingTest, ViscousAlphaSensitivity) {
     }
     std::cout << "ViscousAlphaSensitivity: " << nfail << " failures" << std::endl;
 }
+
+// ===========================================================================
+// 13. Inviscid Mach Sensitivity: dcl/dMa, dcm/dMa (Ma=0.3)
+// ===========================================================================
+TEST_F(SensitivityPingTest, InviscidMachSensitivity) {
+    double Ma0 = 0.3;
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 0.0, Ma0);
+    foil.Solve();
+
+    auto sens = foil.ComputeSensitivities();
+    double dcl_adj = sens.dcl_dMa;
+    double dcm_adj = sens.dcm_dMa;
+
+    // Central FD at two step sizes
+    double eps[] = {1e-4, 5e-5};
+    int nfail = 0;
+
+    for (int ie = 0; ie < 2; ++ie) {
+        double ep = eps[ie];
+
+        Cppfoil foil_p("0012", 100);
+        foil_p.SetOper(3.0, -1.0, 0.0, Ma0 + ep);
+        foil_p.Solve();
+        Cppfoil foil_m("0012", 100);
+        foil_m.SetOper(3.0, -1.0, 0.0, Ma0 - ep);
+        foil_m.Solve();
+
+        double dcl_fd = (foil_p.GetCl() - foil_m.GetCl()) / (2.0 * ep);
+        double dcm_fd = (foil_p.GetCm() - foil_m.GetCm()) / (2.0 * ep);
+
+        std::cout << "  InvMa ep=" << ep
+                  << " dcl: fd=" << dcl_fd << " adj=" << dcl_adj
+                  << " dcm: fd=" << dcm_fd << " adj=" << dcm_adj
+                  << std::endl;
+
+        if (ie == 1) {
+            double rel_cl = std::abs(dcl_fd - dcl_adj) / std::max(std::abs(dcl_fd), 1e-10);
+            double rel_cm = std::abs(dcm_fd - dcm_adj) / std::max(std::abs(dcm_fd), 1e-10);
+            if (rel_cl > 1e-3) {
+                nfail++;
+                ADD_FAILURE() << "dcl/dMa inviscid rel_err=" << rel_cl;
+            }
+            if (rel_cm > 1e-3) {
+                nfail++;
+                ADD_FAILURE() << "dcm/dMa inviscid rel_err=" << rel_cm;
+            }
+        }
+    }
+    std::cout << "InviscidMachSensitivity: " << nfail << " failures" << std::endl;
+}
+
+// ===========================================================================
+// 14. Inviscid Mach Sensitivity at Ma=0: should be zero
+// ===========================================================================
+TEST_F(SensitivityPingTest, InviscidMachSensitivityZero) {
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 0.0, 0.0);
+    foil.Solve();
+
+    auto sens = foil.ComputeSensitivities();
+
+    EXPECT_NEAR(sens.dcl_dMa, 0.0, 1e-12) << "dcl/dMa should be 0 at Ma=0";
+    EXPECT_NEAR(sens.dcm_dMa, 0.0, 1e-12) << "dcm/dMa should be 0 at Ma=0";
+    EXPECT_NEAR(sens.dcd_dMa, 0.0, 1e-12) << "dcd/dMa should be 0 at Ma=0";
+}
+
+// ===========================================================================
+// 15. Viscous Mach Sensitivity: dcl/dMa, dcd/dMa, dcm/dMa (Ma=0.3)
+// ===========================================================================
+TEST_F(SensitivityPingTest, ViscousMachSensitivity) {
+    double Ma0 = 0.3;
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, Ma0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+
+    auto sens = foil.ComputeSensitivities();
+    double dcl_adj = sens.dcl_dMa;
+    double dcd_adj = sens.dcd_dMa;
+    double dcm_adj = sens.dcm_dMa;
+
+    // Central FD at two step sizes
+    double eps[] = {1e-4, 5e-5};
+    double ecl[2], ecd[2], ecm[2];
+    double dcl_fd2 = 0, dcd_fd2 = 0, dcm_fd2 = 0;
+
+    for (int ie = 0; ie < 2; ++ie) {
+        double ep = eps[ie];
+
+        Cppfoil foil_p("0012", 100);
+        foil_p.SetOper(3.0, -1.0, 1e6, Ma0 + ep);
+        foil_p.GetState().param.verb = 0;
+        foil_p.Solve();
+        Cppfoil foil_m("0012", 100);
+        foil_m.SetOper(3.0, -1.0, 1e6, Ma0 - ep);
+        foil_m.GetState().param.verb = 0;
+        foil_m.Solve();
+
+        if (!foil_p.IsConverged() || !foil_m.IsConverged()) {
+            GTEST_SKIP() << "FD solve did not converge";
+        }
+
+        double dcl_fd = (foil_p.GetCl() - foil_m.GetCl()) / (2.0 * ep);
+        double dcd_fd = (foil_p.GetCd() - foil_m.GetCd()) / (2.0 * ep);
+        double dcm_fd = (foil_p.GetCm() - foil_m.GetCm()) / (2.0 * ep);
+
+        ecl[ie] = std::abs(dcl_fd - dcl_adj);
+        ecd[ie] = std::abs(dcd_fd - dcd_adj);
+        ecm[ie] = std::abs(dcm_fd - dcm_adj);
+
+        if (ie == 1) {
+            dcl_fd2 = dcl_fd;
+            dcd_fd2 = dcd_fd;
+            dcm_fd2 = dcm_fd;
+        }
+
+        std::cout << "  ViscMa ep=" << ep
+                  << " dcl: fd=" << dcl_fd << " adj=" << dcl_adj
+                  << " dcd: fd=" << dcd_fd << " adj=" << dcd_adj
+                  << " dcm: fd=" << dcm_fd << " adj=" << dcm_adj
+                  << std::endl;
+    }
+
+    int nfail = 0;
+    double rel_cl = ecl[1] / std::max(std::abs(dcl_fd2), 1e-6);
+    double rel_cd = ecd[1] / std::max(std::abs(dcd_fd2), 1e-6);
+    double rel_cm = ecm[1] / std::max(std::abs(dcm_fd2), 1e-6);
+
+    std::cout << "  ViscMa rel: cl=" << rel_cl << " cd=" << rel_cd
+              << " cm=" << rel_cm << std::endl;
+
+    if (rel_cl > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcl/dMa viscous rel_err=" << rel_cl;
+    }
+    if (rel_cd > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcd/dMa viscous rel_err=" << rel_cd;
+    }
+    if (rel_cm > 0.01) {
+        nfail++;
+        ADD_FAILURE() << "dcm/dMa viscous rel_err=" << rel_cm;
+    }
+    std::cout << "ViscousMachSensitivity: " << nfail << " failures" << std::endl;
+}
+
+// ===========================================================================
+// 16. Inviscid Reynolds Sensitivity: should be zero
+// ===========================================================================
+TEST_F(SensitivityPingTest, InviscidReSensitivityZero) {
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 0.0, 0.0);
+    foil.Solve();
+
+    auto sens = foil.ComputeSensitivities();
+
+    EXPECT_NEAR(sens.dcl_dRe, 0.0, 1e-12) << "dcl/dRe should be 0 for inviscid";
+    EXPECT_NEAR(sens.dcd_dRe, 0.0, 1e-12) << "dcd/dRe should be 0 for inviscid";
+    EXPECT_NEAR(sens.dcm_dRe, 0.0, 1e-12) << "dcm/dRe should be 0 for inviscid";
+}
+
+// ===========================================================================
+// 17. Viscous Reynolds Sensitivity: dcl/dRe, dcd/dRe, dcm/dRe
+// ===========================================================================
+TEST_F(SensitivityPingTest, ViscousReSensitivity) {
+    double Re0 = 1e6;
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, Re0, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+
+    auto sens = foil.ComputeSensitivities();
+    double dcl_adj = sens.dcl_dRe;
+    double dcd_adj = sens.dcd_dRe;
+    double dcm_adj = sens.dcm_dRe;
+
+    // Central FD at two step sizes
+    double eps[] = {100.0, 50.0};  // Re perturbation (absolute)
+    double ecl[2], ecd[2], ecm[2];
+    double dcl_fd2 = 0, dcd_fd2 = 0, dcm_fd2 = 0;
+
+    for (int ie = 0; ie < 2; ++ie) {
+        double ep = eps[ie];
+
+        Cppfoil foil_p("0012", 100);
+        foil_p.SetOper(3.0, -1.0, Re0 + ep, 0.0);
+        foil_p.GetState().param.verb = 0;
+        foil_p.Solve();
+        Cppfoil foil_m("0012", 100);
+        foil_m.SetOper(3.0, -1.0, Re0 - ep, 0.0);
+        foil_m.GetState().param.verb = 0;
+        foil_m.Solve();
+
+        if (!foil_p.IsConverged() || !foil_m.IsConverged()) {
+            GTEST_SKIP() << "FD solve did not converge";
+        }
+
+        double dcl_fd = (foil_p.GetCl() - foil_m.GetCl()) / (2.0 * ep);
+        double dcd_fd = (foil_p.GetCd() - foil_m.GetCd()) / (2.0 * ep);
+        double dcm_fd = (foil_p.GetCm() - foil_m.GetCm()) / (2.0 * ep);
+
+        ecl[ie] = std::abs(dcl_fd - dcl_adj);
+        ecd[ie] = std::abs(dcd_fd - dcd_adj);
+        ecm[ie] = std::abs(dcm_fd - dcm_adj);
+
+        if (ie == 1) {
+            dcl_fd2 = dcl_fd;
+            dcd_fd2 = dcd_fd;
+            dcm_fd2 = dcm_fd;
+        }
+
+        std::cout << "  ViscRe ep=" << ep
+                  << " dcl: fd=" << dcl_fd << " adj=" << dcl_adj
+                  << " dcd: fd=" << dcd_fd << " adj=" << dcd_adj
+                  << " dcm: fd=" << dcm_fd << " adj=" << dcm_adj
+                  << std::endl;
+    }
+
+    int nfail = 0;
+    double rel_cl = ecl[1] / std::max(std::abs(dcl_fd2), 1e-6);
+    double rel_cd = ecd[1] / std::max(std::abs(dcd_fd2), 1e-6);
+    double rel_cm = ecm[1] / std::max(std::abs(dcm_fd2), 1e-6);
+
+    std::cout << "  ViscRe rel: cl=" << rel_cl << " cd=" << rel_cd
+              << " cm=" << rel_cm << std::endl;
+
+    if (rel_cl > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcl/dRe viscous rel_err=" << rel_cl;
+    }
+    if (rel_cd > 1e-3) {
+        nfail++;
+        ADD_FAILURE() << "dcd/dRe viscous rel_err=" << rel_cd;
+    }
+    if (rel_cm > 0.01) {
+        nfail++;
+        ADD_FAILURE() << "dcm/dRe viscous rel_err=" << rel_cm;
+    }
+    std::cout << "ViscousReSensitivity: " << nfail << " failures" << std::endl;
+}
