@@ -69,10 +69,9 @@ MatrixXd GetUeInvRef(const FoilState& state);
 // OUTPUT:
 //   V : Velocity vector [2]
 //   V_G : (optional) Linearization d(V)/d(G) [2 x N]
-Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G,
-                           double Vinf, double alpha, const Vector2d& xi,
-                           bool compute_lin = false,
-                           MatrixXd* V_G = nullptr);
+Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G, double Vinf,
+                          double alpha, const Vector2d& xi,
+                          bool compute_lin = false, MatrixXd* V_G = nullptr);
 
 // Solve inviscid problem (top-level)
 // INPUT:

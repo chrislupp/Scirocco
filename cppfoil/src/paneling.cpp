@@ -30,14 +30,13 @@
 */
 #include "cppfoil/core/paneling.h"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace cppfoil {
 
-SpacingResult SplineCurvature(const MatrixXd& points, int N,
-                               double Ufac, double TEfac,
-                               const VectorXd& stgt) {
+SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
+                              double TEfac, const VectorXd& stgt) {
     // Get x range for TE detection
     double xmin = points.row(0).minCoeff();
     double xmax = points.row(0).maxCoeff();
@@ -79,7 +78,8 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N,
 
             // Force TE resolution
             double xmid = 0.5 * (xy_fine(0, i) + xy_fine(0, i + 1));
-            double xx = (xmid - xmin) / (xmax - xmin);  // Close to 1 means at TE
+            double xx =
+                (xmid - xmin) / (xmax - xmin);  // Close to 1 means at TE
             skint += TEfac * 0.5 * std::exp(-100.0 * (1.0 - xx));
 
             sk(i + 1) = sk(i) + skint;

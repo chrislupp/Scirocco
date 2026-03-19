@@ -29,12 +29,14 @@
     control over the information you may find at these locations.
 */
 
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+
 #include "cppfoil/cppfoil.h"
 
 int main() {
-    std::cout << "=== cppfoil Viscous Example: NACA 0012 at Re=1e6 ===" << std::endl;
+    std::cout << "=== cppfoil Viscous Example: NACA 0012 at Re=1e6 ==="
+              << std::endl;
     std::cout << std::endl;
 
     // Create a NACA 0012 airfoil with 129 panels
@@ -46,8 +48,10 @@ int main() {
 
     // Analyze at different angles of attack
     std::cout << std::fixed << std::setprecision(4);
-    std::cout << "  Alpha      CL        CD        CDf       CDp       CM" << std::endl;
-    std::cout << "  -----   -------   -------   -------   -------   -------" << std::endl;
+    std::cout << "  Alpha      CL        CD        CDf       CDp       CM"
+              << std::endl;
+    std::cout << "  -----   -------   -------   -------   -------   -------"
+              << std::endl;
 
     for (double alpha = 0.0; alpha <= 10.0; alpha += 2.0) {
         // Set operating conditions (viscous)
@@ -65,12 +69,9 @@ int main() {
         double cm = foil.GetCm();
 
         // Print results
-        std::cout << std::setw(7) << alpha << "  "
-                  << std::setw(8) << cl << "  "
-                  << std::setw(8) << cd << "  "
-                  << std::setw(8) << cdf << "  "
-                  << std::setw(8) << cdp << "  "
-                  << std::setw(8) << cm;
+        std::cout << std::setw(7) << alpha << "  " << std::setw(8) << cl << "  "
+                  << std::setw(8) << cd << "  " << std::setw(8) << cdf << "  "
+                  << std::setw(8) << cdp << "  " << std::setw(8) << cm;
 
         if (!converged) {
             std::cout << "  (not converged)";
@@ -89,8 +90,7 @@ int main() {
             if (state.glob.U.cols() > 0) {
                 std::cout << "  Debug: th[0]=" << state.glob.U(0, 0)
                           << ", ds[0]=" << state.glob.U(1, 0)
-                          << ", ue[0]=" << state.glob.U(3, 0)
-                          << std::endl;
+                          << ", ue[0]=" << state.glob.U(3, 0) << std::endl;
             }
         }
     }

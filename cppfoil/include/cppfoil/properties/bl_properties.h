@@ -86,9 +86,8 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param);
 ScalarLin8 GetUpw(const Vector4d& U1, const Vector4d& U2, const Param& param);
 
 // Upwind average of a quantity
-ScalarLin8 Upwind(double upw, const Vector8d& upw_U,
-                   double f1, const Vector4d& f1_U1,
-                   double f2, const Vector4d& f2_U2);
+ScalarLin8 Upwind(double upw, const Vector8d& upw_U, double f1,
+                  const Vector4d& f1_U1, double f2, const Vector4d& f2_U2);
 
 // BL thickness measure delta (delta* + weighted theta)
 ScalarLin4 GetDe(const Vector4d& U, const Param& param);
@@ -110,9 +109,9 @@ ScalarLinX GetCfxt(const Vector4d& U, double x, const Param& param);
 ScalarLinX GetCDixt(const Vector4d& U, double x, const Param& param);
 
 // Equilibrium pressure gradient 1/ue * due/dx
-ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf, const Vector8d& cf_U,
-                  double Hk, const Vector8d& Hk_U, double Ret, const Vector8d& Ret_U,
-                  const Param& param);
+ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
+                 const Vector8d& cf_U, double Hk, const Vector8d& Hk_U,
+                 double Ret, const Vector8d& Ret_U, const Param& param);
 
 }  // namespace cppfoil
 

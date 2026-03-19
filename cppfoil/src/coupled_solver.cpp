@@ -30,14 +30,15 @@
 */
 #include "cppfoil/core/coupled_solver.h"
 
-#include <iostream>
 #include <cmath>
-#include "cppfoil/core/inviscid.h"
-#include "cppfoil/core/wake.h"
+#include <iostream>
+
 #include "cppfoil/core/boundary_layer.h"
-#include "cppfoil/core/transition.h"
 #include "cppfoil/core/forces.h"
+#include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/panel_influence.h"
+#include "cppfoil/core/transition.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
 
@@ -60,8 +61,8 @@ void SolveViscous(FoilState& state) {
 
     if (state.param.verb >= 1) {
         std::cout << "  Inviscid done, N=" << state.foil.N
-                  << ", Istag=" << state.isol.Istag[0] << "," << state.isol.Istag[1]
-                  << std::endl;
+                  << ", Istag=" << state.isol.Istag[0] << ","
+                  << state.isol.Istag[1] << std::endl;
     }
 
     // Build wake
@@ -93,7 +94,8 @@ void SolveViscous(FoilState& state) {
     if (state.oper.initbl) {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {
-            std::cout << "  BL init done, Nsys=" << state.glob.Nsys << std::endl;
+            std::cout << "  BL init done, Nsys=" << state.glob.Nsys
+                      << std::endl;
         }
     }
 
@@ -123,7 +125,8 @@ void SolveCoupled(FoilState& state) {
         // Check convergence
         double rnorm = state.glob.R.norm();
         if (state.param.verb >= 1) {
-            std::cout << "  Iteration " << iter << ": |R| = " << rnorm << std::endl;
+            std::cout << "  Iteration " << iter << ": |R| = " << rnorm
+                      << std::endl;
         }
 
         if (rnorm < rtol) {
@@ -134,7 +137,8 @@ void SolveCoupled(FoilState& state) {
         if (!std::isfinite(rnorm)) {
             state.glob.conv = false;
             if (state.param.verb >= 1) {
-                std::cout << "  Warning: NaN in residual, stopping" << std::endl;
+                std::cout << "  Warning: NaN in residual, stopping"
+                          << std::endl;
             }
             return;
         }
@@ -196,7 +200,9 @@ void BuildGlobSys(FoilState& state) {
         // Get auxiliary data (wake gap)
         VectorXd Aux = VectorXd::Zero(N);
         if (si == 2 && state.vsol.wgap.size() > 0) {
-            for (int idx = 0; idx < N && idx < static_cast<int>(state.vsol.wgap.size()); ++idx) {
+            for (int idx = 0;
+                 idx < N && idx < static_cast<int>(state.vsol.wgap.size());
+                 ++idx) {
                 Aux(idx) = state.vsol.wgap(idx);
             }
         }
@@ -234,7 +240,8 @@ void BuildGlobSys(FoilState& state) {
 
             // Chain rule: R1_U = R1_Ut * [Ust_U]
             // R1_Ust is 3x4: sum of both 3x4 blocks from res.lin_U
-            Matrix34d R1_Ust = res.lin_U.block<3, 4>(0, 0) + res.lin_U.block<3, 4>(0, 4);
+            Matrix34d R1_Ust =
+                res.lin_U.block<3, 4>(0, 0) + res.lin_U.block<3, 4>(0, 4);
             R1 = res.value;
             R1_U.setZero();
             R1_U.block<3, 4>(0, 0) = R1_Ust * stag.Ust_U.block<4, 4>(0, 0);
@@ -246,7 +253,8 @@ void BuildGlobSys(FoilState& state) {
             // Handle i0=1 case (stagnation on node)
             if (i0 == 1) {
                 int Ig = 3 * Is[0];
-                state.glob.R.segment<3>(Ig) = state.glob.U.col(Is[0]).head<3>() - stag.Ust.head<3>();
+                state.glob.R.segment<3>(Ig) =
+                    state.glob.U.col(Is[0]).head<3>() - stag.Ust.head<3>();
                 // d/dU[Is[0]]
                 for (int k = 0; k < 3; ++k) {
                     triplets_U.emplace_back(Ig + k, 4 * Is[0] + k, 1.0);
@@ -255,9 +263,11 @@ void BuildGlobSys(FoilState& state) {
                 for (int k = 0; k < 3; ++k) {
                     for (int c = 0; c < 4; ++c) {
                         if (std::abs(stag.Ust_U(k, c)) > 1e-15)
-                            triplets_U.emplace_back(Ig + k, 4 * J[0] + c, -stag.Ust_U(k, c));
+                            triplets_U.emplace_back(Ig + k, 4 * J[0] + c,
+                                                    -stag.Ust_U(k, c));
                         if (std::abs(stag.Ust_U(k, c + 4)) > 1e-15)
-                            triplets_U.emplace_back(Ig + k, 4 * J[1] + c, -stag.Ust_U(k, c + 4));
+                            triplets_U.emplace_back(Ig + k, 4 * J[1] + c,
+                                                    -stag.Ust_U(k, c + 4));
                     }
                 }
             }
@@ -282,11 +292,14 @@ void BuildGlobSys(FoilState& state) {
             for (int k = 0; k < 3; ++k) {
                 for (int c = 0; c < 4; ++c) {
                     if (std::abs(wake.R_U(k, c)) > 1e-15)
-                        triplets_U.emplace_back(Ig + k, 4 * wake.J[0] + c, wake.R_U(k, c));
+                        triplets_U.emplace_back(Ig + k, 4 * wake.J[0] + c,
+                                                wake.R_U(k, c));
                     if (std::abs(wake.R_U(k, c + 4)) > 1e-15)
-                        triplets_U.emplace_back(Ig + k, 4 * wake.J[1] + c, wake.R_U(k, c + 4));
+                        triplets_U.emplace_back(Ig + k, 4 * wake.J[1] + c,
+                                                wake.R_U(k, c + 4));
                     if (std::abs(wake.R_U(k, c + 8)) > 1e-15)
-                        triplets_U.emplace_back(Ig + k, 4 * wake.J[2] + c, wake.R_U(k, c + 8));
+                        triplets_U.emplace_back(Ig + k, 4 * wake.J[2] + c,
+                                                wake.R_U(k, c + 8));
                 }
             }
         }
@@ -304,7 +317,8 @@ void BuildGlobSys(FoilState& state) {
                     }
                 }
             }
-            // R1_x linearization w.r.t. xi is handled through stagnation point sens
+            // R1_x linearization w.r.t. xi is handled through stagnation point
+            // sens
             for (size_t j = 0; j < J.size(); ++j) {
                 for (int k = 0; k < 3; ++k) {
                     double val = R1_x(k, j);
@@ -318,7 +332,7 @@ void BuildGlobSys(FoilState& state) {
         for (int i = i0 + 1; i < N; ++i) {
             int ip = i - 1;
             bool tran = (Is[ip] < static_cast<int>(state.vsol.turb.size()) &&
-                        Is[i] < static_cast<int>(state.vsol.turb.size())) &&
+                         Is[i] < static_cast<int>(state.vsol.turb.size())) &&
                         (state.vsol.turb[Is[ip]] != state.vsol.turb[Is[i]]);
 
             // Get states
@@ -418,8 +432,8 @@ void SolveGlob(FoilState& state) {
 
     // Build augmented system
     int NN = 4 * Nsys + (docl ? 1 : 0);
-    bool alloc = state.glob.realloc ||
-                 state.glob.R_V.rows() != NN || state.glob.R_V.cols() != NN;
+    bool alloc = state.glob.realloc || state.glob.R_V.rows() != NN ||
+                 state.glob.R_V.cols() != NN;
 
     if (alloc) {
         state.glob.R_V.resize(NN, NN);
@@ -493,7 +507,8 @@ void SolveGlob(FoilState& state) {
             if (i < state.foil.N) {
                 duinv_dalpha = -state.isol.gamref(i, 0) * Sind(alpha) +
                                state.isol.gamref(i, 1) * Cosd(alpha);
-            } else if (i - state.foil.N < static_cast<int>(state.isol.uewiref.rows())) {
+            } else if (i - state.foil.N <
+                       static_cast<int>(state.isol.uewiref.rows())) {
                 int iw = i - state.foil.N;
                 duinv_dalpha = -state.isol.uewiref(iw, 0) * Sind(alpha) +
                                state.isol.uewiref(iw, 1) * Cosd(alpha);
@@ -549,7 +564,8 @@ void UpdateState(FoilState& state) {
     double ctmax = 0.0;
     std::vector<int> turbIdx;
     for (int i = 0; i < Nsys; ++i) {
-        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i]) {
+        if (i < static_cast<int>(state.vsol.turb.size()) &&
+            state.vsol.turb[i]) {
             ctmax = std::max(ctmax, state.glob.U(2, i));
             turbIdx.push_back(i);
         }
@@ -579,7 +595,7 @@ void UpdateState(FoilState& state) {
         double Uk = state.glob.U(2, i);
         double dUk = state.glob.dU(2, i);
         // Skip small values (don't limit small amp/ctau)
-        if (!state.vsol.turb[i] && Uk < 0.2) continue;   // small amp
+        if (!state.vsol.turb[i] && Uk < 0.2) continue;         // small amp
         if (state.vsol.turb[i] && Uk < 0.1 * ctmax) continue;  // small ctau
         if (Uk == 0.0 || dUk == 0.0) continue;
         // Check if update would make value negative
@@ -595,7 +611,8 @@ void UpdateState(FoilState& state) {
     // Include all laminar points (matching mfoil)
     double dumax_amp = 0.0;
     for (int i = 0; i < Nsys; ++i) {
-        if (i < static_cast<int>(state.vsol.turb.size()) && !state.vsol.turb[i]) {
+        if (i < static_cast<int>(state.vsol.turb.size()) &&
+            !state.vsol.turb[i]) {
             dumax_amp = std::max(dumax_amp, std::abs(state.glob.dU(2, i)));
         }
     }
@@ -622,7 +639,8 @@ void UpdateState(FoilState& state) {
     // 5. Limit ue changes to 0.2 * Vinf
     double fmax_ue = 0.0;
     for (int i = 0; i < Nsys; ++i) {
-        fmax_ue = std::max(fmax_ue, std::abs(state.glob.dU(3, i)) / state.oper.Vinf);
+        fmax_ue =
+            std::max(fmax_ue, std::abs(state.glob.dU(3, i)) / state.oper.Vinf);
     }
     if (fmax_ue > 0.2) {
         double om = 0.2 / fmax_ue;
@@ -652,7 +670,8 @@ void UpdateState(FoilState& state) {
             Vector4d Uj = state.glob.U.col(idx);
             auto [Hk, Hk_U] = GetHk(Uj, param);
             if (Hk < Hkmin) {
-                state.glob.U(1, idx) += 2.0 * (Hkmin - Hk) * state.glob.U(1, idx);
+                state.glob.U(1, idx) +=
+                    2.0 * (Hkmin - Hk) * state.glob.U(1, idx);
             }
         }
     }
@@ -697,15 +716,17 @@ void CalcUeM(FoilState& state) {
     }
 
     // 1. Cgam = d(wake uei)/d(gamma) [Nw x N]
-    // Use full InviscidVelocity to get linearization w.r.t. gamma, which includes
-    // TE source and TE vortex contributions (matching mfoil's inviscid_velocity call)
+    // Use full InviscidVelocity to get linearization w.r.t. gamma, which
+    // includes TE source and TE vortex contributions (matching mfoil's
+    // inviscid_velocity call)
     MatrixXd Cgam = MatrixXd::Zero(Nw, N);
     for (int i = 0; i < Nw; ++i) {
         Vector2d xi = state.wake.x.col(i);
         Vector2d ti = state.wake.t.col(i);
 
         MatrixXd V_G;
-        InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi, true, &V_G);
+        InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi, true,
+                         &V_G);
 
         // Cgam(i,:) = V_G[0,:]*ti[0] + V_G[1,:]*ti[1] (tangent component)
         for (int j = 0; j < N; ++j) {
@@ -811,8 +832,11 @@ void CalcUeM(FoilState& state) {
                 // Self-influence (singular)
                 if (j == 0) {
                     // First point: TE special case
-                    double dl = (state.foil.x.col(1) - state.foil.x.col(0)).norm();
-                    double du = (state.foil.x.col(N - 1) - state.foil.x.col(N - 2)).norm();
+                    double dl =
+                        (state.foil.x.col(1) - state.foil.x.col(0)).norm();
+                    double du =
+                        (state.foil.x.col(N - 1) - state.foil.x.col(N - 2))
+                            .norm();
                     Csig(i, 0) += (0.5 / kPi) * (SafeLog(dl / d2) + 1.0);
                     Csig(i, N - 2) += (0.5 / kPi) * (SafeLog(du / d2) + 1.0);
                     Csig(i, N - 1) += -0.5 / kPi;
@@ -895,8 +919,8 @@ void CalcUeM(FoilState& state) {
     sgue.head(N) = state.isol.sgnue;
     sgue.tail(Nw).setOnes();
 
-    state.vsol.ue_m = sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
-
+    state.vsol.ue_m =
+        sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
 }
 
 void RebuildUeM(FoilState& state) {
@@ -912,11 +936,12 @@ void RebuildIsol(FoilState& state) {
     double cosa = Cosd(alpha);
     double sina = Sind(alpha);
 
-    // Rebuild gamma on airfoil: gam = gamref[:,0]*cos(alpha) + gamref[:,1]*sin(alpha)
+    // Rebuild gamma on airfoil: gam = gamref[:,0]*cos(alpha) +
+    // gamref[:,1]*sin(alpha)
     int N = state.foil.N;
     for (int i = 0; i < N; ++i) {
-        state.isol.gam(i) = state.isol.gamref(i, 0) * cosa +
-                            state.isol.gamref(i, 1) * sina;
+        state.isol.gam(i) =
+            state.isol.gamref(i, 0) * cosa + state.isol.gamref(i, 1) * sina;
     }
 
     // For viscous flow, may need to rebuild wake and ue_m

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(cppfoil VERSION 0.1.0 LANGUAGES CXX)
+project(cppfoil VERSION 0.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Options
 option(CPPFOIL_BUILD_TESTS "Build unit tests" ON)
 option(CPPFOIL_BUILD_EXAMPLES "Build example programs" ON)
+option(CPPFOIL_NATIVE_ARCH "Use -march=native for Release builds" ON)
 
 # Find Eigen3 (3.4+ or 5.x)
 find_package(Eigen3 REQUIRED)
@@ -37,15 +38,14 @@ target_include_directories(cppfoil PUBLIC
 target_link_libraries(cppfoil PUBLIC Eigen3::Eigen)
 target_compile_options(cppfoil PRIVATE
     -Wall -Wextra -Wpedantic
-    $<$<CONFIG:Release>:-O3 -march=native>
+    $<$<CONFIG:Release>:-O3>
+    $<$<AND:$<CONFIG:Release>,$<BOOL:${CPPFOIL_NATIVE_ARCH}>>:-march=native>
 )
 
 # Tests
 if(CPPFOIL_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
-    # HDF5 - use cmake config from homebrew
-    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/hdf5")
     find_package(hdf5 CONFIG QUIET)
     if(GTest_FOUND AND hdf5_FOUND)
         message(STATUS "Found HDF5: ${hdf5_VERSION}")

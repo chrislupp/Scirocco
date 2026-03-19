@@ -28,8 +28,9 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#include <gtest/gtest.h>
 #include "cppfoil/core/geometry.h"
+
+#include <gtest/gtest.h>
 
 namespace cppfoil {
 namespace {
@@ -64,8 +65,7 @@ TEST(GeometryTest, NacaPointsCambered) {
 TEST(GeometryTest, SetCoords) {
     Geom geom;
     MatrixXd coords(2, 3);
-    coords << 1.0, 0.0, 1.0,
-              0.0, 0.0, 0.0;
+    coords << 1.0, 0.0, 1.0, 0.0, 0.0, 0.0;
 
     SetCoords(geom, coords);
 
@@ -77,8 +77,7 @@ TEST(GeometryTest, SetCoords) {
 TEST(GeometryTest, TEInfoClosed) {
     // Create closed airfoil (TE gap = 0)
     MatrixXd x(2, 5);
-    x << 1.0, 0.5, 0.0, 0.5, 1.0,
-         0.0, -0.1, 0.0, 0.1, 0.0;
+    x << 1.0, 0.5, 0.0, 0.5, 1.0, 0.0, -0.1, 0.0, 0.1, 0.0;
 
     TEInfo info = GetTEInfo(x);
 
@@ -88,8 +87,7 @@ TEST(GeometryTest, TEInfoClosed) {
 TEST(GeometryTest, TEInfoBlunt) {
     // Create blunt TE airfoil
     MatrixXd x(2, 5);
-    x << 1.0, 0.5, 0.0, 0.5, 1.0,
-         -0.01, -0.1, 0.0, 0.1, 0.01;
+    x << 1.0, 0.5, 0.0, 0.5, 1.0, -0.01, -0.1, 0.0, 0.1, 0.01;
 
     TEInfo info = GetTEInfo(x);
 

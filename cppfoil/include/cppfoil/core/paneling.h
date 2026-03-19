@@ -32,17 +32,17 @@
 #define CPPFOIL_CORE_PANELING_H
 
 #include "cppfoil/config.h"
+#include "cppfoil/core/spline.h"
 #include "cppfoil/data/geom.h"
 #include "cppfoil/data/panel.h"
-#include "cppfoil/core/spline.h"
 
 namespace cppfoil {
 
 // Result from curvature-based spacing
 struct SpacingResult {
-    MatrixXd X;       // New point coordinates [2 x N]
-    VectorXd S;       // Arc-length values at points
-    MatrixXd XS;      // Tangent vectors [2 x N]
+    MatrixXd X;   // New point coordinates [2 x N]
+    VectorXd S;   // Arc-length values at points
+    MatrixXd XS;  // Tangent vectors [2 x N]
 };
 
 // Create panels from geometry using curvature-based spacing
@@ -64,9 +64,8 @@ void MakePanels(const Geom& geom, int npanel, Panel& panel,
 //   stgt : Optional target s-values (empty for automatic)
 // OUTPUT:
 //   SpacingResult with new points, arc-lengths, and tangents
-SpacingResult SplineCurvature(const MatrixXd& points, int N,
-                               double Ufac, double TEfac,
-                               const VectorXd& stgt = VectorXd());
+SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
+                              double TEfac, const VectorXd& stgt = VectorXd());
 
 }  // namespace cppfoil
 

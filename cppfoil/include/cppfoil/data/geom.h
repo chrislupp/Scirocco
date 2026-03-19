@@ -32,6 +32,7 @@
 #define CPPFOIL_DATA_GEOM_H
 
 #include <string>
+
 #include "cppfoil/config.h"
 
 namespace cppfoil {

@@ -28,8 +28,9 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#include <gtest/gtest.h>
 #include "cppfoil/core/spline.h"
+
+#include <gtest/gtest.h>
 
 namespace cppfoil {
 namespace {
@@ -48,8 +49,7 @@ TEST(SplineTest, QuadSegReturnsCorrectWeights) {
 TEST(SplineTest, Spline2DCreateBasic) {
     // Simple line from (0,0) to (1,1)
     MatrixXd points(2, 3);
-    points << 0.0, 0.5, 1.0,
-              0.0, 0.5, 1.0;
+    points << 0.0, 0.5, 1.0, 0.0, 0.5, 1.0;
 
     Spline2D spline = Spline2DCreate(points);
 
@@ -74,7 +74,8 @@ TEST(SplineTest, SplineTangentNonZero) {
 
     Spline2D spline = Spline2DCreate(points);
 
-    VectorXd s_vals = VectorXd::LinSpaced(3, 0, spline.X.s(spline.X.s.size() - 1));
+    VectorXd s_vals =
+        VectorXd::LinSpaced(3, 0, spline.X.s(spline.X.s.size() - 1));
     MatrixXd tangents = SplineTangent(spline, s_vals);
 
     // Tangents should be non-zero

@@ -30,8 +30,8 @@
 */
 #include "cppfoil/properties/bl_properties.h"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace cppfoil {
 
@@ -56,8 +56,7 @@ ScalarLin4 GetHk(const Vector4d& U, const Param& param) {
         double den = 1.0 + 0.113 * M2;
         double Hk = (H - 0.29 * M2) / den;
 
-        Vector4d Hk_U = (H_U - 0.29 * M2_U) / den -
-                        Hk / den * 0.113 * M2_U;
+        Vector4d Hk_U = (H_U - 0.29 * M2_U) / den - Hk / den * 0.113 * M2_U;
         return {Hk, Hk_U};
     }
 
@@ -119,7 +118,8 @@ ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
         if (Hk < Ho) {
             // Attached branch
             double Hr = (Ho - Hk) / (Ho - 1.0);
-            Vector4d Hr_U = (Ho_U - Hk_U) / (Ho - 1.0) - (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_U;
+            Vector4d Hr_U = (Ho_U - Hk_U) / (Ho - 1.0) -
+                            (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_U;
 
             double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr * Hr;
             Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr * Hr +
@@ -137,12 +137,14 @@ ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
             Vector4d aa_U = Hk_U - Ho_U - 4.0 / (lrb * lrb) * lrb_U;
 
             double bb = 0.007 * lrb / (aa * aa) + dHsinf / Hk;
-            Vector4d bb_U = 0.007 * (lrb_U / (aa * aa) - 2.0 * lrb / (aa * aa * aa) * aa_U) -
+            Vector4d bb_U = 0.007 * (lrb_U / (aa * aa) -
+                                     2.0 * lrb / (aa * aa * aa) * aa_U) -
                             dHsinf / (Hk * Hk) * Hk_U;
 
             Hs = Hsmin + 4.0 / Reb + (Hk - Ho) * (Hk - Ho) * bb;
             Hs_U = -4.0 / (Reb * Reb) * Reb_U +
-                   2.0 * (Hk - Ho) * (Hk_U - Ho_U) * bb + (Hk - Ho) * (Hk - Ho) * bb_U;
+                   2.0 * (Hk - Ho) * (Hk_U - Ho_U) * bb +
+                   (Hk - Ho) * (Hk - Ho) * bb_U;
         }
 
         // Mach number correction
@@ -242,9 +244,10 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
         Vector4d dd_U = (1.0 - dd * dd) * (-Hk_U / 0.875);
 
         double cf0 = 0.3 * std::exp(aa) * std::pow(bb, cc);
-        Vector4d cf0_U = cf0 * aa_U +
-                         0.3 * std::exp(aa) * cc * std::pow(bb, cc - 1.0) * bb_U +
-                         cf0 * std::log(bb) * cc_U;
+        Vector4d cf0_U =
+            cf0 * aa_U +
+            0.3 * std::exp(aa) * cc * std::pow(bb, cc - 1.0) * bb_U +
+            cf0 * std::log(bb) * cc_U;
 
         cf = (cf0 + 1.1e-4 * (dd - 1.0)) / Fc;
         cf_U = (cf0_U + 1.1e-4 * dd_U) / Fc - cf / Fc * Fc_U;
@@ -254,8 +257,9 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
         if (Hk < 5.5) {
             double term = std::pow(5.5 - Hk, 3) / (Hk + 1.0);
             num = 0.0727 * term - 0.07;
-            num_Hk = 0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
-                               std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
+            num_Hk =
+                0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
+                          std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
         } else {
             double invterm = 1.0 - 1.0 / (Hk - 4.5);
             num = 0.015 * invterm * invterm - 0.07;
@@ -283,7 +287,7 @@ static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
         double denom = 1.0 + 0.02 * Hk1 * Hk1;
         num = -0.0016 * Hk1 * Hk1 / denom + 0.207;
         num_Hk = -0.0016 * (2.0 * Hk1 / denom -
-                           Hk1 * Hk1 / (denom * denom) * 0.02 * 2.0 * Hk1);
+                            Hk1 * Hk1 / (denom * denom) * 0.02 * 2.0 * Hk1);
     }
 
     double cDi = num / Ret;
@@ -311,13 +315,12 @@ static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
     double aa = std::tanh((Hk - 1.0) / (Hmin - 1.0));
     double fac = 0.5 + 0.5 * aa;
     Vector4d fac_U = 0.5 * (1.0 - aa * aa) *
-                     (Hk_U / (Hmin - 1.0) - (Hk - 1.0) / ((Hmin - 1.0) * (Hmin - 1.0)) * Hmin_U);
+                     (Hk_U / (Hmin - 1.0) -
+                      (Hk - 1.0) / ((Hmin - 1.0) * (Hmin - 1.0)) * Hmin_U);
 
     double cDi = 0.5 * cf * Us * (2.0 / Hs) * fac;
-    Vector4d cDi_U = cf_U * Us / Hs * fac +
-                     cf * Us_U / Hs * fac -
-                     cDi / Hs * Hs_U +
-                     cf * Us / Hs * fac_U;
+    Vector4d cDi_U = cf_U * Us / Hs * fac + cf * Us_U / Hs * fac -
+                     cDi / Hs * Hs_U + cf * Us / Hs * fac_U;
 
     return {cDi, cDi_U};
 }
@@ -335,8 +338,7 @@ static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
     ct_U(2) = 2.0 * U(2);
 
     double cDi = ct * (0.995 - Us) * 2.0 / Hs;
-    Vector4d cDi_U = ct_U * (0.995 - Us) * 2.0 / Hs +
-                     ct * (-Us_U) * 2.0 / Hs -
+    Vector4d cDi_U = ct_U * (0.995 - Us) * 2.0 / Hs + ct * (-Us_U) * 2.0 / Hs -
                      ct * (0.995 - Us) * 2.0 / (Hs * Hs) * Hs_U;
 
     return {cDi, cDi_U};
@@ -384,8 +386,9 @@ static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
     double one_minus_Hk_inv = 1.0 - Hk_inv;
     double num = 2.0 * 1.1 * one_minus_Hk_inv * one_minus_Hk_inv * Hk_inv;
     // d(num)/dHk = 2*1.1 * (2*(1-1/Hk)*(1/Hk^2)*(1/Hk) + (1-1/Hk)^2*(-1/Hk^2))
-    double num_Hk = 2.0 * 1.1 * (2.0 * one_minus_Hk_inv * (Hk_inv * Hk_inv) * Hk_inv +
-                                  one_minus_Hk_inv * one_minus_Hk_inv * (-Hk_inv * Hk_inv));
+    double num_Hk = 2.0 * 1.1 *
+                    (2.0 * one_minus_Hk_inv * (Hk_inv * Hk_inv) * Hk_inv +
+                     one_minus_Hk_inv * one_minus_Hk_inv * (-Hk_inv * Hk_inv));
 
     double cDi = num / HsRet;
     Vector4d cDi_U = num_Hk * Hk_U / HsRet - num / (HsRet * HsRet) * HsRet_U;
@@ -418,7 +421,8 @@ ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
 
         // Maximum check against laminar value
         // (use laminar wake dissipation in wake, normal laminar otherwise)
-        auto [cDil, cDil_U] = param.wake ? GetCDi_LamWake(U, param) : GetCDi_Lam(U, param);
+        auto [cDil, cDil_U] =
+            param.wake ? GetCDi_LamWake(U, param) : GetCDi_Lam(U, param);
         if (cDil > cDi) {
             cDi = cDil;
             cDi_U = cDil_U;
@@ -552,10 +556,11 @@ ScalarLin4 GetDamp(const Vector4d& U, const Param& param) {
         double da = 0.028 * (Hk - 1.0) - 0.0345 * ex;
         Vector4d da_U = 0.028 * Hk_U - 0.0345 * ex_U;
 
-        double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi + 3.0 * Hmi * Hmi * Hmi +
-                    0.1 * std::exp(-20.0 * Hmi);
-        Vector4d af_U = (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi -
-                         2.0 * std::exp(-20.0 * Hmi)) * Hmi_U;
+        double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi +
+                    3.0 * Hmi * Hmi * Hmi + 0.1 * std::exp(-20.0 * Hmi);
+        Vector4d af_U =
+            (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi - 2.0 * std::exp(-20.0 * Hmi)) *
+            Hmi_U;
 
         damp = rf * af * da / th;
         damp_U = (rf_U * af * da + rf * af_U * da + rf * af * da_U) / th;
@@ -617,13 +622,12 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
     }
 
     double num = CC * Hs * (Hk - 1.0) * Hkc * Hkc;
-    Vector4d num_U = CC * (Hs_U * (Hk - 1.0) * Hkc * Hkc +
-                           Hs * Hk_U * Hkc * Hkc +
-                           Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
+    Vector4d num_U =
+        CC * (Hs_U * (Hk - 1.0) * Hkc * Hkc + Hs * Hk_U * Hkc * Hkc +
+              Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
 
     double den = (1.0 - Us) * H * Hk * Hk;
-    Vector4d den_U = (-Us_U) * H * Hk * Hk +
-                     (1.0 - Us) * H_U * Hk * Hk +
+    Vector4d den_U = (-Us_U) * H * Hk * Hk + (1.0 - Us) * H_U * Hk * Hk +
                      (1.0 - Us) * H * 2.0 * Hk * Hk_U;
 
     double cteq = std::sqrt(num / den);
@@ -700,9 +704,8 @@ ScalarLin8 GetUpw(const Vector4d& U1, const Vector4d& U2, const Param& param) {
     return {upw, upw_U};
 }
 
-ScalarLin8 Upwind(double upw, const Vector8d& upw_U,
-                   double f1, const Vector4d& f1_U1,
-                   double f2, const Vector4d& f2_U2) {
+ScalarLin8 Upwind(double upw, const Vector8d& upw_U, double f1,
+                  const Vector4d& f1_U1, double f2, const Vector4d& f2_U2) {
     double f = (1.0 - upw) * f1 + upw * f2;
 
     Vector8d f_U;
@@ -756,8 +759,9 @@ ScalarLin4 GetUs(const Vector4d& U, const Param& param) {
     double bi = 1.0 / beta;
 
     double Us = 0.5 * Hs * (1.0 - bi * (Hk - 1.0) / H);
-    Vector4d Us_U = 0.5 * Hs_U * (1.0 - bi * (Hk - 1.0) / H) +
-                    0.5 * Hs * (-bi * Hk_U / H + bi * (Hk - 1.0) / (H * H) * H_U);
+    Vector4d Us_U =
+        0.5 * Hs_U * (1.0 - bi * (Hk - 1.0) / H) +
+        0.5 * Hs * (-bi * Hk_U / H + bi * (Hk - 1.0) / (H * H) * H_U);
 
     // Limits
     if (!param.wake) {
@@ -796,9 +800,9 @@ ScalarLinX GetCDixt(const Vector4d& U, double x, const Param& param) {
     return {cDixt, cDixt_U, cDixt_x};
 }
 
-ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf, const Vector8d& cf_U,
-                  double Hk, const Vector8d& Hk_U, double Ret, const Vector8d& Ret_U,
-                  const Param& param) {
+ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
+                 const Vector8d& cf_U, double Hk, const Vector8d& Hk_U,
+                 double Ret, const Vector8d& Ret_U, const Param& param) {
     // Equilibrium pressure gradient 1/ue * due/dx
     double beta = param.GB;
     double A = param.GA;
@@ -826,9 +830,9 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf, const Vector8d& cf_
     }
 
     double ut = 0.5 * cf - (Hkc / (A * Hk)) * (Hkc / (A * Hk));
-    Vector8d ut_U = 0.5 * cf_U -
-                    2.0 * (Hkc / (A * Hk)) *
-                    (Hkc_U / (A * Hk) - Hkc / (A * Hk * Hk) * Hk_U_use);
+    Vector8d ut_U =
+        0.5 * cf_U - 2.0 * (Hkc / (A * Hk)) *
+                         (Hkc_U / (A * Hk) - Hkc / (A * Hk * Hk) * Hk_U_use);
 
     double ds_safe = std::max(ds, 1e-12);
     double uq = ut / (beta * ds_safe);

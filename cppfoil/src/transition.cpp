@@ -30,10 +30,11 @@
 */
 #include "cppfoil/core/transition.h"
 
-#include <cmath>
 #include <cassert>
-#include "cppfoil/properties/bl_properties.h"
+#include <cmath>
+
 #include "cppfoil/core/boundary_layer.h"
+#include "cppfoil/properties/bl_properties.h"
 
 namespace cppfoil {
 
@@ -62,7 +63,8 @@ int MarchAmplification(FoilState& state, int si) {
         Vector4d U2 = state.glob.U.col(ii);
 
         // Initialize amp if currently turbulent
-        if (ii < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[ii]) {
+        if (ii < static_cast<int>(state.vsol.turb.size()) &&
+            state.vsol.turb[ii]) {
             U2(2) = U1(2) * 1.01;
         }
 
@@ -126,7 +128,8 @@ void UpdateTransition(FoilState& state) {
         int ilam0 = -1;
         for (int idx = 0; idx < N; ++idx) {
             int j = Is[idx];
-            if (j < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[j]) {
+            if (j < static_cast<int>(state.vsol.turb.size()) &&
+                state.vsol.turb[j]) {
                 ilam0 = idx - 1;
                 break;
             }
@@ -169,7 +172,8 @@ void UpdateTransition(FoilState& state) {
                 if ((ilam + 1) == ilam0) f = 1.0;
 
                 state.glob.U(2, Is[idx]) = sa0 + f * (sa1 - sa0);
-                assert(state.glob.U(2, Is[idx]) > 0 && "negative ctau in UpdateTransition");
+                assert(state.glob.U(2, Is[idx]) > 0 &&
+                       "negative ctau in UpdateTransition");
                 state.vsol.turb[Is[idx]] = true;
             }
         } else {  // ilam > ilam0
@@ -207,7 +211,8 @@ void StoreTransition(FoilState& state, int si, int i) {
             state.vsol.Xt(si, 0) = xt;  // xi location
             // Interpolate x location
             if (std::abs(xi1 - xi0) > 1e-12) {
-                state.vsol.Xt(si, 1) = x0 + (xt - xi0) / (xi1 - xi0) * (x1 - x0);
+                state.vsol.Xt(si, 1) =
+                    x0 + (xt - xi0) / (xi1 - xi0) * (x1 - x0);
             } else {
                 state.vsol.Xt(si, 1) = x0;
             }

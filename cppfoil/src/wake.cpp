@@ -30,9 +30,10 @@
 */
 #include "cppfoil/core/wake.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <algorithm>
+
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
@@ -46,13 +47,15 @@ void StagPointFind(FoilState& state) {
 
     // Find first index j where gamma becomes positive (matching mfoil)
     // Use a tolerance for near-zero values to handle numerical precision
-    // (at the stagnation point, gamma should be exactly zero but numerics give ~1e-13)
+    // (at the stagnation point, gamma should be exactly zero but numerics give
+    // ~1e-13)
     constexpr double gam_tol = 1e-10;
 
     int j = 0;
     for (; j < N; ++j) {
         // Treat values within tolerance of zero as effectively positive
-        // This handles cases where gamma at stagnation is ~1e-13 due to numerics
+        // This handles cases where gamma at stagnation is ~1e-13 due to
+        // numerics
         if (gam(j) > -gam_tol) break;
     }
 
@@ -90,13 +93,14 @@ void StagPointFind(FoilState& state) {
     state.isol.sstag_g(0) = st_g1;
     state.isol.sstag_g(1) = -st_g1;
 
-    // Set sign of edge velocity: negative on lower (i < j), positive on upper (i >= j)
+    // Set sign of edge velocity: negative on lower (i < j), positive on upper
+    // (i >= j)
     state.isol.sgnue.resize(N);
     for (int i = 0; i < N; ++i) {
         if (i < j) {
             state.isol.sgnue(i) = -1.0;  // Lower surface
         } else {
-            state.isol.sgnue(i) = 1.0;   // Upper surface
+            state.isol.sgnue(i) = 1.0;  // Upper surface
         }
     }
 
@@ -191,7 +195,7 @@ void BuildWake(FoilState& state) {
     Vector2d xte = 0.5 * (xy1 + xyN);
 
     // TE direction: tangent pointing downstream
-    Vector2d n = xyN - xy1;  // Normal to TE gap
+    Vector2d n = xyN - xy1;      // Normal to TE gap
     Vector2d t_te(n(1), -n(0));  // Rotate 90 degrees to get tangent
     // Ensure tangent points downstream (positive x)
     if (t_te(0) < 0) t_te = -t_te;
@@ -227,8 +231,8 @@ void BuildWake(FoilState& state) {
         double ds = sv(i) - sv(i - 1);  // Distance to next point
 
         // Predictor: velocity at current point
-        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam,
-                                        Vinf, alpha, x0);
+        Vector2d V0 =
+            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x0);
         double V0mag = V0.norm();
         if (V0mag < 1e-10) V0mag = 1e-10;
         Vector2d t0 = V0 / V0mag;
@@ -237,8 +241,8 @@ void BuildWake(FoilState& state) {
         Vector2d x1_pred = x0 + ds * t0;
 
         // Corrector: velocity at predicted point
-        Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam,
-                                        Vinf, alpha, x1_pred);
+        Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
+                                       alpha, x1_pred);
         double V1mag = V1.norm();
         if (V1mag < 1e-10) V1mag = 1e-10;
         Vector2d t1 = V1 / V1mag;
@@ -255,8 +259,8 @@ void BuildWake(FoilState& state) {
 
     // First tangent (same as first computed tangent)
     {
-        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam,
-                                        Vinf, alpha, state.wake.x.col(0));
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
+                                       alpha, state.wake.x.col(0));
         double V0mag = V0.norm();
         if (V0mag < 1e-10) V0mag = 1e-10;
         state.wake.t.col(0) = V0 / V0mag;
@@ -268,8 +272,8 @@ void BuildWake(FoilState& state) {
     state.isol.uewi.resize(Nw);
     state.isol.uewiref.resize(Nw, 2);
 
-    Vector2d cs0(1.0, 0.0);  // cos(0), sin(0)
-    Vector2d cs90(0.0, 1.0); // cos(90), sin(90)
+    Vector2d cs0(1.0, 0.0);   // cos(0), sin(0)
+    Vector2d cs90(0.0, 1.0);  // cos(90), sin(90)
 
     for (int i = 0; i < Nw; ++i) {
         Vector2d xi = state.wake.x.col(i);
@@ -277,9 +281,9 @@ void BuildWake(FoilState& state) {
 
         // Reference velocities (alpha=0 and alpha=90)
         Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gamref.col(0),
-                                        Vinf, 0.0, xi);
+                                       Vinf, 0.0, xi);
         Vector2d V90 = InviscidVelocity(state.foil.x, state.isol.gamref.col(1),
-                                         Vinf, 90.0, xi);
+                                        Vinf, 90.0, xi);
 
         state.isol.uewiref(i, 0) = V0.dot(ti);
         state.isol.uewiref(i, 1) = V90.dot(ti);
@@ -351,7 +355,7 @@ void SetWakeGap(FoilState& state) {
         if (xib <= 1.0) {
             // Cubic formula from Drela
             state.vsol.wgap(i) = hTE * (1.0 + (2.0 + flen * dtdx) * xib) *
-                                  (1.0 - xib) * (1.0 - xib);
+                                 (1.0 - xib) * (1.0 - xib);
         } else {
             state.vsol.wgap(i) = 0.0;
         }
@@ -365,7 +369,8 @@ void StagPointMove(FoilState& state) {
 
     int N = state.foil.N;
     int Nw = state.wake.N;
-    (void)state.isol.sstag;  // Original stagnation point (unused but kept for debugging)
+    (void)state.isol
+        .sstag;  // Original stagnation point (unused but kept for debugging)
 
     // Get edge velocity from global solution
     VectorXd ue = state.glob.U.row(3).head(N).transpose();

@@ -40,8 +40,8 @@ namespace cppfoil {
 // For segment i: f(t) = c(0,i)*t^3 + c(1,i)*t^2 + c(2,i)*t + c(3,i)
 // where t is local parameter from 0 to ds = s[i+1] - s[i]
 struct CubicSpline1D {
-    VectorXd s;       // Parameter values at data points [N]
-    MatrixXd c;       // Coefficients [4 x (N-1)]
+    VectorXd s;  // Parameter values at data points [N]
+    MatrixXd c;  // Coefficients [4 x (N-1)]
 
     // Evaluate spline at parameter value
     double Eval(double sval) const;
