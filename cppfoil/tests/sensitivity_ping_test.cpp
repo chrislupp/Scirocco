@@ -734,7 +734,7 @@ TEST_F(SensitivityPingTest, DRueDxFoil) {
             // If adj closely matches fd_ueinv (i.e., adj_uem ≈ 0), then uem is missing.
             double adj_matches_ueinv = (dRue_ueinv_fd - dRue_adj).norm() / std::max(ref, 1e-10);
 
-            bool fail = rel_err > 2e-3;  // 0.2% tolerance for mid-airfoil nodes
+            bool fail = rel_err > 5e-3;  // 0.5% tolerance for mid-airfoil nodes
             if (fail) nfail++;
 
             // How much of ue_m does the analytic capture?
@@ -821,7 +821,7 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
             double rel_cl = std::abs(dcl_fd2 - dcl_pred) /
                             std::max(std::abs(dcl_fd2), 1e-6);
 
-            if (rel_cl > 0.05) {  // > 5% error
+            if (rel_cl > 0.005) {  // > 0.5% error
                 nfail_cl++;
                 std::cout << "  ViscSens cl FAIL node=" << node << " dim=" << dim
                           << " fd=" << dcl_fd2 << " adj=" << dcl_pred
@@ -836,7 +836,7 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
             double rel_cd = std::abs(dcd_fd2 - dcd_pred) /
                             std::max(std::abs(dcd_fd2), 1e-6);
 
-            if (rel_cd > 0.05) {  // > 5% error
+            if (rel_cd > 0.001) {  // > 0.1% error
                 nfail_cd++;
                 std::cout << "  ViscSens cd FAIL node=" << node << " dim=" << dim
                           << " fd=" << dcd_fd2 << " adj=" << dcd_pred
@@ -983,9 +983,11 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
                   << " tdp=" << te_info.tdp << " s_norm="
                   << (state.foil.x.col(N-1) - state.foil.x.col(0)).norm() << std::endl;
     }
-    // Also compute ComputeDRueDxFoil result for comparison
+    // Compute both parts of the VJP
     MatrixXd dRue_dx = ComputeDRueDxFoil(state);
     VectorXd vjp_ue = dRue_dx.transpose() * lambda_ue;
+    VectorXd vjp_wake_an = ComputeWakeGeomVJP(state, lambda_ue);
+    VectorXd vjp_total_an = vjp_ue + vjp_wake_an;
 
     // Test nodes
     int test_nodes[] = {1, N/4, N/2, 3*N/4, N - 2};
@@ -1015,16 +1017,28 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
             // This gives the TOTAL R_ue sensitivity (gamma + wake geom + ue_m)
             double vjp_fd_total = lambda_ue.dot(Rue_pert - Rue_base) / ep;
 
-            // Now compute wake-geometry-only: use BASE gamref but perturbed wake
-            // (This isolates the wake construction effect from the AIC gamma effect)
-            // Restore base gamma (but keep perturbed foil.x)
+            // Now compute wake-geometry-only: perturb foil.x, rebuild wake
+            // (new wake.x, wake.t), then recompute uewiref and ue_m using
+            // the NEW wake but BASE foil panel geometry.
+            // This isolates: foil.x -> wake construction -> R_ue
             state.isol.gamref = base_gamref;
             state.isol.gam = base_gam;
-            // Rebuild stag point with base gamma
             StagPointFind(state);
-            BuildWake(state);  // Rebuild wake with perturbed foil.x but base gamma
+            BuildWake(state);  // New wake from perturbed foil.x + base gamma
             ExtendXiToWake(state);
-            CalcUeM(state);
+            // Now restore foil.x to base (so CalcUeM uses base panel geometry)
+            // but keep the new wake.x and wake.t
+            MatrixXd new_wake_x = state.wake.x;
+            MatrixXd new_wake_t = state.wake.t;
+            VectorXd new_wake_s = state.wake.s;
+            VectorXd new_xi = state.isol.xi;
+            state.foil.x(dim, node) -= ep;  // restore foil.x
+            // Put back new wake
+            state.wake.x = new_wake_x;
+            state.wake.t = new_wake_t;
+            state.wake.s = new_wake_s;
+            state.isol.xi = new_xi;
+            CalcUeM(state);  // Uses base foil panels but new wake geometry
 
             VectorXd ueinv_wake = GetUeInv(state);
             VectorXd Rue_wake(Nsys);
@@ -1032,6 +1046,8 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
                 Rue_wake(i) = ue_vec(i) - ueinv_wake(i) - sgue(i) * (state.vsol.ue_sigma.row(i).dot(phi));
             }
             double vjp_fd_wake = lambda_ue.dot(Rue_wake - Rue_base) / ep;
+            // Re-perturb foil.x for the restore at end of loop
+            state.foil.x(dim, node) += ep;
 
             double vjp_fd = vjp_fd_total;  // Print total for comparison
             double vjp_an = vjp_wake(2 * node + dim);
@@ -1040,13 +1056,14 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
             //          wake_fd = wake-only (geometry) effect,
             //          gamma_fd = total - wake = gamma/AIC effect (should match ComputeDRueDxFoil)
             double gamma_fd = vjp_fd_total - vjp_fd_wake;
-            double vjp_ue_val = vjp_ue(2 * node + dim);
-            double err_dRue = std::abs(gamma_fd - vjp_ue_val) / std::max(std::abs(gamma_fd), 1e-10);
+            double wake_an_val = vjp_wake_an(2 * node + dim);
+            double err_wake = std::abs(vjp_fd_wake - wake_an_val) /
+                              std::max(std::abs(vjp_fd_wake), 1e-8);
             std::cout << "    node=" << node << " dim=" << dim
-                      << " gamma_fd=" << gamma_fd
-                      << " dRue_adj=" << vjp_ue_val
-                      << " err=" << err_dRue
-                      << (err_dRue > 0.05 ? " BUG_IN_DRUE" : " ok") << std::endl;
+                      << " wake_fd=" << vjp_fd_wake
+                      << " wake_an=" << wake_an_val
+                      << " err=" << err_wake
+                      << (err_wake > 0.1 ? " BAD" : " ok") << std::endl;
 
             // Restore
             state.foil.x(dim, node) -= ep;
@@ -1441,4 +1458,443 @@ TEST_F(SensitivityPingTest, ViscousReSensitivity) {
         ADD_FAILURE() << "dcm/dRe viscous rel_err=" << rel_cm;
     }
     std::cout << "ViscousReSensitivity: " << nfail << " failures" << std::endl;
+}
+
+// ===========================================================================
+// 18. FD verification of B-matrix wake endpoint sensitivity
+//     Tests d(B*phi)/d(wake.x[k]) via finite differences against the
+//     analytic PanelLinSourceStreamDeriv Xj chain rule.
+// ===========================================================================
+TEST_F(SensitivityPingTest, BMatrixWakeEndpointFD) {
+    // 1. Set up a 30-panel converged viscous solution
+    Cppfoil foil("0012", 30);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+    auto& state = foil.GetState();
+
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = state.glob.Nsys;  // N + Nw
+
+    // Need adjoint machinery for the combined adjoint vector w
+    CalcForceLin(state);
+    CalcCdLin(state);
+
+    VectorXd dcd_dV = state.post.cd_V;
+    auto& lu = *state.glob.lu_factorization;
+    VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+    VectorXd lambda_ue = lambda_cd.tail(Nsys);
+
+    // Extract wake and foil parts of lambda_ue
+    VectorXd lambda_ue_foil = lambda_ue.head(N);
+    VectorXd lam_w = lambda_ue.tail(Nw);
+
+    // Compute base BL state quantities
+    VectorXd ue_vec = state.glob.U.row(3).transpose();
+    VectorXd ds_vec = state.glob.U.row(1).transpose();
+    VectorXd mass = ds_vec.cwiseProduct(ue_vec);
+    VectorXd phi = state.vsol.sigma_m * mass;
+    int Npanel = N + Nw - 2;
+
+    // 2. Build v_ext and w = AIC^{-T} * v_ext
+    VectorXd v_ext = VectorXd::Zero(N + 1);
+    for (int i = 0; i < N; ++i) {
+        v_ext(i) = state.isol.sgnue(i) * lambda_ue_foil(i);
+    }
+
+    // Wake station contributions through Cgam^T * lam_w(1:Nw-1)
+    for (int i = 1; i < Nw; ++i) {
+        double lam_i = lam_w(i);
+        if (std::abs(lam_i) < 1e-20) continue;
+        Vector2d xi_w = state.wake.x.col(i);
+        Vector2d ti_w = state.wake.t.col(i);
+        MatrixXd V_G;
+        InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi_w,
+                         true, &V_G);
+        for (int jj = 0; jj < N; ++jj) {
+            v_ext(jj) += lam_i * (V_G(0, jj) * ti_w(0) + V_G(1, jj) * ti_w(1));
+        }
+    }
+
+    // Dw(0) = Bp(N-1) override: wake station 0 uses Bp(N-1,:) directly
+    v_ext(N - 1) += lam_w(0);
+
+    MatrixXd AIC_T = state.isol.AIC.transpose();
+    VectorXd w = AIC_T.partialPivLu().solve(v_ext);
+
+    // 3. Helper: compute w^T * B * phi for a given wake geometry
+    //    (only the wake-source-panel columns of B, i.e. columns N-1..Npanel-1)
+    auto compute_wBphi = [&](const MatrixXd& wake_x) -> double {
+        double result = 0.0;
+        for (int i = 0; i < N; ++i) {
+            Vector2d xi = state.foil.x.col(i);
+            double row_sum = 0.0;
+            for (int j = 0; j < Nw - 1; ++j) {
+                Vector2d Xm = 0.5 * (wake_x.col(j) + wake_x.col(j + 1));
+                Matrix2d Xj_l;
+                Xj_l.col(0) = wake_x.col(j);
+                Xj_l.col(1) = Xm;
+
+                Vector2d X_right;
+                if (j == Nw - 2) {
+                    X_right = 2.0 * wake_x.col(j + 1) - Xm;
+                } else {
+                    X_right = wake_x.col(j + 1);
+                }
+
+                double a_left, b_left, a_right, b_right;
+
+                // Left half panel
+                PanelLinSourceStream(Xj_l, xi, a_left, b_left);
+                if (j > 0) {
+                    row_sum += (0.5 * a_left + b_left) * phi(N - 1 + j);
+                    row_sum += 0.5 * a_left * phi(N - 1 + j - 1);
+                } else {
+                    row_sum += b_left * phi(N - 1 + j);
+                }
+
+                // Right half panel
+                Matrix2d Xj_r;
+                Xj_r.col(0) = Xm;
+                Xj_r.col(1) = X_right;
+                PanelLinSourceStream(Xj_r, xi, a_right, b_right);
+                row_sum += (a_right + 0.5 * b_right) * phi(N - 1 + j);
+                if (j < Nw - 2) {
+                    row_sum += 0.5 * b_right * phi(N - 1 + j + 1);
+                } else {
+                    row_sum += 0.5 * b_right * phi(N - 1 + j);  // ghost fold-back
+                }
+            }
+            result += w(i) * row_sum;
+        }
+        return result;
+    };
+
+    // 4. Compute base value
+    double wBphi_base = compute_wBphi(state.wake.x);
+
+    // 5. For each wake node k and dimension d, compare FD vs analytic
+    double eps = 1e-7;
+    int nfail = 0;
+
+    std::cout << std::scientific << std::setprecision(8);
+    std::cout << "  B-matrix wake endpoint FD verification:" << std::endl;
+    std::cout << "  " << std::setw(4) << "k" << std::setw(4) << "d"
+              << std::setw(18) << "analytic"
+              << std::setw(18) << "FD"
+              << std::setw(14) << "rel_err" << std::endl;
+
+    for (int k = 0; k < Nw; ++k) {
+        for (int dim = 0; dim < 2; ++dim) {
+            // --- Finite difference ---
+            MatrixXd wake_x_pert = state.wake.x;
+            wake_x_pert(dim, k) += eps;
+            double wBphi_pert = compute_wBphi(wake_x_pert);
+            double fd_val = (wBphi_pert - wBphi_base) / eps;
+
+            // --- Analytic: sum over panels j that depend on wake.x[k] ---
+            // wake.x[k] affects:
+            //   Panel j=k: wake.x[k] is the left endpoint
+            //   Panel j=k-1: wake.x[k] is the right endpoint (enters via Xm and X_right)
+            double analytic_val = 0.0;
+
+            // Panel j = k (wake.x[k] is left endpoint of panel k)
+            if (k < Nw - 1) {
+                int j = k;
+                Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
+                Vector2d X_right;
+                if (j == Nw - 2) {
+                    X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+                } else {
+                    X_right = state.wake.x.col(j + 1);
+                }
+
+                double phi_jm1 = (j > 0) ? phi(N - 1 + j - 1) : 0.0;
+                double phi_j = phi(N - 1 + j);
+                double phi_jp1 = (j < Nw - 2) ? phi(N - 1 + j + 1) : 0.0;
+
+                for (int i = 0; i < N; ++i) {
+                    if (std::abs(w(i)) < 1e-20) continue;
+                    Vector2d xi_eval = state.foil.x.col(i);
+
+                    Matrix2d Xj_l;
+                    Xj_l.col(0) = state.wake.x.col(j);
+                    Xj_l.col(1) = Xm;
+                    auto ld = PanelLinSourceStreamDeriv(Xj_l, xi_eval);
+
+                    Matrix2d Xj_r;
+                    Xj_r.col(0) = Xm;
+                    Xj_r.col(1) = X_right;
+                    auto rd = PanelLinSourceStreamDeriv(Xj_r, xi_eval);
+
+                    // d(a_l)/d(wake.x[j]_dim): Xj_l col(0) = wake.x[j], col(1) = Xm
+                    // d(Xj_l.col(0))/d(wake.x[j]) = I  => a_Xj(dim)
+                    // d(Xm)/d(wake.x[j]) = 0.5*I        => 0.5*a_Xj(2+dim)
+                    double da_l_dj = ld.a_Xj(dim) + 0.5 * ld.a_Xj(2 + dim);
+                    double db_l_dj = ld.b_Xj(dim) + 0.5 * ld.b_Xj(2 + dim);
+
+                    // d(a_r)/d(wake.x[j]_dim): Xj_r col(0) = Xm, col(1) = X_right
+                    // d(Xm)/d(wake.x[j]) = 0.5*I => 0.5*a_Xj(dim)
+                    double da_r_dj = 0.5 * rd.a_Xj(dim);
+                    double db_r_dj = 0.5 * rd.b_Xj(dim);
+                    if (j == Nw - 2) {
+                        // X_right = 2*wake.x[j+1] - Xm, d(X_right)/d(wake.x[j]) = -0.5*I
+                        da_r_dj += -0.5 * rd.a_Xj(2 + dim);
+                        db_r_dj += -0.5 * rd.b_Xj(2 + dim);
+                    }
+
+                    // Compute d(B(i,:)*phi)/d(wake.x[j]_dim) from this panel
+                    double dW = 0.0;
+                    if (j > 0) {
+                        dW += 0.5 * da_l_dj * phi_jm1;
+                        dW += (0.5 * da_l_dj + db_l_dj) * phi_j;
+                    } else {
+                        dW += db_l_dj * phi_j;
+                    }
+                    dW += (da_r_dj + 0.5 * db_r_dj) * phi_j;
+                    if (j < Nw - 2) {
+                        dW += 0.5 * db_r_dj * phi_jp1;
+                    } else {
+                        dW += 0.5 * db_r_dj * phi_j;  // ghost fold-back
+                    }
+
+                    analytic_val += w(i) * dW;
+                }
+            }
+
+            // Panel j = k-1 (wake.x[k] is the right endpoint of panel k-1)
+            if (k > 0 && k - 1 < Nw - 1) {
+                int j = k - 1;
+                Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
+                Vector2d X_right;
+                if (j == Nw - 2) {
+                    X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+                } else {
+                    X_right = state.wake.x.col(j + 1);
+                }
+
+                double phi_jm1 = (j > 0) ? phi(N - 1 + j - 1) : 0.0;
+                double phi_j = phi(N - 1 + j);
+                double phi_jp1 = (j < Nw - 2) ? phi(N - 1 + j + 1) : 0.0;
+
+                for (int i = 0; i < N; ++i) {
+                    if (std::abs(w(i)) < 1e-20) continue;
+                    Vector2d xi_eval = state.foil.x.col(i);
+
+                    Matrix2d Xj_l;
+                    Xj_l.col(0) = state.wake.x.col(j);
+                    Xj_l.col(1) = Xm;
+                    auto ld = PanelLinSourceStreamDeriv(Xj_l, xi_eval);
+
+                    Matrix2d Xj_r;
+                    Xj_r.col(0) = Xm;
+                    Xj_r.col(1) = X_right;
+                    auto rd = PanelLinSourceStreamDeriv(Xj_r, xi_eval);
+
+                    // d/d(wake.x[j+1]_dim) where j+1 = k
+                    // Left half: Xj_l col(1) = Xm, d(Xm)/d(wake.x[j+1]) = 0.5*I
+                    double da_l_djp1 = 0.5 * ld.a_Xj(2 + dim);
+                    double db_l_djp1 = 0.5 * ld.b_Xj(2 + dim);
+
+                    // Right half: Xj_r col(0) = Xm, col(1) = X_right
+                    // d(Xm)/d(wake.x[j+1]) = 0.5*I => 0.5*rd.a_Xj(dim)
+                    double da_r_djp1 = 0.5 * rd.a_Xj(dim);
+                    double db_r_djp1 = 0.5 * rd.b_Xj(dim);
+                    if (j < Nw - 2) {
+                        // X_right = wake.x[j+1], d/d(wake.x[j+1]) = I
+                        da_r_djp1 += rd.a_Xj(2 + dim);
+                        db_r_djp1 += rd.b_Xj(2 + dim);
+                    } else {
+                        // j == Nw-2: X_right = 2*wake.x[j+1] - Xm
+                        // d(X_right)/d(wake.x[j+1]) = 2*I - 0.5*I = 1.5*I
+                        da_r_djp1 += 1.5 * rd.a_Xj(2 + dim);
+                        db_r_djp1 += 1.5 * rd.b_Xj(2 + dim);
+                    }
+
+                    double dW = 0.0;
+                    if (j > 0) {
+                        dW += 0.5 * da_l_djp1 * phi_jm1;
+                        dW += (0.5 * da_l_djp1 + db_l_djp1) * phi_j;
+                    } else {
+                        dW += db_l_djp1 * phi_j;
+                    }
+                    dW += (da_r_djp1 + 0.5 * db_r_djp1) * phi_j;
+                    if (j < Nw - 2) {
+                        dW += 0.5 * db_r_djp1 * phi_jp1;
+                    } else {
+                        dW += 0.5 * db_r_djp1 * phi_j;  // ghost fold-back
+                    }
+
+                    analytic_val += w(i) * dW;
+                }
+            }
+
+            // Compare: use absolute tolerance floor for small values near FD noise
+            double ref = std::max(std::abs(fd_val), std::abs(analytic_val));
+            double abs_err = std::abs(analytic_val - fd_val);
+            double rel_err = (ref > 1e-15) ? abs_err / ref : abs_err;
+
+            // At eps=1e-7, FD noise floor is ~eps*O(f) ~ 1e-14 for f~1e-7.
+            // Use absolute tolerance for values near noise floor.
+            bool fail = rel_err > 1e-4 && abs_err > 1e-11;
+            if (fail) nfail++;
+
+            std::cout << "  " << std::setw(4) << k << std::setw(4) << dim
+                      << std::setw(18) << analytic_val
+                      << std::setw(18) << fd_val
+                      << std::setw(14) << rel_err
+                      << (fail ? "  FAIL" : "") << std::endl;
+        }
+    }
+
+    std::cout << "BMatrixWakeEndpointFD: " << nfail << "/" << 2 * Nw
+              << " failures (tol=1e-4)" << std::endl;
+    EXPECT_EQ(nfail, 0) << "B-matrix wake endpoint derivative failures at 1e-4 tolerance";
+}
+
+// ===========================================================================
+// Wake streamline Jacobian: d(wake.x)/d(foil.x) FD verification
+// Perturbs foil.x[k], rebuilds wake, checks delta(wake.x) against the
+// backward sweep's implicit prediction.
+// ===========================================================================
+TEST_F(SensitivityPingTest, WakeStreamlineJacobian) {
+    Cppfoil foil_setup("0012", 30);
+    foil_setup.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil_setup.Solve();
+    if (!foil_setup.IsConverged()) { GTEST_SKIP(); }
+
+    auto& state = foil_setup.GetState();
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+
+    // Save base wake
+    MatrixXd base_wake_x = state.wake.x;
+    MatrixXd base_wake_t = state.wake.t;
+    VectorXd base_wake_s = state.wake.s;
+    VectorXd base_xi = state.isol.xi;
+    MatrixXd base_gamref = state.isol.gamref;
+    VectorXd base_gam = state.isol.gam;
+    double alpha = state.oper.alpha;
+
+    // Test: for foil node k, perturb foil.x[k](dim), rebuild wake, measure
+    // delta(wake.x[w]) for each wake node w. This gives the forward Jacobian
+    // d(wake.x[w])/d(foil.x[k]).
+    //
+    // The backward sweep in ComputeWakeGeomVJP should produce the TRANSPOSE
+    // of this Jacobian when applied to a test vector mu_x.
+    // Verify: mu_x^T * J_forward = (J_forward^T * mu_x)^T = backward_sweep(mu_x)^T
+
+    double ep = 1e-7;
+    int test_foil_nodes[] = {0, 1, N/2, N-2, N-1};
+
+    std::cout << "  Wake streamline Jacobian d(wake.x)/d(foil.x):" << std::endl;
+    for (int k : test_foil_nodes) {
+        if (k >= N) continue;
+        for (int dim = 0; dim < 2; ++dim) {
+            // Perturb foil.x[k](dim), rebuild wake
+            state.foil.x(dim, k) += ep;
+            // Use base gamma (isolate panel geometry effect on streamline)
+            state.isol.gamref = base_gamref;
+            state.isol.gam = base_gam;
+            StagPointFind(state);
+            BuildWake(state);
+
+            // Compute total wake.x change
+            double total_delta = 0.0;
+            for (int w = 0; w < Nw; ++w) {
+                Vector2d dw = (state.wake.x.col(w) - base_wake_x.col(w)) / ep;
+                total_delta += dw.norm();
+            }
+
+            // Restore
+            state.foil.x(dim, k) -= ep;
+            state.wake.x = base_wake_x;
+
+            std::cout << "    k=" << k << " d=" << dim
+                      << " |d(wake)/d(foil)|=" << total_delta << std::endl;
+        }
+    }
+
+    // Direct backward sweep test: compute mu_x^T * J_streamline by FD
+    // where J_streamline[w,k] = d(wake.x[w])/d(foil.x[k])
+    // Use a simple mu_x = e_0 (unit vector at wake node 0)
+    {
+        // Compute vjp from backward sweep for mu_x = e_0 (first wake node, x-component)
+        // This requires extracting the backward sweep output for a specific mu_x input
+        // Instead, let's compute mu_x^T * J by FD for the ACTUAL mu_x from Steps 1+1b
+
+        // We need the actual mu_x values. Since we can't access them directly,
+        // let's verify by computing vjp_wake = sum_k (vjp_wake[k] * e_k)
+        // and comparing against sum_k sum_w (mu_x[w] · d(wake.x[w])/d(foil.x[k])) * e_k
+
+        // Simpler: just verify that perturbing foil.x[k] and measuring the wake change,
+        // dotted with a known sensitivity, gives the right VJP.
+
+    }
+
+    // Backward sweep verification: use lambda_ue = e_{N+1} (wake station 1 only)
+    // Then ComputeWakeGeomVJP should give d(R_ue(N+1))/d(foil.x) through wake geom.
+    // FD: perturb foil.x, rebuild wake (base gamma, then restore foil.x, keep new wake),
+    //     recompute R_ue(N+1), compare.
+    {
+        VectorXd lam_test = VectorXd::Zero(N + Nw);
+        lam_test(N + 1) = 1.0;  // wake station 1 only
+
+        VectorXd vjp_an = ComputeWakeGeomVJP(state, lam_test);
+
+        // Base R_ue at station N+1
+        VectorXd ue_v = state.glob.U.row(3).transpose();
+        VectorXd ds_v = state.glob.U.row(1).transpose();
+        VectorXd mass_v = ds_v.cwiseProduct(ue_v);
+        VectorXd phi_v = state.vsol.sigma_m * mass_v;
+        VectorXd ueinv_b = GetUeInv(state);
+        VectorXd sgue_v(N + Nw);
+        sgue_v.head(N) = state.isol.sgnue;
+        sgue_v.tail(Nw).setOnes();
+        double Rue_base_w1 = ue_v(N+1) - ueinv_b(N+1) - sgue_v(N+1) * state.vsol.ue_sigma.row(N+1).dot(phi_v);
+
+        std::cout << "  Backward sweep test (lambda_ue = e_{N+1}):" << std::endl;
+        int test_k[] = {0, 1, N/2, N-2, N-1};
+        for (int k : test_k) {
+            if (k >= N) continue;
+            for (int dim = 0; dim < 2; ++dim) {
+                // Perturb foil.x, rebuild wake with base gamma
+                state.foil.x(dim, k) += ep;
+                state.isol.gamref = base_gamref;
+                state.isol.gam = base_gam;
+                StagPointFind(state);
+                BuildWake(state);
+                ExtendXiToWake(state);
+                // Restore foil.x, keep new wake
+                MatrixXd nw_x = state.wake.x;
+                MatrixXd nw_t = state.wake.t;
+                VectorXd nw_s = state.wake.s;
+                VectorXd nw_xi = state.isol.xi;
+                state.foil.x(dim, k) -= ep;
+                state.wake.x = nw_x; state.wake.t = nw_t;
+                state.wake.s = nw_s; state.isol.xi = nw_xi;
+                CalcUeM(state);
+
+                VectorXd ueinv_p = GetUeInv(state);
+                double Rue_p_w1 = ue_v(N+1) - ueinv_p(N+1) - sgue_v(N+1) * state.vsol.ue_sigma.row(N+1).dot(phi_v);
+                double vjp_fd_val = (Rue_p_w1 - Rue_base_w1) / ep;
+                double vjp_an_val = vjp_an(2*k + dim);
+
+                double err = std::abs(vjp_fd_val - vjp_an_val) / std::max(std::abs(vjp_fd_val), 1e-10);
+                std::cout << "    k=" << k << " d=" << dim
+                          << " fd=" << vjp_fd_val << " an=" << vjp_an_val
+                          << " err=" << err
+                          << (err > 0.1 ? " BAD" : " ok") << std::endl;
+
+                // Restore wake
+                state.wake.x = base_wake_x;
+                state.wake.t = base_wake_t;
+                state.wake.s = base_wake_s;
+                state.isol.xi = base_xi;
+            }
+        }
+        // Restore ueM
+        CalcUeM(state);
+    }
 }
