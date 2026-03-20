@@ -821,7 +821,7 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
             double rel_cl = std::abs(dcl_fd2 - dcl_pred) /
                             std::max(std::abs(dcl_fd2), 1e-6);
 
-            if (rel_cl > 0.005) {  // > 0.5% error
+            if (rel_cl > 0.004) {  // > 0.4% error
                 nfail_cl++;
                 std::cout << "  ViscSens cl FAIL node=" << node << " dim=" << dim
                           << " fd=" << dcl_fd2 << " adj=" << dcl_pred
@@ -853,10 +853,10 @@ TEST_F(SensitivityPingTest, ViscousSensitivity) {
 
     // The viscous adjoint involves several approximations (frozen wake geometry,
     // neglected due_m/dx, simplified dxi/dx). Report results for now.
-    if (nfail_cl > 0 || nfail_cd > 0) {
-        std::cout << "  NOTE: cl residual (~0.3%) from wake geometry near-cancellation."
-                  << std::endl;
-    }
+    // Remaining cl error (~0.3% at some nodes) is from approximations in
+    // the adjoint (frozen transition, ue_m linearization, etc.), not wgap.
+    EXPECT_EQ(nfail_cl, 0) << "cl adjoint failures exceed 0.4% tolerance";
+    EXPECT_EQ(nfail_cd, 0) << "cd adjoint failures exceed 0.1% tolerance";
 }
 
 // ===========================================================================
@@ -1080,6 +1080,90 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
     BuildWake(state);
     ExtendXiToWake(state);
     CalcUeM(state);
+}
+
+// ===========================================================================
+// 10d. FD verification of wake gap (wgap) VJP at TE nodes
+// Perturbs foil.x at TE nodes, recomputes wgap, measures delta(R_BL) from
+// the wgap change alone. Verifies ComputeWgapVJP matches FD.
+// ===========================================================================
+TEST_F(SensitivityPingTest, WgapVJPVerification) {
+    Cppfoil foil("0012", 40);  // smaller mesh for speed
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) { GTEST_SKIP(); }
+
+    auto& state = foil.GetState();
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = state.glob.Nsys;
+
+    // Compute adjoint
+    CalcForceLin(state);
+    CalcCdLin(state);
+
+    VectorXd dcl_dV = VectorXd::Zero(4 * Nsys);
+    for (int i = 0; i < N; ++i) {
+        dcl_dV(4 * i + 3) = state.post.cl_ue(i);
+    }
+    auto& lu = *state.glob.lu_factorization;
+    VectorXd lambda_cl = lu.transpose().solve(dcl_dV);
+    VectorXd lambda_bl = lambda_cl.head(3 * Nsys);
+
+    // Compute analytic wgap VJP
+    VectorXd vjp_wgap = ComputeWgapVJP(state, lambda_bl);
+
+    // Save base wgap
+    VectorXd base_wgap = state.vsol.wgap;
+
+    // Test TE nodes
+    int te_nodes[] = {0, 1, N - 2, N - 1};
+    double ep = 1e-7;
+    int nfail = 0;
+
+    std::cout << "  WgapVJP verification (N=" << N << ", Nw=" << Nw << "):"
+              << std::endl;
+
+    for (int node : te_nodes) {
+        for (int dim = 0; dim < 2; ++dim) {
+            // Perturb foil.x, recompute wgap only, measure delta(R_BL)
+            state.foil.x(dim, node) += ep;
+            SetWakeGap(state);
+            VectorXd delta_wgap = state.vsol.wgap - base_wgap;
+
+            // Compute lambda_bl^T * dR_BL/dwgap * delta_wgap
+            // dR_BL/dwgap(w) = -R_V_col(4*(N+w)+1) restricted to BL rows
+            double vjp_fd = 0.0;
+            for (int w = 0; w < Nw; ++w) {
+                if (std::abs(delta_wgap(w)) < 1e-20) continue;
+                int col = 4 * (N + w) + 1;
+                double dot = 0.0;
+                for (SparseMatrixd::InnerIterator it(state.glob.R_V, col);
+                     it; ++it) {
+                    if (it.row() < 3 * Nsys) {
+                        dot += lambda_bl(it.row()) * it.value();
+                    }
+                }
+                vjp_fd += (-dot) * delta_wgap(w) / ep;
+            }
+
+            double vjp_an = vjp_wgap(2 * node + dim);
+            double abs_err = std::abs(vjp_an - vjp_fd);
+            double scale = std::max({std::abs(vjp_fd), std::abs(vjp_an), 1e-4});
+            double rel_err = abs_err / scale;
+
+            std::cout << "    node=" << node << " dim=" << dim
+                      << " an=" << vjp_an << " fd=" << vjp_fd
+                      << " rel=" << rel_err
+                      << (rel_err > 0.01 ? " FAIL" : " ok") << std::endl;
+            if (rel_err > 0.01) nfail++;
+
+            // Restore
+            state.foil.x(dim, node) -= ep;
+        }
+    }
+    state.vsol.wgap = base_wgap;
+    EXPECT_EQ(nfail, 0) << "WgapVJP FD verification failures (>1% error)";
 }
 
 // ===========================================================================

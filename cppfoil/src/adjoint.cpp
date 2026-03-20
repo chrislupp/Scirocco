@@ -135,6 +135,69 @@ void GetTEInfoDerivPublic(const MatrixXd& x, int k, int dim,
 }
 
 // ============================================================================
+// GetTEGapDeriv: d(hTE)/d(x[k]_dim) and d(dtdx)/d(x[k]_dim)
+// Same intermediate quantities as GetTEInfoDeriv but different outputs.
+// Only nonzero for k ∈ {0, 1, N-2, N-1}.
+// ============================================================================
+static void GetTEGapDeriv(const MatrixXd& x, int k, int dim,
+                           double& dhTE, double& ddtdx) {
+    int N = static_cast<int>(x.cols());
+    dhTE = 0.0;
+    ddtdx = 0.0;
+
+    if (k != 0 && k != 1 && k != N - 2 && k != N - 1) return;
+
+    // Forward computation (same intermediates as GetTEInfoDeriv)
+    Vector2d v1 = x.col(0) - x.col(1);
+    Vector2d v2 = x.col(N - 1) - x.col(N - 2);
+    double v1n = v1.norm();
+    double v2n = v2.norm();
+    if (v1n < 1e-10 || v2n < 1e-10) return;
+
+    Vector2d t1 = v1 / v1n;
+    Vector2d t2 = v2 / v2n;
+
+    Vector2d t_raw = 0.5 * (t1 + t2);
+    double tn = t_raw.norm();
+    if (tn < 1e-10) return;
+    Vector2d t = t_raw / tn;
+
+    Vector2d s = x.col(N - 1) - x.col(0);
+
+    // d(t1)/d(x[k]_dim)
+    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
+    Vector2d dv1(0, 0);
+    if (k == 0) dv1(dim) = 1.0;
+    else if (k == 1) dv1(dim) = -1.0;
+    Vector2d dt1 = dt1_dv1 * dv1;
+
+    // d(t2)/d(x[k]_dim)
+    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
+    Vector2d dv2(0, 0);
+    if (k == N - 1) dv2(dim) = 1.0;
+    else if (k == N - 2) dv2(dim) = -1.0;
+    Vector2d dt2 = dt2_dv2 * dv2;
+
+    // d(t)/d(x[k]_dim)
+    Vector2d dt_raw = 0.5 * (dt1 + dt2);
+    Matrix2d dt_dtraw = (Matrix2d::Identity() - t * t.transpose()) / tn;
+    Vector2d dt = dt_dtraw * dt_raw;
+
+    // d(s)/d(x[k]_dim)
+    Vector2d ds(0, 0);
+    if (k == N - 1) ds(dim) = 1.0;
+    else if (k == 0) ds(dim) = -1.0;
+
+    // d(hTE)/d(x[k]_dim)
+    // hTE = -s(0)*t(1) + s(1)*t(0)
+    dhTE = -ds(0) * t(1) - s(0) * dt(1) + ds(1) * t(0) + s(1) * dt(0);
+
+    // d(dtdx)/d(x[k]_dim)
+    // dtdx = t1(0)*t2(1) - t2(0)*t1(1)
+    ddtdx = dt1(0) * t2(1) + t1(0) * dt2(1) - dt2(0) * t1(1) - t2(0) * dt1(1);
+}
+
+// ============================================================================
 // PanelVelocityTangent: dV/d(foil.x[k,dim]) from panel Xj changes ONLY.
 // Does NOT include the gamma chain (V_G * dgam). This is needed for the
 // wake streamline tangent where the gamma effect on uewiref is already
@@ -2162,6 +2225,87 @@ void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
 }
 
 // ============================================================================
+// ComputeWgapVJP: VJP through wake gap (wgap) dependence on foil.x
+//
+// The BL residual at wake stations subtracts wgap from delta*:
+//   U.row(1) -= Aux, where Aux = wgap at wake stations
+//
+// wgap depends on foil.x through hTE and dtdx (GetTEInfo), which depend
+// on nodes {0, 1, N-2, N-1} only.
+//
+// VJP: lambda_bl^T * dR_BL/d(wgap) * d(wgap)/d(foil.x)
+// ============================================================================
+VectorXd ComputeWgapVJP(FoilState& state, const VectorXd& lambda_bl) {
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    int Nw = state.wake.N;
+
+    VectorXd vjp = VectorXd::Zero(2 * N);
+    if (Nw <= 0) return vjp;
+
+    // Recompute wgap parameters
+    TEInfo te = GetTEInfo(state.foil.x);
+    double hTE = te.hTE;
+    double flen = 2.5;
+    double dtdx = std::min(std::max(te.dtdx, -3.0 / flen), 3.0 / flen);
+    bool dtdx_clipped = (te.dtdx < -3.0 / flen || te.dtdx > 3.0 / flen);
+    double Lw = flen * hTE;
+    double xi0 = state.isol.xi(N);
+    double alpha = 2.0 + flen * dtdx;
+
+    // Step 1: Compute mu_wgap(w) = -lambda_bl^T * R_V_col(4*(N+w)+1)
+    // dR_BL/d(wgap_w) = -dR_BL/d(ds_w) since U.row(1) -= Aux
+    const auto& RV = state.glob.R_V;
+    VectorXd mu_wgap = VectorXd::Zero(Nw);
+    for (int w = 0; w < Nw; ++w) {
+        int col = 4 * (N + w) + 1;  // ds column for wake station w
+        double dot = 0.0;
+        for (SparseMatrixd::InnerIterator it(RV, col); it; ++it) {
+            if (it.row() < 3 * Nsys) {
+                dot += lambda_bl(it.row()) * it.value();
+            }
+        }
+        mu_wgap(w) = -dot;
+    }
+
+    // Step 2: Assemble VJP through d(wgap)/d(foil.x)
+    // Only nodes {0, 1, N-2, N-1} affect hTE and dtdx
+    int te_nodes[] = {0, 1, N - 2, N - 1};
+    for (int k : te_nodes) {
+        for (int dim = 0; dim < 2; ++dim) {
+            double dhTE_k, ddtdx_k;
+            GetTEGapDeriv(state.foil.x, k, dim, dhTE_k, ddtdx_k);
+
+            if (dtdx_clipped) ddtdx_k = 0.0;
+
+            double sum = 0.0;
+            for (int w = 0; w < Nw; ++w) {
+                double xi_wake = state.isol.xi(N + w);
+                double xib = (xi_wake - xi0) / std::max(Lw, 1e-10);
+
+                if (xib >= 0.0 && xib <= 1.0) {
+                    double omxib = 1.0 - xib;
+
+                    // dwgap/dhTE = (1-xib) * (1 + xib + 2*alpha*xib^2)
+                    double dwgap_dhTE =
+                        omxib * (1.0 + xib + 2.0 * alpha * xib * xib);
+
+                    // dwgap/ddtdx = hTE * flen * xib * (1-xib)^2
+                    double dwgap_ddtdx = hTE * flen * xib * omxib * omxib;
+
+                    double dwgap_k =
+                        dwgap_dhTE * dhTE_k + dwgap_ddtdx * ddtdx_k;
+                    sum += mu_wgap(w) * dwgap_k;
+                }
+            }
+            vjp(2 * k + dim) += sum;
+        }
+    }
+
+    return vjp;
+}
+
+// ============================================================================
 // ViscousSensitivities: compute dJ/dx using the viscous adjoint method
 // ============================================================================
 Sensitivity ViscousSensitivities(FoilState& state) {
@@ -2234,7 +2378,10 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         // Stagnation point chain rule: lambda_bl^T * R_x * (dxi/dsstag · dsstag/dx_foil)
         VectorXd vjp_xi = ComputeXiVJP(state, lambda_bl);
 
-        return vjp_bl + vjp_ue + vjp_wake + vjp_xi;
+        // Wake gap chain rule: lambda_bl^T * dR_BL/dwgap * dwgap/dx_foil
+        VectorXd vjp_wgap = ComputeWgapVJP(state, lambda_bl);
+
+        return vjp_bl + vjp_ue + vjp_wake + vjp_xi + vjp_wgap;
     };
 
     VectorXd vjp_cl = computeVJP(lambda_cl);

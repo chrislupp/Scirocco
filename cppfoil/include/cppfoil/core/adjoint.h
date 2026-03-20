@@ -107,6 +107,17 @@ VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue);
 //   VJP vector [2*N] in foil.x space
 VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl);
 
+// Compute VJP of wake gap (wgap) through BL residual.
+// Returns lambda_bl^T * dR_BL/d(wgap) * d(wgap)/d(foil.x)
+// The BL residual subtracts wgap from delta* at wake stations;
+// wgap depends on foil.x through hTE and dtdx at TE nodes {0,1,N-2,N-1}.
+// INPUT:
+//   state : FoilState with converged viscous solution
+//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
+// OUTPUT:
+//   VJP vector [2*N] in foil.x space
+VectorXd ComputeWgapVJP(FoilState& state, const VectorXd& lambda_bl);
+
 // Compute d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) analytically
 void GetTEInfoDerivPublic(const MatrixXd& x, int k, int dim,
                            double& dtcp, double& dtdp);
