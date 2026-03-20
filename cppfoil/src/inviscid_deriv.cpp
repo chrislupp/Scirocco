@@ -130,7 +130,7 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
             sens(2 * i + 1) += lam_i * deriv.val_xi(1) * sigma_factor;
 
             // Xj derivatives for TE panel: Xj = [N-1, 0]
-            // Note: we ignore dtcp/dx here (second-order effect for small TE gaps)
+            // (dtcp/dx and dtdp/dx are handled separately in section (5) below)
             sens(2 * (N - 1)) += lam_i * deriv.val_Xj(0) * sigma_factor;
             sens(2 * (N - 1) + 1) += lam_i * deriv.val_Xj(1) * sigma_factor;
             sens(0) += lam_i * deriv.val_Xj(2) * sigma_factor;
