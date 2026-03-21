@@ -62,6 +62,17 @@ if(CPPFOIL_BUILD_TESTS)
             MFOIL_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/mfoil_reference.h5"
         )
         gtest_discover_tests(cppfoil_tests)
+
+        # Sensitivity reference tests: adjoint vs complex-step HDF5 reference data
+        add_executable(cppfoil_sensitivity_ref_tests
+            tests/sensitivity_reference_test.cpp
+        )
+        target_link_libraries(cppfoil_sensitivity_ref_tests
+            cppfoil GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(cppfoil_sensitivity_ref_tests PRIVATE
+            SENSITIVITY_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/sensitivity_reference.h5"
+        )
+        gtest_discover_tests(cppfoil_sensitivity_ref_tests)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests
