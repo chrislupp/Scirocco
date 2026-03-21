@@ -41,6 +41,15 @@
 
 namespace cppfoil {
 
+void RecomputeArcLength(FoilState& state) {
+    int N = state.foil.N;
+    state.foil.s(0) = 0.0;
+    for (int i = 1; i < N; ++i) {
+        state.foil.s(i) = state.foil.s(i - 1) +
+                           (state.foil.x.col(i) - state.foil.x.col(i - 1)).norm();
+    }
+}
+
 void StagPointFind(FoilState& state) {
     int N = state.foil.N;
     const VectorXd& gam = state.isol.gam;
@@ -89,9 +98,8 @@ void StagPointFind(FoilState& state) {
     state.isol.xstag = w1 * state.foil.x.col(i0) + w2 * state.foil.x.col(i1);
 
     // Linearization of sstag w.r.t. adjacent gammas
-    double st_g1 = g1 * (s0 - s1) / (denom * denom);
-    state.isol.sstag_g(0) = st_g1;
-    state.isol.sstag_g(1) = -st_g1;
+    state.isol.sstag_g(0) = g1 * (s0 - s1) / (denom * denom);
+    state.isol.sstag_g(1) = -g0 * (s0 - s1) / (denom * denom);
 
     // Set sign of edge velocity: negative on lower (i < j), positive on upper
     // (i >= j)
