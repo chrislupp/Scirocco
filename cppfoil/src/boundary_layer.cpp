@@ -610,7 +610,7 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                  Clag * (cteq_U - ald * saa_U) * dx - 2.0 * de_U * salog -
                  2.0 * de * salog_U + 2.0 * de_U * (uq * dx - uelog) * Cuq +
                  2.0 * de * (uq_U * dx - uelog_U) * Cuq;
-        Rlag_x = Clag * (cteq - ald * saa) * dx_x + 2.0 * de * uq * dx_x * Cuq;
+        Rlag_x = Clag * (cteq - ald * saa) * dx_x + 2.0 * de * uq * dx_x;
     } else {
         // Laminar: amplification factor equation
         if (param.simi) {
