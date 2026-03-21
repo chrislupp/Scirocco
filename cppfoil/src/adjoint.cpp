@@ -38,6 +38,7 @@
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/inviscid_deriv.h"
+#include "cppfoil/core/panel_influence.h"
 #include "cppfoil/core/panel_influence_deriv.h"
 #include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
@@ -344,6 +345,51 @@ static void PanelVelocityVJP(const FoilState& state, const Vector2d& xi,
                 vjp(2 * kk + dim) += mu_V.dot(dV);
             }
         }
+    }
+}
+
+// VelocityGammaVJP: VJP of inviscid velocity w.r.t. gamma (circulation)
+// at a fixed evaluation point xi and fixed panel geometry.
+// Given mu_V (adjoint of velocity at xi), accumulates into d_gam [N+1].
+// This is the transpose of: V(xi) = Σ_j [a_j*gam(j) + b_j*gam(j+1)] + TE terms
+static void VelocityGammaVJP(const FoilState& state, const Vector2d& xi,
+                               const Vector2d& mu_V, const TEInfo& te,
+                               VectorXd& d_gam) {
+    int N = state.foil.N;
+
+    // Linear vortex panels: V += a * gam(j) + b * gam(j+1)
+    for (int j = 0; j < N - 1; ++j) {
+        Matrix2d Xj;
+        Xj.col(0) = state.foil.x.col(j);
+        Xj.col(1) = state.foil.x.col(j + 1);
+        Vector2d a, b;
+        PanelLinVortexVelocity(Xj, xi, nullptr, false, a, b);
+        d_gam(j) += mu_V.dot(a);
+        d_gam(j + 1) += mu_V.dot(b);
+    }
+
+    // TE source panel: V += v_src * 0.5 * tcp * (gam(N-1) - gam(0))
+    {
+        Matrix2d XjTE;
+        XjTE.col(0) = state.foil.x.col(N - 1);
+        XjTE.col(1) = state.foil.x.col(0);
+        Vector2d v_src = PanelConstSourceVelocity(XjTE, xi, nullptr);
+        double d_sigma = mu_V.dot(v_src);
+        d_gam(N - 1) += d_sigma * 0.5 * te.tcp;
+        d_gam(0) -= d_sigma * 0.5 * te.tcp;
+    }
+
+    // TE vortex panel: V += (a+b) * 0.5 * tdp * (gam(0) - gam(N-1))
+    {
+        Matrix2d XjTE;
+        XjTE.col(0) = state.foil.x.col(N - 1);
+        XjTE.col(1) = state.foil.x.col(0);
+        Vector2d a_vor, b_vor;
+        PanelLinVortexVelocity(XjTE, xi, nullptr, false, a_vor, b_vor);
+        Vector2d f_vor = a_vor + b_vor;
+        double d_gam_te = mu_V.dot(f_vor);
+        d_gam(0) += d_gam_te * 0.5 * te.tdp;
+        d_gam(N - 1) -= d_gam_te * 0.5 * te.tdp;
     }
 }
 
@@ -716,13 +762,15 @@ VectorXd ComputeArcLengthVJP(const FoilState& state,
     int I1 = state.isol.Istag[1];
 
     // Stagnation interpolation weights: sstag = w1*s(I0) + w2*s(I1)
-    // At convergence, StagPointMove uses ue-based weights (not gamma-based):
-    //   w1 = ue(I1) / (ue(I0) + ue(I1)),  w2 = ue(I0) / (ue(I0) + ue(I1))
-    double ue0 = state.glob.U(3, I0);
-    double ue1 = state.glob.U(3, I1);
-    double denom = ue0 + ue1;
-    double w1 = ue1 / denom;  // weight on s(I0)
-    double w2 = ue0 / denom;  // weight on s(I1)
+    // Use StagPointFind (gamma-based) weights, matching mfoil's residual
+    // evaluation which calls stagpoint_find to locate sstag from gamma.
+    // StagPointFind: sstag = (g1*s0 - g0*s1) / (g1 - g0)
+    //   dsstag/ds(I0) = g1/(g1-g0),  dsstag/ds(I1) = -g0/(g1-g0)
+    double g0 = state.isol.gam(I0);
+    double g1 = state.isol.gam(I1);
+    double denom = g1 - g0;
+    double w1 = g1 / denom;   // weight on s(I0)
+    double w2 = -g0 / denom;  // weight on s(I1)
 
     // dxi(i)/ds(j) = sgnue(i) * [delta_{ij} - w1*delta_{j,I0} - w2*delta_{j,I1}]
     // dxi(N+w)/ds(j) = delta_{j,N-1} - w1*delta_{j,I0} - w2*delta_{j,I1}
@@ -1704,6 +1752,10 @@ static VectorXd ComputeWakeGeomVJPImpl(FoilState& state,
 
     if (Nw <= 0) return vjp;
 
+    // Gamma adjoint: accumulated during backward sweep to capture
+    // foil.x → AIC → gamma → velocity → wake streamline chain
+    VectorXd d_gam = VectorXd::Zero(N + 1);
+
     // Extract wake portion of lambda_ue
     VectorXd lam_w = lambda_ue.tail(Nw);
 
@@ -2442,8 +2494,9 @@ static VectorXd ComputeWakeGeomVJPImpl(FoilState& state,
         Matrix2d G1 = VelocityGradient(state, x1_pred, te_wake);
         Vector2d mu_x1pred = G1.transpose() * mu_V1;
 
-        // V1 panel geometry VJP
+        // V1 panel geometry VJP + gamma chain
         PanelVelocityVJP(state, x1_pred, mu_V1, te_wake, vjp);
+        VelocityGammaVJP(state, x1_pred, mu_V1, te_wake, d_gam);
 
         // From x1_pred = x0 + ds * t0:
         mu_x.col(i - 1) += mu_x1pred;    // direct x0 dependence
@@ -2456,8 +2509,9 @@ static VectorXd ComputeWakeGeomVJPImpl(FoilState& state,
         Matrix2d G0 = VelocityGradient(state, x0, te_wake);
         mu_x.col(i - 1) += G0.transpose() * mu_V0;
 
-        // V0 panel geometry VJP
+        // V0 panel geometry VJP + gamma chain
         PanelVelocityVJP(state, x0, mu_V0, te_wake, vjp);
+        VelocityGammaVJP(state, x0, mu_V0, te_wake, d_gam);
     }
 
     // Handle wake.t[0]: computed separately as V(wake.x[0])/|V(wake.x[0])|
@@ -2477,8 +2531,9 @@ static VectorXd ComputeWakeGeomVJPImpl(FoilState& state,
         Matrix2d Gt = VelocityGradient(state, x0, te_wake);
         mu_x.col(0) += Gt.transpose() * mu_Vt;
 
-        // Panel geometry VJP
+        // Panel geometry VJP + gamma chain
         PanelVelocityVJP(state, x0, mu_Vt, te_wake, vjp);
+        VelocityGammaVJP(state, x0, mu_Vt, te_wake, d_gam);
     }
 
     // TE initial point: wake.x[0] = 0.5*(foil.x[0]+foil.x[N-1]) + eps*t_te
@@ -2501,6 +2556,16 @@ static VectorXd ComputeWakeGeomVJPImpl(FoilState& state,
         vjp(1) += mu0.dot(dwx0_dxy1.col(1));
         vjp(2 * (N - 1)) += mu0.dot(dwx0_dxyN.col(0));
         vjp(2 * (N - 1) + 1) += mu0.dot(dwx0_dxyN.col(1));
+    }
+
+    // Wake-gamma chain: foil.x → AIC → gamma → velocity → wake streamline
+    // d_gam accumulated from all velocity evaluations in the backward sweep.
+    // Sign: dgam/dx = -AIC^{-1} * d(A*gam-rhs)/dx, so the VJP contribution
+    // to lambda^T * dR/dx is -mu^T * d(A*gam-rhs)/dx
+    if (d_gam.squaredNorm() > 1e-40) {
+        MatrixXd AIC_T = state.isol.AIC.transpose();
+        VectorXd mu_gam = AIC_T.partialPivLu().solve(d_gam);
+        vjp -= AICResidualSensVJP(state, mu_gam, alpha);
     }
 
     return vjp;
@@ -2584,7 +2649,9 @@ VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl) {
     VectorXd mu = AIC_T.partialPivLu().solve(d);
 
     // Compute VJP through AIC residual
-    vjp = AICResidualSensVJP(state, mu, alpha);
+    // Sign: dgam/dx = -AIC^{-1} * d(A*gam-rhs)/dx, so the VJP contribution
+    // to lambda^T * dR/dx is -mu^T * d(A*gam-rhs)/dx
+    vjp = -AICResidualSensVJP(state, mu, alpha);
 
     return vjp;
 }
