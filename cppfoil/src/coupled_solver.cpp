@@ -102,9 +102,20 @@ void SolveViscous(FoilState& state) {
     // Solve coupled system
     SolveCoupled(state);
 
-    // Store LU factorization for adjoint solves
     if (state.glob.conv) {
+        // Store LU factorization from the converged Newton system (ue-based xi)
         StoreAdjointFactorization(state);
+
+        // Rebuild R_x at gamma-based xi (matching mfoil's CS reference).
+        // mfoil's extract script calls stagpoint_find (gamma-based) before
+        // evaluating the residual, so the CS dR_BL/dx is at gamma-based xi.
+        // The adjoint lambda uses the ue-based R_V (stored above), but the
+        // VJP chains (R_x, wgap) must use gamma-based xi for consistency.
+        StagPointFind(state);
+        ExtendXiToWake(state);
+        SetWakeGap(state);
+        state.glob.realloc = true;
+        BuildGlobSys(state);
     }
 
     // Calculate forces
@@ -274,6 +285,15 @@ void BuildGlobSys(FoilState& state) {
                             triplets_U.emplace_back(Ig + k, 4 * J[1] + c,
                                                     -stag.Ust_U(k, c + 4));
                     }
+                }
+                // d/dx[J] (matching mfoil: R_x[Ig, J] = -Ust_x[0:3,:])
+                for (int k = 0; k < 3; ++k) {
+                    if (std::abs(stag.Ust_x(k, 0)) > 1e-15)
+                        triplets_x.emplace_back(Ig + k, J[0],
+                                                -stag.Ust_x(k, 0));
+                    if (std::abs(stag.Ust_x(k, 1)) > 1e-15)
+                        triplets_x.emplace_back(Ig + k, J[1],
+                                                -stag.Ust_x(k, 1));
                 }
             }
         } else {

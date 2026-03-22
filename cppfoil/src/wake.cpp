@@ -54,18 +54,11 @@ void StagPointFind(FoilState& state) {
     int N = state.foil.N;
     const VectorXd& gam = state.isol.gam;
 
-    // Find first index j where gamma becomes positive (matching mfoil)
-    // Use a tolerance for near-zero values to handle numerical precision
-    // (at the stagnation point, gamma should be exactly zero but numerics give
-    // ~1e-13)
-    constexpr double gam_tol = 1e-10;
-
+    // Find first index j where gamma becomes positive (matching mfoil exactly)
+    // mfoil uses strict > 0 check
     int j = 0;
     for (; j < N; ++j) {
-        // Treat values within tolerance of zero as effectively positive
-        // This handles cases where gamma at stagnation is ~1e-13 due to
-        // numerics
-        if (gam(j) > -gam_tol) break;
+        if (gam(j) > 0) break;
     }
 
     if (j == 0 || j >= N) {
@@ -112,12 +105,8 @@ void StagPointFind(FoilState& state) {
         }
     }
 
-    // Linearization of sstag w.r.t. edge velocity (ue)
-    // ga_ue = dgamma/due = sign(gam) for inviscid
-    double ga_ue0 = (std::abs(g0) > 1e-12) ? g0 / std::abs(g0) : 0.0;
-    double ga_ue1 = (std::abs(g1) > 1e-12) ? g1 / std::abs(g1) : 0.0;
-    state.isol.sstag_ue(0) = state.isol.sstag_g(0) * ga_ue0;
-    state.isol.sstag_ue(1) = state.isol.sstag_g(1) * ga_ue1;
+    // NOTE: sstag_ue is NOT computed here (matching mfoil).
+    // It is set later by StagPointMove during viscous iterations.
 
     // Compute xi (distance from stagnation point) for foil points only
     // Wake points will be added after BuildWake is called
@@ -234,47 +223,37 @@ void BuildWake(FoilState& state) {
     double alpha = state.oper.alpha;
 
     // Generate wake points via predictor-corrector streamline tracing
-    for (int i = 1; i < Nw; ++i) {
-        Vector2d x0 = state.wake.x.col(i - 1);
-        double ds = sv(i) - sv(i - 1);  // Distance to next point
+    // Matching mfoil exactly: loop over i=0..Nw-2, storing tw[:,i]=v1
+    // (predictor velocity at point i) and tw[:,i+1]=v2 (corrector velocity
+    // at predicted point i+1). tw[:,i+1] gets overwritten in the next
+    // iteration except for the last point.
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds = sv(i + 1) - sv(i);
 
-        // Predictor: velocity at current point
+        // v1 = velocity at current point, normalized
         Vector2d V0 =
-            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x0);
+            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha,
+                             state.wake.x.col(i));
         double V0mag = V0.norm();
         if (V0mag < 1e-10) V0mag = 1e-10;
-        Vector2d t0 = V0 / V0mag;
+        Vector2d v1 = V0 / V0mag;
+        state.wake.t.col(i) = v1;
 
         // Predictor step
-        Vector2d x1_pred = x0 + ds * t0;
+        Vector2d x_pred = state.wake.x.col(i) + ds * v1;
 
-        // Corrector: velocity at predicted point
+        // v2 = velocity at predicted point, normalized
         Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
-                                       alpha, x1_pred);
+                                       alpha, x_pred);
         double V1mag = V1.norm();
         if (V1mag < 1e-10) V1mag = 1e-10;
-        Vector2d t1 = V1 / V1mag;
+        Vector2d v2 = V1 / V1mag;
+        state.wake.t.col(i + 1) = v2;
 
-        // Corrector step (average tangent)
-        Vector2d t_avg = 0.5 * (t0 + t1);
-        double tmag = t_avg.norm();
-        if (tmag < 1e-10) tmag = 1e-10;
-        t_avg /= tmag;
-
-        state.wake.x.col(i) = x0 + ds * t_avg;
-        state.wake.t.col(i - 1) = t_avg;
+        // Corrector step (no renormalization of average, matching mfoil)
+        state.wake.x.col(i + 1) =
+            state.wake.x.col(i) + ds * 0.5 * (v1 + v2);
     }
-
-    // First tangent (same as first computed tangent)
-    {
-        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
-                                       alpha, state.wake.x.col(0));
-        double V0mag = V0.norm();
-        if (V0mag < 1e-10) V0mag = 1e-10;
-        state.wake.t.col(0) = V0 / V0mag;
-    }
-    // Last tangent
-    state.wake.t.col(Nw - 1) = state.wake.t.col(Nw - 2);
 
     // Compute wake inviscid edge velocities
     state.isol.uewi.resize(Nw);

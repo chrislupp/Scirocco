@@ -791,7 +791,12 @@ VectorXd ComputeArcLengthVJP(const FoilState& state,
     }
     q(I0) -= w1 * sstag_coeff;
     q(I1) -= w2 * sstag_coeff;
-    q(N - 1) += c_wake_sum;  // wake.s(0) = foil.s(N-1)
+    // NOTE: No q(N-1) += c_wake_sum here. In mfoil, wake.s is pre-computed by
+    // build_wake and NOT updated when foil.x changes. The xi at wake stations
+    // (xi_wake = wake.s - sstag) only changes through sstag, which is already
+    // captured by the sstag_coeff terms above. The direct s(N-1)→wake.s chain
+    // is absent because stagpoint_find (which sets xi) is called before
+    // build_wake in mfoil's residual evaluation.
 
     // =====================================================================
     // Chain 2: sigma_m chain — lambda_ue^T * dR_ue/ds
@@ -857,22 +862,6 @@ VectorXd ComputeArcLengthVJP(const FoilState& state,
         }
 
         q(k) += fk;
-    }
-
-    // Debug: print q(k) and its xi/sigma components at key nodes
-    {
-        int dbg_nodes[] = {20, 47, 48, 50, 80};
-        for (int kk : dbg_nodes) {
-            if (kk >= N) continue;
-            // Recompute xi-only and sigma-only contributions
-            double q_xi = c(kk) * state.isol.sgnue(kk);
-            if (kk == I0) q_xi -= w1 * sstag_coeff;
-            if (kk == I1) q_xi -= w2 * sstag_coeff;
-            if (kk == N - 1) q_xi += c_wake_sum;
-            double q_sigma = q(kk) - q_xi;
-            std::fprintf(stderr, "  q(%d) = %.6e  (xi=%.6e  sigma=%.6e)\n",
-                         kk, q(kk), q_xi, q_sigma);
-        }
     }
 
     // =====================================================================
@@ -2640,9 +2629,20 @@ VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl) {
     int I0 = state.isol.Istag[0];
     int I1 = state.isol.Istag[1];
 
+    // Recompute sstag_g from current gamma at Istag nodes, matching what
+    // mfoil's stagpoint_find computes when called in the CS reference.
+    // The stored sstag_g may be stale if alpha changed during viscous solve.
+    double g0 = state.isol.gam(I0);
+    double g1 = state.isol.gam(I1);
+    double denom = g1 - g0;
+    double s0 = state.foil.s(I0);
+    double s1 = state.foil.s(I1);
+    double sstag_g0 = g1 * (s0 - s1) / (denom * denom);
+    double sstag_g1 = -g0 * (s0 - s1) / (denom * denom);
+
     VectorXd d = VectorXd::Zero(N + 1);
-    d(I0) = c * state.isol.sstag_g(0);
-    d(I1) = c * state.isol.sstag_g(1);
+    d(I0) = c * sstag_g0;
+    d(I1) = c * sstag_g1;
 
     // Solve AIC^T * mu = d
     MatrixXd AIC_T = state.isol.AIC.transpose();
