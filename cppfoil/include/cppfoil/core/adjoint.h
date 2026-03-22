@@ -79,7 +79,22 @@ void ReSensitivities(FoilState& state, Sensitivity& sens);
 
 // Compute dxi/dx_foil: sensitivity of arc-length coordinate xi to panel coords
 // Returns sparse matrix [Nsys x 2*N]
+// NOTE: Returns zero; use ComputeArcLengthVJP for the efficient VJP path.
 SparseMatrixd ComputeDxiDxFoil(const FoilState& state);
+
+// Compute VJP through all arc-length chains:
+//   Chain 1: foil.x → foil.s → xi → R_BL (through R_x)
+//   Chain 2: foil.x → foil.s → sigma_m → ue_m → R_ue
+// Uses suffix sums for O(N) complexity.
+// INPUT:
+//   state : FoilState with converged viscous solution
+//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
+//   lambda_ue : Adjoint vector for the ue equation [Nsys]
+// OUTPUT:
+//   VJP vector [2*N] in foil.x space
+VectorXd ComputeArcLengthVJP(const FoilState& state,
+                               const VectorXd& lambda_bl,
+                               const VectorXd& lambda_ue);
 
 // Compute dR_ue/dx_foil: sensitivity of 4th equation to panel coords
 // Returns dense matrix [Nsys x 2*N]
@@ -95,6 +110,11 @@ MatrixXd ComputeDRueDxFoil(FoilState& state);
 // OUTPUT:
 //   VJP vector [2*N] in foil.x space
 VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue);
+
+// Overload that also returns the intermediate wake-space adjoints (mu_x, mu_t)
+// from Steps 1/1b, before the backward sweep. For validation against CS reference.
+VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue,
+                             MatrixXd& mu_x_out, MatrixXd& mu_t_out);
 
 // Compute VJP of stagnation point location through xi coordinate.
 // Returns lambda_bl^T * R_x * (∂xi/∂sstag · dsstag/dx_foil)

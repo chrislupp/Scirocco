@@ -242,6 +242,163 @@ TEST_F(ComprehensiveReferenceTest, ComprehensiveVJPValidation) {
     VectorXd vjp_sigma_cl = ComputeArcLengthVJP(state, VectorXd::Zero(3 * Nsys), lambda_ue_cl);
     VectorXd vjp_sigma_cd = ComputeArcLengthVJP(state, VectorXd::Zero(3 * Nsys), lambda_ue_cd);
 
+    // Compare C++ dRue_dx (from ComputeDRueDxFoil) vs CS dR_ue_dx at EVERY node
+    {
+        std::cout << "\n=== dRue_dx: C++ ComputeDRueDxFoil vs CS (every node) ===" << std::endl;
+        double worst_rel = 0;
+        int worst_k = -1, worst_d = -1, worst_row = -1;
+        int nfail_drue = 0;
+        for (int k = 0; k < N; ++k) {
+            for (int dim = 0; dim < 2; ++dim) {
+                int xidx = 2*k + dim;
+                for (int j = 0; j < Nsys; ++j) {
+                    double cpp_val = dRue_dx(j, xidx);
+                    double cs_val = dR_ue_dx_buf[idx3(j, dim, k, 2, N)];
+                    double err = std::abs(cpp_val - cs_val);
+                    double mag = std::max(std::abs(cs_val), 1e-10);
+                    double rel = err / mag;
+                    if (rel > worst_rel) {
+                        worst_rel = rel;
+                        worst_k = k; worst_d = dim; worst_row = j;
+                    }
+                    if (rel > 1e-3) nfail_drue++;
+                }
+            }
+        }
+        std::cout << "  dRue_dx entries >0.1% error: " << nfail_drue
+                  << "/" << Nsys*2*N << std::endl;
+        std::cout << "  worst: rel=" << worst_rel
+                  << " at k=" << worst_k << " d=" << worst_d
+                  << " row=" << worst_row << std::endl;
+
+        // NOTE: CS total dR_ue/dx includes wake geom + sigma_m chains that
+        // ComputeDRueDxFoil does NOT. So discrepancies are EXPECTED.
+        // The interesting comparison: does (dRuedx + sigma + wake) match CS total?
+        // Check total VJP per design variable:
+        std::cout << "\n=== Total ue VJP: cpp (aic+sigma+wake) vs CS ===" << std::endl;
+        int nfail_ue_vjp = 0;
+        double worst_ue_vjp = 0;
+        int worst_ue_k = -1, worst_ue_d = -1;
+        for (int k = 0; k < N; ++k) {
+            for (int dim = 0; dim < 2; ++dim) {
+                int idx = 2*k + dim;
+                double cpp_ue = vjp_sigma_cl(idx) + vjp_ue_cl(idx) + vjp_wake_cl(idx);
+                double cs_ue = 0;
+                for (int j = 0; j < Nsys; ++j)
+                    cs_ue += lambda_ue_cl(j) * dR_ue_dx_buf[idx3(j, dim, k, 2, N)];
+                double err = std::abs(cpp_ue - cs_ue);
+                double mag = std::max(std::abs(cs_ue), 1e-10);
+                double rel = err / mag;
+                if (rel > 1e-4) nfail_ue_vjp++;
+                if (rel > worst_ue_vjp) {
+                    worst_ue_vjp = rel;
+                    worst_ue_k = k; worst_ue_d = dim;
+                }
+            }
+        }
+        std::cout << "  ue VJP failures (>0.01%): " << nfail_ue_vjp
+                  << "/" << 2*N << std::endl;
+        std::cout << "  worst: rel=" << worst_ue_vjp
+                  << " at k=" << worst_ue_k << " d=" << worst_ue_d << std::endl;
+
+        // Same for BL VJP
+        std::cout << "\n=== Total BL VJP: cpp (xi+wgap+xichain) vs CS ===" << std::endl;
+        int nfail_bl_vjp = 0;
+        double worst_bl_vjp = 0;
+        int worst_bl_k = -1, worst_bl_d = -1;
+        for (int k = 0; k < N; ++k) {
+            for (int dim = 0; dim < 2; ++dim) {
+                int idx = 2*k + dim;
+                double cpp_bl = vjp_xi_cl(idx) + vjp_wgap_cl(idx) + vjp_xichain_cl(idx);
+                double cs_bl = 0;
+                for (int j = 0; j < 3*Nsys; ++j)
+                    cs_bl += lambda_bl_cl(j) * dR_BL_dx_buf[idx3(j, dim, k, 2, N)];
+                double err = std::abs(cpp_bl - cs_bl);
+                double mag = std::max(std::abs(cs_bl), 1e-10);
+                double rel = err / mag;
+                if (rel > 1e-4) nfail_bl_vjp++;
+                if (rel > worst_bl_vjp) {
+                    worst_bl_vjp = rel;
+                    worst_bl_k = k; worst_bl_d = dim;
+                }
+            }
+        }
+        std::cout << "  BL VJP failures (>0.01%): " << nfail_bl_vjp
+                  << "/" << 2*N << std::endl;
+        std::cout << "  worst: rel=" << worst_bl_vjp
+                  << " at k=" << worst_bl_k << " d=" << worst_bl_d << std::endl;
+        // Print all BL failures >1%
+        std::cout << "  BL VJP errors >1%:" << std::endl;
+        for (int k = 0; k < N; ++k) {
+            for (int dim = 0; dim < 2; ++dim) {
+                int idx = 2*k + dim;
+                double cpp_bl = vjp_xi_cl(idx) + vjp_wgap_cl(idx) + vjp_xichain_cl(idx);
+                double cs_bl = 0;
+                for (int j = 0; j < 3*Nsys; ++j)
+                    cs_bl += lambda_bl_cl(j) * dR_BL_dx_buf[idx3(j, dim, k, 2, N)];
+                double err = std::abs(cpp_bl - cs_bl);
+                double mag = std::max(std::abs(cs_bl), 1e-10);
+                double rel = err / mag;
+                if (rel > 0.01) {
+                    std::cout << "    k=" << k << " d=" << dim
+                              << " cpp=" << cpp_bl << " cs=" << cs_bl
+                              << " rel=" << rel << std::endl;
+                }
+            }
+        }
+    }
+
+    // Validate ComputeXiVJP: load CS dsstag_gamma reference
+    // ComputeXiVJP returns vjp[2k+d] = c * dsstag_gamma[d,k]
+    // where c = lambda_bl^T * R_x * dxi/dsstag (scalar, same for all design vars)
+    // So vjp / c should equal dsstag_gamma at each design variable.
+    {
+        // Compute c for cl
+        VectorXd dxi_dsstag = VectorXd::Zero(Nsys);
+        for (int i = 0; i < N; ++i)
+            dxi_dsstag(i) = -state.isol.sgnue(i);
+        for (int i = 0; i < state.wake.N; ++i)
+            dxi_dsstag(N + i) = -1.0;
+        double c_cl = lambda_bl_cl.dot(state.glob.R_x * dxi_dsstag);
+
+        std::cout << "\n=== ComputeXiVJP validation ===" << std::endl;
+        std::cout << "  c_cl = " << c_cl << std::endl;
+
+        // Compute effective dsstag from C++ xichain VJP
+        // vjp_xichain_cl[2k+d] / c_cl should equal dsstag_gamma_CS[d,k]
+        // Print a sample
+        // Dump c = R_x^T * lambda_bl for comparison with mfoil
+        {
+            VectorXd c_cpp = state.glob.R_x.transpose() * lambda_bl_cl;
+            FILE* fp_c = std::fopen("c_Rx_cpp.bin", "wb");
+            if (fp_c) {
+                std::fwrite(c_cpp.data(), sizeof(double), c_cpp.size(), fp_c);
+                std::fclose(fp_c);
+                std::cout << "  Wrote c_Rx_cpp.bin [" << c_cpp.size() << " doubles]" << std::endl;
+            }
+        }
+
+        // Compare C++ dsstag vs CS reference at EVERY node
+        // Load CS reference from numpy file
+        // Since we can't easily load .npy in C++, compute CS dsstag from
+        // the HDF5 dR_BL_dx: dsstag_gamma = (full_dxi - s_only_dxi) implied
+        // Actually, use the xichain VJP directly: check vjp_xichain / c against
+        // the known structure.
+        // For now, dump ALL values so Python can compare.
+        FILE* fp_dsstag = std::fopen("dsstag_cpp.bin", "wb");
+        if (fp_dsstag) {
+            for (int kk = 0; kk < N; ++kk) {
+                for (int dd = 0; dd < 2; ++dd) {
+                    double vjp_val = vjp_xichain_cl(2*kk + dd);
+                    double dsstag_cpp = (std::abs(c_cl) > 1e-30) ? vjp_val / c_cl : 0.0;
+                    std::fwrite(&dsstag_cpp, sizeof(double), 1, fp_dsstag);
+                }
+            }
+            std::fclose(fp_dsstag);
+            std::cout << "  Wrote dsstag_cpp.bin [" << 2*N << " doubles]" << std::endl;
+        }
+    }
+
     // Total C++ VJP
     VectorXd vjp_total_cl = vjp_bl_cl + vjp_ue_cl + vjp_wake_cl + vjp_wgap_cl + vjp_xichain_cl;
     VectorXd vjp_total_cd = vjp_bl_cd + vjp_ue_cd + vjp_wake_cd + vjp_wgap_cd + vjp_xichain_cd;

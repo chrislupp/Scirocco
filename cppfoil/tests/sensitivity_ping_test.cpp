@@ -801,6 +801,22 @@ TEST_F(SensitivityPingTest, WakeGeomVJPVerification) {
             state.wake.t = new_wake_t;
             state.wake.s = new_wake_s;
             state.isol.xi = new_xi;
+            // Recompute uewiref with BASE foil.x at new wake positions.
+            // BuildWake computed uewiref with perturbed foil.x — we need to
+            // redo it with base foil.x to isolate the wake-only chain.
+            {
+                double Vinf_val = state.oper.Vinf;
+                for (int iw = 0; iw < Nw; ++iw) {
+                    Vector2d xi_w = state.wake.x.col(iw);
+                    Vector2d ti_w = state.wake.t.col(iw);
+                    Vector2d V0 = InviscidVelocity(state.foil.x,
+                        state.isol.gamref.col(0), Vinf_val, 0.0, xi_w);
+                    Vector2d V90 = InviscidVelocity(state.foil.x,
+                        state.isol.gamref.col(1), Vinf_val, 90.0, xi_w);
+                    state.isol.uewiref(iw, 0) = V0.dot(ti_w);
+                    state.isol.uewiref(iw, 1) = V90.dot(ti_w);
+                }
+            }
             CalcUeM(state);  // Uses base foil panels but new wake geometry
 
             VectorXd ueinv_wake = GetUeInv(state);

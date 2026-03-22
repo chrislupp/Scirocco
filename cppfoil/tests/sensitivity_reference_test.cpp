@@ -313,6 +313,74 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     CalcForce(state);
     auto sens = ViscousSensitivities(state);
 
+    // --- Diagnostic: compare vjp_ue against CS reference ---
+    {
+        std::string vjp_file =
+            std::string(SENSITIVITY_REFERENCE_FILE).substr(
+                0, std::string(SENSITIVITY_REFERENCE_FILE).rfind('/')) +
+            "/vjp_chain_reference.h5";
+        try {
+            H5::H5File vf(vjp_file, H5F_ACC_RDONLY);
+            auto vjp_nodes = readIntVector(vf, "vjp_chain/test_nodes");
+
+            // Read dRue_dx [Nsys, 2, ntest]
+            int Nsys = state.glob.Nsys;
+            int ntest = vjp_nodes.size();
+            H5::DataSet ds = vf.openDataSet("vjp_chain/dRue_dx_fixed_wake");
+            std::vector<double> buf(Nsys * 2 * ntest);
+            ds.read(buf.data(), H5::PredType::NATIVE_DOUBLE);
+
+            // Compute lambda_ue for cl and cd
+            CalcForceLin(state);
+            CalcCdLin(state);
+            VectorXd dcl_dV = VectorXd::Zero(4 * Nsys);
+            VectorXd dcd_dV = state.post.cd_V;
+            for (int i = 0; i < state.foil.N; ++i) {
+                dcl_dV(4 * i + 3) = state.post.cl_ue(i);
+            }
+            auto& lu = *state.glob.lu_factorization;
+            VectorXd lam_cl = lu.transpose().solve(dcl_dV);
+            VectorXd lam_cd = lu.transpose().solve(dcd_dV);
+            VectorXd lam_ue_cl = lam_cl.tail(Nsys);
+            VectorXd lam_ue_cd = lam_cd.tail(Nsys);
+
+            // Also compute C++ vjp_ue directly
+            MatrixXd dRue_dx_cpp = ComputeDRueDxFoil(state);
+
+            std::cout << "VJP_ue comparison (C++ vs CS*lambda):" << std::endl;
+            for (int ki = 0; ki < ntest; ++ki) {
+                int k = vjp_nodes[ki];
+                for (int dim = 0; dim < 2; ++dim) {
+                    // CS reference: contract dRue_CS with lambda_ue
+                    double vjp_ue_cs_cl = 0, vjp_ue_cs_cd = 0;
+                    for (int j = 0; j < Nsys; ++j) {
+                        int idx = j * (2 * ntest) + dim * ntest + ki;
+                        vjp_ue_cs_cl += lam_ue_cl(j) * buf[idx];
+                        vjp_ue_cs_cd += lam_ue_cd(j) * buf[idx];
+                    }
+                    // C++ vjp_ue
+                    double vjp_ue_cpp_cl =
+                        dRue_dx_cpp.col(2 * k + dim).dot(lam_ue_cl);
+                    double vjp_ue_cpp_cd =
+                        dRue_dx_cpp.col(2 * k + dim).dot(lam_ue_cd);
+
+                    std::cout << "  k=" << k << " d=" << dim
+                              << " cl: cpp=" << vjp_ue_cpp_cl
+                              << " cs=" << vjp_ue_cs_cl
+                              << " diff=" << vjp_ue_cpp_cl - vjp_ue_cs_cl
+                              << " | cd: cpp=" << vjp_ue_cpp_cd
+                              << " cs=" << vjp_ue_cs_cd
+                              << " diff=" << vjp_ue_cpp_cd - vjp_ue_cs_cd
+                              << std::endl;
+                }
+            }
+            vf.close();
+        } catch (...) {
+            std::cout << "vjp_chain_reference.h5 not found, skipping VJP_ue check"
+                      << std::endl;
+        }
+    }
+
     // Verify base solution consistency
     double cl_err = std::abs(state.post.cl - cl_ref) /
                     std::max(std::abs(cl_ref), 1e-10);
@@ -481,4 +549,197 @@ TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
     EXPECT_LT(rel_cl, TOL_VISC_SCALAR) << "dcl/dRe viscous";
     EXPECT_LT(rel_cd, TOL_VISC_SCALAR) << "dcd/dRe viscous";
     EXPECT_LT(rel_cm, TOL_VISC_SCALAR) << "dcm/dRe viscous";
+}
+
+// ===========================================================================
+// Wake Geometry Intermediate Validation
+//   Validates mu_x/mu_t (Steps 1/1b) against CS reference dRue/dwake data.
+//   Same case: NACA 0012, 100 panels, alpha=3, Re=1e6
+// ===========================================================================
+TEST_F(SensitivityReferenceTest, WakeGeomIntermediates) {
+    // Load CS wake geometry reference
+    H5::H5File wg_file(
+        std::string(SENSITIVITY_REFERENCE_FILE).substr(
+            0, std::string(SENSITIVITY_REFERENCE_FILE).rfind('/')) +
+            "/wake_geom_reference.h5",
+        H5F_ACC_RDONLY);
+
+    // Read dRue/dwake_x [Nsys, 2, Nw] and dRue/dwake_t [Nsys, 2, Nw]
+    // NumPy stores row-major: index [j, d, i] at offset j*(2*Nw) + d*Nw + i
+    auto read3D = [&](const std::string& path, int d0, int d1, int d2)
+        -> std::vector<double> {
+        H5::DataSet ds = wg_file.openDataSet(path);
+        std::vector<double> buf(d0 * d1 * d2);
+        ds.read(buf.data(), H5::PredType::NATIVE_DOUBLE);
+        return buf;
+    };
+
+    // Solve same case
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    if (!foil.IsConverged()) {
+        GTEST_SKIP() << "Viscous solver did not converge";
+    }
+
+    auto& state = foil.GetState();
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = state.glob.Nsys;
+
+    std::cout << "WakeGeomIntermediates: N=" << N << " Nw=" << Nw
+              << " Nsys=" << Nsys << std::endl;
+
+    // Compare full state against mfoil reference
+    {
+        MatrixXd U_ref = readMatrix(wg_file, "wake_geom/U_full");
+        VectorXd gam_ref = readVector(wg_file, "wake_geom/gam");
+        VectorXd s_ref = readVector(wg_file, "wake_geom/foil_s");
+
+        // U state: [4 x Nsys]
+        double U_err = 0.0;
+        int worst_r = -1, worst_i = -1;
+        for (int i = 0; i < Nsys; ++i) {
+            for (int r = 0; r < 4; ++r) {
+                double ref = U_ref(r, i);
+                double cpp = state.glob.U(r, i);
+                double rel = std::abs(ref - cpp) / std::max(std::abs(ref), 1e-15);
+                if (rel > U_err) { U_err = rel; worst_r = r; worst_i = i; }
+            }
+        }
+        std::cout << "  max |U| rel_err = " << U_err
+                  << " at row=" << worst_r << " col=" << worst_i
+                  << " ref=" << U_ref(worst_r, worst_i)
+                  << " cpp=" << state.glob.U(worst_r, worst_i) << std::endl;
+        // Per-row max relative error (skip row 2 near-zero values)
+        const char* row_names[] = {"th", "ds", "sa", "ue"};
+        for (int r = 0; r < 4; ++r) {
+            double max_rel = 0.0;
+            int max_i = -1;
+            for (int i = 0; i < Nsys; ++i) {
+                double ref = U_ref(r, i);
+                double cpp = state.glob.U(r, i);
+                double denom = std::max(std::abs(ref), (r == 2) ? 1e-6 : 1e-15);
+                double rel = std::abs(ref - cpp) / denom;
+                if (rel > max_rel) { max_rel = rel; max_i = i; }
+            }
+            std::cout << "  U row " << row_names[r]
+                      << ": max_rel=" << max_rel << " at i=" << max_i
+                      << " ref=" << U_ref(r, max_i)
+                      << " cpp=" << state.glob.U(r, max_i) << std::endl;
+        }
+
+        // gamma
+        double gam_err = (state.isol.gam - gam_ref).norm() / gam_ref.norm();
+        std::cout << "  gam rel_err = " << gam_err << std::endl;
+
+        // foil.s
+        double s_err = (state.foil.s - s_ref).norm() / s_ref.norm();
+        std::cout << "  foil.s rel_err = " << s_err << std::endl;
+
+        // cl, cd
+        std::cout << "  cl=" << state.post.cl
+                  << " ref=3.162623310113019e-01"
+                  << " err=" << std::abs(state.post.cl - 3.162623310113019e-01) << std::endl;
+        std::cout << "  cd=" << state.post.cd
+                  << " ref=6.329823768574360e-03"
+                  << " err=" << std::abs(state.post.cd - 6.329823768574360e-03) << std::endl;
+    }
+
+    // Compute cd adjoint → lambda_ue
+    CalcForceLin(state);
+    CalcCdLin(state);
+    VectorXd dcd_dV = state.post.cd_V;
+    auto& lu = *state.glob.lu_factorization;
+    VectorXd lambda_cd = lu.transpose().solve(dcd_dV);
+    VectorXd lambda_ue = lambda_cd.tail(Nsys);
+
+    // Compute C++ mu_x/mu_t
+    MatrixXd mu_x_cpp, mu_t_cpp;
+    VectorXd vjp_wake = ComputeWakeGeomVJP(state, lambda_ue,
+                                            mu_x_cpp, mu_t_cpp);
+
+    // Read CS dRue/dwake_x and dRue/dwake_t
+    auto dwx_buf = read3D("wake_geom/dRue_dwake_x", Nsys, 2, Nw);
+    auto dwt_buf = read3D("wake_geom/dRue_dwake_t", Nsys, 2, Nw);
+
+    // Compute reference mu_x and mu_t by contracting with lambda_ue:
+    //   mu_x_ref(dim, i) = sum_j lambda_ue(j) * dRue_dwx(j, dim, i)
+    // Note: Steps 1/1b compute the NEGATIVE of this because R_ue terms are
+    // subtracted: R_ue = ue - ueinv - sgnue*ue_sigma*phi
+    // and the mu_x/mu_t capture ∂R_ue/∂wake directly (sign included).
+    MatrixXd mu_x_ref = MatrixXd::Zero(2, Nw);
+    MatrixXd mu_t_ref = MatrixXd::Zero(2, Nw);
+
+    for (int i = 0; i < Nw; ++i) {
+        for (int d = 0; d < 2; ++d) {
+            double sum_x = 0.0, sum_t = 0.0;
+            for (int j = 0; j < Nsys; ++j) {
+                int idx = j * (2 * Nw) + d * Nw + i;
+                sum_x += lambda_ue(j) * dwx_buf[idx];
+                sum_t += lambda_ue(j) * dwt_buf[idx];
+            }
+            mu_x_ref(d, i) = sum_x;
+            mu_t_ref(d, i) = sum_t;
+        }
+    }
+
+    // Compare mu_x, split into foil-row and wake-row contributions
+    // mu_x_foil(d,i) = sum_{j<N} lambda_ue(j) * dRue(j, d, i)
+    // mu_x_wake(d,i) = sum_{j>=N} lambda_ue(j) * dRue(j, d, i)
+    MatrixXd mu_x_ref_foil = MatrixXd::Zero(2, Nw);
+    MatrixXd mu_x_ref_wake = MatrixXd::Zero(2, Nw);
+    for (int i = 0; i < Nw; ++i) {
+        for (int d = 0; d < 2; ++d) {
+            double sf = 0.0, sw = 0.0;
+            for (int j = 0; j < N; ++j) {
+                sf += lambda_ue(j) * dwx_buf[j * (2 * Nw) + d * Nw + i];
+            }
+            for (int j = N; j < Nsys; ++j) {
+                sw += lambda_ue(j) * dwx_buf[j * (2 * Nw) + d * Nw + i];
+            }
+            mu_x_ref_foil(d, i) = sf;
+            mu_x_ref_wake(d, i) = sw;
+        }
+    }
+
+    std::cout << "  mu_x comparison (foil-row | wake-row | total):" << std::endl;
+    int n_fail_x = 0;
+    for (int i = 0; i < Nw; ++i) {
+        double ref_norm = mu_x_ref.col(i).norm();
+        double cpp_norm = mu_x_cpp.col(i).norm();
+        double err_norm = (mu_x_ref.col(i) - mu_x_cpp.col(i)).norm();
+        double rel = err_norm / std::max(ref_norm, 1e-15);
+        double foil_ref = mu_x_ref_foil.col(i).norm();
+        double wake_ref = mu_x_ref_wake.col(i).norm();
+        if (rel > 1e-4 || i < 5 || i == Nw - 1) {
+            std::cout << "    i=" << i
+                      << " foil_ref=" << foil_ref
+                      << " wake_ref=" << wake_ref
+                      << " |ref|=" << ref_norm
+                      << " |cpp|=" << cpp_norm
+                      << " rel=" << rel
+                      << (rel > 1e-4 ? " FAIL" : " ok") << std::endl;
+        }
+        if (rel > 1e-4 && ref_norm > 1e-12) n_fail_x++;
+    }
+
+    // Compare mu_t
+    std::cout << "  mu_t comparison (C++ vs CS reference):" << std::endl;
+    int n_fail_t = 0;
+    for (int i = 0; i < Nw; ++i) {
+        double ref_norm = mu_t_ref.col(i).norm();
+        double cpp_norm = mu_t_cpp.col(i).norm();
+        double err_norm = (mu_t_ref.col(i) - mu_t_cpp.col(i)).norm();
+        double rel = err_norm / std::max(ref_norm, 1e-15);
+        if (rel > 1e-4 || i < 3 || i == Nw - 1) {
+            std::cout << "    i=" << i << " |ref|=" << ref_norm
+                      << " |cpp|=" << cpp_norm << " rel=" << rel
+                      << (rel > 1e-4 ? " FAIL" : " ok") << std::endl;
+        }
+        if (rel > 1e-4 && ref_norm > 1e-12) n_fail_t++;
+    }
+
+    EXPECT_EQ(n_fail_x, 0) << "mu_x mismatch at " << n_fail_x << " wake nodes";
+    EXPECT_EQ(n_fail_t, 0) << "mu_t mismatch at " << n_fail_t << " wake nodes";
 }
