@@ -444,6 +444,7 @@ class ADDiagnosticTest : public ::testing::Test {
 
         // Load reference geometry
         MatrixXd x_base = readMatrix(*file_, "comprehensive/foil_x");
+        VectorXd s_base = readVector(*file_, "comprehensive/foil_s");
         int N_ref = static_cast<int>(x_base.cols());
 
         // Solve case
@@ -453,7 +454,7 @@ class ADDiagnosticTest : public ::testing::Test {
         auto& state = *pstate_;
         state.foil.x = x_base;
         state.foil.N = N_ref;
-        RecomputeArcLength(state);
+        state.foil.s = s_base;  // Use mfoil's spline-based arc length
         state.oper.viscous = true;
         state.oper.initbl = true;
         state.param.verb = 0;

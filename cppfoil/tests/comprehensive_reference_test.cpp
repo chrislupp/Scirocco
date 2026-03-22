@@ -181,12 +181,13 @@ TEST_F(ComprehensiveReferenceTest, ComprehensiveVJPValidation) {
     int N_ref = static_cast<int>(d2);
 
     // ---- Solve same case in C++ ----
+    VectorXd s_base = readVector(getFile(), "comprehensive/foil_s");
     Cppfoil foil("0012", N_ref - 1);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
     state.foil.x = x_base;
     state.foil.N = N_ref;
-    RecomputeArcLength(state);
+    state.foil.s = s_base;  // Use mfoil's spline-based arc length (not panel chords)
     state.oper.viscous = true;
     state.oper.initbl = true;
     state.param.verb = 0;
