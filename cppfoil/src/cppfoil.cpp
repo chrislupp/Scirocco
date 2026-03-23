@@ -120,16 +120,9 @@ void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
 void Cppfoil::GeomDerotate() { cppfoil::GeomDerotate(state_); }
 
 Sensitivity Cppfoil::ComputeSensitivities() {
-    if (!state_.oper.viscous) {
-        sensitivity_ = InviscidSensitivities(state_);
-    } else {
-        sensitivity_ = ViscousSensitivities(state_);
-    }
+    sensitivity_ = InviscidSensitivities(state_);
     AlphaSensitivities(state_, sensitivity_);
     MachSensitivities(state_, sensitivity_);
-    if (state_.oper.viscous) {
-        ReSensitivities(state_, sensitivity_);
-    }
     return sensitivity_;
 }
 

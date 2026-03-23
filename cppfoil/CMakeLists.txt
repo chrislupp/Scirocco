@@ -74,33 +74,16 @@ if(CPPFOIL_BUILD_TESTS)
         )
         gtest_discover_tests(cppfoil_sensitivity_ref_tests)
 
-        # Comprehensive VJP reference tests: full dR/dx validation at every node
-        add_executable(cppfoil_comprehensive_ref_tests
-            tests/comprehensive_reference_test.cpp
+        # Forward reference tests: compare BuildGlobSys R_x/R_U vs mfoil
+        add_executable(cppfoil_forward_ref_tests
+            tests/forward_reference_test.cpp
         )
-        target_link_libraries(cppfoil_comprehensive_ref_tests
+        target_link_libraries(cppfoil_forward_ref_tests
             cppfoil GTest::gtest_main hdf5_cpp-shared)
-        target_compile_definitions(cppfoil_comprehensive_ref_tests PRIVATE
-            COMPREHENSIVE_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/comprehensive_reference.h5"
+        target_compile_definitions(cppfoil_forward_ref_tests PRIVATE
+            FORWARD_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/forward_reference.h5"
         )
-        gtest_discover_tests(cppfoil_comprehensive_ref_tests)
-
-        # AD diagnostic tests: CoDiPack forward-mode triple-comparison
-        include(FetchContent)
-        FetchContent_Declare(
-            CoDiPack
-            GIT_REPOSITORY https://github.com/SciCompKL/CoDiPack.git
-            GIT_TAG        v3.1.0
-        )
-        FetchContent_MakeAvailable(CoDiPack)
-
-        add_executable(cppfoil_ad_diagnostic_tests tests/ad_diagnostic_test.cpp)
-        target_link_libraries(cppfoil_ad_diagnostic_tests
-            cppfoil GTest::gtest_main hdf5_cpp-shared CoDiPack)
-        target_compile_definitions(cppfoil_ad_diagnostic_tests PRIVATE
-            COMPREHENSIVE_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/comprehensive_reference.h5"
-        )
-        gtest_discover_tests(cppfoil_ad_diagnostic_tests)
+        gtest_discover_tests(cppfoil_forward_ref_tests)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

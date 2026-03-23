@@ -46,101 +46,17 @@ namespace cppfoil {
 // Total sensitivity: dJ/dx = dJ/dx_partial + lambda^T * d(A*gamma - rhs)/dx
 Sensitivity InviscidSensitivities(FoilState& state);
 
-// Compute sensitivities for the viscous problem using the adjoint method.
-// Must be called after SolveViscous() and CalcForce().
-// Requires stored LU factorization from StoreAdjointFactorization().
-//
-// Objectives: cl, cd, cm
-// Design variables: foil.x [2 x N] panel node coordinates
-Sensitivity ViscousSensitivities(FoilState& state);
-
 // Compute force partial derivatives w.r.t. panel coordinates (holding gamma fixed)
 // Populates: dcl_dx_partial, dcm_dx_partial, dcdpi_dx_partial in state.post
 void CalcForceLin(FoilState& state);
 
-// Compute full dcd/dV [4*Nsys] linearization for Squire-Young + skin friction
-void CalcCdLin(FoilState& state);
-
 // Compute sensitivities of cl, cd, cm w.r.t. angle of attack (alpha).
-// Must be called after CalcForce() and CalcForceLin().
-// For inviscid: uses stored gamref and cl_ue/cm_ue/cdpi_ue.
-// For viscous: also uses stored LU factorization for adjoint solve.
+// Inviscid only: uses stored gamref and cl_ue/cm_ue/cdpi_ue.
 void AlphaSensitivities(FoilState& state, Sensitivity& sens);
 
 // Compute sensitivities of cl, cd, cm w.r.t. Mach number.
-// Inviscid: differentiates KT compressibility correction analytically.
-// Viscous: also computes dR_BL/dMa and uses adjoint solve.
+// Inviscid only: differentiates KT compressibility correction analytically.
 void MachSensitivities(FoilState& state, Sensitivity& sens);
-
-// Compute sensitivities of cl, cd, cm w.r.t. Reynolds number.
-// Inviscid: zero (Re doesn't affect inviscid solution).
-// Viscous: Re enters through mu0; reuses Mach companion functions.
-void ReSensitivities(FoilState& state, Sensitivity& sens);
-
-// Compute dxi/dx_foil: sensitivity of arc-length coordinate xi to panel coords
-// Returns sparse matrix [Nsys x 2*N]
-// NOTE: Returns zero; use ComputeArcLengthVJP for the efficient VJP path.
-SparseMatrixd ComputeDxiDxFoil(const FoilState& state);
-
-// Compute VJP through all arc-length chains:
-//   Chain 1: foil.x → foil.s → xi → R_BL (through R_x)
-//   Chain 2: foil.x → foil.s → sigma_m → ue_m → R_ue
-// Uses suffix sums for O(N) complexity.
-// INPUT:
-//   state : FoilState with converged viscous solution
-//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
-//   lambda_ue : Adjoint vector for the ue equation [Nsys]
-// OUTPUT:
-//   VJP vector [2*N] in foil.x space
-VectorXd ComputeArcLengthVJP(const FoilState& state,
-                               const VectorXd& lambda_bl,
-                               const VectorXd& lambda_ue);
-
-// Compute dR_ue/dx_foil: sensitivity of 4th equation to panel coords
-// Returns dense matrix [Nsys x 2*N]
-MatrixXd ComputeDRueDxFoil(FoilState& state);
-
-// Compute VJP of wake geometry through R_ue equation.
-// Returns lambda_ue^T * (∂R_ue/∂wake.x · dwake.x/dx_foil + ∂R_ue/∂wake.t · dwake.t/dx_foil)
-// This captures the missing chain rule terms where wake positions and tangents
-// depend on foil coordinates through streamline tracing.
-// INPUT:
-//   state : FoilState with converged viscous solution
-//   lambda_ue : Adjoint vector for the ue equation [Nsys]
-// OUTPUT:
-//   VJP vector [2*N] in foil.x space
-VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue);
-
-// Overload that also returns the intermediate wake-space adjoints (mu_x, mu_t)
-// from Steps 1/1b, before the backward sweep. For validation against CS reference.
-VectorXd ComputeWakeGeomVJP(FoilState& state, const VectorXd& lambda_ue,
-                             MatrixXd& mu_x_out, MatrixXd& mu_t_out);
-
-// Compute VJP of stagnation point location through xi coordinate.
-// Returns lambda_bl^T * R_x * (∂xi/∂sstag · dsstag/dx_foil)
-// This captures the sensitivity of BL arc-length coordinate xi to the
-// stagnation point location, which depends on gamma which depends on foil.x.
-// INPUT:
-//   state : FoilState with converged viscous solution
-//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
-// OUTPUT:
-//   VJP vector [2*N] in foil.x space
-VectorXd ComputeXiVJP(FoilState& state, const VectorXd& lambda_bl);
-
-// Compute VJP of wake gap (wgap) through BL residual.
-// Returns lambda_bl^T * dR_BL/d(wgap) * d(wgap)/d(foil.x)
-// The BL residual subtracts wgap from delta* at wake stations;
-// wgap depends on foil.x through hTE and dtdx at TE nodes {0,1,N-2,N-1}.
-// INPUT:
-//   state : FoilState with converged viscous solution
-//   lambda_bl : Adjoint vector for the BL equations [3*Nsys]
-// OUTPUT:
-//   VJP vector [2*N] in foil.x space
-VectorXd ComputeWgapVJP(FoilState& state, const VectorXd& lambda_bl);
-
-// Compute d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) analytically
-void GetTEInfoDerivPublic(const MatrixXd& x, int k, int dim,
-                           double& dtcp, double& dtdp);
 
 }  // namespace cppfoil
 
