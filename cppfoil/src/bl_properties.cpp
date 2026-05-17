@@ -121,8 +121,12 @@ ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
             Vector4d Hr_U = (Ho_U - Hk_U) / (Ho - 1.0) -
                             (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_U;
 
-            double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr * Hr;
-            Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr * Hr +
+            // Match mfoil's exact FP ordering: Hr**2 is computed as a single
+            // scalar, then the vector is multiplied by it ONCE — not
+            // (vector*Hr)*Hr which has different rounding.
+            double Hr2 = Hr * Hr;
+            double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr2;
+            Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr2 +
                             (2.0 - Hsmin - 4.0 / Reb) * 2.0 * Hr * Hr_U;
 
             Hs = Hsmin + 4.0 / Reb + aa * 1.5 / (Hk + 0.5);
@@ -666,13 +670,18 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
         }
     }
 
-    double num = CC * Hs * (Hk - 1.0) * Hkc * Hkc;
+    // Match mfoil's exact FP ordering: precompute Hkc**2 and Hk**2 as
+    // single scalars so vector * scalar^2 is one multiplication, not two
+    // sequential vector*scalar steps with different rounding.
+    double Hkc2 = Hkc * Hkc;
+    double Hk2 = Hk * Hk;
+    double num = CC * Hs * (Hk - 1.0) * Hkc2;
     Vector4d num_U =
-        CC * (Hs_U * (Hk - 1.0) * Hkc * Hkc + Hs * Hk_U * Hkc * Hkc +
+        CC * (Hs_U * (Hk - 1.0) * Hkc2 + Hs * Hk_U * Hkc2 +
               Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
 
-    double den = (1.0 - Us) * H * Hk * Hk;
-    Vector4d den_U = (-Us_U) * H * Hk * Hk + (1.0 - Us) * H_U * Hk * Hk +
+    double den = (1.0 - Us) * H * Hk2;
+    Vector4d den_U = (-Us_U) * H * Hk2 + (1.0 - Us) * H_U * Hk2 +
                      (1.0 - Us) * H * 2.0 * Hk * Hk_U;
 
     double cteq = std::sqrt(num / den);
@@ -753,10 +762,15 @@ ScalarLin8 Upwind(double upw, const Vector8d& upw_U, double f1,
                   const Vector4d& f1_U1, double f2, const Vector4d& f2_U2) {
     double f = (1.0 - upw) * f1 + upw * f2;
 
-    Vector8d f_U;
-    f_U.head<4>() = (1.0 - upw) * f1_U1;
-    f_U.tail<4>() = upw * f2_U2;
-    f_U += upw_U * (f2 - f1);
+    // Match mfoil's exact FP ordering:
+    //   f_U = (-upw_U)*f1 + upw_U*f2 + concat((1-upw)*f1_U1, upw*f2_U2)
+    // Refactoring to `upw_U*(f2 - f1)` is mathematically equivalent but
+    // produces different floating-point rounding when f1 ≈ f2 (typical
+    // for upwinded BL closures), which the ForwardRx reference test
+    // detects at the 1e-9 rel level.
+    Vector8d f_U = (-upw_U) * f1 + upw_U * f2;
+    f_U.head<4>() += (1.0 - upw) * f1_U1;
+    f_U.tail<4>() += upw * f2_U2;
 
     return {f, f_U};
 }
@@ -874,10 +888,15 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
         Hkc_U.setZero();
     }
 
-    double ut = 0.5 * cf - (Hkc / (A * Hk)) * (Hkc / (A * Hk));
+    // Match mfoil ordering: compute scalars once (avoid `A*Hk*Hk` left-to-right
+    // which has different FP rounding than `A * (Hk**2)`).
+    double AHk = A * Hk;
+    double Hk2 = Hk * Hk;
+    double AHk2 = A * Hk2;
+    double ut = 0.5 * cf - (Hkc / AHk) * (Hkc / AHk);
     Vector8d ut_U =
-        0.5 * cf_U - 2.0 * (Hkc / (A * Hk)) *
-                         (Hkc_U / (A * Hk) - Hkc / (A * Hk * Hk) * Hk_U_use);
+        0.5 * cf_U - 2.0 * (Hkc / AHk) *
+                         (Hkc_U / AHk - Hkc / AHk2 * Hk_U_use);
 
     double ds_safe = std::max(ds, 1e-12);
     double uq = ut / (beta * ds_safe);
