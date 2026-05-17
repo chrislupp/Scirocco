@@ -284,6 +284,52 @@ void CalcForceLin(FoilState& state) {
         state.post.cdpi_ue(ip) += dz * 0.5 * dcp_due_ip / chord;
         state.post.cdpi_ue(i) += dz * 0.5 * dcp_due_i / chord;
     }
+
+    // ========================================================================
+    // Viscous output partials: dJ/dV at fixed foil.x, V = U flattened [4*Nsys].
+    // - cl, cm, cdpi: only depend on U[3, i] for i ∈ [0, N) (foil edge velocity)
+    //   so cl_V[4*i + 3] = cl_ue[i] (similar cm, cdpi). All other entries zero.
+    // - cd: Squire-Young from end-of-wake state Uw only; cd_V is sparse at iw.
+    // - dcd/dx_partial = 0 because Squire-Young has no direct foil.x dependence.
+    // ========================================================================
+    if (state.oper.viscous && state.glob.U.cols() > 0) {
+        int Nsys = static_cast<int>(state.glob.U.cols());
+        state.post.cl_V = VectorXd::Zero(4 * Nsys);
+        state.post.cm_V = VectorXd::Zero(4 * Nsys);
+        state.post.cd_V = VectorXd::Zero(4 * Nsys);
+        for (int i = 0; i < N; ++i) {
+            state.post.cl_V(4 * i + 3) = state.post.cl_ue(i);
+            state.post.cm_V(4 * i + 3) = state.post.cm_ue(i);
+        }
+
+        // Squire-Young cd from end-of-wake state.
+        state.post.cd_U.setZero();
+        state.post.dcd_dx_partial = MatrixXd::Zero(2, N);
+        if (state.vsol.Is.size() > 2 && !state.vsol.Is[2].empty()) {
+            int iw = state.vsol.Is[2].back();
+            if (iw < state.glob.U.cols()) {
+                Vector4d Uw = state.glob.U.col(iw);
+                auto [H, H_U] = GetH(Uw);
+                auto [uk, uk_U] = GetUk(Uw(3), state.param);
+                double q = uk / Vinf;
+                double p = 0.5 * (5.0 + H);
+                double qp = std::pow(q, p);
+                double lnq = std::log(std::max(q, 1e-300));
+
+                // cd = 2 * Uw[0] * q^p
+                // dcd/dUw[k] = 2*δ_k0 * q^p + 2*Uw[0] * d(q^p)/dUw[k]
+                // d(q^p)/dUw[k] = q^p * (dp/dUw[k] * lnq + (p/q) * dq/dUw[k])
+                //               = q^p * (0.5*H_U[k]*lnq + (p/q)*(1/Vinf)*uk_U[k])
+                for (int k = 0; k < 4; ++k) {
+                    double dqp = qp * (0.5 * H_U(k) * lnq +
+                                       (p / q) * (1.0 / Vinf) * uk_U(k));
+                    state.post.cd_U(k) = 2.0 * Uw(0) * dqp;
+                    if (k == 0) state.post.cd_U(k) += 2.0 * qp;
+                    state.post.cd_V(4 * iw + k) = state.post.cd_U(k);
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================

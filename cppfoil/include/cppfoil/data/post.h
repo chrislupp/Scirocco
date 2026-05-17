@@ -57,6 +57,8 @@ struct Post {
     VectorXd cm_ue;            // Linearization of cm w.r.t. ue [N]
     VectorXd cdpi_ue;          // Linearization of cdpi w.r.t. ue [N]
     VectorXd cd_V;             // Full dcd/dV linearization [4*Nsys]
+    VectorXd cl_V;             // Full dcl/dV linearization [4*Nsys]
+    VectorXd cm_V;             // Full dcm/dV linearization [4*Nsys]
     MatrixXd dcd_dx_partial;   // Partial dcd/dx (holding V fixed) [2 x N]
 
     // Distributions
