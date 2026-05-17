@@ -11,6 +11,7 @@
 
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid_deriv.h"
+#include "cppfoil/core/panel_influence_deriv.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -281,11 +282,216 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         }
     }
 
-    // ---- B. dueisigma chain (panel velocity derivative chain) — TODO --------
-    // ue_sigma's columns are source-panel-velocity influences at every
-    // station, depending on panel positions and wake.x. Reverse-mode chain
-    // requires propagating beta * phi back through the panel-influence
-    // velocity derivatives. Largest missing piece for full accuracy.
+    // ---- B. dueisigma chain (panel velocity derivative chain) -------------
+    //
+    // ue_sigma = [Bp; Dw] where Bp = -inv(AIC) * B is the airfoil source-to-ue
+    // matrix and Dw = Cgam * Bp + Csig is the wake source-to-ue matrix (with
+    // row 0 overwritten by Bp[N-1, :] for continuity).
+    //
+    // For the VJP we need -lambda_sg^T * dueisigma * phi.
+    //
+    // FOIL-SIDE PART (B1): -lambda_f^T * dBp * phi
+    //   dBp = -A^{-1} (dA * Bp + dB), so:
+    //   -lambda_f^T * dBp * phi = mu_f^T * (dA * Bp * phi + dB * phi)
+    //   where mu_f = A^{-T} * lambda_f_ext  (lambda_f extended with 0).
+    //
+    //   - mu_f^T * dA * v (with v = [Bp*phi; 0]) → AICMatVecVJP
+    //   - mu_f^T * dB * phi → panel-source-streamfunction derivative chain
+    //
+    // FIRST WAKE ROW (Dw[0, :] = Bp[N-1, :]) is folded into the foil-side
+    // chain by adding lambda_w[0] into the effective lambda at foil node N-1.
+    //
+    // OTHER WAKE ROWS (Cgam*Bp + Csig with j > 0): TODO. Requires:
+    //   - mu_w^T * dCgam * (Bp * phi) chain (wake velocity from gamma)
+    //   - mu_w^T * Cgam * (dBp * phi) chain (combine with B1)
+    //   - mu_w^T * dCsig * phi chain (wake source velocity)
+    //   - chain through wake.x for both Csig and Cgam.
+    {
+        // Extract Bp from state.vsol.ue_sigma (top N rows).
+        const MatrixXd& ue_sig = state.vsol.ue_sigma;
+        int Npanel = N + Nw - 2;
+        if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
+            // Build effective foil lambda including first wake row.
+            // lambda_f_eff[i] = sgnue[i] * lambda_ue[i] (foil-side as before)
+            // Plus lambda_w[0] * Bp[N-1, :] contribution: same as adding
+            // lambda_w[0] * 1 to row N-1 of the foil lambda (since Dw[0]=Bp[N-1]).
+            // Wait — Dw[0] uses lambda_w[0] directly (no sgnue scaling since
+            // sgue[N+0]=1). So we add lambda_w[0]*Bp[N-1, :] which means we
+            // include +lambda_w[0] at index N-1 of the effective lambda (with
+            // sgue=1, no sgnue scaling here).
+            VectorXd lambda_f_eff(N);
+            for (int i = 0; i < N; ++i) {
+                lambda_f_eff(i) = state.isol.sgnue(i) * lambda_ue(i);
+            }
+            // Add Dw[0] = Bp[N-1] contribution: lambda_w[0] * 1 * Bp[N-1]
+            lambda_f_eff(N - 1) += lambda_ue(N);  // sgue at wake = 1
+
+            // mu_f = A^{-T} * [lambda_f_eff; 0]
+            VectorXd lambda_f_ext = VectorXd::Zero(AIC_dim);
+            lambda_f_ext.head(N) = lambda_f_eff;
+            VectorXd mu_f = lu.solve(lambda_f_ext);
+
+            // v = Bp * phi (foil columns of ue_sigma * phi gives v)
+            // ue_sigma's top N rows = Bp, so v = ue_sigma.topRows(N) * phi
+            VectorXd v_foil = ue_sig.topRows(N) * phi;  // [N]
+            VectorXd v_ext = VectorXd::Zero(AIC_dim);
+            v_ext.head(N) = v_foil;
+
+            // B1a: mu_f^T * dA * v_ext  via AICMatVecVJP
+            vjp += AICMatVecVJP(state, mu_f, v_ext);
+
+            // B1b: mu_f^T * dB * phi
+            //   B columns 0..N-2: foil constant-source panels (foil.x[k:k+2])
+            //   B columns N-1..Npanel-1: wake linear-source panels (wake.x)
+            //   For each eval i and panel k, accumulate:
+            //     sens += mu_f[i] * phi[k] * dB[i, k]/dfoil_x
+            //
+            // Foil source panels first (no wake.x dependence — pure foil chain):
+            for (int i = 0; i < N; ++i) {
+                double mu_i = mu_f(i);
+                if (std::abs(mu_i) < 1e-20) continue;
+                Vector2d xi = state.foil.x.col(i);
+                for (int k = 0; k < N - 1; ++k) {
+                    double phi_k = phi(k);
+                    if (std::abs(phi_k) < 1e-20) continue;
+                    Matrix2d Xj;
+                    Xj.col(0) = state.foil.x.col(k);
+                    Xj.col(1) = state.foil.x.col(k + 1);
+                    ConstSourceStreamDeriv d =
+                        PanelConstSourceStreamDeriv(Xj, xi);
+                    double w = mu_i * phi_k;
+                    // xi derivatives (foil.x[i])
+                    vjp(2 * i)     += w * d.val_xi(0);
+                    vjp(2 * i + 1) += w * d.val_xi(1);
+                    // Xj derivatives (foil.x[k], foil.x[k+1])
+                    vjp(2 * k)         += w * d.val_Xj(0);
+                    vjp(2 * k + 1)     += w * d.val_Xj(1);
+                    vjp(2 * (k + 1))   += w * d.val_Xj(2);
+                    vjp(2 * (k + 1) + 1) += w * d.val_Xj(3);
+                }
+            }
+            // Wake source panels in B (cols N-1..Npanel-1):
+            // CalcUeM builds these with half-panels at midpoints. Per panel j
+            // (wake panel index 0..Nw-2), it computes left half [wake.x[j], Xm]
+            // and right half [Xm, X_right] where Xm = 0.5*(wake.x[j]+wake.x[j+1])
+            // and X_right is wake.x[j+1] (or ghost extension for j=Nw-2).
+            //
+            // Each call to PanelLinSourceStream returns (a, b) with derivatives
+            // w.r.t. Xj endpoints (4-vector) and xi eval point (2-vector).
+            // Chain through wake.x: dXj = (partial dwake.x for left endpoint,
+            // 0.5*(dwake.x[j]+dwake.x[j+1]) for Xm endpoint, similar for right).
+            MatrixXd dwake_x_dx = DWakeXDFoilX(state);  // [2*Nw x 2N]
+            auto get_dwx = [&](int j) {
+                MatrixXd dwj(2, twoN);
+                dwj.row(0) = dwake_x_dx.row(0 * Nw + j);
+                dwj.row(1) = dwake_x_dx.row(1 * Nw + j);
+                return dwj;
+            };
+            for (int i = 0; i < N; ++i) {
+                double mu_i = mu_f(i);
+                if (std::abs(mu_i) < 1e-20) continue;
+                Vector2d xi = state.foil.x.col(i);
+                for (int j = 0; j < Nw - 1; ++j) {
+                    Vector2d Xm = 0.5 * (state.wake.x.col(j) +
+                                          state.wake.x.col(j + 1));
+                    MatrixXd dXm = 0.5 * (get_dwx(j) + get_dwx(j + 1));
+
+                    Vector2d X_right;
+                    MatrixXd dXr(2, twoN);
+                    if (j == Nw - 2) {
+                        X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+                        dXr = 2.0 * get_dwx(j + 1) - dXm;
+                    } else {
+                        X_right = state.wake.x.col(j + 1);
+                        dXr = get_dwx(j + 1);
+                    }
+
+                    // Left half panel
+                    Matrix2d Xj_L;
+                    Xj_L.col(0) = state.wake.x.col(j);
+                    Xj_L.col(1) = Xm;
+                    MatrixXd dXjL_0 = get_dwx(j);
+                    MatrixXd dXjL_1 = dXm;
+                    LinSourceStreamDeriv dL =
+                        PanelLinSourceStreamDeriv(Xj_L, xi);
+                    // Mapping a_left/b_left to B columns matches the +=
+                    // structure in CalcUeM (lines 795-801).
+                    double a_w_panel_curr_l, a_w_panel_prev_l, b_w_panel_curr_l;
+                    if (j > 0) {
+                        // B[i, N-1+j] += 0.5*a_left + b_left
+                        // B[i, N-1+j-1] += 0.5*a_left
+                        a_w_panel_curr_l = 0.5;  // coefficient of a in panel (N-1+j) col
+                        a_w_panel_prev_l = 0.5;  // coefficient of a in panel (N-1+j-1) col
+                        b_w_panel_curr_l = 1.0;  // coefficient of b in panel (N-1+j) col
+                    } else {
+                        // j=0: only b_left to panel (N-1+0)=N-1
+                        a_w_panel_curr_l = 0.0;
+                        a_w_panel_prev_l = 0.0;
+                        b_w_panel_curr_l = 1.0;
+                    }
+                    int col_curr = N - 1 + j;
+                    int col_prev = N - 1 + j - 1;
+                    double phi_curr = phi(col_curr);
+                    double phi_prev = (j > 0) ? phi(col_prev) : 0.0;
+                    // Effective weight on the panel's (a, b) values:
+                    double w_a = mu_i * (a_w_panel_curr_l * phi_curr +
+                                          a_w_panel_prev_l * phi_prev);
+                    double w_b = mu_i * (b_w_panel_curr_l * phi_curr);
+                    // xi chain
+                    vjp(2 * i)     += w_a * dL.a_xi(0) + w_b * dL.b_xi(0);
+                    vjp(2 * i + 1) += w_a * dL.a_xi(1) + w_b * dL.b_xi(1);
+                    // Xj chain — Xj cols 0,1 = first endpoint (wake.x[j]),
+                    // cols 2,3 = second endpoint (Xm).
+                    Vector4d dab = w_a * dL.a_Xj + w_b * dL.b_Xj;
+                    // First endpoint = wake.x[j]: dXj rows = dXjL_0
+                    vjp += dab(0) * dXjL_0.row(0).transpose() +
+                           dab(1) * dXjL_0.row(1).transpose();
+                    // Second endpoint = Xm: dXj rows = dXjL_1
+                    vjp += dab(2) * dXjL_1.row(0).transpose() +
+                           dab(3) * dXjL_1.row(1).transpose();
+
+                    // Right half panel
+                    Matrix2d Xj_R;
+                    Xj_R.col(0) = Xm;
+                    Xj_R.col(1) = X_right;
+                    MatrixXd dXjR_0 = dXm;
+                    MatrixXd dXjR_1 = dXr;
+                    LinSourceStreamDeriv dR =
+                        PanelLinSourceStreamDeriv(Xj_R, xi);
+                    // B[i, N-1+j] += a_right + 0.5*b_right
+                    // if (j<Nw-2): B[i, N-1+j+1] += 0.5*b_right
+                    // else:       B[i, N-1+j] += 0.5*b_right
+                    double a_w_panel_curr_r = 1.0;
+                    double b_w_panel_curr_r;
+                    double b_w_panel_next_r;
+                    int col_next = N - 1 + j + 1;
+                    double phi_next;
+                    if (j < Nw - 2) {
+                        b_w_panel_curr_r = 0.5;
+                        b_w_panel_next_r = 0.5;
+                        phi_next = phi(col_next);
+                    } else {
+                        b_w_panel_curr_r = 1.0;  // 0.5 + 0.5 = 1
+                        b_w_panel_next_r = 0.0;
+                        phi_next = 0.0;
+                    }
+                    w_a = mu_i * (a_w_panel_curr_r * phi_curr);
+                    w_b = mu_i * (b_w_panel_curr_r * phi_curr +
+                                  b_w_panel_next_r * phi_next);
+                    vjp(2 * i)     += w_a * dR.a_xi(0) + w_b * dR.b_xi(0);
+                    vjp(2 * i + 1) += w_a * dR.a_xi(1) + w_b * dR.b_xi(1);
+                    dab = w_a * dR.a_Xj + w_b * dR.b_Xj;
+                    // First endpoint = Xm
+                    vjp += dab(0) * dXjR_0.row(0).transpose() +
+                           dab(1) * dXjR_0.row(1).transpose();
+                    // Second endpoint = X_right
+                    vjp += dab(2) * dXjR_1.row(0).transpose() +
+                           dab(3) * dXjR_1.row(1).transpose();
+                }
+            }
+        }
+    }
+    // TODO: wake-side Cgam, Csig chains for j > 0 wake rows.
 
     return vjp;
 }

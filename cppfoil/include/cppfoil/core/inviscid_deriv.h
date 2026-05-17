@@ -48,6 +48,14 @@ namespace cppfoil {
 VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
                              double alpha);
 
+// Compute lambda^T * d(A * v)/dx_foil — same panel-chain machinery as
+// AICResidualSensVJP but with the gamma vector replaced by an arbitrary v
+// (length N+1, with the streamfunction slot in entry N) and WITHOUT the rhs
+// derivative term. Used by Phase 2b's ComputeRueVJP for the dBp chain where
+// v = [Bp * phi; 0].
+VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
+                      const VectorXd& v);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_INVISCID_DERIV_H
