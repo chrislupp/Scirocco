@@ -236,16 +236,25 @@ TEST_F(ResidualDerivTest, DRueDFoilX_PartialAnalytical) {
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
     // Diagnostic: report per-row max abs error so we see what's missing.
-    double overall_max = 0;
-    int n_above_1e_6 = 0;
+    double overall_max = 0, foil_max = 0, wake_max = 0;
+    int n_foil_above = 0, n_wake_above = 0;
     for (int i = 0; i < r.rows(); ++i) {
         double row_max = (a.row(i) - r.row(i)).cwiseAbs().maxCoeff();
         overall_max = std::max(overall_max, row_max);
-        if (row_max > 1e-6) n_above_1e_6++;
+        if (i < N_) {
+            foil_max = std::max(foil_max, row_max);
+            if (row_max > 1e-6) n_foil_above++;
+        } else {
+            wake_max = std::max(wake_max, row_max);
+            if (row_max > 1e-6) n_wake_above++;
+        }
     }
     std::cout << "DRueDFoilX (partial-analytical): overall max abs error = "
-              << overall_max << ", rows with err > 1e-6: " << n_above_1e_6
-              << "/" << r.rows() << std::endl;
+              << overall_max << std::endl;
+    std::cout << "  Foil rows: max=" << foil_max << ", fails(>1e-6)="
+              << n_foil_above << "/" << N_ << std::endl;
+    std::cout << "  Wake rows: max=" << wake_max << ", fails(>1e-6)="
+              << n_wake_above << "/" << Nw_ << std::endl;
     // For now this test always passes — it's a diagnostic until the missing
     // chains (A2 wake-side ueinv, B dueisigma) are implemented.
     SUCCEED();

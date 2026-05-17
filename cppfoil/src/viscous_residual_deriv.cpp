@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "cppfoil/core/geometry.h"
+#include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/inviscid_deriv.h"
 #include "cppfoil/core/panel_influence_deriv.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
@@ -325,6 +326,32 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
             }
             // Add Dw[0] = Bp[N-1] contribution: lambda_w[0] * 1 * Bp[N-1]
             lambda_f_eff(N - 1) += lambda_ue(N);  // sgue at wake = 1
+
+            // For j > 0 wake rows, Dw[j, :] = Cgam[j, :] * Bp + Csig[j, :].
+            // The Cgam*Bp part folds into the foil-side dBp chain via
+            // effective lambda for foil index k:
+            //   lambda_f_eff[k] += sum_{j>0} lambda_ue[N+j] * Cgam[j, k]
+            // (We need to rebuild Cgam here since CalcUeM doesn't save it.)
+            MatrixXd Cgam(Nw, N);
+            for (int j = 0; j < Nw; ++j) {
+                Vector2d xi_w = state.wake.x.col(j);
+                Vector2d ti_w = state.wake.t.col(j);
+                MatrixXd V_G;
+                InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0,
+                                 xi_w, true, &V_G);
+                for (int k = 0; k < N; ++k) {
+                    Cgam(j, k) = V_G(0, k) * ti_w(0) + V_G(1, k) * ti_w(1);
+                }
+            }
+            // Cgam[0, :] contribution is replaced by Bp[N-1, :] in Dw[0], so
+            // only j > 0 rows of Cgam enter the dBp chain.
+            for (int j = 1; j < Nw; ++j) {
+                double lw = lambda_ue(N + j);
+                if (std::abs(lw) < 1e-20) continue;
+                for (int k = 0; k < N; ++k) {
+                    lambda_f_eff(k) += lw * Cgam(j, k);
+                }
+            }
 
             // mu_f = A^{-T} * [lambda_f_eff; 0]
             VectorXd lambda_f_ext = VectorXd::Zero(AIC_dim);
