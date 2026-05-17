@@ -26,18 +26,17 @@ using namespace cppfoil;
 using namespace Eigen;
 
 // Same hybrid tolerance reasoning as the Phase 1 chain tests:
-// closed-form chain noise floor is cond(AIC) * eps ~ 5e-12 absolute; the
-// iterative wake chain adds another factor through the wake station index;
-// 2e-11 absolute covers both. R_x · DXi and the wgap chain are pure
-// linear combinations of these inputs, so the same floor applies.
-// Stagnation-extrapolation chain (residual rows 3*Istag, 3*(Istag+1))
-// inherits the inviscid panel solve noise cond(AIC)*eps ≈ 5e-12 and amplifies
-// it through Ust_x ~ O(1000) at the near-degenerate stag panel, giving
-// abs_err ~ 1e-8 at this specific row. All other rows pass at ~2e-10.
-// Until a better-conditioned stagnation formulation is adopted, the chain
-// noise floor at stagnation is 1e-8 absolute / 1e-7 relative.
+// Tolerance reasoning (measured 2026-05-17):
+//   DRblDFoilX: max abs 3.13e-8 at the stagnation rows, but those entries
+//     have |ref| ~ 8e3 so rel ~ 4e-12 — TOL_REL * |ref| absorbs them. Worst
+//     rel anywhere with |ref|>1e-6 is 3.08e-8. Non-stag rows max abs 4e-10.
+//   DRueDFoilX: max abs 1.22e-9 at foil rows (inviscid AIC noise floor),
+//     9.65e-10 at wake rows, 1.4e-11 at last wake row.
+// Hybrid bound |err| <= TOL_REL*|ref| + TOL_ABS with these values gives
+// 0 failures on both tests. Cannot tighten TOL_REL below ~5e-8 without
+// DRblDFoilX failures at the worst-rel entry.
 constexpr double TOL_REL = 1e-7;
-constexpr double TOL_ABS = 1.5e-8;
+constexpr double TOL_ABS = 5e-9;
 
 static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
@@ -218,6 +217,47 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
     MatrixXd r = read3DAsMatrix(f(), "comprehensive/dR_BL_dx");
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
+    // Diagnostics: surface the actual max abs at the stagnation row vs.
+    // elsewhere so we can size tolerances against real chain noise.
+    double overall_max = 0, stag_row_max = 0, other_max = 0;
+    int Istag = s.isol.Istag[0];
+    int Ig_stag = 3 * Istag;
+    Eigen::Index best_i = 0, best_j = 0;
+    for (Eigen::Index i = 0; i < r.rows(); ++i) {
+        for (Eigen::Index j = 0; j < r.cols(); ++j) {
+            double e = std::abs(a(i, j) - r(i, j));
+            if (e > overall_max) { overall_max = e; best_i = i; best_j = j; }
+            if (i >= Ig_stag && i < Ig_stag + 6) {
+                stag_row_max = std::max(stag_row_max, e);
+            } else {
+                other_max = std::max(other_max, e);
+            }
+        }
+    }
+    std::cout << "DRblDFoilX: max abs = " << overall_max
+              << " (stag rows " << Ig_stag << ".." << Ig_stag + 5 << " max="
+              << stag_row_max << ", other rows max=" << other_max << ")"
+              << std::endl;
+    double worst_ref = r(best_i, best_j);
+    std::cout << "  Worst entry: [" << best_i << "," << best_j
+              << "] ref=" << worst_ref
+              << " rel=" << overall_max / std::max(std::abs(worst_ref), 1e-300)
+              << std::endl;
+    // Worst rel over all entries with |ref| > 1e-6
+    double worst_rel = 0;
+    Eigen::Index wr_i = 0, wr_j = 0;
+    for (Eigen::Index i = 0; i < r.rows(); ++i) {
+        for (Eigen::Index j = 0; j < r.cols(); ++j) {
+            double ref = std::abs(r(i, j));
+            if (ref < 1e-6) continue;
+            double rel = std::abs(a(i, j) - r(i, j)) / ref;
+            if (rel > worst_rel) { worst_rel = rel; wr_i = i; wr_j = j; }
+        }
+    }
+    std::cout << "  Worst rel (|ref|>1e-6): " << worst_rel << " at ["
+              << wr_i << "," << wr_j << "] ref=" << r(wr_i, wr_j)
+              << " abs=" << std::abs(a(wr_i, wr_j) - r(wr_i, wr_j))
+              << std::endl;
     int nfail = compareHybrid2D(a, r, "dR_BL");
     std::cout << "DRblDFoilX: " << nfail << "/" << r.size() << " failures"
               << std::endl;
@@ -254,7 +294,7 @@ TEST_F(ResidualDerivTest, DRueDFoilX) {
     std::cout << "  Last wake row [" << last_row << "] (predictor chain): "
               << last_row_max << std::endl;
     std::cout << "  Wake rows excluding last: " << wake_inner_max << std::endl;
-    std::cout << "DRueDFoilX (partial-analytical): overall max abs error = "
+    std::cout << "DRueDFoilX: overall max abs error = "
               << overall_max << std::endl;
     std::cout << "  Foil rows: max=" << foil_max << ", fails(>1e-6)="
               << n_foil_above << "/" << N_ << std::endl;
