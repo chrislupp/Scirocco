@@ -88,6 +88,20 @@ Sensitivity ViscousSensitivities(FoilState& state);
 //   wake j>0:  ueinv[N+j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
 VectorXd DRVDAlpha(const FoilState& state);
 
+// Compute ∂R_V/∂Ma as a [4*Nsys] column vector via central FD on
+// state.param.Minf with the BL closures' Mach-dependence integrated through
+// the residual. The Mach chain enters via GetUk (KT correction), GetMach2,
+// GetHss, GetRet (compressible density and Sutherland viscosity). A clean
+// analytic chain would require differentiating each closure w.r.t. Ma which
+// is invasive; the scalar FD here is well-conditioned (single direction)
+// and limited to ~1e-7 abs noise floor at h=1e-7.
+VectorXd DRVDMa(FoilState& state, double h = 1e-7);
+
+// Compute ∂R_V/∂Re as a [4*Nsys] column vector via central FD on
+// state.param.mu0. Re enters only through Ret in BL closures.
+// dJ/dRe = ∂J/∂Re - λ^T · ∂R_V/∂Re. Note ∂param.mu0/∂Re = -mu0/Re.
+VectorXd DRVDRe(FoilState& state, double h = 1e-7);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_ADJOINT_H

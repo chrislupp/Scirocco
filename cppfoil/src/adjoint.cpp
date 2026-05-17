@@ -33,6 +33,7 @@
 #include <cmath>
 
 #include "cppfoil/core/coupled_solver.h"
+#include "cppfoil/core/forces.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
@@ -589,7 +590,7 @@ Sensitivity ViscousSensitivities(FoilState& state) {
     VectorXd vjp_cm = vjp(lambda_cm);
     VectorXd vjp_cd = vjp(lambda_cd);
 
-    // 5. Total = partial - vjp
+    // 5. Total dJ/dx = partial - vjp
     Sensitivity sens;
     sens.dcl_dx = MatrixXd::Zero(2, N);
     sens.dcm_dx = MatrixXd::Zero(2, N);
@@ -604,6 +605,64 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         sens.dcd_dx(0, k) = state.post.dcd_dx_partial(0, k) - vjp_cd(2 * k);
         sens.dcd_dx(1, k) = state.post.dcd_dx_partial(1, k) - vjp_cd(2 * k + 1);
     }
+
+    // 6. Scalar parameter chains: dJ/d{alpha, Ma, Re} via adjoint VJP.
+    //    dJ/dp = ∂J/∂p_partial - λ^T · ∂R_V/∂p.
+    //
+    // alpha: ∂cl/∂alpha = cl_alpha; ∂cm/∂alpha currently 0; ∂cd/∂alpha = 0
+    //        (Squire-Young uses Uw only, no direct alpha).
+    {
+        VectorXd dRV_dalpha = DRVDAlpha(state);
+        sens.dcl_dalpha = state.post.cl_alpha - lambda_cl.dot(dRV_dalpha);
+        sens.dcm_dalpha = 0.0 - lambda_cm.dot(dRV_dalpha);
+        sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
+    }
+
+    // Ma: ∂J/∂Ma_partial via dcp/dMa chain at fixed U[3] (= ue). Reuse the
+    // inviscid MachSensitivities formula: it sums cp_Ma over panels for
+    // each force coefficient. For viscous cd (Squire-Young), ∂cd/∂Ma chains
+    // through uk(Ma) and H_U·(uk depends on Ma): captured by AlphaCalcMa()
+    // helper below. For now use a quick partial chain via FD on Ma at fixed
+    // U for ∂J/∂Ma_partial.
+    {
+        VectorXd dRV_dMa = DRVDMa(state);
+        // ∂J/∂Ma_partial via FD on Ma at fixed U: re-evaluate cl/cd/cm with
+        // perturbed Minf (and corresponding KTb/KTl), holding U/foil.x fixed.
+        double Ma0 = state.param.Minf;
+        double h = 1e-7;
+        auto set_KT = [](Param& p, double Ma) {
+            p.Minf = Ma;
+            if (Ma > 0.0) {
+                double b = std::sqrt(1.0 - Ma * Ma);
+                p.KTb = b;
+                p.KTl = (Ma * Ma) / ((1.0 + b) * (1.0 + b));
+            } else {
+                p.KTb = 1.0;
+                p.KTl = 0.0;
+            }
+        };
+        auto eval_J = [&](double Ma) -> Vector3d {
+            FoilState sp = state;
+            set_KT(sp.param, Ma);
+            CalcForce(sp);
+            return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
+        };
+        Vector3d Jp = eval_J(Ma0 + h);
+        Vector3d Jm = eval_J(Ma0 - h);
+        Vector3d dJ_dMa_partial = (Jp - Jm) / (2.0 * h);
+        sens.dcl_dMa = dJ_dMa_partial(0) - lambda_cl.dot(dRV_dMa);
+        sens.dcd_dMa = dJ_dMa_partial(1) - lambda_cd.dot(dRV_dMa);
+        sens.dcm_dMa = dJ_dMa_partial(2) - lambda_cm.dot(dRV_dMa);
+    }
+
+    // Re: only chain through Ret in BL closures; no direct Re in cl/cd/cm.
+    {
+        VectorXd dRV_dRe = DRVDRe(state);
+        sens.dcl_dRe = -lambda_cl.dot(dRV_dRe);
+        sens.dcd_dRe = -lambda_cd.dot(dRV_dRe);
+        sens.dcm_dRe = -lambda_cm.dot(dRV_dRe);
+    }
+
     return sens;
 }
 
@@ -648,6 +707,90 @@ VectorXd DRVDAlpha(const FoilState& state) {
         dR(3 * Nsys + i) = -dueinv_dalpha;
     }
     return dR;
+}
+
+// ============================================================================
+// DRVDScalar — central FD of R_V w.r.t. a scalar parameter (Ma or mu0).
+//
+// Holds U, foil.x, wake.x, ue_sigma fixed at converged state and rebuilds
+// R_BL via BuildGlobSys (which re-evaluates BL closures with perturbed
+// param) plus the R_ue residual analytically. Returns the [4*Nsys] FD.
+// ============================================================================
+static VectorXd EvaluateRV(FoilState& state) {
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    BuildGlobSys(state);
+    VectorXd R = VectorXd::Zero(4 * Nsys);
+    R.head(3 * Nsys) = state.glob.R;
+    // R_ue[i] = U[3,i] - ueinv[i] - ue_m[i,:] * (ds.*ue)
+    VectorXd mass(Nsys);
+    for (int j = 0; j < Nsys; ++j) {
+        mass(j) = state.glob.U(1, j) * state.glob.U(3, j);
+    }
+    VectorXd src = state.vsol.ue_m * mass;
+    for (int i = 0; i < Nsys; ++i) {
+        double ueinv_i;
+        if (i < N) {
+            ueinv_i = state.isol.sgnue(i) * state.isol.gam(i);
+        } else if (i - N == 0) {
+            ueinv_i = state.isol.sgnue(N - 1) * state.isol.gam(N - 1);
+        } else {
+            ueinv_i = state.isol.uewi(i - N);
+        }
+        R(3 * Nsys + i) = state.glob.U(3, i) - ueinv_i - src(i);
+    }
+    return R;
+}
+
+VectorXd DRVDMa(FoilState& state, double h) {
+    if (h <= 0) h = 1e-7;
+    double Ma0 = state.param.Minf;
+    double KTb0 = state.param.KTb;
+    double KTl0 = state.param.KTl;
+    auto set_KT = [&](double Ma) {
+        state.param.Minf = Ma;
+        if (Ma > 0.0) {
+            double b = std::sqrt(1.0 - Ma * Ma);
+            state.param.KTb = b;
+            state.param.KTl = (Ma * Ma) / ((1.0 + b) * (1.0 + b));
+        } else {
+            state.param.KTb = 1.0;
+            state.param.KTl = 0.0;
+        }
+    };
+    set_KT(Ma0 + h);
+    state.glob.realloc = true;
+    VectorXd Rp = EvaluateRV(state);
+    set_KT(Ma0 - h);
+    state.glob.realloc = true;
+    VectorXd Rm = EvaluateRV(state);
+    // Restore baseline
+    state.param.Minf = Ma0;
+    state.param.KTb = KTb0;
+    state.param.KTl = KTl0;
+    state.glob.realloc = true;
+    BuildGlobSys(state);
+    return (Rp - Rm) / (2.0 * h);
+}
+
+VectorXd DRVDRe(FoilState& state, double h) {
+    // Step size proportional to parameter magnitude (mu0 ~ 1/Re ~ 1e-7).
+    // Use h ≈ sqrt(eps) * |mu0| for FD optimum.
+    double mu0_0 = state.param.mu0;
+    double Re0 = state.oper.Re;
+    if (h <= 0) h = std::abs(mu0_0) * 1e-7;
+    double dmu0_dRe = -mu0_0 / Re0;
+    state.param.mu0 = mu0_0 + h;
+    state.glob.realloc = true;
+    VectorXd Rp = EvaluateRV(state);
+    state.param.mu0 = mu0_0 - h;
+    state.glob.realloc = true;
+    VectorXd Rm = EvaluateRV(state);
+    state.param.mu0 = mu0_0;
+    state.glob.realloc = true;
+    BuildGlobSys(state);
+    VectorXd dR_dmu0 = (Rp - Rm) / (2.0 * h);
+    return dR_dmu0 * dmu0_dRe;
 }
 
 // ============================================================================
