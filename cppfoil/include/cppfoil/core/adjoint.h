@@ -86,7 +86,7 @@ Sensitivity ViscousSensitivities(FoilState& state);
 //                     gamma = gamref[:,0]*cos α + gamref[:,1]*sin α
 //   wake j=0 (continuity): same chain through gamma[N-1]
 //   wake j>0:  ueinv[N+j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
-VectorXd DRVDAlpha(const FoilState& state);
+VectorXd DRVDAlpha(FoilState& state);
 
 // Compute ∂R_V/∂Ma as a [4*Nsys] column vector via central FD on
 // state.param.Minf with the BL closures' Mach-dependence integrated through

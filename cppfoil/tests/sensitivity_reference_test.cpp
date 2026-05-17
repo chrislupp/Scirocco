@@ -54,19 +54,20 @@ using namespace Eigen;
 // Any error beyond this indicates a bug in the C++ adjoint.
 constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
 // Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
-//   Shape (adjoint):  ~5e-5 rel — full Phase-2 chain through wake.x/ue_sigma
-//                       works correctly via DRblDFoilX/ComputeRueVJP.
-//   Alpha (adjoint):  ~5e-4 rel on cl/cd, ~4e-3 on cm — adjoint chain is
-//                       INCOMPLETE: DRVDAlpha only captures ueinv chain
-//                       through gamma. Missing: wake.x chain (BuildWake
-//                       uses V(gam, alpha)), ue_sigma chain (through wake.x).
-//   Mach/Re:          NOT IMPLEMENTED — analytic chain through BL-closure
-//                       {Ma,Re} dependencies would require templating each
-//                       closure. Currently returns 0; tests skipped.
-// To compare against CS reference (machine precision via mfoil_cs CS), the
-// adjoint chain must include all of the above. This is the open work.
+//   Shape adjoint:    ~5e-5 rel — Phase-2 chain through wake.x/ue_sigma.
+//   Alpha adjoint:    ~1e-5 cl/cd, ~1e-4 cm — DRVDAlpha now rebuilds gam,
+//                       wake.x, wake.t, ue_sigma at perturbed alpha at FIXED
+//                       U via 4th-order central FD. Captures every chain
+//                       analytically (no Newton re-solve).
+//   Mach adjoint:     ~3e-6 to 8e-5 rel — DRVDMa uses InitThermo to rebuild
+//                       KTb, KTl, H0, cps, mu0, rho0 at perturbed Ma.
+//   Re adjoint:       ~1e-3 rel — DRVDRe perturbs mu0 (since Ret = X/mu0).
+//                       Remaining gap is cppfoil's Newton 3e-12 floor
+//                       amplified through |λ| for the tiny |dJ/dRe| ~ 1e-8.
+// Tolerance covers all scalar sensitivities at the current cppfoil precision;
+// pushing below 1e-3 requires fixing the Newton plateau (separate primal work).
 constexpr double TOL_VISC_SHAPE = 1e-4;
-constexpr double TOL_VISC_SCALAR_ALPHA = 5e-3;  // current adjoint gap
+constexpr double TOL_VISC_SCALAR_ALPHA = 5e-3;
 
 // ---------------------------------------------------------------------------
 // HDF5 helpers (same pattern as mfoil_reference_test.cpp)
@@ -415,20 +416,60 @@ TEST_F(SensitivityReferenceTest, ViscousAlphaSensitivity) {
     EXPECT_LT(rel(sens.dcm_dalpha, dcm_ref), TOL_VISC_SCALAR_ALPHA);
 }
 
-// Viscous Ma and Re sensitivities: the adjoint chain through BL-closure
-// {Ma,Re} dependencies isn't implemented in cppfoil. ComputeSensitivities
-// currently returns 0 for these. The tests below are skipped until the
-// proper analytic chains land.
 TEST_F(SensitivityReferenceTest, ViscousMachSensitivity) {
-    GTEST_SKIP() << "Adjoint chain for Ma sensitivity not implemented "
-                    "(needs ∂closure/∂Ma through KTb, KTl, H0, cps, rho0, "
-                    "mu0 dependencies in bl_properties). See "
-                    "ViscousSensitivities note.";
+    double dcl_ref = readScalar<double>(getFile(), "viscous_mach/dcl_dMa");
+    double dcd_ref = readScalar<double>(getFile(), "viscous_mach/dcd_dMa");
+    double dcm_ref = readScalar<double>(getFile(), "viscous_mach/dcm_dMa");
+
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, 0.3);
+    foil.Solve();
+    auto sens = foil.ComputeSensitivities();
+    auto& s = foil.GetState();
+    ASSERT_TRUE(s.glob.conv);
+
+    auto rel = [&](double got, double ref) {
+        return std::abs(got - ref) / std::max(std::abs(ref), 1e-30);
+    };
+    std::cout << "ViscousMach:  dcl/dMa got=" << sens.dcl_dMa
+              << " ref=" << dcl_ref << " rel=" << rel(sens.dcl_dMa, dcl_ref)
+              << std::endl;
+    std::cout << "              dcd/dMa got=" << sens.dcd_dMa
+              << " ref=" << dcd_ref << " rel=" << rel(sens.dcd_dMa, dcd_ref)
+              << std::endl;
+    std::cout << "              dcm/dMa got=" << sens.dcm_dMa
+              << " ref=" << dcm_ref << " rel=" << rel(sens.dcm_dMa, dcm_ref)
+              << std::endl;
+    EXPECT_LT(rel(sens.dcl_dMa, dcl_ref), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcd_dMa, dcd_ref), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcm_dMa, dcm_ref), TOL_VISC_SCALAR_ALPHA);
 }
 
 TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
-    GTEST_SKIP() << "Adjoint chain for Re sensitivity not implemented "
-                    "(needs ∂closure/∂Ret * (Ret/Re) chain through every "
-                    "BL closure that uses Ret). See ViscousSensitivities "
-                    "note.";
+    double dcl_ref = readScalar<double>(getFile(), "viscous_re/dcl_dRe");
+    double dcd_ref = readScalar<double>(getFile(), "viscous_re/dcd_dRe");
+    double dcm_ref = readScalar<double>(getFile(), "viscous_re/dcm_dRe");
+
+    Cppfoil foil("0012", 100);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    foil.Solve();
+    auto sens = foil.ComputeSensitivities();
+    auto& s = foil.GetState();
+    ASSERT_TRUE(s.glob.conv);
+
+    auto rel = [&](double got, double ref) {
+        return std::abs(got - ref) / std::max(std::abs(ref), 1e-30);
+    };
+    std::cout << "ViscousRe:    dcl/dRe got=" << sens.dcl_dRe
+              << " ref=" << dcl_ref << " rel=" << rel(sens.dcl_dRe, dcl_ref)
+              << std::endl;
+    std::cout << "              dcd/dRe got=" << sens.dcd_dRe
+              << " ref=" << dcd_ref << " rel=" << rel(sens.dcd_dRe, dcd_ref)
+              << std::endl;
+    std::cout << "              dcm/dRe got=" << sens.dcm_dRe
+              << " ref=" << dcm_ref << " rel=" << rel(sens.dcm_dRe, dcm_ref)
+              << std::endl;
+    EXPECT_LT(rel(sens.dcl_dRe, dcl_ref), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcd_dRe, dcd_ref), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcm_dRe, dcm_ref), TOL_VISC_SCALAR_ALPHA);
 }

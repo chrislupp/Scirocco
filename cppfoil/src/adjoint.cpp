@@ -36,6 +36,7 @@
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
 #include "cppfoil/core/viscous_residual_deriv.h"
 #include "cppfoil/core/inviscid_deriv.h"
@@ -606,90 +607,64 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         sens.dcd_dx(1, k) = state.post.dcd_dx_partial(1, k) - vjp_cd(2 * k + 1);
     }
 
-    // 6. Scalar parameter sensitivities via the adjoint VJP.
+    // 6. Scalar parameter sensitivities: dJ/dp = ∂J/∂p_partial - λ^T·∂R_V/∂p.
     //
-    // STATUS: alpha is INCOMPLETE — DRVDAlpha only captures the chain through
-    // ueinv (gamma → foil-side ue and wake[0] continuity). It does NOT include
-    // the chain through wake.x (which depends on alpha via BuildWake using
-    // V(gam, alpha)) nor ue_sigma (depends on wake.x). Empirical gap vs
-    // mfoil_cs CS reference is ~5e-4 rel on dcl/dalpha, ~4e-3 rel on dcm/dalpha.
+    // ∂R_V/∂p is computed via 4th-order central FD on the parameter at FIXED
+    // U, with all p-dependent geometry/closure quantities re-evaluated
+    // analytically (NOT a Newton re-solve). For alpha that means rebuilding
+    // gam, wake.x, wake.t, ue_sigma — these all depend on alpha but the
+    // earlier "gamma-only" DRVDAlpha missed the wake.x/ue_sigma chains and
+    // was off by ~5e-4 rel. For Ma it means rebuilding all of KTb, KTl, H0,
+    // cps, mu0, rho0 via InitThermo (closures use these). For Re it means
+    // updating mu0 only (Ret = X/mu0).
     //
-    // Ma and Re analytic chains are NOT implemented at all — there's no
-    // DRVDMa/DRVDRe equivalent that captures the BL-closure derivatives
-    // through {KTb, KTl, H0, cps, rho0, mu0} dependence on Ma, or through
-    // Ret = X/mu0 dependence on Re. Those would require either templating
-    // every closure to return ∂closure/∂{Ma,Re}, or extending the chain
-    // through Ret_mu0 / Ret_Re.
-    //
-    // Until those analytic chains are filled in, the scalar sensitivities
-    // below match the CS reference only to ~5e-4 rel (alpha) and are not
-    // computed analytically for Ma/Re (left at zero).
+    // ∂J/∂p_partial captures the explicit p-dependence in J(U_fixed, p):
+    //   alpha: cl/cm/cdpi have explicit cos/sin factors → cl_alpha, etc.
+    //   Ma:    cp uses KT-corrected uk(ue, KTl, KTb) and cd uses uk → FD.
+    //   Re:    no explicit dependence (Re only enters through R via Ret).
     {
         VectorXd dRV_dalpha = DRVDAlpha(state);
         sens.dcl_dalpha = state.post.cl_alpha - lambda_cl.dot(dRV_dalpha);
         sens.dcm_dalpha = 0.0 - lambda_cm.dot(dRV_dalpha);
         sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
     }
-    // Ma, Re: analytic chains not implemented. Leave at zero.
-    sens.dcl_dMa = 0.0;
-    sens.dcd_dMa = 0.0;
-    sens.dcm_dMa = 0.0;
-    sens.dcl_dRe = 0.0;
-    sens.dcd_dRe = 0.0;
-    sens.dcm_dRe = 0.0;
+
+    // Ma: ∂J/∂Ma_partial via FD on Ma at fixed U (cp uses KT correction).
+    {
+        VectorXd dRV_dMa = DRVDMa(state);
+        double Ma0 = state.oper.Ma;
+        double h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
+        auto eval_J = [&](double Ma) -> Vector3d {
+            FoilState sp = state;
+            sp.oper.Ma = Ma;
+            InitThermo(sp);
+            CalcForce(sp);
+            return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
+        };
+        Vector3d Jp2 = eval_J(Ma0 + 2 * h);
+        Vector3d Jp1 = eval_J(Ma0 + h);
+        Vector3d Jm1 = eval_J(Ma0 - h);
+        Vector3d Jm2 = eval_J(Ma0 - 2 * h);
+        Vector3d dJ_dMa = (-Jp2 + 8.0 * Jp1 - 8.0 * Jm1 + Jm2) / (12.0 * h);
+        sens.dcl_dMa = dJ_dMa(0) - lambda_cl.dot(dRV_dMa);
+        sens.dcd_dMa = dJ_dMa(1) - lambda_cd.dot(dRV_dMa);
+        sens.dcm_dMa = dJ_dMa(2) - lambda_cm.dot(dRV_dMa);
+    }
+
+    // Re: no explicit J(Re) dependence — only chain through R_V.
+    {
+        VectorXd dRV_dRe = DRVDRe(state);
+        sens.dcl_dRe = -lambda_cl.dot(dRV_dRe);
+        sens.dcd_dRe = -lambda_cd.dot(dRV_dRe);
+        sens.dcm_dRe = -lambda_cm.dot(dRV_dRe);
+    }
 
     return sens;
 }
 
 // ============================================================================
-// DRVDAlpha — analytical ∂R_V/∂alpha as a [4*Nsys] vector.
-// Matches the same chain that SolveGlob uses in its constrained-cl Newton
-// block (coupled_solver.cpp:529-543).
-// ============================================================================
-VectorXd DRVDAlpha(const FoilState& state) {
-    int N = state.foil.N;
-    int Nsys = state.glob.Nsys;
-    double alpha = state.oper.alpha;
-    double sa = Sind(alpha);
-    double ca = Cosd(alpha);
-
-    VectorXd dR = VectorXd::Zero(4 * Nsys);
-    for (int i = 0; i < Nsys; ++i) {
-        double dueinv_dalpha = 0.0;
-        if (i < N) {
-            // Foil: ueinv[i] = sgnue[i] * gamma[i]
-            double dgam = -state.isol.gamref(i, 0) * sa +
-                          state.isol.gamref(i, 1) * ca;
-            dueinv_dalpha = state.isol.sgnue(i) * dgam;
-        } else {
-            int iw = i - N;
-            if (iw == 0) {
-                // Wake station 0 uses continuity BC ueinv[N+0] = uea[N-1]
-                // = sgnue[N-1] * gamma[N-1]. The uewiref[0,:] velocity in
-                // state.isol.uewi(0) is OVERWRITTEN by this in get_ueinv,
-                // so the residual chain goes through gamma, not uewiref.
-                double dgam = -state.isol.gamref(N - 1, 0) * sa +
-                              state.isol.gamref(N - 1, 1) * ca;
-                dueinv_dalpha = state.isol.sgnue(N - 1) * dgam;
-            } else if (iw < static_cast<int>(state.isol.uewiref.rows())) {
-                // Wake j>0: uewi[j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
-                dueinv_dalpha = -state.isol.uewiref(iw, 0) * sa +
-                                state.isol.uewiref(iw, 1) * ca;
-            }
-        }
-        dueinv_dalpha *= kDegToRad;
-        // R_ue[i] = U[3,i] - ueinv[i] - ..., so ∂R_ue/∂alpha = -∂ueinv/∂alpha
-        dR(3 * Nsys + i) = -dueinv_dalpha;
-    }
-    return dR;
-}
-
-// ============================================================================
-// DRVDScalar — central FD of R_V w.r.t. a scalar parameter (Ma or mu0).
-//
-// Holds U, foil.x, wake.x, ue_sigma fixed at converged state and rebuilds
-// R_BL via BuildGlobSys (which re-evaluates BL closures with perturbed
-// param) plus the R_ue residual analytically. Returns the [4*Nsys] FD.
+// EvaluateRV — assemble R_V at the current state (U fixed, BL closures
+// re-evaluated). Used by the ∂R_V/∂p chain functions below.
 // ============================================================================
 static VectorXd EvaluateRV(FoilState& state) {
     int N = state.foil.N;
@@ -697,7 +672,6 @@ static VectorXd EvaluateRV(FoilState& state) {
     BuildGlobSys(state);
     VectorXd R = VectorXd::Zero(4 * Nsys);
     R.head(3 * Nsys) = state.glob.R;
-    // R_ue[i] = U[3,i] - ueinv[i] - ue_m[i,:] * (ds.*ue)
     VectorXd mass(Nsys);
     for (int j = 0; j < Nsys; ++j) {
         mass(j) = state.glob.U(1, j) * state.glob.U(3, j);
@@ -717,11 +691,11 @@ static VectorXd EvaluateRV(FoilState& state) {
     return R;
 }
 
-// 4th-order central FD: df/dx ≈ (-f(+2h) + 8f(+h) - 8f(-h) + f(-2h)) / (12h)
-// Truncation O(h^4), so the optimal h is much larger than 2nd-order central
-// — pushing cancellation noise (eps/h) well below truncation while keeping h
-// well clear of the parameter's natural scale. For mu0 ~ 1e-7 with Newton
-// residual floor ~3e-12, optimal h ≈ mu0 * 1e-2 yields ~3e-10 rel precision.
+// 4th-order central FD: df/dx ≈ (-f(+2h) + 8f(+h) - 8f(-h) + f(-2h)) / (12h).
+// Truncation O(h^4), so optimal h is larger than 2nd-order central — pushes
+// cancellation noise below truncation. With ε_R ~ machine eps (we recompute
+// R analytically without re-solving Newton), 4th order at h~|p|·1e-2 gives
+// ~1e-12 abs precision in ∂R/∂p.
 template <typename EvalR>
 static VectorXd CentralFD4(double x0, double h, EvalR&& eval) {
     VectorXd Rp2 = eval(x0 + 2 * h);
@@ -729,6 +703,103 @@ static VectorXd CentralFD4(double x0, double h, EvalR&& eval) {
     VectorXd Rm1 = eval(x0 - h);
     VectorXd Rm2 = eval(x0 - 2 * h);
     return (-Rp2 + 8.0 * Rp1 - 8.0 * Rm1 + Rm2) / (12.0 * h);
+}
+
+// ============================================================================
+// ∂R_V/∂p at FIXED U — 4th-order central FD on the parameter p, with all
+// p-dependent geometry/closure quantities recomputed analytically (no Newton
+// re-solve, U held fixed). This is THE adjoint partial derivative needed in
+// dJ/dp = ∂J/∂p - λ^T · ∂R_V/∂p.
+//
+// Cost: 4 evaluations per parameter, each running the geometry pipeline at
+// the perturbed parameter value (BuildWake/CalcUeM/StagPointFind etc. for
+// alpha; InitThermo for Ma; mu0 update for Re) and rebuilding R_V from U.
+// ============================================================================
+namespace {
+
+// Save / restore the subset of state that gets rebuilt during parameter
+// perturbation. We deep-copy the affected fields; original chord/foil/U
+// are untouched.
+struct ParamPerturbBackup {
+    Param param;
+    Oper oper;
+    Panel wake;
+    Isol isol;
+    Vsol vsol;
+    Glob glob;
+};
+
+static ParamPerturbBackup SaveStateForPerturb(const FoilState& state) {
+    ParamPerturbBackup b;
+    b.param = state.param;
+    b.oper = state.oper;
+    b.wake = state.wake;
+    b.isol = state.isol;
+    b.vsol = state.vsol;
+    b.glob = state.glob;
+    return b;
+}
+
+static void RestoreStateForPerturb(FoilState& state,
+                                    const ParamPerturbBackup& b) {
+    state.param = b.param;
+    state.oper = b.oper;
+    state.wake = b.wake;
+    state.isol = b.isol;
+    state.vsol = b.vsol;
+    state.glob = b.glob;
+}
+
+// Evaluate R_V at the current (possibly perturbed) state, holding U fixed.
+// State must be "primed" — i.e. gam, wake.*, ue_sigma, xi, wgap recomputed
+// at the perturbed parameter. BuildGlobSys is called here.
+static VectorXd EvaluateRVFixedU(FoilState& state) {
+    return EvaluateRV(state);
+}
+
+}  // namespace
+
+VectorXd DRVDAlpha(FoilState& state) {
+    double alpha0 = state.oper.alpha;
+    int Istag0_lo = state.isol.Istag[0];
+    int Istag0_hi = state.isol.Istag[1];
+    // 4th-order central FD: h = |α|·1e-2 (degrees). At Newton-converged
+    // machine-eps R, this gives ~1e-12 abs precision in ∂R/∂α.
+    double h = std::max(std::abs(alpha0) * 1e-2, 1e-3);
+
+    auto eval = [&](double alpha) {
+        state.oper.alpha = alpha;
+        // Rebuild all alpha-dependent geometry & closure pieces at fixed U.
+        // RebuildIsol updates gam from gamref[:,0]*cos α + gamref[:,1]*sin α.
+        // BuildWake re-traces the wake streamline using V(gam, alpha) — this
+        // is the chain piece that the simple gamma-only DRVDAlpha was missing.
+        RebuildIsol(state);
+        BuildWake(state);
+        // Stagpoint search at fixed Istag — for small h the stagnation panel
+        // doesn't move, so just recompute sstag and xi.
+        StagPointFind(state);
+        // If Istag would move, the perturbation is too large.
+        if (state.isol.Istag[0] != Istag0_lo ||
+            state.isol.Istag[1] != Istag0_hi) {
+            throw std::runtime_error(
+                "DRVDAlpha: stagnation panel moved under perturbation; "
+                "reduce h or use stagnation-locked variant");
+        }
+        ExtendXiToWake(state);
+        // IdentifySurfaces depends on Istag; for fixed Istag it produces the
+        // same Is[0..2] indexing, but call it to be safe.
+        IdentifySurfaces(state);
+        SetWakeGap(state);
+        CalcUeM(state);
+        state.glob.realloc = true;
+        return EvaluateRVFixedU(state);
+    };
+
+    ParamPerturbBackup backup = SaveStateForPerturb(state);
+    VectorXd dR = CentralFD4(alpha0, h, eval);
+    RestoreStateForPerturb(state, backup);
+    BuildGlobSys(state);  // restore R_U/R_x at baseline
+    return dR;
 }
 
 VectorXd DRVDMa(FoilState& state, double h) {
