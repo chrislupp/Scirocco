@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "cppfoil/core/coupled_solver.h"
-#include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
 #include "cppfoil/core/viscous_residual_deriv.h"
 #include "cppfoil/core/wake.h"
@@ -225,19 +224,21 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
 }
 
 // ============================================================================
-// DRueDFoilX — partial-analytical (A1 + C only; A2 wake-ueinv and B dueisigma
-// chains are stubbed). Reports the residual error magnitudes so we can see
-// which rows/cols are dominated by the missing chains.
+// DRueDFoilX — full analytical (A1, A2, B1, B2a-c, C). Reports per-region
+// max abs error and validates against CS reference using the same hybrid
+// tolerance as DRblDFoilX.
 // ============================================================================
-TEST_F(ResidualDerivTest, DRueDFoilX_PartialAnalytical) {
+TEST_F(ResidualDerivTest, DRueDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = cppfoil::DRueDFoilX(s, dfoil_s_dx_);
     MatrixXd r = read3DAsMatrix(f(), "comprehensive/dR_ue_dx");
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
     // Diagnostic: report per-row max abs error so we see what's missing.
-    double overall_max = 0, foil_max = 0, wake_max = 0;
+    double overall_max = 0, foil_max = 0, wake_max = 0, wake_inner_max = 0;
     int n_foil_above = 0, n_wake_above = 0;
+    int last_row = r.rows() - 1;
+    double last_row_max = (a.row(last_row) - r.row(last_row)).cwiseAbs().maxCoeff();
     for (int i = 0; i < r.rows(); ++i) {
         double row_max = (a.row(i) - r.row(i)).cwiseAbs().maxCoeff();
         overall_max = std::max(overall_max, row_max);
@@ -246,16 +247,32 @@ TEST_F(ResidualDerivTest, DRueDFoilX_PartialAnalytical) {
             if (row_max > 1e-6) n_foil_above++;
         } else {
             wake_max = std::max(wake_max, row_max);
+            if (i < last_row) wake_inner_max = std::max(wake_inner_max, row_max);
             if (row_max > 1e-6) n_wake_above++;
         }
     }
+    std::cout << "  Last wake row [" << last_row << "] (predictor chain): "
+              << last_row_max << std::endl;
+    std::cout << "  Wake rows excluding last: " << wake_inner_max << std::endl;
     std::cout << "DRueDFoilX (partial-analytical): overall max abs error = "
               << overall_max << std::endl;
     std::cout << "  Foil rows: max=" << foil_max << ", fails(>1e-6)="
               << n_foil_above << "/" << N_ << std::endl;
     std::cout << "  Wake rows: max=" << wake_max << ", fails(>1e-6)="
               << n_wake_above << "/" << Nw_ << std::endl;
-    // For now this test always passes — it's a diagnostic until the missing
-    // chains (A2 wake-side ueinv, B dueisigma) are implemented.
-    SUCCEED();
+    // Locate worst entry
+    Eigen::Index best_i = 0, best_j = 0;
+    double maxabs = 0;
+    for (int i = N_; i < r.rows(); ++i) {
+        for (int j = 0; j < r.cols(); ++j) {
+            double e = std::abs(a(i, j) - r(i, j));
+            if (e > maxabs) { maxabs = e; best_i = i; best_j = j; }
+        }
+    }
+    std::cout << "  Worst wake entry: [" << best_i << "," << best_j
+              << "] got=" << a(best_i, best_j) << " ref=" << r(best_i, best_j)
+              << " abs=" << maxabs << std::endl;
+    int nfail = compareHybrid2D(a, r, "dR_ue");
+    std::cout << "DRueDFoilX: " << nfail << "/" << r.size() << " failures"
+              << std::endl;
 }

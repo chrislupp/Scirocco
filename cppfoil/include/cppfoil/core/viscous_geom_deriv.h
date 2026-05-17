@@ -118,6 +118,19 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 // DEFERRED to follow-on work after the closed-form chains validate.
 MatrixXd DWakeXDFoilX(const FoilState& state);
 
+// d(wake.t)/d(foil.x) — wake unit-tangent vectors from BuildWake's predictor-
+// corrector sweep. Returns [2*Nw x 2N], same row layout as DWakeXDFoilX
+// (row d*Nw + j = d(wake.t(d, j))/d(foil.x)).
+//
+// For j < Nw-1, wake.t[j] = V/|V| at wake.x[j] (the v1 in iteration i=j).
+// For j == Nw-1, wake.t[Nw-1] = V/|V| at the PREDICTOR point x_pred from
+// iteration i=Nw-2 (i.e. not at wake.x[Nw-1] itself).
+//
+// The simple "(I - t t^T)/|V| * dV at wake.x[j]" formula is exact for
+// j < Nw-1 but wrong for j = Nw-1 because t is set from a different point
+// than wake.x[Nw-1]. This function does the iterative chain to get it right.
+MatrixXd DWakeTDFoilX(const FoilState& state);
+
 // d(TE info)/d(foil.x[k]_dim): expose the static helper from adjoint.cpp.
 // Only nodes k ∈ {0, 1, N-2, N-1} produce nonzero output.
 void GetTEInfoDeriv(const MatrixXd& foil_x, int k, int dim, double& dtcp,

@@ -723,4 +723,111 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     return dwake_x;
 }
 
+// ============================================================================
+// DWakeTDFoilX — derivative of wake.t (unit tangents) w.r.t. foil.x.
+//
+// Mirrors DWakeXDFoilX's iterative sweep. wake.t[j] is set during BuildWake
+// by:
+//   for i = 0..Nw-2:
+//     v1 = V(wake.x[i]) / |V|;    wake.t[i] = v1   (overwrites prior v2)
+//     v2 = V(x_pred) / |V|;       wake.t[i+1] = v2 (overwritten next iter
+//                                                   except for i = Nw-2)
+// So:
+//   wake.t[j]  (j < Nw-1) = v1 in iteration i=j → derivative = dv1_dx_at_i=j
+//   wake.t[Nw-1]          = v2 in iteration i=Nw-2 → derivative = dv2_dx
+// ============================================================================
+MatrixXd DWakeTDFoilX(const FoilState& state) {
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int twoN = 2 * N;
+    double alpha = state.oper.alpha;
+    double chord = state.geom.chord;
+    double wakelen = state.geom.wakelen;
+
+    MatrixXd dgam_dx = DGammaDFoilX(state, alpha);
+    MatrixXd dfoil_s_dx = DFoilSDFoilXCumulative(state.foil);
+
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                        (state.foil.s(N - 1) - state.foil.s(N - 2)));
+    double L = wakelen * chord;
+    VectorXd sv, dsv_dds1;
+    SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
+
+    VectorXd dds1_dx = 0.5 * (dfoil_s_dx.row(1).transpose() -
+                              dfoil_s_dx.row(0).transpose() +
+                              dfoil_s_dx.row(N - 1).transpose() -
+                              dfoil_s_dx.row(N - 2).transpose());
+
+    // Initial wake.x[:, 0] sensitivities (same as DWakeXDFoilX)
+    Vector2d xy1 = state.foil.x.col(0);
+    Vector2d xyN = state.foil.x.col(N - 1);
+    Vector2d n_te = xyN - xy1;
+    Vector2d t_te_raw(n_te(1), -n_te(0));
+    double sign = (t_te_raw(0) < 0) ? -1.0 : 1.0;
+
+    MatrixXd dxyw_i = MatrixXd::Zero(2, twoN);
+    for (int dim = 0; dim < 2; ++dim) {
+        dxyw_i(dim, 2 * 0 + dim) += 0.5;
+        dxyw_i(dim, 2 * (N - 1) + dim) += 0.5;
+    }
+    double factor = 1e-5 * chord * sign;
+    dxyw_i(0, 2 * (N - 1) + 1) += factor;
+    dxyw_i(0, 2 * 0 + 1)       -= factor;
+    dxyw_i(1, 2 * (N - 1) + 0) -= factor;
+    dxyw_i(1, 2 * 0 + 0)       += factor;
+
+    MatrixXd dwake_t = MatrixXd::Zero(2 * Nw, twoN);
+    Vector2d xyw_i = state.wake.x.col(0);
+
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds_i = sv(i + 1) - sv(i);
+        VectorXd dds_i_dx = (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;
+
+        // v1 at xyw_i  → wake.t[i]
+        VelDeriv vd0 = InviscidVelocityWithDeriv(state, xyw_i, dgam_dx, alpha);
+        Vector2d V0 = vd0.V;
+        double V0n = V0.norm();
+        if (V0n < 1e-12) V0n = 1e-12;
+        Vector2d v1 = V0 / V0n;
+        Matrix2d norm_jac1 =
+            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;
+        MatrixXd dv1_dx = norm_jac1 * dV0_dx;
+
+        // Store wake.t[i] = v1
+        dwake_t.row(0 * Nw + i) = dv1_dx.row(0);
+        dwake_t.row(1 * Nw + i) = dv1_dx.row(1);
+
+        // Predictor step
+        Vector2d x_pred = xyw_i + ds_i * v1;
+        MatrixXd dx_pred =
+            dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;
+
+        // v2 at x_pred → wake.t[i+1] (overwritten except for last iter)
+        VelDeriv vd1 = InviscidVelocityWithDeriv(state, x_pred, dgam_dx, alpha);
+        Vector2d V1 = vd1.V;
+        double V1n = V1.norm();
+        if (V1n < 1e-12) V1n = 1e-12;
+        Vector2d v2 = V1 / V1n;
+        Matrix2d norm_jac2 =
+            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
+        MatrixXd dv2_dx = norm_jac2 * dV1_dx;
+
+        // Tentatively store wake.t[i+1] = v2 (overwritten unless last)
+        dwake_t.row(0 * Nw + (i + 1)) = dv2_dx.row(0);
+        dwake_t.row(1 * Nw + (i + 1)) = dv2_dx.row(1);
+
+        // Update for next iter (corrector → xyw_{i+1})
+        Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
+        MatrixXd dxyw_next = dxyw_i +
+                             (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
+                             ds_i * 0.5 * (dv1_dx + dv2_dx);
+        xyw_i = xyw_next;
+        dxyw_i = dxyw_next;
+    }
+
+    return dwake_t;
+}
+
 }  // namespace cppfoil
