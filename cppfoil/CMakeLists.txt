@@ -29,6 +29,7 @@ set(CPPFOIL_SOURCES
     src/forces.cpp
     src/adjoint.cpp
     src/viscous_geom_deriv.cpp
+    src/viscous_residual_deriv.cpp
     src/bl_properties.cpp
     src/cppfoil.cpp
 )
@@ -86,9 +87,7 @@ if(CPPFOIL_BUILD_TESTS)
         )
         gtest_discover_tests(cppfoil_forward_ref_tests)
 
-        # Phase 1 geometric chain tests: dxi/dx, dwake_s/dx, dwgap/dx,
-        # dsstag/dx, dfoil_s/dx (cumulative). DWakeXDFoilX test is disabled
-        # until the iterative wake chain is implemented.
+        # Phase 1 geometric chain tests
         add_executable(cppfoil_viscous_chain_tests
             tests/viscous_chain_test.cpp
         )
@@ -98,6 +97,17 @@ if(CPPFOIL_BUILD_TESTS)
             GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
         )
         gtest_discover_tests(cppfoil_viscous_chain_tests)
+
+        # Phase 2 residual partial tests
+        add_executable(cppfoil_viscous_residual_tests
+            tests/viscous_residual_deriv_test.cpp
+        )
+        target_link_libraries(cppfoil_viscous_residual_tests
+            cppfoil GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(cppfoil_viscous_residual_tests PRIVATE
+            COMPREHENSIVE_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/comprehensive_reference.h5"
+        )
+        gtest_discover_tests(cppfoil_viscous_residual_tests)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

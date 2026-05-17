@@ -2643,7 +2643,7 @@ def residual_transition(M, param, x, U, Aux):
     # determine transition location (xt) using amplification equation
     xt = x1 + 0.5*dx  # guess
     ncrit = param.ncrit  # critical amp factor
-    nNewton = 20
+    nNewton = 30
     vprint(param, 3, '  Transition interval = [%.5e, %.5e]'%(x1, x2))
     #  U1, U2
     for iNewton in range(nNewton):
@@ -2658,7 +2658,7 @@ def residual_transition(M, param, x, U, Aux):
         vprint(param, 4, '   Transition: iNewton,Rxt,xt = %d,%.5e,%.5e'%(iNewton,Rxt,xt))
         dmax = 0.2*dx*(1.1-iNewton/nNewton)
         if (abs(dxt)>dmax): dxt = dxt*dmax/abs(dxt)
-        if (abs(Rxt) < 1e-10): break
+        if (abs(Rxt) < 1e-14): break
         if (iNewton<nNewton): xt += dxt
 
     if (iNewton >= nNewton): vprint(param, 1, 'Transition location calculation failed.')

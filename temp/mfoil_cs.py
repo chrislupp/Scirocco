@@ -389,7 +389,7 @@ def _patched_residual_transition(M, param, x, U, Aux):
 
     # determine transition location xt
     xt = x1 + 0.5 * dx  # initial guess
-    nNewton = 20
+    nNewton = 30  # match mfoil.py (tightened from 20)
     for iNewton in range(nNewton):
         w2 = (xt - x1) / dx; w1 = 1. - w2
         Ut = w1 * U1 + w2 * U2
@@ -409,7 +409,7 @@ def _patched_residual_transition(M, param, x, U, Aux):
         dmax = 0.2 * dx * (1.1 - iNewton / nNewton)
         if np.real(np.abs(dxt)) > np.real(dmax):
             dxt = dxt * dmax / np.abs(dxt)
-        if np.real(np.abs(Rxt)) < 1e-10:
+        if np.real(np.abs(Rxt)) < 1e-14:  # match mfoil.py tightening
             break
         if iNewton < nNewton:
             xt += dxt

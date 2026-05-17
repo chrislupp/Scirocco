@@ -32,6 +32,7 @@
 
 #include <cmath>
 
+#include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -721,8 +722,9 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
     Vector4d Uu = state.glob.U.col(iu);
     Vector4d Uw = state.glob.U.col(iw);
 
-    // Get TE gap
-    double hTE = state.geom.hTE;
+    // Get TE gap (recompute from foil.x, matching mfoil's wake_sys)
+    TEInfo te = GetTEInfo(state.foil.x);
+    double hTE = te.hTE;
 
     // Get shear stress at wake start
     // Use transition ctau if not already turbulent
@@ -814,7 +816,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     // Determine transition location (xt) using amplification equation
     double xt = x1 + 0.5 * dx;  // Initial guess
     double ncrit = param_base.ncrit;
-    constexpr int nNewton = 20;
+    constexpr int nNewton = 30;
 
     double sa1 = U1(2);  // Amplification at point 1
 
@@ -850,7 +852,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
             dxt = dxt * dmax / std::abs(dxt);
         }
 
-        if (std::abs(Rxt) < 1e-10) break;
+        if (std::abs(Rxt) < 1e-14) break;
         if (iNewton < nNewton - 1) xt += dxt;
     }
 
