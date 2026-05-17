@@ -845,11 +845,15 @@ def complex_step_mode():
     orig_min = builtins.min
 
     def _cs_abs(x):
+        # CS-safe abs: for complex inputs, return sgn(Re(x)) * x so the
+        # imaginary derivative chain is preserved. The default np.abs/builtin
+        # abs returns the magnitude (real), which kills CS derivatives through
+        # any abs() in the chain (e.g. xi = |foil.s - sstag| at mfoil.py:805).
         if isinstance(x, (complex, np.complexfloating)):
-            return np.abs(x)
+            return x if x.real >= 0 else -x
         try:
             if np.iscomplexobj(x):
-                return np.abs(x)
+                return np.where(np.real(x) >= 0, x, -x)
         except (TypeError, ValueError):
             pass
         return orig_abs(x)

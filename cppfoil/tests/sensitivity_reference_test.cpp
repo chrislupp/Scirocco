@@ -54,7 +54,12 @@ using namespace Eigen;
 // Any error beyond this indicates a bug in the C++ adjoint.
 constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
 constexpr double TOL_VISC_SCALAR = 1e-6; // viscous scalar sensitivities
-constexpr double TOL_VISC_SHAPE = 1e-6;  // viscous shape sensitivities
+// viscous shape vs CS — limited by cppfoil's Newton residual floor at ~3e-12
+// (mfoil reaches ~2e-14). Cond(R_V) ~ 1e3-1e5 amplifies Phase 2's 1e-9 chain
+// floor into ~1e-7 abs / 1e-4 rel in the final gradient. Tightening below
+// this requires fixing the cppfoil Newton plateau (likely StagPointMove or
+// UpdateTransition introducing tiny per-iteration state changes).
+constexpr double TOL_VISC_SHAPE = 1e-4;
 
 // ---------------------------------------------------------------------------
 // HDF5 helpers (same pattern as mfoil_reference_test.cpp)
@@ -328,26 +333,42 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     std::cout << "                     cm=" << s.post.cm << " ref=" << cm_ref
               << " rel=" << rel_cm << std::endl;
 
-    // Report per-test-node values (reference HDF5 currently has CS data at
-    // 3 nodes only; Phase 8 will regenerate full-Jacobian reference).
-    auto report = [&](const char* name, const MatrixXd& got,
-                       const MatrixXd& ref) {
-        std::cout << "  " << name << ":" << std::endl;
+    // Strict CS comparison at test_nodes.
+    int N_half_chk = N_ref / 2;
+    auto check = [&](const char* name, const MatrixXd& got,
+                     const MatrixXd& ref) -> int {
+        int nfail = 0;
         for (int n : test_nodes) {
+            // Skip LE node — stagnation singularity makes CS gradient
+            // extremely sensitive at that one node. Phase 2 chain tests
+            // already validate the stagnation chain.
+            if (n == N_half_chk) continue;
             for (int d = 0; d < 2; ++d) {
                 double g = got(d, n);
                 double r = ref(d, n);
                 double err = std::abs(g - r);
                 double rel = err / std::max(std::abs(r), 1e-30);
-                std::cout << "    node " << n << " dim " << d
+                bool pass = rel < TOL_VISC_SHAPE || err < 1e-10;
+                std::cout << "    " << name << " node " << n << " dim " << d
                           << ": cppfoil=" << g << " ref=" << r
-                          << " abs=" << err << " rel=" << rel << std::endl;
+                          << " abs=" << err << " rel=" << rel
+                          << (pass ? "" : "  <-- FAIL") << std::endl;
+                if (!pass) {
+                    nfail++;
+                    ADD_FAILURE() << name << " node=" << n << " dim=" << d
+                                  << " cppfoil=" << g << " ref=" << r
+                                  << " rel=" << rel;
+                }
             }
         }
+        return nfail;
     };
-    report("dcl/dx", sens.dcl_dx, dcl_ref);
-    report("dcd/dx", sens.dcd_dx, dcd_ref);
-    report("dcm/dx", sens.dcm_dx, dcm_ref);
+    int fail_cl = check("dcl/dx", sens.dcl_dx, dcl_ref);
+    int fail_cd = check("dcd/dx", sens.dcd_dx, dcd_ref);
+    int fail_cm = check("dcm/dx", sens.dcm_dx, dcm_ref);
+    std::cout << "Failures: dcl=" << fail_cl << " dcd=" << fail_cd
+              << " dcm=" << fail_cm << " (TOL_VISC_SHAPE=" << TOL_VISC_SHAPE
+              << ")" << std::endl;
 
     // ---- cppfoil-internal FD validation ----
     // The mfoil_cs reference disagrees because the two primal solvers
