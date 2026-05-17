@@ -139,7 +139,7 @@ class Post:    # post-processing outputs, distributions
 class Param:    # parameters
     def __init__(S):
         S.verb   = 1     # printing verbosity level (higher -> more verbose)
-        S.rtol   = 1e-10 # residual tolerance for Newton
+        S.rtol   = 1e-12 # residual tolerance for Newton (Phase 8: tightened for adjoint reference)
         S.niglob = 50    # maximum number of global iterations
         S.doplot = False # true to plot results after each solution (off by default for headless use)
         S.axplot = []    # plotting axes (for more control of where plots go)

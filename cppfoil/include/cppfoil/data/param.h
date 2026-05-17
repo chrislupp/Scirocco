@@ -37,7 +37,7 @@ namespace cppfoil {
 struct Param {
     // Solver parameters
     int verb = 1;         // Printing verbosity level (higher = more verbose)
-    double rtol = 1e-10;  // Residual tolerance for Newton
+    double rtol = 1e-11;  // Residual tolerance for Newton
     int niglob = 50;      // Maximum number of global iterations
 
     // Viscous parameters

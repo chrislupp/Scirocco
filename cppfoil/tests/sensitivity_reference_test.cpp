@@ -348,6 +348,64 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     report("dcl/dx", sens.dcl_dx, dcl_ref);
     report("dcd/dx", sens.dcd_dx, dcd_ref);
     report("dcm/dx", sens.dcm_dx, dcm_ref);
+
+    // ---- cppfoil-internal FD validation ----
+    // The mfoil_cs reference disagrees because the two primal solvers
+    // converge to slightly different states (cppfoil rtol floor ~3e-12,
+    // primal cl rel diff ~1e-5). To validate the adjoint independent of
+    // that primal-state mismatch, we FD cppfoil's OWN primal at each
+    // test_node and compare to the analytic adjoint.
+    double h = 1e-6;
+    auto resolve_with_perturbation = [&](int node, int dim, double delta) {
+        Cppfoil fp("0012", N_ref - 1);
+        fp.SetOper(3.0, -1.0, 1e6, 0.0);
+        auto& sp = fp.GetState();
+        sp.foil.x = x_base;
+        sp.foil.x(dim, node) += delta;
+        sp.foil.N = N_ref;
+        RecomputeArcLength(sp);
+        sp.oper.viscous = true;
+        sp.oper.initbl = true;
+        sp.param.verb = 0;
+        sp.isol.AIC.resize(0, 0);
+        sp.isol.gamref.resize(0, 0);
+        sp.isol.gam.resize(0);
+        SolveViscous(sp);
+        CalcForce(sp);
+        return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
+    };
+    double max_abs_cl = 0, max_abs_cd = 0, max_abs_cm = 0;
+    int N_half = N_ref / 2;
+    for (int node : test_nodes) {
+        // Skip the leading-edge node (x=0,y=0) — FD perturbations there move
+        // the stagnation point, which is a discontinuity that breaks central
+        // FD. The analytic adjoint handles this via fixed-Istag VJP. Phase 2
+        // chain tests already validate the stagnation chain (1e-8 abs floor).
+        if (node == N_half) continue;
+        for (int dim = 0; dim < 2; ++dim) {
+            Vector3d Jp = resolve_with_perturbation(node, dim, +h);
+            Vector3d Jm = resolve_with_perturbation(node, dim, -h);
+            Vector3d J_fd = (Jp - Jm) / (2.0 * h);
+
+            double e_cl = std::abs(J_fd(0) - sens.dcl_dx(dim, node));
+            double e_cd = std::abs(J_fd(1) - sens.dcd_dx(dim, node));
+            double e_cm = std::abs(J_fd(2) - sens.dcm_dx(dim, node));
+            max_abs_cl = std::max(max_abs_cl, e_cl);
+            max_abs_cd = std::max(max_abs_cd, e_cd);
+            max_abs_cm = std::max(max_abs_cm, e_cm);
+
+            std::cout << "  internal FD node " << node << " dim " << dim
+                      << ":  dcl abs=" << e_cl << "  dcd abs=" << e_cd
+                      << "  dcm abs=" << e_cm << std::endl;
+        }
+    }
+    // FD noise at h=1e-6 on smooth viscous primal ~1e-5 relative; chain noise
+    // on top of that is ~1e-9 from the inviscid AIC condition number.
+    // 1e-5 absolute is the bound that covers central-FD noise on these
+    // O(0.01)-magnitude derivatives.
+    EXPECT_LE(max_abs_cl, 1e-5);
+    EXPECT_LE(max_abs_cd, 1e-6);
+    EXPECT_LE(max_abs_cm, 1e-5);
 }
 
 // (commented out: legacy test header)
