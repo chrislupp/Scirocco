@@ -469,7 +469,7 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
 // which is the existing reverse-mode AICResidualSensVJP. We call it once per
 // gamma index using a shared LU factorisation of A^T.
 // ============================================================================
-static MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
+MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
     const MatrixXd& AIC = state.isol.AIC;
     int dim = static_cast<int>(AIC.rows());
     int twoN = 2 * state.foil.N;
@@ -492,16 +492,10 @@ static MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
 //   ∂V/∂(foil.x_panels) at fixed xi  +  V_G * d(gamma)/d(foil.x)
 // of shape [2 x 2N].
 // ============================================================================
-struct VelDeriv {
-    Vector2d V;
-    Matrix2d V_xi;
-    MatrixXd V_xfoil;  // 2 x 2N — combined panel-geom + gamma chain
-};
-
-static VelDeriv InviscidVelocityWithDeriv(const FoilState& state,
-                                          const Vector2d& xi,
-                                          const MatrixXd& dgam_dx,
-                                          double alpha) {
+VelDeriv InviscidVelocityWithDeriv(const FoilState& state,
+                                   const Vector2d& xi,
+                                   const MatrixXd& dgam_dx,
+                                   double alpha) {
     int N = state.foil.N;
     int twoN = 2 * N;
     const MatrixXd& X = state.foil.x;

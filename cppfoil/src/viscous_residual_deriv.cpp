@@ -233,12 +233,53 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                        dwake_s_dx.row(w).transpose());
     }
 
-    // ---- A2. Wake-side dueinv chain (uewi) — TODO ---------------------------
-    // The wake inviscid edge velocity uewi[j] depends on foil.x (panel
-    // influences from airfoil), on wake.x[:, j] (eval point), and on
-    // wake.t[:, j] (tangent). Reverse-mode chain through these requires
-    // panel-velocity derivatives at every wake station + DWakeXDFoilX.
-    // For now this contribution is missing.
+    // ---- A2. Wake-side dueinv chain (uewi) ---------------------------------
+    // uewi[j] = V(foil.x, gam, Vinf, alpha, wake.x[j]) . wake.t[j]
+    //
+    // For j < Nw-1, wake.t[j] = V0[j] / |V0[j]| (set during BuildWake from V
+    // at the same wake.x[j]). So uewi[j] = |V0[j]| and
+    //   duewi[j]/dfoil_x = d|V|/dfoil_x = wake.t[j]^T * dV[j]/dfoil_x
+    // because V[j]^T * (I - t t^T)/|V| = t^T - (t^T t) t^T = 0 by orthogonality.
+    //
+    // For j == Nw-1, wake.t[Nw-1] is V/|V| at x_pred_last (predictor point
+    // from BuildWake's last iteration), NOT at wake.x[Nw-1]. The chain through
+    // the predictor (which depends on wake.x[Nw-2] and v1 from the prior
+    // station) is more involved. We add the dV term and a placeholder for
+    // dwake.t (TODO: implement the proper predictor chain). Magnitude of
+    // contribution is one station out of Nw, so adjoint impact is bounded.
+    {
+        MatrixXd dgam_dx_full = DGammaDFoilX(state, alpha);
+        MatrixXd dwake_x_dx = DWakeXDFoilX(state);  // [2*Nw x 2N]
+        for (int j = 0; j < Nw; ++j) {
+            VelDeriv vd = InviscidVelocityWithDeriv(
+                state, state.wake.x.col(j), dgam_dx_full, alpha);
+            // d(wake.x[:, j])/d(foil.x) extracted from dwake_x_dx layout
+            // (row d*Nw + j = d/dfoil.x of wake.x(d, j)).
+            MatrixXd dwxj(2, twoN);
+            dwxj.row(0) = dwake_x_dx.row(0 * Nw + j);
+            dwxj.row(1) = dwake_x_dx.row(1 * Nw + j);
+            MatrixXd dV = vd.V_xfoil + vd.V_xi * dwxj;  // [2 x 2N]
+            Vector2d t_wake = state.wake.t.col(j);
+            // duewi[j]/dfoil_x first term: t^T * dV
+            vjp -= lambda_ue(N + j) *
+                   (t_wake.transpose() * dV).transpose();
+            // For j == Nw-1: V is NOT aligned with t_wake (t was set from
+            // predictor). Add an approximate dwake.t chain via the local
+            // norm Jacobian — this is exact when V and t are aligned but
+            // approximate otherwise. TODO: full predictor chain.
+            if (j == Nw - 1) {
+                double Vnorm = vd.V.norm();
+                if (Vnorm > 1e-12) {
+                    Matrix2d nj = (Matrix2d::Identity() -
+                                   t_wake * t_wake.transpose()) /
+                                  Vnorm;
+                    MatrixXd dwt = nj * dV;
+                    vjp -= lambda_ue(N + j) *
+                           (vd.V.transpose() * dwt).transpose();
+                }
+            }
+        }
+    }
 
     // ---- B. dueisigma chain (panel velocity derivative chain) — TODO --------
     // ue_sigma's columns are source-panel-velocity influences at every

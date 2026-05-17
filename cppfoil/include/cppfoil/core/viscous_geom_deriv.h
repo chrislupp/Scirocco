@@ -123,6 +123,23 @@ MatrixXd DWakeXDFoilX(const FoilState& state);
 void GetTEInfoDeriv(const MatrixXd& foil_x, int k, int dim, double& dtcp,
                     double& dtdp, double& dhTE, double& ddtdx);
 
+// d(gamma)/d(foil.x): full [N+1 x 2N] Jacobian via reverse-mode AIC.
+MatrixXd DGammaDFoilX(const FoilState& state, double alpha);
+
+// InviscidVelocity at xi with full forward sensitivity matrix.
+// Returns:
+//   V        : the velocity at xi
+//   V_xi     : d(V)/d(xi) [2x2]
+//   V_xfoil  : combined d(V)/d(foil.x_panels) at fixed xi PLUS V_G * dgam_dx
+//              [2 x 2N]
+struct VelDeriv {
+    Vector2d V;
+    Matrix2d V_xi;
+    MatrixXd V_xfoil;
+};
+VelDeriv InviscidVelocityWithDeriv(const FoilState& state, const Vector2d& xi,
+                                   const MatrixXd& dgam_dx, double alpha);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_VISCOUS_GEOM_DERIV_H
