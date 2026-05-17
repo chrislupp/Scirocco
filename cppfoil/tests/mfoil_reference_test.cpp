@@ -2248,10 +2248,12 @@ TEST_F(MfoilReferenceTest, StationParam) {
         state.vsol.turb[i] = (turb_buf[i] != 0);
     }
 
-    // Read stagnation indices
+    // Read stagnation indices saved AT station_param extraction time (not the
+    // earlier stagnation/Istag — Newton iterations between the two captures
+    // can call stagpoint_move and change Istag).
     std::vector<int64_t> istag_buf(2);
     {
-        H5::DataSet ds = getFile().openDataSet("stagnation/Istag");
+        H5::DataSet ds = getFile().openDataSet("station_param/Istag");
         ds.read(istag_buf.data(), H5::PredType::NATIVE_INT64);
     }
     state.isol.Istag[0] = static_cast<int>(istag_buf[0]);

@@ -155,13 +155,15 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
     double disc = std::max(b * b - 4.0 * a * c, 0.0);
     double r = 1.0 + (-b + std::sqrt(disc)) / (2.0 * a);
 
-    // Newton iterations
-    for (int k = 0; k < 10; ++k) {
+    // Newton iterations — tighten to 1e-14 so derivatives through the
+    // implicit r* are precise enough for CS validation (loose 1e-6 makes
+    // d(sv[i])/d(ds1) noisy at ~1e-6, breaking the wake chain).
+    for (int k = 0; k < 20; ++k) {
         double rN = std::pow(r, N);
         double R = rN - 1.0 - d * (r - 1.0);
         double R_r = N * std::pow(r, N - 1) - d;
         double dr = -R / R_r;
-        if (std::abs(dr) < 1e-6) break;
+        if (std::abs(dr) < 1e-14) break;
         r += dr;
     }
 

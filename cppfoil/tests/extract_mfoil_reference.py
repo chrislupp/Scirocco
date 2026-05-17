@@ -16,6 +16,7 @@ def extract_all_reference_data(filename):
     M = mfoil.mfoil(naca='0012', npanel=130)
     M.setoper(alpha=0.0, Re=1e6)
     M.param.verb = 0
+    M.param.doplot = False
 
     with h5py.File(filename, 'w') as f:
         # ========== GEOMETRY DATA ==========
@@ -88,6 +89,11 @@ def extract_all_reference_data(filename):
         # ========== INVISCID UE ==========
         ue_inv = mfoil.get_ueinv(M)
         f.create_dataset('ue_inv', data=ue_inv)
+        # 2-column ref (alpha=0, alpha=90) — captured here, BEFORE any Newton
+        # iteration that could call stagpoint_move and flip sgnue. The cppfoil
+        # GetUeInvRef test compares against this initial state.
+        ue_inv_ref_early = mfoil.get_ueinvref(M)
+        f.create_dataset('ue_inv_ref', data=ue_inv_ref_early)
 
         # ========== CALC UE_M ==========
         mfoil.calc_ue_m(M)
@@ -573,9 +579,7 @@ def extract_all_reference_data(filename):
             grp.create_dataset('V_G', data=V_G)
         inv_vel.attrs['num_tests'] = len(test_points)
 
-        # ========== GET UE INV REF ==========
-        ue_inv_ref = mfoil.get_ueinvref(M)
-        f.create_dataset('ue_inv_ref', data=ue_inv_ref)
+        # ========== GET UE INV REF (already written earlier — skip) ==========
 
         # ========== ADDITIONAL BL PROPERTIES ==========
         bl_extra = f.create_group('bl_extra')
@@ -740,6 +744,7 @@ def extract_all_reference_data(filename):
         M2 = mfoil.mfoil(naca='0012', npanel=130)
         M2.setoper(alpha=0.0, Re=1e6)
         M2.param.verb = 0
+        M2.param.doplot = False
         M2.solve()  # Full viscous solve
 
         forces_grp = f.create_group('forces')
@@ -791,6 +796,12 @@ def extract_all_reference_data(filename):
             test_indices.append(Is_upper[-1])
         test_indices.extend([Istag[0], Istag[1]])
         station_param_grp.create_dataset('test_indices', data=np.array(test_indices))
+        # Save Istag at extraction time (may differ from stagnation/Istag because
+        # the script runs Newton iterations between the two captures that can
+        # invoke stagpoint_move). The test needs THIS Istag to compute simi
+        # consistently with the saved reference.
+        station_param_grp.create_dataset('Istag',
+                                         data=np.array(Istag, dtype=np.int64))
         for idx in test_indices:
             si = 0 if idx in Is_lower else 1
             param = mfoil.build_param(M, si)

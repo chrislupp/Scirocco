@@ -28,6 +28,7 @@ set(CPPFOIL_SOURCES
     src/coupled_solver.cpp
     src/forces.cpp
     src/adjoint.cpp
+    src/viscous_geom_deriv.cpp
     src/bl_properties.cpp
     src/cppfoil.cpp
 )
@@ -84,6 +85,19 @@ if(CPPFOIL_BUILD_TESTS)
             FORWARD_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/forward_reference.h5"
         )
         gtest_discover_tests(cppfoil_forward_ref_tests)
+
+        # Phase 1 geometric chain tests: dxi/dx, dwake_s/dx, dwgap/dx,
+        # dsstag/dx, dfoil_s/dx (cumulative). DWakeXDFoilX test is disabled
+        # until the iterative wake chain is implemented.
+        add_executable(cppfoil_viscous_chain_tests
+            tests/viscous_chain_test.cpp
+        )
+        target_link_libraries(cppfoil_viscous_chain_tests
+            cppfoil GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(cppfoil_viscous_chain_tests PRIVATE
+            GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
+        )
+        gtest_discover_tests(cppfoil_viscous_chain_tests)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

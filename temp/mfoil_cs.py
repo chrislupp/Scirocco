@@ -894,7 +894,14 @@ def complex_step_mode():
     # Suppress ComplexWarning from format strings (harmless: only affects diagnostic prints)
     _warn_ctx = warnings.catch_warnings()
     _warn_ctx.__enter__()
-    warnings.simplefilter('ignore', np.ComplexWarning)
+    # np.ComplexWarning was removed in numpy 2.x; ignore by name fallback.
+    _cw = getattr(np, 'ComplexWarning', None)
+    if _cw is None:
+        try:
+            from numpy.exceptions import ComplexWarning as _cw  # numpy >= 1.25
+        except ImportError:
+            _cw = Warning  # very loose fallback
+    warnings.simplefilter('ignore', _cw)
 
     # Patch numpy globally (mfoil uses `import numpy as np`, which references the module)
     np.zeros = _complex_zeros

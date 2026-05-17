@@ -141,7 +141,7 @@ class Param:    # parameters
         S.verb   = 1     # printing verbosity level (higher -> more verbose)
         S.rtol   = 1e-10 # residual tolerance for Newton
         S.niglob = 50    # maximum number of global iterations
-        S.doplot = True  # true to plot results after each solution
+        S.doplot = False # true to plot results after each solution (off by default for headless use)
         S.axplot = []    # plotting axes (for more control of where plots go)
 
         # viscous parameters
@@ -1235,9 +1235,9 @@ def space_geom(dx0, L, Np):
     # Initial guess: (1+s)^N ~ 1 + N*s + N*(N-1)*s^2/2 + N*(N-1)*(N-2)*s^3/3
     d = L/dx0; a = N*(N-1.)*(N-2.)/6.; b = N*(N-1.)/2.; c = N-d
     disc = max(b*b-4.*a*c, 0.); r = 1 + (-b+np.sqrt(disc))/(2*a)
-    for k in range(10):
+    for k in range(20):
         R = r**N -1-d*(r-1); R_r = N*r**(N-1)-d; dr = -R/R_r
-        if (abs(dr)<1e-6): break
+        if (abs(dr)<1e-14): break
         r -= R/R_r
     return np.r_[0,np.cumsum(dx0*r**(np.array(range(N))))]
   
@@ -2053,7 +2053,7 @@ def build_glob_sys(M):
         alloc_R_U = False
         M.glob.R_U *= 0.
 
-    if (M.glob.realloc) or (type(M.glob.R_x) == list) or not (M.glob.R_x == (3*Nsys, Nsys)):
+    if (M.glob.realloc) or (type(M.glob.R_x) == list) or not(M.glob.R_x.shape == (3*Nsys,Nsys)):
         alloc_R_x = True
         M.glob.R_x = sparse.lil_matrix((3*Nsys,Nsys))
     else:
@@ -3039,7 +3039,7 @@ def get_cteq(U, param):
         if (Hk < 1.00005): Hk, Hk_U = 1.00005, Hk_U*0.
         Hkc = Hk - 1.; Hkc_U = Hk_U
     else:
-        if (Hk < 1.05): Hk, HK_U = 1.05, Hk_U*0.
+        if (Hk < 1.05): Hk, Hk_U = 1.05, Hk_U*0.
         Hkc = Hk - 1. - C/Ret
         Hkc_U = Hk_U + C/Ret**2*Ret_U
         if (Hkc < 0.01): Hkc, Hkc_U = 0.01, Hkc_U*0.
@@ -3741,7 +3741,7 @@ def get_damp(U, param):
         ex = np.exp(-ar**2); ex_U = ex*(-2*ar*ar_U)
         da = 0.028*(Hk-1)-0.0345*ex; da_U = 0.028*Hk_U-0.0345*ex_U
         af = -0.05+2.7*Hmi-5.5*Hmi**2+3*Hmi**3+0.1*np.exp(-20*Hmi)
-        af_U = (2.7-11*Hmi+9*Hmi**2-1*np.exp(-20*Hmi))*Hmi_U
+        af_U = (2.7-11*Hmi+9*Hmi**2-2*np.exp(-20*Hmi))*Hmi_U
         damp = rf*af*da/th
         damp_U = (rf_U*af*da + rf*af_U*da + rf*af*da_U)/th - damp/th*np.array([1,0,0,0])
     
