@@ -492,14 +492,30 @@ MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
 //   ∂V/∂(foil.x_panels) at fixed xi  +  V_G * d(gamma)/d(foil.x)
 // of shape [2 x 2N].
 // ============================================================================
+VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
+                                      const Vector2d& xi,
+                                      const VectorXd& vortex,
+                                      const MatrixXd& dvortex_dx,
+                                      double alpha);
+
 VelDeriv InviscidVelocityWithDeriv(const FoilState& state,
                                    const Vector2d& xi,
                                    const MatrixXd& dgam_dx,
                                    double alpha) {
+    return InviscidVelocityWithDerivExt(state, xi, state.isol.gam, dgam_dx,
+                                        alpha);
+}
+
+VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
+                                      const Vector2d& xi,
+                                      const VectorXd& vortex,
+                                      const MatrixXd& dvortex_dx,
+                                      double alpha) {
     int N = state.foil.N;
     int twoN = 2 * N;
     const MatrixXd& X = state.foil.x;
-    const VectorXd& G = state.isol.gam;
+    const VectorXd& G = vortex;
+    const MatrixXd& dgam_dx = dvortex_dx;
     double Vinf = state.oper.Vinf;
 
     VelDeriv out;

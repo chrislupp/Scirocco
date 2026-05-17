@@ -140,6 +140,18 @@ struct VelDeriv {
 VelDeriv InviscidVelocityWithDeriv(const FoilState& state, const Vector2d& xi,
                                    const MatrixXd& dgam_dx, double alpha);
 
+// Overload: use arbitrary vortex strengths `vortex` (length N+1, with the
+// streamfunction slot in entry N — but the velocity computation only uses
+// entries 0..N-1) and a corresponding dvortex_dx [N+1 x 2N] chain. Used by
+// Phase 2b to chain through V_for_v at wake stations (Cgam direct-derivative
+// chain). Pass dvortex_dx = MatrixXd::Zero(...) to hold the vortex strengths
+// fixed (no gamma chain).
+VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
+                                      const Vector2d& xi,
+                                      const VectorXd& vortex,
+                                      const MatrixXd& dvortex_dx,
+                                      double alpha);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_VISCOUS_GEOM_DERIV_H

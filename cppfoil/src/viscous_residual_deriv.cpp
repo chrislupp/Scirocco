@@ -283,6 +283,12 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         }
     }
 
+    // ---- B0: precompute pieces shared by A2 and B for wake-row chains.
+    // (Hoist out of A2 block so B can reuse.)
+    // (No-op here — A2 already did this work; just note that dgam_dx_full and
+    // dwake_x_dx are needed below too. We recompute in B for clarity, since
+    // the A2 block has its own scope. TODO: refactor to share.)
+
     // ---- B. dueisigma chain (panel velocity derivative chain) -------------
     //
     // ue_sigma = [Bp; Dw] where Bp = -inv(AIC) * B is the airfoil source-to-ue
@@ -518,7 +524,64 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
             }
         }
     }
-    // TODO: wake-side Cgam, Csig chains for j > 0 wake rows.
+    // ---- B2a: dCgam direct chain for j > 0 wake rows -----------------------
+    //
+    // For each wake station j > 0:
+    //   contribution = -lambda_w[j] * d(Cgam[j, :] * v)/dfoil_x
+    //                = -lambda_w[j] * d(V_for_v . wake.t[j])/dfoil_x
+    //                = -lambda_w[j] * (dV_for_v . wake.t[j] + V_for_v . dwake.t[j])
+    // where V_for_v is the velocity at wake.x[j] computed with vortex
+    // strengths = v (held fixed for this chain piece). dwake.t comes from the
+    // REAL velocity chain (same as A2).
+    //
+    // For j = 0, Cgam[0, :] is replaced by Bp[N-1, :] in Dw[0]; handled in B1.
+    {
+        const MatrixXd& ue_sig = state.vsol.ue_sigma;
+        int Npanel = N + Nw - 2;
+        if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
+            VectorXd v_foil = ue_sig.topRows(N) * phi;  // [N]
+            VectorXd v_padded(AIC_dim);
+            v_padded.head(N) = v_foil;
+            v_padded(AIC_dim - 1) = 0;
+            MatrixXd dgam_zero = MatrixXd::Zero(AIC_dim, twoN);
+            MatrixXd dgam_real = DGammaDFoilX(state, alpha);
+            MatrixXd dwake_x_dx = DWakeXDFoilX(state);
+
+            for (int j = 1; j < Nw; ++j) {
+                double lw = lambda_ue(N + j);
+                if (std::abs(lw) < 1e-20) continue;
+                Vector2d xi_w = state.wake.x.col(j);
+                Vector2d t_wake = state.wake.t.col(j);
+
+                // V_for_v at wake.x[j] (vortex strengths = v, dvortex = 0)
+                VelDeriv vd_v = InviscidVelocityWithDerivExt(
+                    state, xi_w, v_padded, dgam_zero, alpha);
+                MatrixXd dwxj(2, twoN);
+                dwxj.row(0) = dwake_x_dx.row(0 * Nw + j);
+                dwxj.row(1) = dwake_x_dx.row(1 * Nw + j);
+                MatrixXd dV_for_v = vd_v.V_xfoil + vd_v.V_xi * dwxj;
+
+                vjp -= lw * (t_wake.transpose() * dV_for_v).transpose();
+
+                // V_real chain for dwake.t (j < Nw-1: same as A2 simplification)
+                VelDeriv vd_real = InviscidVelocityWithDeriv(
+                    state, xi_w, dgam_real, alpha);
+                MatrixXd dV_real = vd_real.V_xfoil + vd_real.V_xi * dwxj;
+                double Vnorm = vd_real.V.norm();
+                if (Vnorm > 1e-12) {
+                    Matrix2d norm_jac = (Matrix2d::Identity() -
+                                          t_wake * t_wake.transpose()) /
+                                         Vnorm;
+                    MatrixXd dwt = norm_jac * dV_real;
+                    vjp -= lw * (vd_v.V.transpose() * dwt).transpose();
+                }
+            }
+        }
+    }
+
+    // TODO: wake-side Csig chain (panel source velocity at wake stations,
+    // foil-source panels + half-panel wake-source contributions). This is
+    // the last missing chain piece.
 
     return vjp;
 }
