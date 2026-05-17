@@ -192,12 +192,40 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param) {
     double th = std::max(U(0), 1e-12);
     double ue = U(3);
 
-    double Ret = param.rho0 * std::abs(ue) * th / param.mu0;
+    if (param.Minf > 0) {
+        auto [M2, M2_U] = GetMach2(U, param);
+        auto [uk, uk_U] = GetUk(ue, param);
+        double H0 = param.H0;
+        double gmi = param.gam - 1.0;
+        double Ts = param.Tsrat;
+        // Temperature ratio
+        double Tr = 1.0 - 0.5 * uk * uk / H0;
+        double Tr_uk = -uk / H0;
+        // Sutherland's law
+        double f = std::pow(Tr, 1.5) * (1.0 + Ts) / (Tr + Ts);
+        double f_Tr = 1.5 * f / Tr - f / (Tr + Ts);
+        double mu = param.mu0 * f;
+        double mu_uk = param.mu0 * f_Tr * Tr_uk;
+        // Isentropic density
+        double den = 1.0 + 0.5 * gmi * M2;
+        double den_M2 = 0.5 * gmi;
+        double rho = param.rho0 * std::pow(den, -1.0 / gmi);
+        Vector4d rho_U = (-1.0 / gmi) * rho / den * den_M2 * M2_U;
+        // Ret
+        double Ret = rho * uk * th / mu;
+        Vector4d Ret_U = rho_U * uk * th / mu;
+        double uk_u = uk_U(3);
+        Vector4d due = Vector4d::Zero();
+        due(3) = uk_u;
+        Ret_U += (rho * th / mu - Ret / mu * mu_uk) * due;
+        Ret_U(0) += rho * uk / mu;
+        return {Ret, Ret_U};
+    }
 
+    double Ret = param.rho0 * ue * th / param.mu0;
     Vector4d Ret_U = Vector4d::Zero();
-    Ret_U(0) = param.rho0 * std::abs(ue) / param.mu0;
-    Ret_U(3) = param.rho0 * th * (ue > 0 ? 1.0 : -1.0) / param.mu0;
-
+    Ret_U(0) = param.rho0 * ue / param.mu0;
+    Ret_U(3) = param.rho0 * th / param.mu0;
     return {Ret, Ret_U};
 }
 
@@ -375,12 +403,6 @@ static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
     double HsRet = Hs * Ret;
     Vector4d HsRet_U = Hs_U * Ret + Hs * Ret_U;
 
-    // Limit Hk
-    if (Hk < 1.05) {
-        Hk = 1.05;
-        Hk_U.setZero();
-    }
-
     // num = 2*1.1*(1-1/Hk)^2*(1/Hk)
     double Hk_inv = 1.0 / Hk;
     double one_minus_Hk_inv = 1.0 - Hk_inv;
@@ -473,24 +495,36 @@ ScalarLin4 GetCpFromUe(double ue, const Param& param) {
 }
 
 ScalarLin4 GetUk(double ue, const Param& param) {
-    // Compressible velocity correction (simplified)
-    double uk = ue;
+    if (param.Minf > 0) {
+        double l = param.KTl;
+        double Vinf = param.Vinf;
+        double den = 1.0 - l * (ue / Vinf) * (ue / Vinf);
+        double den_u = -2.0 * l * ue / (Vinf * Vinf);
+        double uk = ue * (1.0 - l) / den;
+        double uk_u = (1.0 - l) / den - (uk / den) * den_u;
+        Vector4d uk_U = Vector4d::Zero();
+        uk_U(3) = uk_u;
+        return {uk, uk_U};
+    }
     Vector4d uk_U = Vector4d::Zero();
     uk_U(3) = 1.0;
-
-    return {uk, uk_U};
+    return {ue, uk_U};
 }
 
 ScalarLin4 GetMach2(const Vector4d& U, const Param& param) {
-    double ue = U(3);
-    double a_inf = param.Vinf / std::max(param.Minf, 1e-10);
-
-    double M2 = (ue / a_inf) * (ue / a_inf);
-
-    Vector4d M2_U = Vector4d::Zero();
-    M2_U(3) = 2.0 * ue / (a_inf * a_inf);
-
-    return {M2, M2_U};
+    if (param.Minf > 0) {
+        double H0 = param.H0;
+        double g = param.gam;
+        auto [uk, uk_U] = GetUk(U(3), param);
+        double c2 = (g - 1.0) * (H0 - 0.5 * uk * uk);
+        double c2_uk = (g - 1.0) * (-uk);
+        double M2 = uk * uk / c2;
+        double M2_uk = 2.0 * uk / c2 - M2 / c2 * c2_uk;
+        Vector4d M2_U = Vector4d::Zero();
+        M2_U(3) = M2_uk * uk_U(3);
+        return {M2, M2_U};
+    }
+    return {0.0, Vector4d::Zero()};
 }
 
 ScalarLin4 GetRho(const Vector4d& U, const Param& param) {
@@ -776,7 +810,7 @@ ScalarLin4 GetUs(const Vector4d& U, const Param& param) {
 
     // Limits
     if (!param.wake) {
-        if (Us > 0.98) {
+        if (Us > 0.95) {
             Us = 0.98;
             Us_U.setZero();
         }
