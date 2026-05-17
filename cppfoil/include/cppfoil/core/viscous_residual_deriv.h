@@ -31,15 +31,37 @@ namespace cppfoil {
 // ============================================================================
 MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
-// R_ue [Nsys x 2N] dependence on foil.x at fixed U is through:
-//   1. ueinv (foil-side: gamref + sgnue; wake-side: uewiref)
-//   2. ue_sigma (mass-source influence at each station)
-//   3. sigma_m (mass source assembly)
-// All three depend on foil.x (panel positions) AND on wake.x (for
-// wake-station rows). The wake.x chain uses DWakeXDFoilX from Phase 1.
+// Reverse-mode vector-Jacobian product (VJP) of R_ue w.r.t. foil.x:
+//   result[2N] = lambda_ue^T * dR_ue/dfoil_x
 //
-// (Implementation pending — full chain through panel-influence derivatives.)
-MatrixXd DRueDFoilX(const FoilState& state);
+// where R_ue[i] = U[3, i] - ueinv[i] - sgue[i] * (ue_sigma * phi)[i],
+//       phi = sigma_m * (U[1, :] .* U[3, :])      (mass-source contribution)
+//       sgue = [sgnue (foil); ones (wake)]
+//       ueinv = ue from inviscid solve (foil: sgnue .* gam; wake: uewi).
+//
+// This is what the viscous adjoint actually consumes (Phase 6's chain through
+// the ue-coupling block); the full forward Jacobian would have been [Nsys x 2N]
+// dense, much more expensive than this single VJP.
+//
+// Chain pieces (each contributing -lambda terms via reverse-mode):
+//   A. -lambda^T * dueinv/dfoil_x
+//        - foil-side (i ∈ [0, N)): -lambda[i] * sgnue[i] * dgam[i]/dfoil_x
+//        - wake-side (i ∈ [N, Nsys)): -lambda[i] * duewi[i-N]/dfoil_x
+//   B. -lambda_sg^T * dueisigma * phi (panel-velocity derivative chain)
+//   C. -lambda_sg^T * ue_sigma * dphi
+//      where dphi = dsigma_m * mass (sigma_m has 1/ds_panel entries → chain
+//      via dfoil_s_dx and dwake_s_dx).
+//
+// Returns a [2N] vector in row-major foil.x layout (col = 2k + d).
+VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
+                       const MatrixXd& dfoil_s_dx);
+
+// Compute d(R_ue)/d(foil.x) [Nsys x 2N] forward Jacobian (FOR VALIDATION ONLY).
+// Builds the full dense Jacobian by applying ComputeRueVJP with each row of
+// the identity matrix as lambda. Slow (Nsys * Npanel work) — use VJP in
+// production. Provided so the Phase 2 reference test can compare against
+// comprehensive_reference.h5's dR_ue_dx.
+MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 }  // namespace cppfoil
 

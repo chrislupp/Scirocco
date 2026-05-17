@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "cppfoil/core/geometry.h"
+#include "cppfoil/core/inviscid_deriv.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
 #include "cppfoil/properties/bl_properties.h"
 
@@ -133,13 +134,135 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
 }
 
 // ============================================================================
-// DRueDFoilX — stub (to be filled in next step).
+// ComputeRueVJP — reverse-mode VJP through R_ue chain.
+//
+// Returns lambda_ue^T * dR_ue/dfoil_x as a [2N] vector.
+//
+// R_ue[i] = U[3, i] - ueinv[i] - sgue[i] * (ue_sigma * phi)[i]
+// phi = sigma_m * mass,  mass[k] = U[1, k] * U[3, k]  (mass held fixed at U)
+// sgue = [sgnue (foil); ones (wake)]
+//
+// Implemented chain pieces (partial-analytical):
+//   A1. Foil-side dueinv via dgam: -lambda^T * sgnue .* dgam/dfoil_x
+//        = +AICResidualSensVJP(state, AIC^-T * lambda_g_ext, alpha)
+//        where lambda_g_ext = [(sgnue .* lambda_ue[0:N]); 0] in the N+1 system.
+//   C. sigma_m chain via dfoil_s_dx and dwake_s_dx:
+//        beta = ue_sigma^T * (sgue .* lambda_ue)
+//        alpha_panel[k] = beta[k] * phi[k] / ds[k]
+//        contribution += sum_k alpha_panel[k] * d(ds[k])/d(foil.x)
+//
+// NOT YET IMPLEMENTED (will give wrong VJP for cases where these matter):
+//   A2. Wake-side dueinv chain through wake panel velocities (duewi/dfoil_x).
+//   B. dueisigma chain (panel velocity derivatives at airfoil/wake stations).
+//
+// These TODOs prevent full Phase 7 cl/cd/cm accuracy when wake contributions
+// dominate. Foil-side adjoints with weak wake coupling should be mostly OK.
 // ============================================================================
-MatrixXd DRueDFoilX(const FoilState& state) {
+VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
+                       const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
-    return MatrixXd::Zero(Nsys, 2 * N);
+    int twoN = 2 * N;
+    double alpha = state.oper.alpha;
+
+    if (lambda_ue.size() != Nsys) {
+        throw std::runtime_error("ComputeRueVJP: lambda_ue size != Nsys");
+    }
+
+    VectorXd vjp = VectorXd::Zero(twoN);
+
+    // ---- A1. Foil-side dueinv chain via dgam ---------------------------------
+    // lambda_g (N-vector) = sgnue[0..N) .* lambda_ue[0..N)
+    // Extended to N+1 with 0 in the streamfunction slot.
+    int AIC_dim = static_cast<int>(state.isol.AIC.rows());  // N + 1
+    VectorXd lambda_g_ext = VectorXd::Zero(AIC_dim);
+    for (int i = 0; i < N; ++i) {
+        lambda_g_ext(i) = state.isol.sgnue(i) * lambda_ue(i);
+    }
+    // mu = AIC^{-T} * lambda_g_ext
+    MatrixXd AIC_T = state.isol.AIC.transpose();
+    auto lu = AIC_T.partialPivLu();
+    VectorXd mu = lu.solve(lambda_g_ext);
+    // Contribution: +AICResidualSensVJP(state, mu, alpha)
+    //   (derivation: -lambda^T * dueinv_foil = -lambda_g^T * dgam,
+    //    dgam = -(AIC)^{-1} * dR_AIC/dfoil_x, so -lambda_g^T * dgam =
+    //    +(AIC^{-T} lambda_g)^T * dR_AIC = +AICResidualSensVJP.)
+    vjp += AICResidualSensVJP(state, mu, alpha);
+
+    // ---- C. dphi chain via dsigma_m ----------------------------------------
+    // beta = ue_sigma^T * (sgue .* lambda_ue),  shape [Npanel = N+Nw-2]
+    VectorXd sgue_lambda(Nsys);
+    for (int i = 0; i < N; ++i) sgue_lambda(i) = state.isol.sgnue(i) * lambda_ue(i);
+    for (int i = N; i < Nsys; ++i) sgue_lambda(i) = lambda_ue(i);
+    VectorXd beta = state.vsol.ue_sigma.transpose() * sgue_lambda;  // [Npanel]
+
+    // phi = sigma_m * mass,  mass[k] = U[1, k] * U[3, k]
+    VectorXd mass(Nsys);
+    for (int i = 0; i < Nsys; ++i) mass(i) = state.glob.U(1, i) * state.glob.U(3, i);
+    VectorXd phi = state.vsol.sigma_m * mass;  // [Npanel]
+
+    // Foil panels k = 0 .. N-2: ds_k = foil.s[k+1] - foil.s[k]
+    // dsigma_m[k, i]/d(foil.x) = +sgnue[i]/ds_k^2 * d(ds_k)/d(foil.x)  for i = k or k+1 sign-flipped
+    // dphi[k] = sum_i dsigma_m[k, i] * mass[i] = -phi[k]/ds_k * d(ds_k)
+    // (Mass contribution multiplied through cancels via -1/ds^2 * (sgnue[k+1]*mass[k+1] - sgnue[k]*mass[k]) = -phi[k]/ds.)
+    //
+    // Total contribution to VJP for panel k:
+    //   -lambda_sg^T * ue_sigma * dphi[k]
+    //     = -beta[k] * dphi[k]
+    //     = -beta[k] * (-phi[k]/ds_k * d(ds_k)/dfoil_x)
+    //     = (beta[k] * phi[k] / ds_k) * d(ds_k)/dfoil_x
+    for (int k = 0; k < N - 1; ++k) {
+        double ds_k = state.foil.s(k + 1) - state.foil.s(k);
+        if (ds_k < 1e-14) continue;
+        double coef = beta(k) * phi(k) / ds_k;
+        // d(ds_k)/dfoil_x = dfoil_s_dx.row(k+1) - dfoil_s_dx.row(k)
+        vjp += coef * (dfoil_s_dx.row(k + 1).transpose() -
+                       dfoil_s_dx.row(k).transpose());
+    }
+    // Wake panels k = N-1 .. Npanel-1: ds_w = wake.s[w+1] - wake.s[w]
+    // where w = k - (N-1) is the wake panel index.
+    // Same structure: need d(ds_w)/d(foil.x) = dwake_s_dx.row(w+1) - dwake_s_dx.row(w)
+    MatrixXd dwake_s_dx = DWakeSDFoilX(state, dfoil_s_dx);
+    for (int w = 0; w < Nw - 1; ++w) {
+        int k = (N - 1) + w;
+        double ds_w = state.wake.s(w + 1) - state.wake.s(w);
+        if (ds_w < 1e-14) continue;
+        double coef = beta(k) * phi(k) / ds_w;
+        vjp += coef * (dwake_s_dx.row(w + 1).transpose() -
+                       dwake_s_dx.row(w).transpose());
+    }
+
+    // ---- A2. Wake-side dueinv chain (uewi) — TODO ---------------------------
+    // The wake inviscid edge velocity uewi[j] depends on foil.x (panel
+    // influences from airfoil), on wake.x[:, j] (eval point), and on
+    // wake.t[:, j] (tangent). Reverse-mode chain through these requires
+    // panel-velocity derivatives at every wake station + DWakeXDFoilX.
+    // For now this contribution is missing.
+
+    // ---- B. dueisigma chain (panel velocity derivative chain) — TODO --------
+    // ue_sigma's columns are source-panel-velocity influences at every
+    // station, depending on panel positions and wake.x. Reverse-mode chain
+    // requires propagating beta * phi back through the panel-influence
+    // velocity derivatives. Largest missing piece for full accuracy.
+
+    return vjp;
+}
+
+// Build DRueDFoilX [Nsys x 2N] by applying ComputeRueVJP with each standard
+// basis vector as lambda. Slow (Nsys VJP calls) — for validation only.
+MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = N + Nw;
+    MatrixXd dR_ue = MatrixXd::Zero(Nsys, 2 * N);
+    VectorXd e = VectorXd::Zero(Nsys);
+    for (int i = 0; i < Nsys; ++i) {
+        e.setZero();
+        e(i) = 1.0;
+        dR_ue.row(i) = ComputeRueVJP(state, e, dfoil_s_dx).transpose();
+    }
+    return dR_ue;
 }
 
 }  // namespace cppfoil

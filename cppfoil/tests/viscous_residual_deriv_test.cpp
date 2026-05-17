@@ -225,15 +225,28 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
 }
 
 // ============================================================================
-// DRueDFoilX — stub, just check the shape for now (DISABLED until implemented)
+// DRueDFoilX — partial-analytical (A1 + C only; A2 wake-ueinv and B dueisigma
+// chains are stubbed). Reports the residual error magnitudes so we can see
+// which rows/cols are dominated by the missing chains.
 // ============================================================================
-TEST_F(ResidualDerivTest, DISABLED_DRueDFoilX) {
+TEST_F(ResidualDerivTest, DRueDFoilX_PartialAnalytical) {
     auto& s = foil_.GetState();
-    MatrixXd a = cppfoil::DRueDFoilX(s);
+    MatrixXd a = cppfoil::DRueDFoilX(s, dfoil_s_dx_);
     MatrixXd r = read3DAsMatrix(f(), "comprehensive/dR_ue_dx");
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
-    int nfail = compareHybrid2D(a, r, "dR_ue");
-    std::cout << "DRueDFoilX: " << nfail << "/" << r.size() << " failures"
-              << std::endl;
+    // Diagnostic: report per-row max abs error so we see what's missing.
+    double overall_max = 0;
+    int n_above_1e_6 = 0;
+    for (int i = 0; i < r.rows(); ++i) {
+        double row_max = (a.row(i) - r.row(i)).cwiseAbs().maxCoeff();
+        overall_max = std::max(overall_max, row_max);
+        if (row_max > 1e-6) n_above_1e_6++;
+    }
+    std::cout << "DRueDFoilX (partial-analytical): overall max abs error = "
+              << overall_max << ", rows with err > 1e-6: " << n_above_1e_6
+              << "/" << r.rows() << std::endl;
+    // For now this test always passes — it's a diagnostic until the missing
+    // chains (A2 wake-side ueinv, B dueisigma) are implemented.
+    SUCCEED();
 }
