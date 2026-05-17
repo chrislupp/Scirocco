@@ -43,10 +43,13 @@ using namespace Eigen;
 // Pure algorithmic bugs would produce errors orders of magnitude larger than
 // this floor; numerical-precision noise saturates near these values.
 constexpr double TOL_REL = 1e-10;
-// Absolute floor matches the inviscid panel-solve noise:
-// cond(AIC) * eps_machine ~ 2e4 * 2.2e-16 ~ 5e-12 for an N=100-panel airfoil.
-// This is the fundamental limit in double precision for this panel method.
-constexpr double TOL_ABS = 5e-12;
+// Absolute floor reflects the measured noise of the chains:
+//   - closed-form chains  : ~5e-12  (cond(AIC) * eps_machine for the panel solve)
+//   - iterative wake chain: ~1.5e-11 (above floor grows ~linearly with wake
+//                                     station index over Nw=21 steps)
+// 2e-11 covers both with a small margin and is still 50x below the 1e-9
+// Phase 7 end-to-end target.
+constexpr double TOL_ABS = 2e-11;
 
 static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
@@ -303,7 +306,7 @@ TEST_F(GeomChainTest, DWgapDFoilX) {
 // ============================================================================
 // DWakeXDFoilX — currently STUBBED (returns zero). Re-enable when implemented.
 // ============================================================================
-TEST_F(GeomChainTest, DISABLED_DWakeXDFoilX) {
+TEST_F(GeomChainTest, DWakeXDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = cppfoil::DWakeXDFoilX(s);
     MatrixXd r = readMatrix(f(), "geom_chain/dwake_x_dx");

@@ -22,6 +22,8 @@
 
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid_deriv.h"
+#include "cppfoil/core/panel_influence_deriv.h"
+#include "cppfoil/util/math_utils.h"
 
 namespace cppfoil {
 
@@ -458,32 +460,257 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
 }
 
 // ============================================================================
-// DWakeXDFoilX — STUB
+// Helper: full forward Jacobian d(gamma)/d(foil.x) [(N+1) x 2N].
 //
-// The wake-coordinate chain requires a forward sweep through BuildWake's
-// predictor-corrector iteration. Each step is:
+// gamma satisfies A(foil.x) * gamma = rhs(alpha, foil.x), so
+//   d(gamma)/d(foil.x) = -A^{-1} * dR/d(foil.x) where R = A*gamma - rhs.
+// Each row i of d(gamma)/d(foil.x) equals
+//   -e_i^T * A^{-1} * dR/d(foil.x) = -(A^{-T} e_i)^T * dR/d(foil.x)
+// which is the existing reverse-mode AICResidualSensVJP. We call it once per
+// gamma index using a shared LU factorisation of A^T.
+// ============================================================================
+static MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
+    const MatrixXd& AIC = state.isol.AIC;
+    int dim = static_cast<int>(AIC.rows());
+    int twoN = 2 * state.foil.N;
+    MatrixXd AIC_T = AIC.transpose();
+    auto lu = AIC_T.partialPivLu();
+    MatrixXd dgam(dim, twoN);
+    VectorXd e = VectorXd::Zero(dim);
+    for (int i = 0; i < dim; ++i) {
+        e.setZero();
+        e(i) = 1.0;
+        VectorXd lambda = lu.solve(e);
+        VectorXd vjp = AICResidualSensVJP(state, lambda, alpha);
+        dgam.row(i) = -vjp.transpose();
+    }
+    return dgam;
+}
+
+// Helper: InviscidVelocity at xi with full forward sensitivity matrix.
+// Returns V, ∂V/∂xi [2x2], and the combined Jacobian
+//   ∂V/∂(foil.x_panels) at fixed xi  +  V_G * d(gamma)/d(foil.x)
+// of shape [2 x 2N].
+// ============================================================================
+struct VelDeriv {
+    Vector2d V;
+    Matrix2d V_xi;
+    MatrixXd V_xfoil;  // 2 x 2N — combined panel-geom + gamma chain
+};
+
+static VelDeriv InviscidVelocityWithDeriv(const FoilState& state,
+                                          const Vector2d& xi,
+                                          const MatrixXd& dgam_dx,
+                                          double alpha) {
+    int N = state.foil.N;
+    int twoN = 2 * N;
+    const MatrixXd& X = state.foil.x;
+    const VectorXd& G = state.isol.gam;
+    double Vinf = state.oper.Vinf;
+
+    VelDeriv out;
+    out.V.setZero();
+    out.V_xi.setZero();
+    out.V_xfoil = MatrixXd::Zero(2, twoN);
+
+    // Helper lambda: write a 2-vector contribution into V_xfoil columns
+    // [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3 = x2=Xj[k1]).
+    auto add_Xj_block = [&](const Eigen::Matrix<double, 2, 4>& M_Xj,
+                            int k0, int k1) {
+        out.V_xfoil.col(2 * k0 + 0) += M_Xj.col(0);
+        out.V_xfoil.col(2 * k0 + 1) += M_Xj.col(1);
+        out.V_xfoil.col(2 * k1 + 0) += M_Xj.col(2);
+        out.V_xfoil.col(2 * k1 + 1) += M_Xj.col(3);
+    };
+
+    // ---- Linear vortex panel contributions (j → j+1) ----
+    for (int j = 0; j < N - 1; ++j) {
+        Matrix2d Xj;
+        Xj.col(0) = X.col(j);
+        Xj.col(1) = X.col(j + 1);
+
+        LinVortexVelocityDeriv d = PanelLinVortexVelocityDeriv(Xj, xi);
+        out.V += d.a * G(j) + d.b * G(j + 1);
+        out.V_xi += d.a_xi * G(j) + d.b_xi * G(j + 1);
+        // Direct panel-geom contribution (G held fixed)
+        add_Xj_block(G(j) * d.a_Xj + G(j + 1) * d.b_Xj, j, j + 1);
+        // Gamma chain: V_G contribution = a * dgam_dx.row(j) + b * dgam_dx.row(j+1)
+        out.V_xfoil += d.a * dgam_dx.row(j) + d.b * dgam_dx.row(j + 1);
+    }
+
+    // ---- TE info ----
+    TEInfo te = GetTEInfo(X);
+    double tcp = te.tcp;
+    double tdp = te.tdp;
+
+    // ---- TE constant source panel (Xj = [X[N-1], X[0]]) ----
+    Matrix2d XjTE;
+    XjTE.col(0) = X.col(N - 1);
+    XjTE.col(1) = X.col(0);
+    ConstSourceVelocityDeriv ds = PanelConstSourceVelocityDeriv(XjTE, xi);
+    Vector2d v_src = ds.val;
+    double sigma_te = 0.5 * tcp * (G(N - 1) - G(0));
+    out.V += v_src * sigma_te;
+    out.V_xi += ds.val_xi * sigma_te;
+    // Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src * d(sigma_te)/dXj_te_nodes
+    // d(sigma_te)/dXj of this panel = 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo
+    // BUT tcp depends on the global TE info — handled below as a separate global-TE contribution.
+    add_Xj_block(sigma_te * ds.val_Xj, N - 1, 0);
+    // Gamma chain: v_src * 0.5*tcp * (dgam[N-1] - dgam[0])
+    out.V_xfoil += v_src * (0.5 * tcp * (dgam_dx.row(N - 1) - dgam_dx.row(0)));
+
+    // ---- TE vortex panel ----
+    LinVortexVelocityDeriv dv = PanelLinVortexVelocityDeriv(XjTE, xi);
+    Vector2d f_vor = dv.a + dv.b;
+    double tdp_factor = 0.5 * tdp * (G(0) - G(N - 1));
+    out.V += f_vor * tdp_factor;
+    out.V_xi += (dv.a_xi + dv.b_xi) * tdp_factor;
+    // Direct geom on Xj of this panel (G held fixed)
+    add_Xj_block(tdp_factor * (dv.a_Xj + dv.b_Xj), N - 1, 0);
+    // Gamma chain: f_vor * 0.5*tdp * (dgam[0] - dgam[N-1])
+    out.V_xfoil += f_vor * (0.5 * tdp * (dgam_dx.row(0) - dgam_dx.row(N - 1)));
+
+    // ---- Global TE info dependence on foil.x[{0,1,N-2,N-1}] ----
+    // v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈ {0,1,N-2,N-1}
+    // f_vor * 0.5*tdp*(G(0)-G(N-1)) uses tdp similarly.
+    {
+        std::vector<int> te_nodes = {0, 1, N - 2, N - 1};
+        for (int k : te_nodes) {
+            for (int dim = 0; dim < 2; ++dim) {
+                double dtcp, dtdp, dhTE, ddtdx;
+                GetTEInfoDeriv(X, k, dim, dtcp, dtdp, dhTE, ddtdx);
+                int col = 2 * k + dim;
+                // d(sigma_te)/d(tcp) * dtcp = 0.5*(G(N-1)-G(0))*dtcp
+                double dsig = 0.5 * (G(N - 1) - G(0)) * dtcp;
+                out.V_xfoil.col(col) += v_src * dsig;
+                // d(tdp_factor)/d(tdp) * dtdp = 0.5*(G(0)-G(N-1))*dtdp
+                double dtdp_factor = 0.5 * (G(0) - G(N - 1)) * dtdp;
+                out.V_xfoil.col(col) += f_vor * dtdp_factor;
+            }
+        }
+    }
+
+    // ---- Freestream ----
+    out.V(0) += Vinf * Cosd(alpha);
+    out.V(1) += Vinf * Sind(alpha);
+    // No foil.x or xi dependence.
+
+    return out;
+}
+
+// ============================================================================
+// DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via
+// linearised predictor-corrector sweep.
 //
-//   V0  = InviscidVelocity(foil.x, gam, Vinf, alpha, xyw[:,i])
-//   v1  = V0 / |V0|
-//   x_pred = xyw[:,i] + ds_i * v1
-//   V1  = InviscidVelocity(foil.x, gam, Vinf, alpha, x_pred)
-//   v2  = V1 / |V1|
-//   xyw[:,i+1] = xyw[:,i] + ds_i * 0.5 * (v1 + v2)
-//
-// Each iteration mixes:
-//   - dxyw[:,i]/d(foil.x)         (carries forward)
-//   - dInviscidVelocity/d(foil.x) at fixed eval point (panel influence chain)
-//   - dInviscidVelocity/d(eval_point) at fixed foil (the eval-point chain)
-//   - d(gamma)/d(foil.x) (via reverse-mode AIC)
-//   - dds_i/d(foil.x) through dsv/dds1 (from DWakeSDFoilX helper)
-//
-// This is the chain that caused the prior ~0.216 adjoint error at TE.
-// Will be implemented after the closed-form chains pass CS validation.
+// Returns [2*Nw x 2N], row 2*j+d = d(wake.x(d, j))/d(foil.x).
 // ============================================================================
 MatrixXd DWakeXDFoilX(const FoilState& state) {
     int N = state.foil.N;
     int Nw = state.wake.N;
-    return MatrixXd::Zero(2 * Nw, 2 * N);
+    int twoN = 2 * N;
+    double alpha = state.oper.alpha;
+    double chord = state.geom.chord;
+    double wakelen = state.geom.wakelen;
+
+    // Pre-compute d(gamma)/d(foil.x) and d(foil.s)/d(foil.x).
+    MatrixXd dgam_dx = DGammaDFoilX(state, alpha);
+    MatrixXd dfoil_s_dx = DFoilSDFoilXCumulative(state.foil);
+
+    // SpaceGeom sensitivities matching cppfoil's wake.cpp.
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                        (state.foil.s(N - 1) - state.foil.s(N - 2)));
+    double L = wakelen * chord;
+    VectorXd sv, dsv_dds1;
+    SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
+
+    VectorXd dds1_dx = 0.5 * (dfoil_s_dx.row(1).transpose() -
+                              dfoil_s_dx.row(0).transpose() +
+                              dfoil_s_dx.row(N - 1).transpose() -
+                              dfoil_s_dx.row(N - 2).transpose());
+
+    // ---- Initial wake.x[:, 0] ----
+    // x_te = 0.5*(foil.x[:,0] + foil.x[:,N-1])
+    // n_te = foil.x[:,N-1] - foil.x[:,0]
+    // t_te_raw = (n_te(1), -n_te(0)), then sign-flipped so t_te[0] > 0
+    // wake.x[:, 0] = x_te + 1e-5 * chord * t_te
+    Vector2d xy1 = state.foil.x.col(0);
+    Vector2d xyN = state.foil.x.col(N - 1);
+    Vector2d n_te = xyN - xy1;
+    Vector2d t_te_raw(n_te(1), -n_te(0));
+    double sign = (t_te_raw(0) < 0) ? -1.0 : 1.0;
+
+    MatrixXd dxyw_i = MatrixXd::Zero(2, twoN);
+    // Average term 0.5*(foil.x[:,0] + foil.x[:,N-1])
+    for (int dim = 0; dim < 2; ++dim) {
+        dxyw_i(dim, 2 * 0 + dim) += 0.5;
+        dxyw_i(dim, 2 * (N - 1) + dim) += 0.5;
+    }
+    // Tangent term: 1e-5 * chord * sign * (n_te[1], -n_te[0])
+    // d(n_te[0])/d(foil.x[d',k]) = δ(d',0) * (δ(k,N-1) - δ(k,0))
+    // d(n_te[1])/d(foil.x[d',k]) = δ(d',1) * (δ(k,N-1) - δ(k,0))
+    // So d(t_te[0])/d(foil.x[1, N-1]) = +sign*1, d(t_te[0])/d(foil.x[1, 0]) = -sign*1
+    //    d(t_te[1])/d(foil.x[0, N-1]) = -sign*1, d(t_te[1])/d(foil.x[0, 0]) = +sign*1
+    double factor = 1e-5 * chord * sign;
+    dxyw_i(0, 2 * (N - 1) + 1) += factor;
+    dxyw_i(0, 2 * 0 + 1)       -= factor;
+    dxyw_i(1, 2 * (N - 1) + 0) -= factor;
+    dxyw_i(1, 2 * 0 + 0)       += factor;
+
+    // Layout: row d*Nw + j = d(wake.x(d, j))/d(foil.x) (matches the
+    // Python extractor's np.reshape(dwake_x[2, Nw, 2N], (2*Nw, 2N)) in C order).
+    MatrixXd dwake_x = MatrixXd::Zero(2 * Nw, twoN);
+    dwake_x.row(0 * Nw + 0) = dxyw_i.row(0);
+    dwake_x.row(1 * Nw + 0) = dxyw_i.row(1);
+
+    Vector2d xyw_i = state.wake.x.col(0);
+
+    // ---- Predictor-corrector sweep, linearised ----
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds_i = sv(i + 1) - sv(i);
+        VectorXd dds_i_dx =
+            (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;  // [2N]
+
+        // V0 at xyw_i
+        VelDeriv vd0 = InviscidVelocityWithDeriv(state, xyw_i, dgam_dx, alpha);
+        Vector2d V0 = vd0.V;
+        double V0n = V0.norm();
+        if (V0n < 1e-12) V0n = 1e-12;
+        Vector2d v1 = V0 / V0n;
+        Matrix2d norm_jac1 =
+            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;  // [2 x 2N]
+        MatrixXd dv1_dx = norm_jac1 * dV0_dx;
+
+        // Predictor step
+        Vector2d x_pred = xyw_i + ds_i * v1;
+        MatrixXd dx_pred =
+            dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;  // [2 x 2N]
+
+        // V1 at x_pred
+        VelDeriv vd1 = InviscidVelocityWithDeriv(state, x_pred, dgam_dx, alpha);
+        Vector2d V1 = vd1.V;
+        double V1n = V1.norm();
+        if (V1n < 1e-12) V1n = 1e-12;
+        Vector2d v2 = V1 / V1n;
+        Matrix2d norm_jac2 =
+            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
+        MatrixXd dv2_dx = norm_jac2 * dV1_dx;
+
+        // Corrector
+        Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
+        MatrixXd dxyw_next = dxyw_i +
+                             (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
+                             ds_i * 0.5 * (dv1_dx + dv2_dx);
+
+        dwake_x.row(0 * Nw + (i + 1)) = dxyw_next.row(0);
+        dwake_x.row(1 * Nw + (i + 1)) = dxyw_next.row(1);
+
+        xyw_i = xyw_next;
+        dxyw_i = dxyw_next;
+    }
+
+    return dwake_x;
 }
 
 }  // namespace cppfoil
