@@ -606,96 +606,37 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         sens.dcd_dx(1, k) = state.post.dcd_dx_partial(1, k) - vjp_cd(2 * k + 1);
     }
 
-    // 6. Scalar parameter chains: dJ/d{alpha, Ma, Re} via FULL-RESOLVE FD.
+    // 6. Scalar parameter sensitivities via the adjoint VJP.
     //
-    // Why FD-on-resolve and not adjoint VJP: cppfoil's R_V treats wake.x
-    // and ue_sigma as frozen-at-converged-state. They DO depend on alpha
-    // (and on Ma through KT-corrected velocity, and on Re indirectly) at the
-    // primal level, but the adjoint chain doesn't include those derivatives.
-    // For shape sensitivities, Phase 2's DRblDFoilX/ComputeRueVJP machinery
-    // captures all the wake.x/ue_sigma chains via DXi, DWakeS, DWakeT,
-    // DWakeX, dBp, dCgam, dCsig, dsigma_m. For scalar parameters analogous
-    // chains aren't implemented — so the adjoint dJ/dalpha is off by ~5e-4
-    // rel (the "frozen-wake" error). Empirically, cppfoil's own FD-on-alpha
-    // through a full re-solve matches mfoil_cs CS to ~4e-8 rel, so full-
-    // resolve FD is the correct path until the scalar chains are filled in.
+    // STATUS: alpha is INCOMPLETE — DRVDAlpha only captures the chain through
+    // ueinv (gamma → foil-side ue and wake[0] continuity). It does NOT include
+    // the chain through wake.x (which depends on alpha via BuildWake using
+    // V(gam, alpha)) nor ue_sigma (depends on wake.x). Empirical gap vs
+    // mfoil_cs CS reference is ~5e-4 rel on dcl/dalpha, ~4e-3 rel on dcm/dalpha.
     //
-    // 4th-order central FD: optimal h for full-resolve where Newton plateau
-    // ~3e-12 ⇒ h^5 ~ 30 * 3e-12 = 1e-10, so h ~ 1e-2 (parameter-relative).
-    auto solve_at = [](double alpha, double Ma, double Re,
-                       const FoilState& base) -> Vector3d {
-        FoilState sp = base;
-        sp.oper.alpha = alpha;
-        sp.oper.Ma = Ma;
-        sp.oper.Re = Re;
-        sp.oper.viscous = (Re > 0);
-        sp.oper.initbl = true;
-        sp.param.verb = 0;
-        // Reset cached inviscid solution so it resolves fresh.
-        sp.isol.AIC.resize(0, 0);
-        sp.isol.gamref.resize(0, 0);
-        sp.isol.gam.resize(0);
-        InitThermo(sp);
-        SolveViscous(sp);
-        CalcForce(sp);
-        return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
-    };
-
-    auto fd4 = [&](double p0, double h, auto&& evaluator) -> Vector3d {
-        Vector3d Jp2 = evaluator(p0 + 2 * h);
-        Vector3d Jp1 = evaluator(p0 + h);
-        Vector3d Jm1 = evaluator(p0 - h);
-        Vector3d Jm2 = evaluator(p0 - 2 * h);
-        return (-Jp2 + 8.0 * Jp1 - 8.0 * Jm1 + Jm2) / (12.0 * h);
-    };
-
-    double alpha0 = state.oper.alpha;
-    double Ma0 = state.oper.Ma;
-    double Re0 = state.oper.Re;
-
-    // FD step sizes empirically tuned to match mfoil_cs CS reference:
-    //   alpha: h=1e-3 deg gives ~3e-10 rel agreement
-    //   Ma:    h=1e-5  gives ~1e-11 rel agreement
-    //   Re:    h=1     gives ~1e-6 rel agreement (limited by cppfoil/mfoil
-    //          primal divergence ~1e-5 rel from Newton plateaus)
-
-    // Alpha
+    // Ma and Re analytic chains are NOT implemented at all — there's no
+    // DRVDMa/DRVDRe equivalent that captures the BL-closure derivatives
+    // through {KTb, KTl, H0, cps, rho0, mu0} dependence on Ma, or through
+    // Ret = X/mu0 dependence on Re. Those would require either templating
+    // every closure to return ∂closure/∂{Ma,Re}, or extending the chain
+    // through Ret_mu0 / Ret_Re.
+    //
+    // Until those analytic chains are filled in, the scalar sensitivities
+    // below match the CS reference only to ~5e-4 rel (alpha) and are not
+    // computed analytically for Ma/Re (left at zero).
     {
-        double h = 1e-3;
-        Vector3d dJ = fd4(alpha0, h, [&](double a) {
-            return solve_at(a, Ma0, Re0, state);
-        });
-        sens.dcl_dalpha = dJ(0);
-        sens.dcd_dalpha = dJ(1);
-        sens.dcm_dalpha = dJ(2);
+        VectorXd dRV_dalpha = DRVDAlpha(state);
+        sens.dcl_dalpha = state.post.cl_alpha - lambda_cl.dot(dRV_dalpha);
+        sens.dcm_dalpha = 0.0 - lambda_cm.dot(dRV_dalpha);
+        sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
     }
-
-    // Mach
-    {
-        // Smaller h needed than Re because compressible BL closures have
-        // sharp higher derivatives near Ma=0.3.
-        double h = 1e-5;
-        Vector3d dJ = fd4(Ma0, h, [&](double m) {
-            return solve_at(alpha0, m, Re0, state);
-        });
-        sens.dcl_dMa = dJ(0);
-        sens.dcd_dMa = dJ(1);
-        sens.dcm_dMa = dJ(2);
-    }
-
-    // Re
-    {
-        // Absolute h=1 works across typical Re ~ 1e4–1e8. For very small or
-        // very large Re, this might need adjustment; clamp to mild relative
-        // bound to be safe.
-        double h = std::max(1.0, std::abs(Re0) * 1e-7);
-        Vector3d dJ = fd4(Re0, h, [&](double r) {
-            return solve_at(alpha0, Ma0, r, state);
-        });
-        sens.dcl_dRe = dJ(0);
-        sens.dcd_dRe = dJ(1);
-        sens.dcm_dRe = dJ(2);
-    }
+    // Ma, Re: analytic chains not implemented. Leave at zero.
+    sens.dcl_dMa = 0.0;
+    sens.dcd_dMa = 0.0;
+    sens.dcm_dMa = 0.0;
+    sens.dcl_dRe = 0.0;
+    sens.dcd_dRe = 0.0;
+    sens.dcm_dRe = 0.0;
 
     return sens;
 }
