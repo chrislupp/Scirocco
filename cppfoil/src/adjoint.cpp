@@ -628,28 +628,23 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         VectorXd dRV_dMa = DRVDMa(state);
         // ∂J/∂Ma_partial via FD on Ma at fixed U: re-evaluate cl/cd/cm with
         // perturbed Minf (and corresponding KTb/KTl), holding U/foil.x fixed.
-        double Ma0 = state.param.Minf;
-        double h = 1e-7;
-        auto set_KT = [](Param& p, double Ma) {
-            p.Minf = Ma;
-            if (Ma > 0.0) {
-                double b = std::sqrt(1.0 - Ma * Ma);
-                p.KTb = b;
-                p.KTl = (Ma * Ma) / ((1.0 + b) * (1.0 + b));
-            } else {
-                p.KTb = 1.0;
-                p.KTl = 0.0;
-            }
-        };
+        double Ma0 = state.oper.Ma;
+        // FD on Ma with FULL InitThermo update (KTb, KTl, H0, cps, mu0, rho0).
+        // Updating only KTb/KTl was wrong because Squire-Young cd uses uk
+        // which depends on H0 (compressibility correction in GetMach2/GetUk).
         auto eval_J = [&](double Ma) -> Vector3d {
             FoilState sp = state;
-            set_KT(sp.param, Ma);
+            sp.oper.Ma = Ma;
+            InitThermo(sp);
             CalcForce(sp);
             return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
         };
-        Vector3d Jp = eval_J(Ma0 + h);
-        Vector3d Jm = eval_J(Ma0 - h);
-        Vector3d dJ_dMa_partial = (Jp - Jm) / (2.0 * h);
+        double h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
+        Vector3d Jp2 = eval_J(Ma0 + 2 * h);
+        Vector3d Jp1 = eval_J(Ma0 + h);
+        Vector3d Jm1 = eval_J(Ma0 - h);
+        Vector3d Jm2 = eval_J(Ma0 - 2 * h);
+        Vector3d dJ_dMa_partial = (-Jp2 + 8.0 * Jp1 - 8.0 * Jm1 + Jm2) / (12.0 * h);
         sens.dcl_dMa = dJ_dMa_partial(0) - lambda_cl.dot(dRV_dMa);
         sens.dcd_dMa = dJ_dMa_partial(1) - lambda_cd.dot(dRV_dMa);
         sens.dcm_dMa = dJ_dMa_partial(2) - lambda_cm.dot(dRV_dMa);
@@ -742,54 +737,63 @@ static VectorXd EvaluateRV(FoilState& state) {
     return R;
 }
 
+// 4th-order central FD: df/dx ≈ (-f(+2h) + 8f(+h) - 8f(-h) + f(-2h)) / (12h)
+// Truncation O(h^4), so the optimal h is much larger than 2nd-order central
+// — pushing cancellation noise (eps/h) well below truncation while keeping h
+// well clear of the parameter's natural scale. For mu0 ~ 1e-7 with Newton
+// residual floor ~3e-12, optimal h ≈ mu0 * 1e-2 yields ~3e-10 rel precision.
+template <typename EvalR>
+static VectorXd CentralFD4(double x0, double h, EvalR&& eval) {
+    VectorXd Rp2 = eval(x0 + 2 * h);
+    VectorXd Rp1 = eval(x0 + h);
+    VectorXd Rm1 = eval(x0 - h);
+    VectorXd Rm2 = eval(x0 - 2 * h);
+    return (-Rp2 + 8.0 * Rp1 - 8.0 * Rm1 + Rm2) / (12.0 * h);
+}
+
 VectorXd DRVDMa(FoilState& state, double h) {
-    if (h <= 0) h = 1e-7;
-    double Ma0 = state.param.Minf;
-    double KTb0 = state.param.KTb;
-    double KTl0 = state.param.KTl;
-    auto set_KT = [&](double Ma) {
-        state.param.Minf = Ma;
-        if (Ma > 0.0) {
-            double b = std::sqrt(1.0 - Ma * Ma);
-            state.param.KTb = b;
-            state.param.KTl = (Ma * Ma) / ((1.0 + b) * (1.0 + b));
-        } else {
-            state.param.KTb = 1.0;
-            state.param.KTl = 0.0;
-        }
+    double Ma0 = state.oper.Ma;
+    // Save ALL Ma-dependent derived params. InitThermo recomputes:
+    //   Minf, KTb, KTl, H0, cps, mu0, rho0, muinf
+    // when state.oper.Ma changes. Earlier only updating KTb/KTl missed H0,
+    // cps, mu0, rho0 — which break Mach-dependent BL closures (GetMach2,
+    // GetHss, GetRet under compressible path).
+    Param param0 = state.param;
+    if (h <= 0) h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
+    auto eval = [&](double Ma) {
+        state.oper.Ma = Ma;
+        InitThermo(state);
+        state.glob.realloc = true;
+        return EvaluateRV(state);
     };
-    set_KT(Ma0 + h);
-    state.glob.realloc = true;
-    VectorXd Rp = EvaluateRV(state);
-    set_KT(Ma0 - h);
-    state.glob.realloc = true;
-    VectorXd Rm = EvaluateRV(state);
+    VectorXd dR = CentralFD4(Ma0, h, eval);
     // Restore baseline
-    state.param.Minf = Ma0;
-    state.param.KTb = KTb0;
-    state.param.KTl = KTl0;
+    state.oper.Ma = Ma0;
+    state.param = param0;
     state.glob.realloc = true;
     BuildGlobSys(state);
-    return (Rp - Rm) / (2.0 * h);
+    return dR;
 }
 
 VectorXd DRVDRe(FoilState& state, double h) {
-    // Step size proportional to parameter magnitude (mu0 ~ 1/Re ~ 1e-7).
-    // Use h ≈ sqrt(eps) * |mu0| for FD optimum.
     double mu0_0 = state.param.mu0;
     double Re0 = state.oper.Re;
-    if (h <= 0) h = std::abs(mu0_0) * 1e-7;
+    // R depends on mu0 only through Ret = X/mu0. So R^(n)(mu0) ~ R/mu0^n,
+    // and the 4th-order central FD optimal h is roughly mu0 * eps^(1/5).
+    // For mu0 ~ 1e-7, Newton floor ~3e-12: h_opt ~ mu0 * (3e-12)^(1/5) ~
+    // mu0 * 1e-2. Use that. At this h, truncation + cancellation both ~
+    // 3e-10 rel on ∂R/∂mu0.
+    if (h <= 0) h = std::abs(mu0_0) * 1e-2;
     double dmu0_dRe = -mu0_0 / Re0;
-    state.param.mu0 = mu0_0 + h;
-    state.glob.realloc = true;
-    VectorXd Rp = EvaluateRV(state);
-    state.param.mu0 = mu0_0 - h;
-    state.glob.realloc = true;
-    VectorXd Rm = EvaluateRV(state);
+    auto eval = [&](double mu0) {
+        state.param.mu0 = mu0;
+        state.glob.realloc = true;
+        return EvaluateRV(state);
+    };
+    VectorXd dR_dmu0 = CentralFD4(mu0_0, h, eval);
     state.param.mu0 = mu0_0;
     state.glob.realloc = true;
     BuildGlobSys(state);
-    VectorXd dR_dmu0 = (Rp - Rm) / (2.0 * h);
     return dR_dmu0 * dmu0_dRe;
 }
 

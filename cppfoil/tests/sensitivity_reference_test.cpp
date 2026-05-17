@@ -54,18 +54,18 @@ using namespace Eigen;
 // Any error beyond this indicates a bug in the C++ adjoint.
 constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
 // Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
-//   Shape sensitivities: ~5e-5 rel — limited by cppfoil's Newton residual
-//     floor at ~3e-12 (mfoil reaches 2e-14) amplified by cond(R_V) ~ 1e3-1e5.
-//   Scalar (alpha): ~5e-3 rel on cm, ~5e-4 on cl/cd — limited by adjoint
-//     noise + FD step on the panel-projection ∂J/∂alpha computation.
-//   Scalar (Ma, Re): 1e-2 to 1e-1 rel — uses scalar-FD on R_V (h=1e-7 or
-//     scaled for parameter magnitude); analytic BL-closure derivatives
-//     w.r.t. Ma/Re would be required for tighter agreement.
-// 1e-9 target from the plan is currently blocked by:
-//   - cppfoil Newton plateau (3e-12 vs mfoil's 2e-14)
-//   - FD-based scalar Ma/Re chains (no analytic ∂closure/∂{Ma,Re})
+//   Shape:       ~5e-5 rel (Phase 7 ViscousShape)
+//   Alpha:       ~5e-4 to 4e-3 rel (analytic DRVDAlpha; cm is loosest)
+//   Mach:        ~3e-6 to 1e-4 rel (4th-order FD + FULL InitThermo update of
+//                  KTb, KTl, H0, cps, mu0, rho0 — earlier code only updated
+//                  KTb/KTl which was 25% wrong on dcd/dMa)
+//   Re:          ~1e-3 to 2e-3 rel (4th-order FD on mu0; remaining error is
+//                  cppfoil Newton 3e-12 floor / dJ/dRe magnitude ~1e-8)
+// 1e-9 target from the plan is currently blocked by cppfoil's Newton plateau
+// at 3e-12 (mfoil reaches 2e-14). Each gradient inherits ~3e-12/|J|·|λ| rel
+// noise; for small |J| (Re sensitivities are O(1e-8)) this is the bottleneck.
 constexpr double TOL_VISC_SHAPE = 1e-4;
-constexpr double TOL_VISC_SCALAR = 5e-2;
+constexpr double TOL_VISC_SCALAR = 5e-3;
 
 // ---------------------------------------------------------------------------
 // HDF5 helpers (same pattern as mfoil_reference_test.cpp)
