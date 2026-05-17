@@ -53,19 +53,17 @@ using namespace Eigen;
 // Tolerance: complex-step reference is machine-precision accurate.
 // Any error beyond this indicates a bug in the C++ adjoint.
 constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
-// Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
-//   Shape:       ~5e-5 rel (Phase 7 ViscousShape)
-//   Alpha:       ~5e-4 to 4e-3 rel (analytic DRVDAlpha; cm is loosest)
-//   Mach:        ~3e-6 to 1e-4 rel (4th-order FD + FULL InitThermo update of
-//                  KTb, KTl, H0, cps, mu0, rho0 — earlier code only updated
-//                  KTb/KTl which was 25% wrong on dcd/dMa)
-//   Re:          ~1e-3 to 2e-3 rel (4th-order FD on mu0; remaining error is
-//                  cppfoil Newton 3e-12 floor / dJ/dRe magnitude ~1e-8)
-// 1e-9 target from the plan is currently blocked by cppfoil's Newton plateau
-// at 3e-12 (mfoil reaches 2e-14). Each gradient inherits ~3e-12/|J|·|λ| rel
-// noise; for small |J| (Re sensitivities are O(1e-8)) this is the bottleneck.
+// Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6 (Ma=0
+// for alpha/Re; Ma=0.3 for mach) using FULL-RESOLVE 4th-order central FD
+// for scalar sensitivities (the adjoint chain for alpha/Ma/Re is incomplete
+// — see ViscousSensitivities comments for the missing wake.x chain).
+//   Shape (adjoint):  ~5e-5 rel
+//   Alpha (FD):       ~3e-10 to 5e-9 rel
+//   Mach (FD):        ~5e-12 to 5e-11 rel
+//   Re (FD):          ~1e-6 to 1e-5 rel (limited by cppfoil/mfoil primal
+//                       state divergence at the Newton plateau)
 constexpr double TOL_VISC_SHAPE = 1e-4;
-constexpr double TOL_VISC_SCALAR = 5e-3;
+constexpr double TOL_VISC_SCALAR = 1e-4;
 
 // ---------------------------------------------------------------------------
 // HDF5 helpers (same pattern as mfoil_reference_test.cpp)
@@ -494,9 +492,7 @@ TEST_F(SensitivityReferenceTest, ViscousMachSensitivity) {
               << " ref=" << dcm_ref << " rel=" << rel(sens.dcm_dMa, dcm_ref)
               << std::endl;
     EXPECT_LT(rel(sens.dcl_dMa, dcl_ref), TOL_VISC_SCALAR);
-    // dcd/dMa rel ~0.25 — FD step h=1e-7 on Ma loses precision; revisit
-    // with analytic BL-closure Ma chain.
-    EXPECT_LT(rel(sens.dcd_dMa, dcd_ref), 0.3);
+    EXPECT_LT(rel(sens.dcd_dMa, dcd_ref), TOL_VISC_SCALAR);
     EXPECT_LT(rel(sens.dcm_dMa, dcm_ref), TOL_VISC_SCALAR);
 }
 
