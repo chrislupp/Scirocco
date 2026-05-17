@@ -136,3 +136,34 @@ TEST_F(ViscousOutputPingTest, DcdDxPartialIsZero) {
         << "Squire-Young cd depends only on Uw, no direct foil.x dependence "
            "→ dcd/dx_partial must be exactly zero.";
 }
+
+// ============================================================================
+// Phase 4: forward/reverse adjoint consistency.
+//   For any b, g ∈ ℝ^{4·Nsys}:
+//     bᵀ · (R_V^{-1} g) == (R_V^{-T} b)ᵀ · g
+//   Pure linear-algebra identity. Tests the transpose solve through
+//   SolveViscousAdjoint vs. SparseLU's forward solve.
+// ============================================================================
+TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
+    auto& s = foil_.GetState();
+    StoreAdjointFactorization(s);
+    ASSERT_TRUE(s.glob.lu_factorization) << "R_V LU factorization unavailable";
+
+    int Nsys = s.glob.Nsys;
+    int NN = 4 * Nsys;
+    VectorXd b = VectorXd::Random(NN);
+    VectorXd g = VectorXd::Random(NN);
+
+    VectorXd y = s.glob.lu_factorization->solve(g);           // R_V^{-1} g
+    VectorXd lambda = SolveViscousAdjoint(s, b);              // R_V^{-T} b
+
+    double lhs = b.dot(y);
+    double rhs = lambda.dot(g);
+    double abs_err = std::abs(lhs - rhs);
+    double rel_err = abs_err / std::max(std::abs(lhs), 1.0);
+
+    // Linear-algebra identity should hold near machine precision.
+    EXPECT_LE(rel_err, 1e-12)
+        << "Forward/reverse adjoint inconsistency: lhs=" << lhs
+        << " rhs=" << rhs << " abs=" << abs_err << " rel=" << rel_err;
+}

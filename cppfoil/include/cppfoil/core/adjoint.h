@@ -58,6 +58,14 @@ void AlphaSensitivities(FoilState& state, Sensitivity& sens);
 // Inviscid only: differentiates KT compressibility correction analytically.
 void MachSensitivities(FoilState& state, Sensitivity& sens);
 
+// Solve the viscous adjoint transpose system R_V^T · λ = rhs.
+//
+// Requires that the viscous primal has been converged and that
+// StoreAdjointFactorization has populated state.glob.R_V and
+// state.glob.lu_factorization. If lu_factorization is null this call
+// rebuilds it (idempotent). Returns λ ∈ ℝ^{4·Nsys}.
+VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_ADJOINT_H

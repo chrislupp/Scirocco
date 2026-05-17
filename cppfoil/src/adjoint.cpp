@@ -32,6 +32,7 @@
 
 #include <cmath>
 
+#include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/inviscid_deriv.h"
@@ -532,6 +533,29 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
     sens.dcl_dMa = dcl / chord;
     sens.dcm_dMa = dcm / (chord * chord);
     sens.dcd_dMa = dcdpi / chord;
+}
+
+// ============================================================================
+// SolveViscousAdjoint — transpose solve through the converged viscous R_V.
+//
+// R_V is assembled and LU-factored by StoreAdjointFactorization. Eigen's
+// SparseLU supports transpose solves via the `.transpose()` view, which is
+// what we use here.
+// ============================================================================
+VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
+    int Nsys = state.glob.Nsys;
+    if (rhs.size() != 4 * Nsys) {
+        throw std::runtime_error(
+            "SolveViscousAdjoint: rhs size must equal 4*Nsys");
+    }
+    if (!state.glob.lu_factorization) {
+        StoreAdjointFactorization(state);
+    }
+    if (!state.glob.lu_factorization) {
+        throw std::runtime_error(
+            "SolveViscousAdjoint: R_V factorization unavailable (singular?)");
+    }
+    return state.glob.lu_factorization->transpose().solve(rhs);
 }
 
 }  // namespace cppfoil
