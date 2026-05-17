@@ -536,6 +536,49 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
 }
 
 // ============================================================================
+// DRVDAlpha — analytical ∂R_V/∂alpha as a [4*Nsys] vector.
+// Matches the same chain that SolveGlob uses in its constrained-cl Newton
+// block (coupled_solver.cpp:529-543).
+// ============================================================================
+VectorXd DRVDAlpha(const FoilState& state) {
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    double alpha = state.oper.alpha;
+    double sa = Sind(alpha);
+    double ca = Cosd(alpha);
+
+    VectorXd dR = VectorXd::Zero(4 * Nsys);
+    for (int i = 0; i < Nsys; ++i) {
+        double dueinv_dalpha = 0.0;
+        if (i < N) {
+            // Foil: ueinv[i] = sgnue[i] * gamma[i]
+            double dgam = -state.isol.gamref(i, 0) * sa +
+                          state.isol.gamref(i, 1) * ca;
+            dueinv_dalpha = state.isol.sgnue(i) * dgam;
+        } else {
+            int iw = i - N;
+            if (iw == 0) {
+                // Wake station 0 uses continuity BC ueinv[N+0] = uea[N-1]
+                // = sgnue[N-1] * gamma[N-1]. The uewiref[0,:] velocity in
+                // state.isol.uewi(0) is OVERWRITTEN by this in get_ueinv,
+                // so the residual chain goes through gamma, not uewiref.
+                double dgam = -state.isol.gamref(N - 1, 0) * sa +
+                              state.isol.gamref(N - 1, 1) * ca;
+                dueinv_dalpha = state.isol.sgnue(N - 1) * dgam;
+            } else if (iw < static_cast<int>(state.isol.uewiref.rows())) {
+                // Wake j>0: uewi[j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
+                dueinv_dalpha = -state.isol.uewiref(iw, 0) * sa +
+                                state.isol.uewiref(iw, 1) * ca;
+            }
+        }
+        dueinv_dalpha *= kDegToRad;
+        // R_ue[i] = U[3,i] - ueinv[i] - ..., so ∂R_ue/∂alpha = -∂ueinv/∂alpha
+        dR(3 * Nsys + i) = -dueinv_dalpha;
+    }
+    return dR;
+}
+
+// ============================================================================
 // SolveViscousAdjoint — transpose solve through the converged viscous R_V.
 //
 // R_V is assembled and LU-factored by StoreAdjointFactorization. Eigen's

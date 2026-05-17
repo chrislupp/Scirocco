@@ -66,6 +66,16 @@ void MachSensitivities(FoilState& state, Sensitivity& sens);
 // rebuilds it (idempotent). Returns λ ∈ ℝ^{4·Nsys}.
 VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs);
 
+// Compute ∂R_V/∂alpha as a [4*Nsys] column vector.
+//
+// R_BL rows: zero (BL residual depends on U and xi only, not alpha directly).
+// R_ue rows: -∂ueinv/∂alpha, where
+//   foil i (0..N-1):  ueinv[i] = sgnue[i] * gamma[i],
+//                     gamma = gamref[:,0]*cos α + gamref[:,1]*sin α
+//   wake j=0 (continuity): same chain through gamma[N-1]
+//   wake j>0:  ueinv[N+j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
+VectorXd DRVDAlpha(const FoilState& state);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_ADJOINT_H

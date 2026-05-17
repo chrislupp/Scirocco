@@ -15,6 +15,7 @@
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/cppfoil.h"
+#include "cppfoil/util/math_utils.h"
 
 using namespace cppfoil;
 using namespace Eigen;
@@ -135,6 +136,80 @@ TEST_F(ViscousOutputPingTest, DcdDxPartialIsZero) {
     EXPECT_EQ(s.post.dcd_dx_partial.cwiseAbs().maxCoeff(), 0.0)
         << "Squire-Young cd depends only on Uw, no direct foil.x dependence "
            "→ dcd/dx_partial must be exactly zero.";
+}
+
+// ============================================================================
+// Phase 5: ∂R_V/∂alpha FD validation. Holds U and foil.x fixed, perturbs
+// alpha, recomputes the global system, takes (R(α+h) - R(α-h))/(2h) and
+// compares to analytic DRVDAlpha. Central FD at h=1e-6 → noise ~1e-12.
+// ============================================================================
+TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesFD) {
+    auto& s = foil_.GetState();
+    int Nsys = s.glob.Nsys;
+
+    // Analytical
+    VectorXd dR_analytic = DRVDAlpha(s);
+
+    // R_V at fixed (U, foil.x, wake.x, ue_sigma); only alpha varies through
+    // gamma → ueinv. This matches DRVDAlpha's "partial holding U and the
+    // geometry-derived matrices fixed" definition, and is what the Newton
+    // solve sees in its constrained-cl block.
+    int N = s.foil.N;
+    VectorXd ds_state(Nsys);
+    VectorXd ue_state(Nsys);
+    for (int j = 0; j < Nsys; ++j) {
+        ds_state(j) = s.glob.U(1, j);
+        ue_state(j) = s.glob.U(3, j);
+    }
+    VectorXd mass = ds_state.cwiseProduct(ue_state);
+    VectorXd source_term = s.vsol.ue_m * mass;  // sgue * ue_sigma * phi
+    // R_BL doesn't depend on alpha → that block is zero. Only assemble R_ue.
+    auto eval_Rue = [&](double alpha) -> VectorXd {
+        double ca = Cosd(alpha);
+        double sa = Sind(alpha);
+        VectorXd gam(N);
+        for (int i = 0; i < N; ++i) {
+            gam(i) = s.isol.gamref(i, 0) * ca + s.isol.gamref(i, 1) * sa;
+        }
+        VectorXd uewi(Nsys - N);
+        for (int j = 0; j < Nsys - N; ++j) {
+            uewi(j) = s.isol.uewiref(j, 0) * ca + s.isol.uewiref(j, 1) * sa;
+        }
+        VectorXd R_ue(Nsys);
+        for (int i = 0; i < Nsys; ++i) {
+            double ueinv_i;
+            if (i < N) {
+                ueinv_i = s.isol.sgnue(i) * gam(i);
+            } else if (i - N == 0) {
+                ueinv_i = s.isol.sgnue(N - 1) * gam(N - 1);
+            } else {
+                ueinv_i = uewi(i - N);
+            }
+            R_ue(i) = ue_state(i) - ueinv_i - source_term(i);
+        }
+        return R_ue;
+    };
+
+    double alpha0 = s.oper.alpha;
+    double h = 1e-6;
+    VectorXd Rup = eval_Rue(alpha0 + h);
+    VectorXd Rum = eval_Rue(alpha0 - h);
+    VectorXd dRue_fd = (Rup - Rum) / (2.0 * h);
+
+    // Analytic R_ue block lives in rows 3*Nsys..4*Nsys-1.
+    double max_err = 0.0;
+    int worst_i = 0;
+    for (int i = 0; i < Nsys; ++i) {
+        double e = std::abs(dR_analytic(3 * Nsys + i) - dRue_fd(i));
+        if (e > max_err) { max_err = e; worst_i = i; }
+    }
+    std::cout << "DRVDAlpha: max abs vs FD = " << max_err
+              << " at R_ue row " << worst_i << std::endl;
+    // FD noise floor ~1e-9 at central-difference h=1e-6 on smooth R_ue.
+    EXPECT_LE(max_err, 1e-9);
+
+    // R_BL block (rows 0..3*Nsys-1) must be exactly zero analytically.
+    EXPECT_EQ(dR_analytic.head(3 * Nsys).cwiseAbs().maxCoeff(), 0.0);
 }
 
 // ============================================================================
