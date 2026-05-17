@@ -176,12 +176,17 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
 
     // ---- A1. Foil-side dueinv chain via dgam ---------------------------------
     // lambda_g (N-vector) = sgnue[0..N) .* lambda_ue[0..N)
+    // PLUS continuity contribution from the first wake row:
+    //   get_ueinv sets ueinv[N+0] = uea[N-1] = sgnue[N-1] * gam[N-1]  (NOT uewi[0]).
+    //   So d(ueinv[N+0]) chains through gam[N-1], same as if we added
+    //   sgnue[N-1] * lambda_ue[N] to lambda_g[N-1].
     // Extended to N+1 with 0 in the streamfunction slot.
     int AIC_dim = static_cast<int>(state.isol.AIC.rows());  // N + 1
     VectorXd lambda_g_ext = VectorXd::Zero(AIC_dim);
     for (int i = 0; i < N; ++i) {
         lambda_g_ext(i) = state.isol.sgnue(i) * lambda_ue(i);
     }
+    lambda_g_ext(N - 1) += state.isol.sgnue(N - 1) * lambda_ue(N);
     // mu = AIC^{-T} * lambda_g_ext
     MatrixXd AIC_T = state.isol.AIC.transpose();
     auto lu = AIC_T.partialPivLu();
@@ -249,10 +254,13 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     // station) is more involved. We add the dV term and a placeholder for
     // dwake.t (TODO: implement the proper predictor chain). Magnitude of
     // contribution is one station out of Nw, so adjoint impact is bounded.
+    //
+    // SKIP j=0: ueinv[N+0] is overwritten by uea[N-1] in get_ueinv (continuity
+    // BC), so its chain goes through gam[N-1] in A1, NOT through V at wake.x[0].
     {
         MatrixXd dgam_dx_full = DGammaDFoilX(state, alpha);
         MatrixXd dwake_x_dx = DWakeXDFoilX(state);  // [2*Nw x 2N]
-        for (int j = 0; j < Nw; ++j) {
+        for (int j = 1; j < Nw; ++j) {
             VelDeriv vd = InviscidVelocityWithDeriv(
                 state, state.wake.x.col(j), dgam_dx_full, alpha);
             // d(wake.x[:, j])/d(foil.x) extracted from dwake_x_dx layout
@@ -579,9 +587,88 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         }
     }
 
-    // TODO: wake-side Csig chain (panel source velocity at wake stations,
-    // foil-source panels + half-panel wake-source contributions). This is
-    // the last missing chain piece.
+    // ---- B2b: dCsig direct chain for j > 0 wake rows (foil-source part) ---
+    //
+    // Csig[j, k] = V_at_wake_j(from panel k) . wake.t[j]
+    // For k = 0..N-2 (foil source panels), PanelConstSourceVelocity gives V
+    // from a foil panel evaluated at wake.x[j]. Chain through Xj=foil.x[k:k+2]
+    // (direct), xi=wake.x[j] (via dwake.x[j]), and wake.t[j] (via dV_real chain).
+    //
+    // Skip cases from CalcUeM: (j == 0) skips foil panels k=0 and k=N-2.
+    // For j > 0, all foil source panels contribute.
+    {
+        const MatrixXd& ue_sig = state.vsol.ue_sigma;
+        int Npanel = N + Nw - 2;
+        if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
+            MatrixXd dwake_x_dx2 = DWakeXDFoilX(state);
+            MatrixXd dgam_real2 = DGammaDFoilX(state, alpha);
+            for (int j = 1; j < Nw; ++j) {
+                double lw = lambda_ue(N + j);
+                if (std::abs(lw) < 1e-20) continue;
+                Vector2d xi_w = state.wake.x.col(j);
+                Vector2d t_w = state.wake.t.col(j);
+
+                MatrixXd dwxj(2, twoN);
+                dwxj.row(0) = dwake_x_dx2.row(0 * Nw + j);
+                dwxj.row(1) = dwake_x_dx2.row(1 * Nw + j);
+
+                // V_real chain at wake.x[j] for dwake.t computation
+                VelDeriv vd_real = InviscidVelocityWithDeriv(
+                    state, xi_w, dgam_real2, alpha);
+                MatrixXd dV_real = vd_real.V_xfoil + vd_real.V_xi * dwxj;
+                double Vnorm = vd_real.V.norm();
+                MatrixXd dwt;
+                if (Vnorm > 1e-12) {
+                    Matrix2d norm_jac =
+                        (Matrix2d::Identity() - t_w * t_w.transpose()) / Vnorm;
+                    dwt = norm_jac * dV_real;
+                }
+
+                // Iterate over foil source panels (k = 0..N-2)
+                for (int k = 0; k < N - 1; ++k) {
+                    double phi_k = phi(k);
+                    if (std::abs(phi_k) < 1e-20) continue;
+                    double w = -lw * phi_k;  // weight for d(Csig[j,k])
+
+                    Matrix2d Xj_foil;
+                    Xj_foil.col(0) = state.foil.x.col(k);
+                    Xj_foil.col(1) = state.foil.x.col(k + 1);
+                    ConstSourceVelocityDeriv csv =
+                        PanelConstSourceVelocityDeriv(Xj_foil, xi_w);
+                    Vector2d V_panel = csv.val;
+
+                    // Chain 1: Xj derivatives — w * (val_Xj.col(c) . t)
+                    // contribute to (foil.x[k], foil.x[k+1]) positions
+                    for (int c = 0; c < 2; ++c) {
+                        double d_proj = csv.val_Xj(0, c) * t_w(0) +
+                                        csv.val_Xj(1, c) * t_w(1);
+                        vjp(2 * k + c) += w * d_proj;
+                    }
+                    for (int c = 2; c < 4; ++c) {
+                        double d_proj = csv.val_Xj(0, c) * t_w(0) +
+                                        csv.val_Xj(1, c) * t_w(1);
+                        vjp(2 * (k + 1) + (c - 2)) += w * d_proj;
+                    }
+
+                    // Chain 2: xi derivatives chained through dwake.x[j]
+                    // d(V.t)/dxi [1x2] = t^T * val_xi
+                    Vector2d dprojdxi(csv.val_xi(0, 0) * t_w(0) +
+                                          csv.val_xi(1, 0) * t_w(1),
+                                      csv.val_xi(0, 1) * t_w(0) +
+                                          csv.val_xi(1, 1) * t_w(1));
+                    vjp += w * (dprojdxi.transpose() * dwxj).transpose();
+
+                    // Chain 3: V_panel . dwake.t[j] = V_panel^T * dwt
+                    if (Vnorm > 1e-12) {
+                        vjp += w * (V_panel.transpose() * dwt).transpose();
+                    }
+                }
+            }
+        }
+    }
+
+    // TODO: wake-side Csig wake-source-panel chain (half-panel decomposition
+    // + self-influence singular cases for k = N-1..Npanel-1).
 
     return vjp;
 }
