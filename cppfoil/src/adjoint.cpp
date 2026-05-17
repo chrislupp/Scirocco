@@ -35,6 +35,8 @@
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/viscous_geom_deriv.h"
+#include "cppfoil/core/viscous_residual_deriv.h"
 #include "cppfoil/core/inviscid_deriv.h"
 #include "cppfoil/core/panel_influence.h"
 #include "cppfoil/core/panel_influence_deriv.h"
@@ -533,6 +535,76 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
     sens.dcl_dMa = dcl / chord;
     sens.dcm_dMa = dcm / (chord * chord);
     sens.dcd_dMa = dcdpi / chord;
+}
+
+// ============================================================================
+// ViscousSensitivities — adjoint-based dJ/dx_foil for J ∈ {cl, cd, cm}.
+//
+// Steps:
+//   1. CalcForceLin → populates cl_V, cm_V, cd_V (∂J/∂V) and ∂J/∂x_partial.
+//   2. StoreAdjointFactorization → R_V LU at the converged state.
+//   3. For each J: λ_J = R_V^{-T} ∂J/∂V via SolveViscousAdjoint.
+//   4. VJP λ_J^T · ∂R_V/∂x_foil
+//        = λ_bl^T · DRblDFoilX(state, dfoil_s_dx)             [3*Nsys x 2N]
+//        + ComputeRueVJP(state, λ_ue, dfoil_s_dx)             [2N]
+//   5. dJ/dx_foil = ∂J/∂x_partial - vjp_J.
+// ============================================================================
+Sensitivity ViscousSensitivities(FoilState& state) {
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+
+    if (!state.oper.viscous || state.glob.U.cols() == 0) {
+        throw std::runtime_error(
+            "ViscousSensitivities: viscous primal not converged");
+    }
+
+    // 1. Force partials
+    CalcForceLin(state);
+
+    // 2. Adjoint factorization
+    StoreAdjointFactorization(state);
+    if (!state.glob.lu_factorization) {
+        throw std::runtime_error(
+            "ViscousSensitivities: adjoint LU factorization failed");
+    }
+
+    // 3. Solve λ_J = R_V^{-T} ∂J/∂V for J ∈ {cl, cm, cd}
+    VectorXd lambda_cl = SolveViscousAdjoint(state, state.post.cl_V);
+    VectorXd lambda_cm = SolveViscousAdjoint(state, state.post.cm_V);
+    VectorXd lambda_cd = SolveViscousAdjoint(state, state.post.cd_V);
+
+    // 4. VJPs — DRbl as dense matrix * lambda_bl (lambda_bl size 3*Nsys),
+    //    plus ComputeRueVJP for the wake-side chain.
+    MatrixXd dfoil_s_dx = DFoilSDFoilXCumulative(state.foil);
+    MatrixXd dRbl_dx = DRblDFoilX(state, dfoil_s_dx);  // [3*Nsys x 2N]
+
+    auto vjp = [&](const VectorXd& lambda) -> VectorXd {
+        VectorXd lambda_bl = lambda.head(3 * Nsys);
+        VectorXd lambda_ue = lambda.tail(Nsys);
+        VectorXd out = (lambda_bl.transpose() * dRbl_dx).transpose();  // [2N]
+        out += ComputeRueVJP(state, lambda_ue, dfoil_s_dx);
+        return out;
+    };
+    VectorXd vjp_cl = vjp(lambda_cl);
+    VectorXd vjp_cm = vjp(lambda_cm);
+    VectorXd vjp_cd = vjp(lambda_cd);
+
+    // 5. Total = partial - vjp
+    Sensitivity sens;
+    sens.dcl_dx = MatrixXd::Zero(2, N);
+    sens.dcm_dx = MatrixXd::Zero(2, N);
+    sens.dcd_dx = MatrixXd::Zero(2, N);
+    sens.dcdpi_dx = MatrixXd::Zero(2, N);
+    for (int k = 0; k < N; ++k) {
+        sens.dcl_dx(0, k) = state.post.dcl_dx_partial(0, k) - vjp_cl(2 * k);
+        sens.dcl_dx(1, k) = state.post.dcl_dx_partial(1, k) - vjp_cl(2 * k + 1);
+        sens.dcm_dx(0, k) = state.post.dcm_dx_partial(0, k) - vjp_cm(2 * k);
+        sens.dcm_dx(1, k) = state.post.dcm_dx_partial(1, k) - vjp_cm(2 * k + 1);
+        // dcd/dx_partial is zero for Squire-Young, so this is just -vjp_cd.
+        sens.dcd_dx(0, k) = state.post.dcd_dx_partial(0, k) - vjp_cd(2 * k);
+        sens.dcd_dx(1, k) = state.post.dcd_dx_partial(1, k) - vjp_cd(2 * k + 1);
+    }
+    return sens;
 }
 
 // ============================================================================

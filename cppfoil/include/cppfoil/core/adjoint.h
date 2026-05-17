@@ -66,6 +66,18 @@ void MachSensitivities(FoilState& state, Sensitivity& sens);
 // rebuilds it (idempotent). Returns λ ∈ ℝ^{4·Nsys}.
 VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs);
 
+// Compute sensitivities for the viscous problem using the adjoint method.
+// Must be called after SolveViscous() and CalcForce().
+//
+// Objectives: cl, cm, cd (Squire-Young total drag)
+// Design variables: foil.x [2 x N] panel node coordinates
+//
+// Adjoint formulation:
+//   R_V^T λ_J = ∂J/∂V
+//   dJ/dx_foil = ∂J/∂x_partial - λ_J^T · ∂R_V/∂x_foil
+// where the VJP λ_J^T · ∂R_V/∂x_foil = λ_bl^T · DRbl/∂x + ComputeRueVJP(λ_ue).
+Sensitivity ViscousSensitivities(FoilState& state);
+
 // Compute ∂R_V/∂alpha as a [4*Nsys] column vector.
 //
 // R_BL rows: zero (BL residual depends on U and xi only, not alpha directly).

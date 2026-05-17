@@ -120,9 +120,16 @@ void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
 void Cppfoil::GeomDerotate() { cppfoil::GeomDerotate(state_); }
 
 Sensitivity Cppfoil::ComputeSensitivities() {
-    sensitivity_ = InviscidSensitivities(state_);
-    AlphaSensitivities(state_, sensitivity_);
-    MachSensitivities(state_, sensitivity_);
+    if (state_.oper.viscous && state_.glob.U.cols() > 0) {
+        sensitivity_ = ViscousSensitivities(state_);
+        // Alpha/Mach/Re scalar viscous chains: Phase 5b/5c — deferred.
+        // For inviscid-derivable scalar sensitivities, leave the existing
+        // inviscid helpers' values (zeros if not invoked).
+    } else {
+        sensitivity_ = InviscidSensitivities(state_);
+        AlphaSensitivities(state_, sensitivity_);
+        MachSensitivities(state_, sensitivity_);
+    }
     return sensitivity_;
 }
 

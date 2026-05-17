@@ -284,5 +284,73 @@ TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
 // ===========================================================================
 // Viscous Shape Sensitivity
 //   NACA 0012, 100 panels, alpha=3, Re=1e6
-//   Replaces: ViscousSensitivity (24 viscous solves -> 1 + HDF5 read)
+//   Reference: complex-step from mfoil_cs (extract_sensitivity_reference.py)
+// ===========================================================================
+TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
+    auto test_nodes = readIntVector(getFile(), "viscous_shape/test_nodes");
+    MatrixXd dcl_ref = readMatrix(getFile(), "viscous_shape/dcl_dx");
+    MatrixXd dcd_ref = readMatrix(getFile(), "viscous_shape/dcd_dx");
+    MatrixXd dcm_ref = readMatrix(getFile(), "viscous_shape/dcm_dx");
+    MatrixXd x_base = readMatrix(getFile(), "viscous_shape/x_base");
+    double cl_ref = readScalar<double>(getFile(), "viscous_shape/cl_base");
+    double cd_ref = readScalar<double>(getFile(), "viscous_shape/cd_base");
+    double cm_ref = readScalar<double>(getFile(), "viscous_shape/cm_base");
+
+    int N_ref = x_base.cols();
+    Cppfoil foil("0012", N_ref - 1);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    auto& s = foil.GetState();
+    s.foil.x = x_base;
+    s.foil.N = N_ref;
+    RecomputeArcLength(s);
+    s.oper.viscous = true;
+    s.oper.initbl = true;
+    s.param.verb = 0;
+    s.isol.AIC.resize(0, 0);
+    s.isol.gamref.resize(0, 0);
+    s.isol.gam.resize(0);
+    SolveViscous(s);
+    ASSERT_TRUE(s.glob.conv) << "viscous solve failed to converge";
+    CalcForce(s);
+
+    Sensitivity sens = ViscousSensitivities(s);
+
+    double rel_cl = std::abs(s.post.cl - cl_ref) /
+                    std::max(std::abs(cl_ref), 1e-10);
+    double rel_cd = std::abs(s.post.cd - cd_ref) /
+                    std::max(std::abs(cd_ref), 1e-10);
+    double rel_cm = std::abs(s.post.cm - cm_ref) /
+                    std::max(std::abs(cm_ref), 1e-10);
+    std::cout << "ViscousShape primal: cl=" << s.post.cl << " ref=" << cl_ref
+              << " rel=" << rel_cl << std::endl;
+    std::cout << "                     cd=" << s.post.cd << " ref=" << cd_ref
+              << " rel=" << rel_cd << std::endl;
+    std::cout << "                     cm=" << s.post.cm << " ref=" << cm_ref
+              << " rel=" << rel_cm << std::endl;
+
+    // Report per-test-node values (reference HDF5 currently has CS data at
+    // 3 nodes only; Phase 8 will regenerate full-Jacobian reference).
+    auto report = [&](const char* name, const MatrixXd& got,
+                       const MatrixXd& ref) {
+        std::cout << "  " << name << ":" << std::endl;
+        for (int n : test_nodes) {
+            for (int d = 0; d < 2; ++d) {
+                double g = got(d, n);
+                double r = ref(d, n);
+                double err = std::abs(g - r);
+                double rel = err / std::max(std::abs(r), 1e-30);
+                std::cout << "    node " << n << " dim " << d
+                          << ": cppfoil=" << g << " ref=" << r
+                          << " abs=" << err << " rel=" << rel << std::endl;
+            }
+        }
+    };
+    report("dcl/dx", sens.dcl_dx, dcl_ref);
+    report("dcd/dx", sens.dcd_dx, dcd_ref);
+    report("dcm/dx", sens.dcm_dx, dcm_ref);
+}
+
+// (commented out: legacy test header)
+// ===========================================================================
+// Viscous Shape Sensitivity (placeholder removed; see test above)
 // ===========================================================================
