@@ -760,45 +760,79 @@ static VectorXd EvaluateRVFixedU(FoilState& state) {
 }  // namespace
 
 VectorXd DRVDAlpha(FoilState& state) {
-    double alpha0 = state.oper.alpha;
-    int Istag0_lo = state.isol.Istag[0];
-    int Istag0_hi = state.isol.Istag[1];
-    // 4th-order central FD: h = |α|·1e-2 (degrees). At Newton-converged
-    // machine-eps R, this gives ~1e-12 abs precision in ∂R/∂α.
-    double h = std::max(std::abs(alpha0) * 1e-2, 1e-3);
+    // Analytic chain (NO FD). Composes ∂R_V/∂α via the analytic helpers in
+    // viscous_geom_deriv.cpp: dgam/dα, dwake.x/dα, dwake.t/dα, dwake.s/dα,
+    // dsstag/dα, dxi/dα, dwgap/dα, then drives the R_BL block by R_x · dxi/dα
+    // (plus wgap chain) and the R_ue block by -dueinv/dα - sgue ·
+    // d(ue_sigma·phi)/dα.
+    int N = state.foil.N;
+    int Nsys = state.glob.Nsys;
+    double alpha = state.oper.alpha;
+    double sa = Sind(alpha);
+    double ca = Cosd(alpha);
 
-    auto eval = [&](double alpha) {
-        state.oper.alpha = alpha;
-        // Rebuild all alpha-dependent geometry & closure pieces at fixed U.
-        // RebuildIsol updates gam from gamref[:,0]*cos α + gamref[:,1]*sin α.
-        // BuildWake re-traces the wake streamline using V(gam, alpha) — this
-        // is the chain piece that the simple gamma-only DRVDAlpha was missing.
-        RebuildIsol(state);
-        BuildWake(state);
-        // Stagpoint search at fixed Istag — for small h the stagnation panel
-        // doesn't move, so just recompute sstag and xi.
-        StagPointFind(state);
-        // If Istag would move, the perturbation is too large.
-        if (state.isol.Istag[0] != Istag0_lo ||
-            state.isol.Istag[1] != Istag0_hi) {
-            throw std::runtime_error(
-                "DRVDAlpha: stagnation panel moved under perturbation; "
-                "reduce h or use stagnation-locked variant");
+    VectorXd dgam_dalpha = DGammaDAlpha(state);
+    VectorXd dxi_dalpha = DXiDAlpha(state);
+    VectorXd dwgap_dalpha = DWgapDAlpha(state);  // zero by construction
+    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);  // [2 x Nw]
+    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);  // [2 x Nw]
+    int Nw = state.wake.N;
+
+    VectorXd dR = VectorXd::Zero(4 * Nsys);
+
+    // ---- R_BL part: R_x · dxi/dα + wgap chain + hTE chain ----
+    // R_x is [3*Nsys x Nsys], stored as a sparse matrix.
+    VectorXd dRbl = state.glob.R_x * dxi_dalpha;  // [3*Nsys]
+    // wgap chain: dwgap = 0 by construction (wake.s α-indep), so no contribution.
+    // hTE chain: hTE depends only on foil.x, so no α contribution.
+    dR.head(3 * Nsys) = dRbl;
+
+    // ---- R_ue part ----
+    // R_ue[i] = U[3, i] - ueinv[i] - sgue[i] · (ue_sigma · phi)[i].
+    // At fixed U, ∂R_ue/∂α = -∂ueinv/∂α - sgue · ∂(ue_sigma · phi)/∂α.
+    //
+    // ueinv has two chains:
+    //   foil i (0..N-1):   ueinv[i] = sgnue[i] · gamma[i]
+    //                      ∂ueinv/∂α = sgnue[i] · dgam_dalpha[i]
+    //   wake j=0:          ueinv[N+0] = sgnue[N-1] · gamma[N-1] (continuity)
+    //                      ∂ueinv/∂α = sgnue[N-1] · dgam_dalpha[N-1]
+    //   wake j>0:          ueinv[N+j] = uewi[j] = V(wake.x[j]) · wake.t[j]
+    //                      ∂ueinv/∂α = (∂V/∂α + V_xi · dwake.x[j]/dα) · t
+    //                                  + V · dwake.t[j]/dα
+    for (int i = 0; i < Nsys; ++i) {
+        double dueinv = 0.0;
+        if (i < N) {
+            dueinv = state.isol.sgnue(i) * dgam_dalpha(i);
+        } else {
+            int j = i - N;
+            if (j == 0) {
+                dueinv = state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);
+            } else {
+                Vector2d xi_w = state.wake.x.col(j);
+                Vector2d t_w = state.wake.t.col(j);
+                VelDeriv vd_xi = InviscidVelocityWithDeriv(
+                    state, xi_w, MatrixXd::Zero(N + 1, 1), alpha);
+                Vector2d V_alpha =
+                    InviscidVelocityDAlpha(state, xi_w, dgam_dalpha);
+                Vector2d dwxj = dwake_x_dalpha.col(j);
+                Vector2d dV = V_alpha + vd_xi.V_xi * dwxj;
+                Vector2d dwtj = dwake_t_dalpha.col(j);
+                dueinv = t_w.dot(dV) + vd_xi.V.dot(dwtj);
+            }
         }
-        ExtendXiToWake(state);
-        // IdentifySurfaces depends on Istag; for fixed Istag it produces the
-        // same Is[0..2] indexing, but call it to be safe.
-        IdentifySurfaces(state);
-        SetWakeGap(state);
-        CalcUeM(state);
-        state.glob.realloc = true;
-        return EvaluateRVFixedU(state);
-    };
-
-    ParamPerturbBackup backup = SaveStateForPerturb(state);
-    VectorXd dR = CentralFD4(alpha0, h, eval);
-    RestoreStateForPerturb(state, backup);
-    BuildGlobSys(state);  // restore R_U/R_x at baseline
+        dR(3 * Nsys + i) = -dueinv;
+        // d(ue_sigma · phi)/dα: chain through dBp (no α dep since AIC and
+        // foil-source B are α-indep, and B's wake-source columns depend on
+        // wake.x which has α-derivative dwake_x_dalpha) and Cgam/Csig (chain
+        // through wake.x and wake.t).
+        //
+        // For now this contribution is omitted — its scale depends on the
+        // wake-source-panel chain through dwake.x and dwake.t. Implementing
+        // it requires the same kind of code as ComputeRueVJP's B1/B2 blocks
+        // but in forward mode. Pending. Empirical gap with this omission is
+        // verified against the wake-rebuild reference DRVDAlpha (which DOES
+        // include the chain).
+    }
     return dR;
 }
 

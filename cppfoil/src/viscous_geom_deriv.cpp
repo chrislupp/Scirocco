@@ -830,4 +830,246 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
     return dwake_t;
 }
 
+// ============================================================================
+// Alpha-direction analytic chains. These mirror the foil.x chains but with
+// scalar derivatives (one column instead of 2N). Used by the analytic
+// DRVDAlpha to satisfy the "no FD" mandate.
+// ============================================================================
+
+VectorXd DGammaDAlpha(const FoilState& state) {
+    int N = state.foil.N;
+    double alpha = state.oper.alpha;
+    double ca = Cosd(alpha);
+    double sa = Sind(alpha);
+    // gam[i] = gamref[i,0]·cos α + gamref[i,1]·sin α
+    // dgam[i]/dα = (-gamref[i,0]·sin α + gamref[i,1]·cos α)·deg2rad
+    VectorXd dgam(N + 1);
+    for (int i = 0; i < N; ++i) {
+        dgam(i) = (-state.isol.gamref(i, 0) * sa +
+                   state.isol.gamref(i, 1) * ca) *
+                  kDegToRad;
+    }
+    dgam(N) = 0.0;  // streamfunction component
+    return dgam;
+}
+
+Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
+                                const VectorXd& dgam_dalpha) {
+    // ∂V/∂α = V_G · dgam/dα + V_∞ · (-sin α, cos α) · deg2rad.
+    // V_G is the per-gamma sensitivity returned by InviscidVelocity with
+    // gradient=true. Use the existing InviscidVelocityWithDerivExt with
+    // vortex strengths = dgam_dalpha and freestream contribution added.
+    int N = state.foil.N;
+    double alpha = state.oper.alpha;
+    double Vinf = state.oper.Vinf;
+    // Use InviscidVelocityWithDerivExt with vortex strengths = dgam_dalpha.
+    // It returns V including freestream. Subtract Vinf and add the
+    // explicit α-derivative of the freestream.
+    MatrixXd dgam_dummy = MatrixXd::Zero(N + 1, 1);  // we use the vortex slot
+    VelDeriv vd = InviscidVelocityWithDerivExt(state, xi, dgam_dalpha,
+                                                dgam_dummy, alpha);
+    Vector2d Vinf_vec(Vinf * Cosd(alpha), Vinf * Sind(alpha));
+    Vector2d V_G_dgam = vd.V - Vinf_vec;  // gamma-induced part only
+    // Freestream α-derivative
+    Vector2d dVinf_dalpha(-Vinf * Sind(alpha) * kDegToRad,
+                          Vinf * Cosd(alpha) * kDegToRad);
+    return V_G_dgam + dVinf_dalpha;
+}
+
+MatrixXd DWakeXDAlpha(const FoilState& state) {
+    // Predictor-corrector chain in scalar α direction. Mirrors DWakeXDFoilX
+    // but with dgam_dα (length N+1) instead of dgam_dx (matrix), and with
+    // direct α-dependence in freestream V handled via InviscidVelocityDAlpha.
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    double alpha = state.oper.alpha;
+    double chord = state.geom.chord;
+    double wakelen = state.geom.wakelen;
+
+    VectorXd dgam_dalpha = DGammaDAlpha(state);
+
+    // foil.s doesn't depend on α, so ds1 has no α-derivative, hence sv too.
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                        (state.foil.s(N - 1) - state.foil.s(N - 2)));
+    double L = wakelen * chord;
+    VectorXd sv, dsv_dds1;
+    SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
+
+    // Initial wake.x[:, 0] = x_te + 1e-5·chord·t_te. No α dependence.
+    Vector2d dxyw_i = Vector2d::Zero();
+
+    MatrixXd dwake_x = MatrixXd::Zero(2, Nw);
+    Vector2d xyw_i = state.wake.x.col(0);
+
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds_i = sv(i + 1) - sv(i);
+        // dsv/dα = 0 (ds1 doesn't depend on α)
+
+        // V0 at xyw_i. ∂V/∂α = V_G · dgam_dalpha + freestream_α.
+        // Also need ∂V/∂xi for the chain through dxyw_i.
+        // Get V_xi from InviscidVelocityWithDeriv (any direction gives same V_xi).
+        VelDeriv vd_for_xi = InviscidVelocityWithDeriv(
+            state, xyw_i, MatrixXd::Zero(N + 1, 1), alpha);
+        Vector2d V0 = vd_for_xi.V;
+        Matrix2d V0_xi = vd_for_xi.V_xi;
+        Vector2d V0_alpha = InviscidVelocityDAlpha(state, xyw_i, dgam_dalpha);
+
+        double V0n = V0.norm();
+        if (V0n < 1e-12) V0n = 1e-12;
+        Vector2d v1 = V0 / V0n;
+        Matrix2d norm_jac1 =
+            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Vector2d dV0 = V0_alpha + V0_xi * dxyw_i;
+        Vector2d dv1 = norm_jac1 * dV0;
+
+        // Predictor step
+        Vector2d x_pred = xyw_i + ds_i * v1;
+        Vector2d dx_pred = dxyw_i + ds_i * dv1;  // ds_i not α-dependent
+
+        // V1 at x_pred
+        VelDeriv vd1_xi = InviscidVelocityWithDeriv(
+            state, x_pred, MatrixXd::Zero(N + 1, 1), alpha);
+        Vector2d V1 = vd1_xi.V;
+        Matrix2d V1_xi = vd1_xi.V_xi;
+        Vector2d V1_alpha =
+            InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
+
+        double V1n = V1.norm();
+        if (V1n < 1e-12) V1n = 1e-12;
+        Vector2d v2 = V1 / V1n;
+        Matrix2d norm_jac2 =
+            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Vector2d dV1 = V1_alpha + V1_xi * dx_pred;
+        Vector2d dv2 = norm_jac2 * dV1;
+
+        // Corrector
+        Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
+        Vector2d dxyw_next = dxyw_i + ds_i * 0.5 * (dv1 + dv2);
+
+        dwake_x.col(i + 1) = dxyw_next;
+
+        xyw_i = xyw_next;
+        dxyw_i = dxyw_next;
+    }
+
+    return dwake_x;
+}
+
+MatrixXd DWakeTDAlpha(const FoilState& state) {
+    // Same iterative sweep as DWakeXDAlpha but stores dv1 (for j<Nw-1)
+    // and dv2 (for j=Nw-1) as the wake.t α-derivative.
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    double alpha = state.oper.alpha;
+    double chord = state.geom.chord;
+    double wakelen = state.geom.wakelen;
+
+    VectorXd dgam_dalpha = DGammaDAlpha(state);
+
+    double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                        (state.foil.s(N - 1) - state.foil.s(N - 2)));
+    double L = wakelen * chord;
+    VectorXd sv, dsv_dds1;
+    SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
+
+    Vector2d dxyw_i = Vector2d::Zero();
+    MatrixXd dwake_t = MatrixXd::Zero(2, Nw);
+    Vector2d xyw_i = state.wake.x.col(0);
+
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds_i = sv(i + 1) - sv(i);
+
+        VelDeriv vd_xi = InviscidVelocityWithDeriv(
+            state, xyw_i, MatrixXd::Zero(N + 1, 1), alpha);
+        Vector2d V0 = vd_xi.V;
+        Vector2d V0_alpha = InviscidVelocityDAlpha(state, xyw_i, dgam_dalpha);
+        double V0n = V0.norm();
+        if (V0n < 1e-12) V0n = 1e-12;
+        Vector2d v1 = V0 / V0n;
+        Matrix2d norm_jac1 =
+            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Vector2d dV0 = V0_alpha + vd_xi.V_xi * dxyw_i;
+        Vector2d dv1 = norm_jac1 * dV0;
+        dwake_t.col(i) = dv1;
+
+        Vector2d x_pred = xyw_i + ds_i * v1;
+        Vector2d dx_pred = dxyw_i + ds_i * dv1;
+
+        VelDeriv vd1_xi = InviscidVelocityWithDeriv(
+            state, x_pred, MatrixXd::Zero(N + 1, 1), alpha);
+        Vector2d V1 = vd1_xi.V;
+        Vector2d V1_alpha =
+            InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
+        double V1n = V1.norm();
+        if (V1n < 1e-12) V1n = 1e-12;
+        Vector2d v2 = V1 / V1n;
+        Matrix2d norm_jac2 =
+            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Vector2d dV1 = V1_alpha + vd1_xi.V_xi * dx_pred;
+        Vector2d dv2 = norm_jac2 * dV1;
+        dwake_t.col(i + 1) = dv2;  // overwritten on next iter unless last
+
+        Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
+        Vector2d dxyw_next = dxyw_i + ds_i * 0.5 * (dv1 + dv2);
+        xyw_i = xyw_next;
+        dxyw_i = dxyw_next;
+    }
+    return dwake_t;
+}
+
+VectorXd DWakeSDAlpha(const FoilState& state) {
+    // wake.s[i] depends on α via:
+    //   wake.s[i] = foil.s[N-1] + sv[i] where sv depends on ds1 (no α).
+    // BUT BuildWake actually re-uses foil.s as a base; wake.s itself is set
+    // from sv. Per BuildWake the cumulative panel norms aren't used — wake.s
+    // is sw = foil.s[N-1] + sv. So dwake.s/dα = 0!
+    //
+    // (The cumulative-norm reinterpretation is done by recompute_geom in the
+    // CS extract script for the FOIL only. wake.s is taken directly from sv.)
+    int Nw = state.wake.N;
+    return VectorXd::Zero(Nw);
+}
+
+double DSstagDAlpha(const FoilState& state) {
+    // sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]] with weights depending
+    // on gamma[Istag[0]] and gamma[Istag[1]]. State.isol.sstag_g caches the
+    // derivatives of sstag w.r.t. those two gammas.
+    int i0 = state.isol.Istag[0];
+    int i1 = state.isol.Istag[1];
+    VectorXd dgam = DGammaDAlpha(state);
+    return state.isol.sstag_g(0) * dgam(i0) +
+           state.isol.sstag_g(1) * dgam(i1);
+}
+
+VectorXd DXiDAlpha(const FoilState& state) {
+    int N = state.foil.N;
+    int Nw = state.wake.N;
+    int Nsys = N + Nw;
+    double dsstag = DSstagDAlpha(state);
+    VectorXd dwake_s = DWakeSDAlpha(state);  // all zero, but keep for clarity
+    VectorXd dxi(Nsys);
+    // foil-side: xi[i] = |foil.s[i] - sstag| → sign(foil.s[i]-sstag) ·
+    //   (d(foil.s)/dα - dsstag/dα) = -sign · dsstag/dα (foil.s α-indep)
+    for (int i = 0; i < N; ++i) {
+        double diff = state.foil.s(i) - state.isol.sstag;
+        double sgn = (diff >= 0) ? 1.0 : -1.0;
+        dxi(i) = sgn * (0.0 - dsstag);
+    }
+    // wake-side: xi[N+j] = wake.s[j] - sstag → dwake.s[j]/dα - dsstag/dα
+    for (int j = 0; j < Nw; ++j) {
+        dxi(N + j) = dwake_s(j) - dsstag;
+    }
+    return dxi;
+}
+
+VectorXd DWgapDAlpha(const FoilState& state) {
+    // wgap depends on hTE (no α), dtdx (no α), foil-TE coords (no α),
+    // and xi[N+i] - xi[N] (wake-only arc-length from TE).
+    // wake.s is α-independent (DWakeSDAlpha returns 0), and the wake-portion
+    // of xi simplifies to wake.s - sstag (with sstag α-dep canceling out
+    // between consecutive wake stations) → dwgap/dα = 0.
+    int Nw = state.wake.N;
+    return VectorXd::Zero(Nw);
+}
+
 }  // namespace cppfoil

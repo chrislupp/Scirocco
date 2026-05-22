@@ -131,6 +131,37 @@ MatrixXd DWakeXDFoilX(const FoilState& state);
 // than wake.x[Nw-1]. This function does the iterative chain to get it right.
 MatrixXd DWakeTDFoilX(const FoilState& state);
 
+// ----- Alpha-direction (scalar) versions of the above. Used by the analytic
+// DRVDAlpha chain. Each returns a SINGLE-column derivative since α is scalar.
+
+// d(gamma)/d(alpha) [N+1] — closed-form from gamref[:,0]·cos α + gamref[:,1]·sin α.
+VectorXd DGammaDAlpha(const FoilState& state);
+
+// d(wake.x)/d(alpha) [2 x Nw] — mirrors DWakeXDFoilX's predictor-corrector
+// sweep with dgam_dα (length N+1) and direct freestream alpha contribution
+// in the velocity.
+MatrixXd DWakeXDAlpha(const FoilState& state);
+
+// d(wake.t)/d(alpha) [2 x Nw] — mirrors DWakeTDFoilX.
+MatrixXd DWakeTDAlpha(const FoilState& state);
+
+// d(wake.s)/d(alpha) [Nw] — cumulative panel norms along wake.x perturbation.
+VectorXd DWakeSDAlpha(const FoilState& state);
+
+// d(sstag)/d(alpha) — scalar. Chain through dgamma at the stagnation panel.
+double DSstagDAlpha(const FoilState& state);
+
+// d(xi)/d(alpha) [Nsys] — chain through sstag (foil-side) and wake.s (wake-side).
+VectorXd DXiDAlpha(const FoilState& state);
+
+// d(wgap)/d(alpha) [Nw] — chain through wake.s and xi (wgap's xib).
+VectorXd DWgapDAlpha(const FoilState& state);
+
+// InviscidVelocity α-derivative: ∂V/∂α [2] at xi, with the chain through
+// V_G · dgam/dα (gamma part) plus freestream V_∞ ·(-sin α, cos α)·deg2rad.
+Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
+                                const VectorXd& dgam_dalpha);
+
 // d(TE info)/d(foil.x[k]_dim): expose the static helper from adjoint.cpp.
 // Only nodes k ∈ {0, 1, N-2, N-1} produce nonzero output.
 void GetTEInfoDeriv(const MatrixXd& foil_x, int k, int dim, double& dtcp,
