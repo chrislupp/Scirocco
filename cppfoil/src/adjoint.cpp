@@ -760,78 +760,404 @@ static VectorXd EvaluateRVFixedU(FoilState& state) {
 }  // namespace
 
 VectorXd DRVDAlpha(FoilState& state) {
-    // Analytic chain (NO FD). Composes ∂R_V/∂α via the analytic helpers in
-    // viscous_geom_deriv.cpp: dgam/dα, dwake.x/dα, dwake.t/dα, dwake.s/dα,
-    // dsstag/dα, dxi/dα, dwgap/dα, then drives the R_BL block by R_x · dxi/dα
-    // (plus wgap chain) and the R_ue block by -dueinv/dα - sgue ·
-    // d(ue_sigma·phi)/dα.
+    // Analytic forward-mode chain for ∂R_V/∂α (NO FD).
+    //
+    // R_V depends on α through several intermediates:
+    //   gamma(α)  ──→ ueinv (foil side, wake[0] via continuity)
+    //               ──→ xi via sstag(gamma) ──→ R_BL via R_x · dxi/dα
+    //   wake.x(α) ──→ ueinv (wake j>0 via V·t)
+    //               ──→ ue_sigma (via B wake-source cols, Cgam, Csig)
+    //   wake.t(α) ──→ ueinv (V·dt term)
+    //               ──→ ue_sigma (via Cgam, Csig wake.t projection)
+    //
+    // dphi/dα = 0 (sigma_m depends on foil.s/wake.s, both α-indep here; mass
+    // = U[1]·U[3] is fixed). So d(ue_sigma · phi)/dα has chain only via
+    // ue_sigma.
     int N = state.foil.N;
     int Nsys = state.glob.Nsys;
     double alpha = state.oper.alpha;
-    double sa = Sind(alpha);
-    double ca = Cosd(alpha);
+    int Nw = state.wake.N;
 
     VectorXd dgam_dalpha = DGammaDAlpha(state);
     VectorXd dxi_dalpha = DXiDAlpha(state);
-    VectorXd dwgap_dalpha = DWgapDAlpha(state);  // zero by construction
-    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);  // [2 x Nw]
-    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);  // [2 x Nw]
-    int Nw = state.wake.N;
+    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);   // [2 x Nw]
+    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);   // [2 x Nw]
 
     VectorXd dR = VectorXd::Zero(4 * Nsys);
 
-    // ---- R_BL part: R_x · dxi/dα + wgap chain + hTE chain ----
-    // R_x is [3*Nsys x Nsys], stored as a sparse matrix.
-    VectorXd dRbl = state.glob.R_x * dxi_dalpha;  // [3*Nsys]
-    // wgap chain: dwgap = 0 by construction (wake.s α-indep), so no contribution.
-    // hTE chain: hTE depends only on foil.x, so no α contribution.
-    dR.head(3 * Nsys) = dRbl;
+    // ---- R_BL part: R_x · dxi/dα ----
+    dR.head(3 * Nsys) = state.glob.R_x * dxi_dalpha;
 
-    // ---- R_ue part ----
-    // R_ue[i] = U[3, i] - ueinv[i] - sgue[i] · (ue_sigma · phi)[i].
-    // At fixed U, ∂R_ue/∂α = -∂ueinv/∂α - sgue · ∂(ue_sigma · phi)/∂α.
+    // ---- R_ue part: -dueinv/dα - sgue · d(ue_sigma · phi)/dα ----
     //
-    // ueinv has two chains:
-    //   foil i (0..N-1):   ueinv[i] = sgnue[i] · gamma[i]
-    //                      ∂ueinv/∂α = sgnue[i] · dgam_dalpha[i]
-    //   wake j=0:          ueinv[N+0] = sgnue[N-1] · gamma[N-1] (continuity)
-    //                      ∂ueinv/∂α = sgnue[N-1] · dgam_dalpha[N-1]
-    //   wake j>0:          ueinv[N+j] = uewi[j] = V(wake.x[j]) · wake.t[j]
-    //                      ∂ueinv/∂α = (∂V/∂α + V_xi · dwake.x[j]/dα) · t
-    //                                  + V · dwake.t[j]/dα
-    for (int i = 0; i < Nsys; ++i) {
-        double dueinv = 0.0;
-        if (i < N) {
-            dueinv = state.isol.sgnue(i) * dgam_dalpha(i);
+    // Step 1: dueinv/dα as above.
+    VectorXd dueinv = VectorXd::Zero(Nsys);
+    for (int i = 0; i < N; ++i) {
+        dueinv(i) = state.isol.sgnue(i) * dgam_dalpha(i);
+    }
+    dueinv(N) = state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);  // wake[0] continuity
+    for (int j = 1; j < Nw; ++j) {
+        Vector2d xi_w = state.wake.x.col(j);
+        Vector2d t_w = state.wake.t.col(j);
+        VelDeriv vd_xi = InviscidVelocityWithDeriv(
+            state, xi_w, MatrixXd::Zero(N + 1, 1), alpha);
+        Vector2d V_alpha = InviscidVelocityDAlpha(state, xi_w, dgam_dalpha);
+        Vector2d dwxj = dwake_x_dalpha.col(j);
+        Vector2d dV = V_alpha + vd_xi.V_xi * dwxj;
+        Vector2d dwtj = dwake_t_dalpha.col(j);
+        dueinv(N + j) = t_w.dot(dV) + vd_xi.V.dot(dwtj);
+    }
+
+    // Step 2: ∂(B·phi)/∂α at foil eval points. B has α-dependence ONLY in its
+    // wake-source columns (k = N-1..Npanel-1), which depend on wake.x via
+    // panel endpoints. Build rhs[i] = sum_{wake panel} ∂(a/b coefficients
+    // contribution to B[i,col])/∂α · phi[col], then ∂(Bp·phi)/∂α =
+    // -AIC^{-1} · rhs (since Bp = -AIC^{-1}·B and AIC has no α dependence).
+    int Npanel = N + Nw - 2;
+    // Reconstruct phi = sigma_m · mass from state.
+    VectorXd mass(Nsys);
+    for (int j = 0; j < Nsys; ++j) {
+        mass(j) = state.glob.U(1, j) * state.glob.U(3, j);
+    }
+    VectorXd phi = state.vsol.sigma_m * mass;  // [Npanel]
+
+    // For each wake panel j, the contribution-to-B uses PanelLinSourceStream
+    // on left half [wake.x[j], Xm] and right half [Xm, X_right]. The α-deriv
+    // of (a, b) flows through dXj endpoints (no xi α-dep since xi = foil.x).
+    auto dwx_col = [&](int j) { return dwake_x_dalpha.col(j); };
+
+    VectorXd rhs_alpha = VectorXd::Zero(N + 1);  // top N rows; Kutta row = 0
+    for (int j = 0; j < Nw - 1; ++j) {
+        Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
+        Vector2d dXm = 0.5 * (dwx_col(j) + dwx_col(j + 1));
+        Vector2d X_right;
+        Vector2d dXr;
+        if (j == Nw - 2) {
+            X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
+            dXr = 2.0 * dwx_col(j + 1) - dXm;
         } else {
-            int j = i - N;
-            if (j == 0) {
-                dueinv = state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);
+            X_right = state.wake.x.col(j + 1);
+            dXr = dwx_col(j + 1);
+        }
+        // phi-weighting per CalcUeM:
+        //   left half: if j>0  → a contributes to phi[N-1+j] (w=0.5) AND phi[N-1+j-1] (w=0.5)
+        //                       b contributes to phi[N-1+j] (w=1.0)
+        //              if j==0 → a no contribution (skipped); b contributes to phi[N-1] (w=1.0)
+        //   right half: if j<Nw-2 → a contributes to phi[N-1+j] (w=1.0)
+        //                          b contributes to phi[N-1+j] (w=0.5) AND phi[N-1+j+1] (w=0.5)
+        //               if j==Nw-2 → a contributes to phi[N-1+j] (w=1.0)
+        //                          b contributes to phi[N-1+j] (w=1.0)
+        double wL_a, wL_b, wR_a, wR_b;
+        double phi_jm1 = (j > 0) ? phi(N - 1 + j - 1) : 0.0;
+        double phi_j = phi(N - 1 + j);
+        double phi_jp1 = (j < Nw - 2) ? phi(N - 1 + j + 1) : 0.0;
+        if (j > 0) {
+            wL_a = 0.5 * phi_j + 0.5 * phi_jm1;
+            wL_b = phi_j;
+        } else {
+            wL_a = 0.0;
+            wL_b = phi_j;
+        }
+        if (j < Nw - 2) {
+            wR_a = phi_j;
+            wR_b = 0.5 * phi_j + 0.5 * phi_jp1;
+        } else {
+            wR_a = phi_j;
+            wR_b = phi_j;
+        }
+        Matrix2d Xj_L;
+        Xj_L.col(0) = state.wake.x.col(j);
+        Xj_L.col(1) = Xm;
+        Matrix2d Xj_R;
+        Xj_R.col(0) = Xm;
+        Xj_R.col(1) = X_right;
+        // Endpoint α-derivs:
+        Vector2d dXjL_0 = dwx_col(j);
+        Vector2d dXjL_1 = dXm;
+        Vector2d dXjR_0 = dXm;
+        Vector2d dXjR_1 = dXr;
+        for (int i = 0; i < N; ++i) {
+            Vector2d xi = state.foil.x.col(i);
+            LinSourceStreamDeriv dL = PanelLinSourceStreamDeriv(Xj_L, xi);
+            LinSourceStreamDeriv dR_p = PanelLinSourceStreamDeriv(Xj_R, xi);
+            // ∂a/∂α = a_Xj[0:2]·dXjL_0 + a_Xj[2:4]·dXjL_1 (no xi α-dep)
+            auto chain = [&](const Vector4d& gXj, const Vector2d& dX0,
+                             const Vector2d& dX1) {
+                return gXj(0) * dX0(0) + gXj(1) * dX0(1) +
+                       gXj(2) * dX1(0) + gXj(3) * dX1(1);
+            };
+            double daL = chain(dL.a_Xj, dXjL_0, dXjL_1);
+            double dbL = chain(dL.b_Xj, dXjL_0, dXjL_1);
+            double daR = chain(dR_p.a_Xj, dXjR_0, dXjR_1);
+            double dbR = chain(dR_p.b_Xj, dXjR_0, dXjR_1);
+            rhs_alpha(i) += wL_a * daL + wL_b * dbL + wR_a * daR + wR_b * dbR;
+        }
+    }
+    // ∂(Bp · phi)/∂α = -AIC^{-1} · rhs_alpha. AIC is [N+1 × N+1].
+    VectorXd dBphi_dalpha(N + 1);
+    {
+        const MatrixXd& AIC = state.isol.AIC;
+        dBphi_dalpha = -AIC.partialPivLu().solve(rhs_alpha);
+    }
+
+    // Step 3: ue_sigma · phi α-derivative.
+    //   foil row i (i < N): (ue_sigma · phi)[i] = (Bp · phi)[i] = dBphi_dalpha[i].
+    //   wake row N+0: (Dw · phi)[0] = (Bp[N-1] · phi) by continuity override.
+    //   wake row N+j (j > 0): (Dw · phi)[j] = (Cgam[j,:] · Bp · phi) +
+    //                                          (Csig[j,:] · phi).
+    //
+    // Build v = Bp · phi (length N) from existing source_term: source_term =
+    // ue_m · mass = sgue · ue_sigma · phi. So ue_sigma · phi = source_term/sgue.
+    VectorXd source_term = state.vsol.ue_m * mass;
+    VectorXd v(N);
+    for (int k = 0; k < N; ++k) {
+        v(k) = source_term(k) / state.isol.sgnue(k);
+    }
+    VectorXd v_pad = VectorXd::Zero(N + 1);
+    v_pad.head(N) = v;
+
+    // For the wake rows j > 0, compute:
+    //   d(Cgam[j,:] · v)/dα  +  Cgam[j,:] · dBphi_dalpha.head(N)
+    //                        +  d(Csig[j,:] · phi)/dα
+    //
+    // d(Cgam[j,:] · v)/dα — Cgam[j, k] = V_G_k(wake.x[j]) · wake.t[j].
+    // V_G is pure-geometry (no α-dep at fixed xi), so:
+    //   d(Cgam[j,:] · v) = (V_G · v)_xi · dwxj  · t_w   + (V_G · v) · dwtj
+    // where (V_G · v) at xi=wake.x[j] is obtained via InviscidVelocityWithDerivExt
+    // with vortex=v (treating v as gammas), then subtracting freestream.
+    //
+    // d(Csig[j,:] · phi)/dα — Csig involves wake-source panel velocities at
+    // wake.x[j] projected onto wake.t[j]. Chain through both eval-point
+    // dwxj (via V_xi) AND source-panel endpoints (chain through panel-velocity
+    // derivative).
+    VectorXd dCgam_v_dalpha(Nw);
+    VectorXd dCsig_phi_dalpha(Nw);
+    dCgam_v_dalpha.setZero();
+    dCsig_phi_dalpha.setZero();
+    for (int jw = 1; jw < Nw; ++jw) {
+        Vector2d xi_w = state.wake.x.col(jw);
+        Vector2d t_w = state.wake.t.col(jw);
+        Vector2d dwxj = dwake_x_dalpha.col(jw);
+        Vector2d dwtj = dwake_t_dalpha.col(jw);
+
+        // (V_G · v) at wake.x[jw]: use InviscidVelocityWithDerivExt with
+        // vortex strengths = v_pad, dvortex = 0. Returns V_full = V_G·v + V_∞;
+        // subtract V_∞ to get V_G·v.
+        MatrixXd dvortex_zero = MatrixXd::Zero(N + 1, 1);
+        VelDeriv vd_v = InviscidVelocityWithDerivExt(state, xi_w, v_pad,
+                                                     dvortex_zero, alpha);
+        Vector2d Vinf(state.oper.Vinf * Cosd(alpha),
+                      state.oper.Vinf * Sind(alpha));
+        Vector2d VGv = vd_v.V - Vinf;            // V_G · v at wake.x[jw]
+        Matrix2d VGv_xi = vd_v.V_xi;              // (V_G · v)_xi (Vinf is xi-indep)
+        dCgam_v_dalpha(jw) = t_w.dot(VGv_xi * dwxj) + VGv.dot(dwtj);
+
+        // dCsig[j,:]·phi/dα: chain through wake-source panel velocities
+        // dotted with t_w. We replicate the Csig assembly (CalcUeM lines
+        // 824-911) but in forward mode w.r.t. α. Each wake source panel
+        // contributes via (a, b) Vector2d evaluated at eval point xi=wake.x[jw]
+        // and projected on t_w; the α-derivative comes from xi-deriv chain
+        // (dwxj), t_w chain (dwtj), and source-endpoint chain (dwx at the
+        // panel's endpoints).
+        for (int wp = 0; wp < Nw; ++wp) {
+            if (wp == jw) {
+                // Self-influence interior: aa = (0.25/kPi)·log(d1/d2) where
+                // d1 = |Xm - Xl|, d2 = |Xr - Xm|, with Xm = wake.x[wp],
+                // Xl = 0.5(wake.x[wp-1]+wake.x[wp]), Xr = 0.5(wake.x[wp]+
+                // wake.x[wp+1]). Csig contributes aa to two phi cols.
+                if (wp >= 1 && wp <= Nw - 2) {
+                    Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
+                                          state.wake.x.col(wp));
+                    Vector2d Xm = state.wake.x.col(wp);
+                    Vector2d Xr = 0.5 * (state.wake.x.col(wp) +
+                                          state.wake.x.col(wp + 1));
+                    Vector2d dXl =
+                        0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                    Vector2d dXm = dwx_col(wp);
+                    Vector2d dXr =
+                        0.5 * (dwx_col(wp) + dwx_col(wp + 1));
+                    Vector2d e1 = Xm - Xl;
+                    Vector2d e2 = Xr - Xm;
+                    double d1 = e1.norm();
+                    double d2 = e2.norm();
+                    if (d1 > 1e-14 && d2 > 1e-14) {
+                        double dd1 = (e1 / d1).dot(dXm - dXl);
+                        double dd2 = (e2 / d2).dot(dXr - dXm);
+                        double daa = (0.25 / kPi) * (dd1 / d1 - dd2 / d2);
+                        int col_prev = N - 1 + wp - 1;
+                        int col_curr = N - 1 + wp;
+                        dCsig_phi_dalpha(jw) +=
+                            daa * (phi(col_prev) + phi(col_curr));
+                    }
+                }
+                // wp=0 self (TE special) and wp=Nw-1 self (no effect): TODO.
+                continue;
+            }
+            // Non-self contributions: build panel velocity derivatives.
+            // Per CalcUeM lines 877-908:
+            //   wp == 0: half panel Xj = [wake.x[0], 0.5*(wake.x[0]+wake.x[1])].
+            //            v.dot(ti) → cols (N-1) [from b]; (0), (N-2) [from a].
+            //   wp == Nw-1: const panel Xj = [Xl, Xr] (with Xr = 2*Xm - Xl,
+            //                Xm = wake.x[wp], Xl = 0.5(wake.x[wp-1]+wake.x[wp])).
+            //                v.dot(ti) → col (Npanel-1).
+            //   interior wp: left half [Xl, Xm] + right half [Xm, Xr].
+            //                left a → col (N-1+wp-1) (w=1), b → col (N-1+wp-1) (w=0.5)
+            //                right a → col (N-1+wp) (w=0.5), b → col (N-1+wp) (w=1)
+            if (wp == 0) {
+                Vector2d Xm0 = 0.5 * (state.wake.x.col(0) +
+                                       state.wake.x.col(1));
+                Vector2d dXm0 = 0.5 * (dwx_col(0) + dwx_col(1));
+                Matrix2d Xj;
+                Xj.col(0) = state.wake.x.col(0);
+                Xj.col(1) = Xm0;
+                Vector2d dXj0 = dwx_col(0);
+                Vector2d dXj1 = dXm0;
+                LinSourceVelocityDeriv lvd =
+                    PanelLinSourceVelocityDeriv(Xj, xi_w);
+                // Endpoint chain: ∂a/∂α (and ∂b/∂α) via Xj endpoints + xi.
+                auto da_alpha = [&]() {
+                    return lvd.a_Xj.col(0) * dXj0(0) +
+                           lvd.a_Xj.col(1) * dXj0(1) +
+                           lvd.a_Xj.col(2) * dXj1(0) +
+                           lvd.a_Xj.col(3) * dXj1(1) + lvd.a_xi * dwxj;
+                };
+                auto db_alpha = [&]() {
+                    return lvd.b_Xj.col(0) * dXj0(0) +
+                           lvd.b_Xj.col(1) * dXj0(1) +
+                           lvd.b_Xj.col(2) * dXj1(0) +
+                           lvd.b_Xj.col(3) * dXj1(1) + lvd.b_xi * dwxj;
+                };
+                Vector2d da = da_alpha();
+                Vector2d db = db_alpha();
+                // dCsig·phi contributions (per CalcUeM lines 877-885):
+                //   col(N-1) += b.dot(ti)*phi[N-1]
+                //   col(0) += a.dot(ti)*phi[0]
+                //   col(N-2) += a.dot(ti)*phi[N-2]
+                double w_a = phi(0) + phi(N - 2);
+                double w_b = phi(N - 1);
+                dCsig_phi_dalpha(jw) +=
+                    w_a * (da.dot(t_w) + lvd.a.dot(dwtj)) +
+                    w_b * (db.dot(t_w) + lvd.b.dot(dwtj));
+            } else if (wp == Nw - 1) {
+                Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
+                                      state.wake.x.col(wp));
+                Vector2d Xm = state.wake.x.col(wp);
+                Vector2d Xr = 2.0 * Xm - Xl;
+                Vector2d dXl =
+                    0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                Vector2d dXm = dwx_col(wp);
+                Vector2d dXr = 2.0 * dXm - dXl;
+                Matrix2d Xj;
+                Xj.col(0) = Xl;
+                Xj.col(1) = Xr;
+                ConstSourceVelocityDeriv csv =
+                    PanelConstSourceVelocityDeriv(Xj, xi_w);
+                Vector2d dV = csv.val_Xj.col(0) * dXl(0) +
+                              csv.val_Xj.col(1) * dXl(1) +
+                              csv.val_Xj.col(2) * dXr(0) +
+                              csv.val_Xj.col(3) * dXr(1) + csv.val_xi * dwxj;
+                double w = phi(Npanel - 1);
+                dCsig_phi_dalpha(jw) +=
+                    w * (dV.dot(t_w) + csv.val.dot(dwtj));
             } else {
-                Vector2d xi_w = state.wake.x.col(j);
-                Vector2d t_w = state.wake.t.col(j);
-                VelDeriv vd_xi = InviscidVelocityWithDeriv(
-                    state, xi_w, MatrixXd::Zero(N + 1, 1), alpha);
-                Vector2d V_alpha =
-                    InviscidVelocityDAlpha(state, xi_w, dgam_dalpha);
-                Vector2d dwxj = dwake_x_dalpha.col(j);
-                Vector2d dV = V_alpha + vd_xi.V_xi * dwxj;
-                Vector2d dwtj = dwake_t_dalpha.col(j);
-                dueinv = t_w.dot(dV) + vd_xi.V.dot(dwtj);
+                // Interior wp ∈ [1, Nw-2], wp != jw
+                Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
+                                      state.wake.x.col(wp));
+                Vector2d Xm = state.wake.x.col(wp);
+                Vector2d Xr = 0.5 * (state.wake.x.col(wp) +
+                                      state.wake.x.col(wp + 1));
+                Vector2d dXl =
+                    0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                Vector2d dXm = dwx_col(wp);
+                Vector2d dXr =
+                    0.5 * (dwx_col(wp) + dwx_col(wp + 1));
+                // Left half [Xl, Xm]
+                {
+                    Matrix2d Xj_L;
+                    Xj_L.col(0) = Xl;
+                    Xj_L.col(1) = Xm;
+                    LinSourceVelocityDeriv lvd =
+                        PanelLinSourceVelocityDeriv(Xj_L, xi_w);
+                    Vector2d da = lvd.a_Xj.col(0) * dXl(0) +
+                                  lvd.a_Xj.col(1) * dXl(1) +
+                                  lvd.a_Xj.col(2) * dXm(0) +
+                                  lvd.a_Xj.col(3) * dXm(1) +
+                                  lvd.a_xi * dwxj;
+                    Vector2d db = lvd.b_Xj.col(0) * dXl(0) +
+                                  lvd.b_Xj.col(1) * dXl(1) +
+                                  lvd.b_Xj.col(2) * dXm(0) +
+                                  lvd.b_Xj.col(3) * dXm(1) +
+                                  lvd.b_xi * dwxj;
+                    double phi_prev = phi(N - 1 + wp - 1);
+                    dCsig_phi_dalpha(jw) +=
+                        phi_prev * (da.dot(t_w) + lvd.a.dot(dwtj)) +
+                        0.5 * phi_prev * (db.dot(t_w) + lvd.b.dot(dwtj));
+                }
+                // Right half [Xm, Xr]
+                {
+                    Matrix2d Xj_R;
+                    Xj_R.col(0) = Xm;
+                    Xj_R.col(1) = Xr;
+                    LinSourceVelocityDeriv lvd =
+                        PanelLinSourceVelocityDeriv(Xj_R, xi_w);
+                    Vector2d da = lvd.a_Xj.col(0) * dXm(0) +
+                                  lvd.a_Xj.col(1) * dXm(1) +
+                                  lvd.a_Xj.col(2) * dXr(0) +
+                                  lvd.a_Xj.col(3) * dXr(1) +
+                                  lvd.a_xi * dwxj;
+                    Vector2d db = lvd.b_Xj.col(0) * dXm(0) +
+                                  lvd.b_Xj.col(1) * dXm(1) +
+                                  lvd.b_Xj.col(2) * dXr(0) +
+                                  lvd.b_Xj.col(3) * dXr(1) +
+                                  lvd.b_xi * dwxj;
+                    double phi_curr = phi(N - 1 + wp);
+                    dCsig_phi_dalpha(jw) +=
+                        0.5 * phi_curr * (da.dot(t_w) + lvd.a.dot(dwtj)) +
+                        phi_curr * (db.dot(t_w) + lvd.b.dot(dwtj));
+                }
             }
         }
-        dR(3 * Nsys + i) = -dueinv;
-        // d(ue_sigma · phi)/dα: chain through dBp (no α dep since AIC and
-        // foil-source B are α-indep, and B's wake-source columns depend on
-        // wake.x which has α-derivative dwake_x_dalpha) and Cgam/Csig (chain
-        // through wake.x and wake.t).
-        //
-        // For now this contribution is omitted — its scale depends on the
-        // wake-source-panel chain through dwake.x and dwake.t. Implementing
-        // it requires the same kind of code as ComputeRueVJP's B1/B2 blocks
-        // but in forward mode. Pending. Empirical gap with this omission is
-        // verified against the wake-rebuild reference DRVDAlpha (which DOES
-        // include the chain).
+        // Foil-source panel α-deriv (in Csig): wp = 0..N-2.
+        // Csig[jw, wp] += v.dot(ti) where v = PanelConstSourceVelocity(Xj_foil, xi=wake.x[jw], &ti).
+        // α-chain via dwxj (eval point) and dwtj (projection); panel endpoints are foil.x (α-indep).
+        int jstart = (jw == 0) ? 1 : 0;
+        int jend = (jw == 0) ? N - 2 : N - 1;
+        for (int jf = jstart; jf < jend; ++jf) {
+            Matrix2d Xj_foil;
+            Xj_foil.col(0) = state.foil.x.col(jf);
+            Xj_foil.col(1) = state.foil.x.col(jf + 1);
+            ConstSourceVelocityDeriv csv =
+                PanelConstSourceVelocityDeriv(Xj_foil, xi_w);
+            Vector2d dV = csv.val_xi * dwxj;
+            dCsig_phi_dalpha(jw) += phi(jf) * (dV.dot(t_w) + csv.val.dot(dwtj));
+        }
+    }
+
+    // Step 4: Assemble R_ue α-derivative.
+    //   foil rows i < N:     dR_ue/dα = -dueinv - sgnue[i] · dBphi_dalpha[i]
+    //   wake row N+0:        dR_ue/dα = -dueinv - 1 · dBphi_dalpha[N-1]
+    //   wake rows N+j j>0:   dR_ue/dα = -dueinv - 1 · (dCgam·v + Cgam·dBphi + dCsig·phi)
+    for (int i = 0; i < N; ++i) {
+        dR(3 * Nsys + i) = -dueinv(i) -
+                           state.isol.sgnue(i) * dBphi_dalpha(i);
+    }
+    dR(3 * Nsys + N) = -dueinv(N) - dBphi_dalpha(N - 1);  // wake[0] continuity
+    for (int j = 1; j < Nw; ++j) {
+        // Cgam[j,:] · dBphi.head(N): rebuild Cgam[j,:] from stored Cgam? It's
+        // not cached. Recompute via InviscidVelocity returning V_G [2 x N].
+        Vector2d xi_w = state.wake.x.col(j);
+        Vector2d t_w = state.wake.t.col(j);
+        MatrixXd V_G;
+        InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi_w, true,
+                         &V_G);
+        double Cgam_dBphi = 0.0;
+        for (int k = 0; k < N; ++k) {
+            double Cgam_jk = V_G(0, k) * t_w(0) + V_G(1, k) * t_w(1);
+            Cgam_dBphi += Cgam_jk * dBphi_dalpha(k);
+        }
+        double d_ue_sigma_phi =
+            dCgam_v_dalpha(j) + Cgam_dBphi + dCsig_phi_dalpha(j);
+        dR(3 * Nsys + N + j) = -dueinv(N + j) - d_ue_sigma_phi;
     }
     return dR;
 }
