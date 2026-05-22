@@ -411,8 +411,12 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
 
     double th1 = std::max(U1(0), 1e-12);
     double th2 = std::max(U2(0), 1e-12);
-    double sa1 = std::max(U1(2), 1e-12);
-    double sa2 = std::max(U2(2), 1e-12);
+    // sa: NO outer clamp. mfoil uses raw U[2]. Clamping sa at 1e-12 prevents
+    // Newton from converging the laminar-stagnation residual (Rlag = sa1+sa2)
+    // below 2e-12, pinning |R| at the plateau. Turbulent salog has its own
+    // inner clamp at 1e-10 below.
+    double sa1 = U1(2);
+    double sa2 = U2(2);
 
     // Compressibility-corrected velocities
     auto [uk1, uk1_U] = GetUk(U1(3), param);

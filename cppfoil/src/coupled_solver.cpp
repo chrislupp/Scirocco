@@ -163,11 +163,16 @@ void SolveCoupled(FoilState& state) {
         SolveGlob(state);
         UpdateState(state);
 
-        // Update stagnation point
-        StagPointMove(state);
-
-        // Update transition
-        UpdateTransition(state);
+        // StagPointMove and UpdateTransition perturb the state in ways that
+        // make sense early in Newton (when state is far from converged) but
+        // re-introduce ~1e-12 noise once Newton has hit machine precision.
+        // Skip them below ~1e-10 so Newton can settle at the true root.
+        // mfoil happens to converge in 9 iters where these don't fire much;
+        // cppfoil takes more iters and was being pushed back up to 3e-12.
+        if (rnorm > 1e-10) {
+            StagPointMove(state);
+            UpdateTransition(state);
+        }
     }
 
     state.glob.conv = false;
