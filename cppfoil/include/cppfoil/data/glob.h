@@ -48,6 +48,11 @@ struct Glob {
     SparseMatrixd R_U;     // Residual Jacobian w.r.t. primary states
     SparseMatrixd R_x;     // Residual Jacobian w.r.t. xi [3*Nsys x Nsys]
     SparseMatrixd R_V;     // Global Jacobian [4*Nsys x 4*Nsys]
+    // ∂R_BL/∂Re·Re for the analytic Re chain (accumulated in BuildGlobSys
+    // from each station's ResidualLin.lin_Ret). Re enters R only through
+    // Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re / Re.
+    // Size 3*Nsys (BL rows); ue-equation rows (3*Nsys..4*Nsys) are Re-indep.
+    VectorXd dR_dRe_times_Re;
     bool realloc = false;  // If true, system Jacobians will be reallocated
 
     // Stored SparseLU factorization of R_V for adjoint solves

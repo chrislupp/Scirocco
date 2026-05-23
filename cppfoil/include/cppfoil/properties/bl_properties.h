@@ -58,8 +58,15 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param);
 // Skin friction coefficient
 ScalarLin4 GetCf(const Vector4d& U, const Param& param);
 
-// Dissipation coefficient
+// Dissipation coefficient (combined turbulent / laminar with floor switch)
 ScalarLin4 GetCDi(const Vector4d& U, const Param& param);
+
+// Sub-components of GetCDi (exposed for the analytic Re chain)
+ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param);
+ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param);
+ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param);
+ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param);
+ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin);
 
 // Pressure coefficient from edge velocity
 ScalarLin4 GetCpFromUe(double ue, const Param& param);

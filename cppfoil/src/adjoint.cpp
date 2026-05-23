@@ -1187,25 +1187,18 @@ VectorXd DRVDMa(FoilState& state, double h) {
 }
 
 VectorXd DRVDRe(FoilState& state, double h) {
-    double mu0_0 = state.param.mu0;
-    double Re0 = state.oper.Re;
-    // R depends on mu0 only through Ret = X/mu0. So R^(n)(mu0) ~ R/mu0^n,
-    // and the 4th-order central FD optimal h is roughly mu0 * eps^(1/5).
-    // For mu0 ~ 1e-7, Newton floor ~3e-12: h_opt ~ mu0 * (3e-12)^(1/5) ~
-    // mu0 * 1e-2. Use that. At this h, truncation + cancellation both ~
-    // 3e-10 rel on ∂R/∂mu0.
-    if (h <= 0) h = std::abs(mu0_0) * 1e-2;
-    double dmu0_dRe = -mu0_0 / Re0;
-    auto eval = [&](double mu0) {
-        state.param.mu0 = mu0;
-        state.glob.realloc = true;
-        return EvaluateRV(state);
-    };
-    VectorXd dR_dmu0 = CentralFD4(mu0_0, h, eval);
-    state.param.mu0 = mu0_0;
+    // Analytic ∂R_V/∂Re via the Ret chain. Re only enters R_V through
+    // Ret = ρ·ue·θ/μ_0 in BL closures, with ∂Ret/∂Re = Ret/Re. BuildGlobSys
+    // accumulates per-station `lin_Ret` = sum_k ∂R_BL/∂Ret_k · Ret_k into
+    // glob.dR_dRe_times_Re, so ∂R_BL/∂Re = dR_dRe_times_Re / Re. The
+    // ue-equation rows have no Re dependence (ue, ueinv, ue_m all Re-indep).
+    (void)h;
+    int Nsys = state.glob.Nsys;
     state.glob.realloc = true;
     BuildGlobSys(state);
-    return dR_dmu0 * dmu0_dRe;
+    VectorXd dR = VectorXd::Zero(4 * Nsys);
+    dR.head(3 * Nsys) = state.glob.dR_dRe_times_Re / state.oper.Re;
+    return dR;
 }
 
 // ============================================================================

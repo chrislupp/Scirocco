@@ -305,7 +305,7 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar dissipation (used by laminar flow and as floor for turbulent)
-static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
     auto [Hk, Hk_U] = GetHk(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
 
@@ -329,7 +329,7 @@ static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
 }
 
 // Helper: turbulent wall contribution
-static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
     if (param.wake) return {0.0, Vector4d::Zero()};
 
     auto [cf, cf_U] = GetCf(U, param);
@@ -358,7 +358,7 @@ static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
 }
 
 // Helper: outer layer contribution (turbulent)
-static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
     if (!param.turb) return {0.0, Vector4d::Zero()};
 
     auto [Hs, Hs_U] = GetHs(U, param);
@@ -377,7 +377,7 @@ static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar stress contribution (turbulent)
-static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
     auto [Hs, Hs_U] = GetHs(U, param);
     auto [Us, Us_U] = GetUs(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
@@ -395,7 +395,7 @@ static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar wake dissipation (matches mfoil get_cDi_lamwake)
-static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
+ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
     // Force laminar mode for sub-function calls
     Param param = paramin;
     param.turb = false;

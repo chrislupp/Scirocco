@@ -391,6 +391,413 @@ void InitBoundaryLayer(FoilState& state) {
     }
 }
 
+// ============================================================================
+// ∂closure/∂Ret helpers at fixed U, used by ResidualStation to build the
+// per-station lin_Ret = ∂R/∂Ret_1, ∂R/∂Ret_2 for the analytic Re chain.
+//
+// Each helper inspects the closure's existing formula in bl_properties.cpp
+// and extracts the explicit Ret-derivative path.
+// ============================================================================
+namespace {
+
+double GetCf_dRet(const Vector4d& U, const Param& param) {
+    if (param.wake) return 0.0;
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    if (param.turb) {
+        auto [M2, _M2_U] = GetMach2(U, param);
+        (void)_M2_U;
+        double Fc = std::sqrt(1.0 + 0.5 * (param.gam - 1.0) * M2);
+        double aa = -1.33 * Hk;
+        if (aa < -17.0) aa = -20.0 + 3.0 * std::exp((aa + 17.0) / 3.0);
+        double bb_nat = std::log(Ret / Fc);
+        double bb_nat_dRet = (bb_nat < 3.0) ? 0.0 : 1.0 / Ret;
+        double bb = (bb_nat < 3.0) ? 3.0 : bb_nat;
+        bb /= std::log(10.0);
+        double bb_dRet = bb_nat_dRet / std::log(10.0);
+        double cc = -1.74 - 0.31 * Hk;
+        double dd = std::tanh(4.0 - Hk / 0.875);
+        double cf0 = 0.3 * std::exp(aa) * std::pow(bb, cc);
+        double cf0_dRet = (bb > 0)
+            ? 0.3 * std::exp(aa) * cc * std::pow(bb, cc - 1.0) * bb_dRet
+            : 0.0;
+        (void)dd;
+        (void)cf0;
+        return cf0_dRet / Fc;
+    } else {
+        double num;
+        if (Hk < 5.5) {
+            num = 0.0727 * std::pow(5.5 - Hk, 3) / (Hk + 1.0) - 0.07;
+        } else {
+            double invterm = 1.0 - 1.0 / (Hk - 4.5);
+            num = 0.015 * invterm * invterm - 0.07;
+        }
+        return -num / (Ret * Ret);
+    }
+}
+
+double GetHs_dRet(const Vector4d& U, const Param& param) {
+    if (!param.turb) return 0.0;
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
+    if (param.wake && Hk < 1.00005) Hk = 1.00005;
+    if (!param.wake && Hk < 1.05) Hk = 1.05;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    constexpr double Hsmin = 1.5;
+    constexpr double dHsinf = 0.015;
+    double Ho = 4.0;
+    double Ho_dRet = 0.0;
+    if (Ret > 400.0) {
+        Ho = 3.0 + 400.0 / Ret;
+        Ho_dRet = -400.0 / (Ret * Ret);
+    }
+    double Reb = Ret;
+    double Reb_dRet = 1.0;
+    if (Ret < 200.0) {
+        Reb = 200.0;
+        Reb_dRet = 0.0;
+    }
+    double Hs_dRet;
+    if (Hk < Ho) {
+        double Hr = (Ho - Hk) / (Ho - 1.0);
+        double Hr_dRet = Ho_dRet / (Ho - 1.0) -
+                         (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_dRet;
+        double Hr2 = Hr * Hr;
+        double aa_dRet = (4.0 / (Reb * Reb) * Reb_dRet) * Hr2 +
+                         (2.0 - Hsmin - 4.0 / Reb) * 2.0 * Hr * Hr_dRet;
+        Hs_dRet = -4.0 / (Reb * Reb) * Reb_dRet + aa_dRet * 1.5 / (Hk + 0.5);
+    } else {
+        double lrb = std::log(Reb);
+        double lrb_dRet = Reb_dRet / Reb;
+        double aa = Hk - Ho + 4.0 / lrb;
+        double aa_dRet = -Ho_dRet - 4.0 / (lrb * lrb) * lrb_dRet;
+        double bb_dRet = 0.007 * (lrb_dRet / (aa * aa) -
+                                  2.0 * lrb / (aa * aa * aa) * aa_dRet);
+        Hs_dRet = -4.0 / (Reb * Reb) * Reb_dRet +
+                  2.0 * (Hk - Ho) * (-Ho_dRet) *
+                      (0.007 * lrb / (aa * aa) + dHsinf / Hk) +
+                  (Hk - Ho) * (Hk - Ho) * bb_dRet;
+    }
+    auto [M2, _M2_U] = GetMach2(U, param);
+    (void)_M2_U;
+    double den = 1.0 + 0.014 * M2;
+    return Hs_dRet / den;
+}
+
+double GetUs_dRet(const Vector4d& U, const Param& param) {
+    // Us = 0.5 * Hs * (1 - (4/3)*(H-1)/H). H doesn't depend on Ret. Only Hs.
+    auto [H, _H_U] = GetH(U);
+    (void)_H_U;
+    double factor = 1.0 - (4.0 / 3.0) * (H - 1.0) / H;
+    return 0.5 * factor * GetHs_dRet(U, param);
+}
+
+double GetCDi_Lam_dRet(const Vector4d& U, const Param& param) {
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    double num;
+    if (Hk < 4.0) {
+        num = 0.00205 * std::pow(4.0 - Hk, 5.5) + 0.207;
+    } else {
+        double Hk1 = Hk - 4.0;
+        double denom = 1.0 + 0.02 * Hk1 * Hk1;
+        num = -0.0016 * Hk1 * Hk1 / denom + 0.207;
+    }
+    return -num / (Ret * Ret);
+}
+
+double GetCDi_TurbWall_dRet(const Vector4d& U, const Param& param) {
+    if (param.wake) return 0.0;
+    auto [cf, _cf_U] = GetCf(U, param);
+    (void)_cf_U;
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    auto [Us, _Us_U] = GetUs(U, param);
+    (void)_Us_U;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    double cf_dRet = GetCf_dRet(U, param);
+    double Hs_dRet = GetHs_dRet(U, param);
+    double Us_dRet = GetUs_dRet(U, param);
+    double lr = std::log(Ret);
+    double lr_dRet = 1.0 / Ret;
+    double Hmin = 1.0 + 2.1 / lr;
+    double Hmin_dRet = -2.1 / (lr * lr) * lr_dRet;
+    double aa = std::tanh((Hk - 1.0) / (Hmin - 1.0));
+    double fac_dRet = 0.5 * (1.0 - aa * aa) *
+                      (-(Hk - 1.0) / ((Hmin - 1.0) * (Hmin - 1.0)) * Hmin_dRet);
+    double fac = 0.5 + 0.5 * aa;
+    double cDi = 0.5 * cf * Us * (2.0 / Hs) * fac;
+    return cf_dRet * Us / Hs * fac + cf * Us_dRet / Hs * fac -
+           cDi / Hs * Hs_dRet + cf * Us / Hs * fac_dRet;
+}
+
+double GetCDi_Outer_dRet(const Vector4d& U, const Param& param) {
+    if (!param.turb) return 0.0;
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    auto [Us, _Us_U] = GetUs(U, param);
+    (void)_Us_U;
+    double Hs_dRet = GetHs_dRet(U, param);
+    double Us_dRet = GetUs_dRet(U, param);
+    double ct = U(2) * U(2);
+    return ct * (-Us_dRet) * 2.0 / Hs -
+           ct * (0.995 - Us) * 2.0 / (Hs * Hs) * Hs_dRet;
+}
+
+double GetCDi_LamStress_dRet(const Vector4d& U, const Param& param) {
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    auto [Us, _Us_U] = GetUs(U, param);
+    (void)_Us_U;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    double Hs_dRet = GetHs_dRet(U, param);
+    double Us_dRet = GetUs_dRet(U, param);
+    double HsRet = Hs * Ret;
+    double HsRet_dRet = Hs_dRet * Ret + Hs;
+    double num = 0.15 * (0.995 - Us) * (0.995 - Us) * 2.0;
+    double num_dRet = 0.15 * 2.0 * (0.995 - Us) * (-Us_dRet) * 2.0;
+    return num_dRet / HsRet - num / (HsRet * HsRet) * HsRet_dRet;
+}
+
+double GetCDi_LamWake_dRet(const Vector4d& U, const Param& paramin) {
+    Param param = paramin;
+    param.turb = false;
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    auto [Ret, _Ret_U] = GetRet(U, param);
+    (void)_Ret_U;
+    // Hs_dRet in laminar = 0 (Hs has no Ret dep in laminar branch)
+    double HsRet = Hs * Ret;
+    double HsRet_dRet = Hs;  // Hs_dRet = 0 for laminar
+    double Hk_inv = 1.0 / Hk;
+    double one_m = 1.0 - Hk_inv;
+    double num = 2.0 * 1.1 * one_m * one_m * Hk_inv;
+    return -num / (HsRet * HsRet) * HsRet_dRet;
+}
+
+double GetCDi_dRet(const Vector4d& U, const Param& param) {
+    if (param.turb) {
+        double cDi_dRet = 0.0;
+        double cDi_val = 0.0;
+        if (!param.wake) {
+            auto [v, _vU] = GetCDi_TurbWall(U, param);
+            (void)_vU;
+            cDi_val += v;
+            cDi_dRet += GetCDi_TurbWall_dRet(U, param);
+        }
+        {
+            auto [v, _vU] = GetCDi_Outer(U, param);
+            (void)_vU;
+            cDi_val += v;
+            cDi_dRet += GetCDi_Outer_dRet(U, param);
+        }
+        {
+            auto [v, _vU] = GetCDi_LamStress(U, param);
+            (void)_vU;
+            cDi_val += v;
+            cDi_dRet += GetCDi_LamStress_dRet(U, param);
+        }
+        auto [cDil, _cDil_U] = param.wake ? GetCDi_LamWake(U, param)
+                                          : GetCDi_Lam(U, param);
+        (void)_cDil_U;
+        double cDil_dRet = param.wake ? GetCDi_LamWake_dRet(U, param)
+                                       : GetCDi_Lam_dRet(U, param);
+        if (cDil > cDi_val) cDi_dRet = cDil_dRet;
+        if (param.wake) cDi_dRet *= 2.0;
+        return cDi_dRet;
+    }
+    return GetCDi_Lam_dRet(U, param);
+}
+
+double GetCfxt_dRet(const Vector4d& U, double x, const Param& param) {
+    double th = std::max(U(0), 1e-12);
+    return GetCf_dRet(U, param) * x / th;
+}
+
+double GetCDixt_dRet(const Vector4d& U, double x, const Param& param) {
+    double th = std::max(U(0), 1e-12);
+    return GetCDi_dRet(U, param) * x / th;
+}
+
+// GetCteq, GetUq, GetDamp _dRet — for the turbulent and transition cases.
+// cteq depends on Hs, Us, Hk, H, Ret directly. Uq takes Ret as a direct
+// arg (not via U). Damp uses Ret in the laminar amplification formula.
+// For Mach=0 NACA 0012 alpha=3 Re=1e6 ViscousRe test, these matter only
+// at turbulent foil stations and wake. For now keep the chain there.
+//
+// GetCteq_dRet inspection: from bl_properties.cpp, cteq² has a complex
+// formula. Inspect later if needed.
+double GetCteq_dRet(const Vector4d& U, const Param& param) {
+    if (!param.turb) return 0.0;
+    // TODO: full GetCteq Ret-derivative. For now leave at zero.
+    (void)U;
+    (void)param;
+    return 0.0;
+}
+
+double GetDamp_dRet(const Vector4d& U, const Param& param) {
+    // GetDamp uses Ret in the laminar amplification log-formula.
+    // TODO: full GetDamp Ret-derivative.
+    (void)U;
+    (void)param;
+    return 0.0;
+}
+
+// ============================================================================
+// ComputeStationLinRet
+//   Returns Vector3d lin_Ret = sum_k ∂R/∂Ret_k · Ret_k for the three residual
+//   equations (Rmom, Rshape, Rlag) at the station.
+//
+//   Mirrors ResidualStation's formula structure but tracks ONLY the Ret-
+//   derivative path (closures' explicit ∂/∂Ret · Ret contribution). U and
+//   xi are held fixed (this is the partial for the adjoint).
+// ============================================================================
+Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
+                              const Matrix42d& Uin, const Vector2d& Aux) {
+    // Copy U and remove wake gap from delta* (matching ResidualStation).
+    Matrix42d U = Uin;
+    U.row(1) -= Aux.transpose();
+    Vector4d U1 = U.col(0);
+    Vector4d U2 = U.col(1);
+
+    // xlog (matches ResidualStation including simi override).
+    double xlog;
+    if (param.simi) {
+        xlog = 1.0;
+    } else {
+        xlog = std::log(std::max(x(1), 1e-12) / std::max(x(0), 1e-12));
+    }
+    double dx;
+    if (param.simi) {
+        dx = 0.5 * (x(0) + x(1));
+    } else {
+        dx = x(1) - x(0);
+    }
+
+    // uelog (used in Rshape via "(2*Hss/Hs + 1 - H - Hw)*uelog" — Hs is the
+    // only Ret-dep factor here).
+    double uelog;
+    if (param.simi) {
+        uelog = 1.0;
+    } else {
+        auto [uk1, _uk1] = GetUk(U1(3), param);
+        auto [uk2, _uk2] = GetUk(U2(3), param);
+        (void)_uk1;
+        (void)_uk2;
+        uelog = std::log(std::max(uk2, 1e-12) / std::max(uk1, 1e-12));
+    }
+
+    // Upwind factor (Hk-only → no Ret dep, but we need the value for
+    // weighting Ret-deps of cfxtu/cDixt).
+    auto [upw, _upw_U] = GetUpw(U1, U2, param);
+    (void)_upw_U;
+
+    // Hs (turb-dep on Ret), needed for Rshape coefficients
+    auto [Hs1, _Hs1_U] = GetHs(U1, param);
+    auto [Hs2, _Hs2_U] = GetHs(U2, param);
+    (void)_Hs1_U;
+    (void)_Hs2_U;
+    double Hs1_dRet = GetHs_dRet(U1, param);
+    double Hs2_dRet = GetHs_dRet(U2, param);
+    auto [Ret1_at_1, _R1_U] = GetRet(U1, param);
+    auto [Ret2_at_2, _R2_U] = GetRet(U2, param);
+    (void)_R1_U;
+    (void)_R2_U;
+    double Hs1_dRet_Ret = Hs1_dRet * Ret1_at_1;
+    double Hs2_dRet_Ret = Hs2_dRet * Ret2_at_2;
+    double Hs = 0.5 * (Hs1 + Hs2);
+    double Hs_dRet_Ret = 0.5 * (Hs1_dRet_Ret + Hs2_dRet_Ret);
+
+    // Hslog = log(Hs2/Hs1). ∂Hslog/∂Ret_1·Ret_1 = (-1/Hs1)*Hs1_dRet_Ret
+    double Hslog_dRet_Ret = 0.0;
+    if (!param.simi) {
+        Hslog_dRet_Ret = -Hs1_dRet_Ret / std::max(Hs1, 1e-12) +
+                          Hs2_dRet_Ret / std::max(Hs2, 1e-12);
+    }
+
+    // Hss is Mach-only, no Ret dep.
+    auto [Hss1, _Hss1] = GetHss(U1, param);
+    auto [Hss2, _Hss2] = GetHss(U2, param);
+    (void)_Hss1;
+    (void)_Hss2;
+    double Hss = 0.5 * (Hss1 + Hss2);
+
+    // cfxt symmetric-average derivative
+    double cfxt1_dRet_at_U1 = GetCfxt_dRet(U1, x(0), param);
+    double cfxt2_dRet_at_U2 = GetCfxt_dRet(U2, x(1), param);
+    Vector4d Um = 0.5 * (U1 + U2);
+    double xm = 0.5 * (x(0) + x(1));
+    double cfxtm_dRet_at_Um = GetCfxt_dRet(Um, xm, param);
+    auto [Retm_at_Um, _Retm_U] = GetRet(Um, param);
+    (void)_Retm_U;
+    double cfxt_dRet_Ret =
+        0.25 * cfxt1_dRet_at_U1 * Ret1_at_1 +
+        0.5 * cfxtm_dRet_at_Um * Retm_at_Um +
+        0.25 * cfxt2_dRet_at_U2 * Ret2_at_2;
+
+    // cfxtu = upwind(cfxt1, cfxt2) — no middle.
+    double cfxt1_dRet_Ret = cfxt1_dRet_at_U1 * Ret1_at_1;
+    double cfxt2_dRet_Ret = cfxt2_dRet_at_U2 * Ret2_at_2;
+    double cfxtu_dRet_Ret =
+        (1.0 - upw) * cfxt1_dRet_Ret + upw * cfxt2_dRet_Ret;
+
+    // cDixt = upwind(cDixt1, cDixt2)
+    double cDixt1_dRet_at_U1 = GetCDixt_dRet(U1, x(0), param);
+    double cDixt2_dRet_at_U2 = GetCDixt_dRet(U2, x(1), param);
+    double cDixt_dRet_Ret =
+        (1.0 - upw) * cDixt1_dRet_at_U1 * Ret1_at_1 +
+        upw * cDixt2_dRet_at_U2 * Ret2_at_2;
+
+    // ---- Rmom ----
+    // Rmom = thlog + (2+H+Hw-Ms)*uelog - 0.5*xlog*cfxt
+    // Only cfxt has Ret dep.
+    double Rmom_dRet_Ret = -0.5 * xlog * cfxt_dRet_Ret;
+
+    // ---- Rshape ----
+    // Rshape = Hslog + (2*Hss/Hs + 1 - H - Hw)*uelog + xlog*(0.5*cfxtu - cDixt)
+    // ∂Rshape/∂Ret_k · Ret_k contributions:
+    //   Hslog: Hslog_dRet_Ret
+    //   2*Hss/Hs → ∂(2*Hss/Hs)/∂Ret · Ret = 2*Hss * (-1/Hs^2) * Hs_dRet_Ret
+    //   xlog * (0.5*cfxtu - cDixt): xlog*(0.5*cfxtu_dRet_Ret - cDixt_dRet_Ret)
+    double Rshape_dRet_Ret = Hslog_dRet_Ret +
+        (-2.0 * Hss / (Hs * Hs)) * uelog * Hs_dRet_Ret +
+        xlog * (0.5 * cfxtu_dRet_Ret - cDixt_dRet_Ret);
+
+    // ---- Rlag ----
+    double Rlag_dRet_Ret = 0.0;
+    if (param.turb) {
+        // Turbulent: Rlag = Clag*(cteq - ald*saa)*dx - 2*de*salog
+        //                  + 2*de*(uq*dx - uelog)*Cuq
+        // Dependencies on Ret (via U): Clag(Us), cteq, uq(Ret arg directly,
+        // and via cf, Hk, Ret_avg), Us, de (Hk only — no Ret), saa (sa only).
+        // TODO: full turbulent Rlag Ret-chain. For now leave at zero.
+        // (Wake stations are turb=true; this is needed for ViscousRe wake.)
+    } else if (!param.simi) {
+        // Laminar non-simi: Rlag = sa2 - sa1 - damp*dx
+        double damp1_dRet = GetDamp_dRet(U1, param);
+        double damp2_dRet = GetDamp_dRet(U2, param);
+        double damp_dRet_Ret = 0.5 * (damp1_dRet * Ret1_at_1 +
+                                       damp2_dRet * Ret2_at_2);
+        Rlag_dRet_Ret = -damp_dRet_Ret * dx;
+    }
+    // Laminar simi: Rlag = sa1 + sa2 — no Ret dep, stays at 0.
+
+    return Vector3d(Rmom_dRet_Ret, Rshape_dRet_Ret, Rlag_dRet_Ret);
+}
+
+}  // namespace
+
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                             const Matrix42d& Uin, const Vector2d& Aux) {
     // Compute residual at a boundary layer station
@@ -647,6 +1054,12 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
     result.lin_x.row(0) = Rmom_x;
     result.lin_x.row(1) = Rshape_x;
     result.lin_x.row(2) = Rlag_x;
+
+    // ∂R/∂Re·Re via the analytic Ret chain. Re only enters R through
+    // Ret = ρ·ue·θ/μ_0 in BL closures, with ∂Ret/∂Re = Ret/Re, so
+    // ∂R/∂Re = lin_Ret/Re. ComputeStationLinRet replicates the residual
+    // structure but tracks only the Ret-derivative path.
+    result.lin_Ret = ComputeStationLinRet(param, x, Uin, Aux);
 
     return result;
 }
