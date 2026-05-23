@@ -102,6 +102,24 @@ void SolveViscous(FoilState& state) {
     // Solve coupled system
     SolveCoupled(state);
 
+    if (state.glob.conv) {
+        // Stay at the ue-based xi from Newton convergence — DO NOT swap to
+        // gamma-based xi here. The previous code did StagPointFind after
+        // Newton to "match mfoil's CS reference", but mfoil_cs's actual
+        // sensitivity computation (via complex-step on alpha/foil.x) uses
+        // mfoil's natural ue-based xi from solve_viscous; only the
+        // extract_comprehensive_reference.py script does an extra
+        // stagpoint_find for Phase 2 chain-partial validation. Swapping
+        // here makes the adjoint's R_V (ue-based) inconsistent with the
+        // VJP-side R_x (was gamma-based) and with sstag_ue (still ue-based),
+        // and that inconsistency manifested as a ~0.1 abs error in R_V at
+        // the ue-Istag column → 1e-5 rel floor on all viscous gradients.
+        //
+        // Phase 2 (residual_deriv_test) now explicitly applies the gamma-xi
+        // swap in its test fixture; production sensitivities use ue-based.
+        StoreAdjointFactorization(state);
+    }
+
     // Calculate forces
     CalcForce(state);
     GetDistributions(state);
@@ -147,11 +165,16 @@ void SolveCoupled(FoilState& state) {
         SolveGlob(state);
         UpdateState(state);
 
-        // Update stagnation point
-        StagPointMove(state);
-
-        // Update transition
-        UpdateTransition(state);
+        // StagPointMove and UpdateTransition perturb the state in ways that
+        // make sense early in Newton (when state is far from converged) but
+        // re-introduce ~1e-12 noise once Newton has hit machine precision.
+        // Skip them below ~1e-10 so Newton can settle at the true root.
+        // mfoil happens to converge in 9 iters where these don't fire much;
+        // cppfoil takes more iters and was being pushed back up to 3e-12.
+        if (rnorm > 1e-10) {
+            StagPointMove(state);
+            UpdateTransition(state);
+        }
     }
 
     state.glob.conv = false;
@@ -175,6 +198,17 @@ void BuildGlobSys(FoilState& state) {
     }
 
     state.glob.R.setZero();
+    // Allocate/zero the ∂R/∂Re·Re and ∂R/∂Ma·Ma accumulators (BL rows only).
+    if (state.glob.dR_dRe_times_Re.size() != 3 * Nsys) {
+        state.glob.dR_dRe_times_Re = VectorXd::Zero(3 * Nsys);
+    } else {
+        state.glob.dR_dRe_times_Re.setZero();
+    }
+    if (state.glob.dR_dMa_times_Ma.size() != 3 * Nsys) {
+        state.glob.dR_dMa_times_Ma = VectorXd::Zero(3 * Nsys);
+    } else {
+        state.glob.dR_dMa_times_Ma.setZero();
+    }
 
     // Build using triplets for sparse matrix
     std::vector<Triplet> triplets_U, triplets_x;
@@ -238,6 +272,12 @@ void BuildGlobSys(FoilState& state) {
             auto res = ResidualStation(param, xst_pair, Ust_pair, Aux_pair);
             param.simi = false;
 
+            // ∂R/∂Re·Re for the simi station: res.lin_Ret is computed for
+            // (Ust, Ust) inputs where Ret_1=Ret_2=Ret_m=Ret(Ust), so it
+            // already represents the total Ret-derivative · Ret_Ust.
+            state.glob.dR_dRe_times_Re.segment<3>(3 * Is[i0]) += res.lin_Ret;
+            state.glob.dR_dMa_times_Ma.segment<3>(3 * Is[i0]) += res.lin_Ma;
+
             // Chain rule: R1_U = R1_Ut * [Ust_U]
             // R1_Ust is 3x4: sum of both 3x4 blocks from res.lin_U
             Matrix34d R1_Ust =
@@ -270,6 +310,15 @@ void BuildGlobSys(FoilState& state) {
                                                     -stag.Ust_U(k, c + 4));
                     }
                 }
+                // d/dx[J] (matching mfoil: R_x[Ig, J] = -Ust_x[0:3,:])
+                for (int k = 0; k < 3; ++k) {
+                    if (std::abs(stag.Ust_x(k, 0)) > 1e-15)
+                        triplets_x.emplace_back(Ig + k, J[0],
+                                                -stag.Ust_x(k, 0));
+                    if (std::abs(stag.Ust_x(k, 1)) > 1e-15)
+                        triplets_x.emplace_back(Ig + k, J[1],
+                                                -stag.Ust_x(k, 1));
+                }
             }
         } else {
             // Wake initialization
@@ -288,6 +337,7 @@ void BuildGlobSys(FoilState& state) {
             // Store first point system
             int Ig = 3 * Is[i0];
             state.glob.R.segment<3>(Ig) = R1;
+            state.glob.dR_dMa_times_Ma.segment<3>(Ig) += wake.lin_Ma_times_Ma;
             // Add wake state contribution
             for (int k = 0; k < 3; ++k) {
                 for (int c = 0; c < 4; ++c) {
@@ -359,6 +409,8 @@ void BuildGlobSys(FoilState& state) {
             // Store in global system
             int Ig = 3 * Is[i];
             state.glob.R.segment<3>(Ig) += res.value;
+            state.glob.dR_dRe_times_Re.segment<3>(Ig) += res.lin_Ret;
+            state.glob.dR_dMa_times_Ma.segment<3>(Ig) += res.lin_Ma;
 
             // Store Jacobian entries
             for (int k = 0; k < 3; ++k) {
@@ -926,6 +978,67 @@ void CalcUeM(FoilState& state) {
 void RebuildUeM(FoilState& state) {
     // Rebuild sensitivities after stagnation point move
     CalcUeM(state);
+}
+
+void StoreAdjointFactorization(FoilState& state) {
+    // Rebuild R_V at converged state and store SparseLU factorization
+    // for use in adjoint transpose solves.
+
+    int Nsys = state.glob.Nsys;
+
+    // Rebuild global system at converged state to get current R_U
+    BuildGlobSys(state);
+
+    // Rebuild R_V (same assembly as SolveGlob but without solving)
+    VectorXd ue = state.glob.U.row(3).transpose();
+    VectorXd ds = state.glob.U.row(1).transpose();
+    double uemax = ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < Nsys; ++i) {
+        ue(i) = std::max(ue(i), 1e-10 * uemax);
+    }
+
+    int NN = 4 * Nsys;  // No cl-alpha for adjoint
+    state.glob.R_V.resize(NN, NN);
+
+    std::vector<Triplet> triplets;
+    triplets.reserve(state.glob.R_U.nonZeros() + 4 * Nsys);
+
+    // Copy R_U entries (first 3*Nsys rows)
+    for (int k = 0; k < state.glob.R_U.outerSize(); ++k) {
+        for (SparseMatrixd::InnerIterator it(state.glob.R_U, k); it; ++it) {
+            triplets.emplace_back(it.row(), it.col(), it.value());
+        }
+    }
+
+    // Fourth equation: R_ue = ue - ueinv - ue_m * (ds .* ue)
+    for (int i = 0; i < Nsys; ++i) {
+        int row = 3 * Nsys + i;
+        int ue_idx = 4 * i + 3;
+        triplets.emplace_back(row, ue_idx, 1.0);
+
+        for (int j = 0; j < Nsys; ++j) {
+            double ue_m_ij = state.vsol.ue_m(i, j);
+            if (std::abs(ue_m_ij) > 1e-15) {
+                triplets.emplace_back(row, 4 * j + 3, -ue_m_ij * ds(j));
+                triplets.emplace_back(row, 4 * j + 1, -ue_m_ij * ue(j));
+            }
+        }
+    }
+
+    state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
+
+    // Factor and store
+    auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
+    lu->compute(state.glob.R_V);
+    if (lu->info() == Eigen::Success) {
+        state.glob.lu_factorization = lu;
+    } else {
+        state.glob.lu_factorization = nullptr;
+        if (state.param.verb >= 1) {
+            std::cerr << "  Warning: adjoint LU factorization failed"
+                      << std::endl;
+        }
+    }
 }
 
 void RebuildIsol(FoilState& state) {

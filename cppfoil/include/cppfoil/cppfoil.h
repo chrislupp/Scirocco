@@ -34,6 +34,7 @@
 #include <string>
 
 #include "cppfoil/config.h"
+#include "cppfoil/data/sensitivity.h"
 #include "cppfoil/data/state.h"
 
 namespace cppfoil {
@@ -91,12 +92,36 @@ class Cppfoil {
     // Derotate airfoil to make chord line horizontal
     void GeomDerotate();
 
+    // Compute sensitivities of cl, cd, cm w.r.t. panel node coordinates
+    // Must be called after Solve(). Uses adjoint method.
+    // Returns Sensitivity struct with dcl_dx, dcd_dx, dcm_dx [2 x N] matrices
+    Sensitivity ComputeSensitivities();
+
+    // Accessors for sensitivity results (call ComputeSensitivities first)
+    const MatrixXd& GetDclDx() const { return sensitivity_.dcl_dx; }
+    const MatrixXd& GetDcdDx() const { return sensitivity_.dcd_dx; }
+    const MatrixXd& GetDcmDx() const { return sensitivity_.dcm_dx; }
+
+    // Scalar operating-condition sensitivities
+    double GetDclDalpha() const { return sensitivity_.dcl_dalpha; }
+    double GetDcdDalpha() const { return sensitivity_.dcd_dalpha; }
+    double GetDcmDalpha() const { return sensitivity_.dcm_dalpha; }
+
+    double GetDclDMa() const { return sensitivity_.dcl_dMa; }
+    double GetDcdDMa() const { return sensitivity_.dcd_dMa; }
+    double GetDcmDMa() const { return sensitivity_.dcm_dMa; }
+
+    double GetDclDRe() const { return sensitivity_.dcl_dRe; }
+    double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
+    double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
+
     // Access internal state (for advanced use)
     FoilState& GetState() { return state_; }
     const FoilState& GetState() const { return state_; }
 
    private:
     FoilState state_;
+    Sensitivity sensitivity_;
 };
 
 }  // namespace cppfoil

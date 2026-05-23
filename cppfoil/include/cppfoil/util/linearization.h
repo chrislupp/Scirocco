@@ -62,8 +62,22 @@ struct LinResultWithX {
     LinX lin_x;  // Linearization w.r.t. x
 };
 
-// Residual at a station: 3 residuals with derivatives w.r.t. U[8] and x[2]
-using ResidualLin = LinResultWithX<Vector3d, Matrix38d, Matrix32d>;
+// Residual at a station: 3 residuals with derivatives w.r.t. U[8] and x[2],
+// plus optional ∂R/∂Re·Re and ∂R/∂Ma·Ma for the analytic scalar-param chains.
+//
+//   lin_Ret = sum_k (∂R/∂Ret_k · Ret_k) — Re chain (single param: mu0).
+//   lin_Ma  = ∂R/∂Ma · Ma — Ma chain (multi-param: KTb, KTl, H0, cps, mu0,
+//   rho0).
+//
+// Pre-multiplying by Ret resp. Ma keeps the BuildGlobSys aggregation
+// uniform: ∂R/∂Re = lin_Ret/Re, ∂R/∂Ma = lin_Ma/Ma.
+struct ResidualLin {
+    Vector3d value;
+    Matrix38d lin_U;
+    Matrix32d lin_x;
+    Vector3d lin_Ret = Vector3d::Zero();
+    Vector3d lin_Ma = Vector3d::Zero();
+};
 
 }  // namespace cppfoil
 

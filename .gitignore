@@ -34,3 +34,19 @@ CTestTestfile.cmake
 
 # Analysis output
 pa_output/
+
+# Plans and theory
+plans/
+theory/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local debug scratch (numpy dumps, binary state captures, validation scripts)
+*.npy
+*.bin
+cppfoil/tests/validate_*.py
+cppfoil/tests/extract_vjp_chain_reference.py
+cppfoil/tests/extract_wake_geom_reference.py
+cppfoil/tests/isolate_ue_partials.py

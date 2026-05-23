@@ -30,8 +30,10 @@
 */
 #include "cppfoil/cppfoil.h"
 
+#include <cmath>
 #include <iostream>
 
+#include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/geometry.h"
@@ -80,11 +82,11 @@ bool Cppfoil::Solve() {
                   << ", Re=" << state_.oper.Re << std::endl;
     }
     if (state_.oper.viscous) {
-        // Initialize parameters for viscous solve
+        // Initialize parameters for viscous solve.
+        // Do NOT override rtol/niglob/verb here — those are settable defaults
+        // (Param: rtol=1e-11, niglob=50, verb=1). Earlier code clamped rtol
+        // to 1e-6 which is far too loose for adjoint precision.
         state_.oper.initbl = true;
-        state_.param.verb = 1;     // Normal verbose output
-        state_.param.niglob = 25;  // Max iterations
-        state_.param.rtol = 1e-6;  // Convergence tolerance
 
         // Initialize thermodynamics
         state_.param.Vinf = state_.oper.Vinf;
@@ -92,10 +94,21 @@ bool Cppfoil::Solve() {
         // muinf = rho * V * chord / Re
         state_.param.muinf = state_.oper.rho * state_.oper.Vinf *
                              state_.geom.chord / state_.oper.Re;
-        state_.param.mu0 = state_.param.muinf;  // Same for incompressible
+        state_.param.mu0 = state_.param.muinf;
         state_.param.rho0 = state_.oper.rho;
-        state_.param.KTb = 1.0;  // Incompressible
-        state_.param.KTl = 0.0;
+        // Karman-Tsien compressibility correction
+        //   KTb = sqrt(1 - Ma^2),  KTl = Ma^2 / (1 + sqrt(1 - Ma^2))^2
+        // At Ma=0: KTb=1, KTl=0 (no correction). Earlier code hardcoded
+        // KTl=0 unconditionally, killing Ma sensitivity.
+        if (state_.oper.Ma > 0.0) {
+            double b = std::sqrt(1.0 - state_.oper.Ma * state_.oper.Ma);
+            state_.param.KTb = b;
+            state_.param.KTl =
+                (state_.oper.Ma * state_.oper.Ma) / ((1.0 + b) * (1.0 + b));
+        } else {
+            state_.param.KTb = 1.0;
+            state_.param.KTl = 0.0;
+        }
 
         // Viscous solver
         SolveViscous(state_);
@@ -117,5 +130,19 @@ void Cppfoil::GeomAddCamber(const MatrixXd& xzcamb) {
 }
 
 void Cppfoil::GeomDerotate() { cppfoil::GeomDerotate(state_); }
+
+Sensitivity Cppfoil::ComputeSensitivities() {
+    if (state_.oper.viscous && state_.glob.U.cols() > 0) {
+        sensitivity_ = ViscousSensitivities(state_);
+        // Alpha/Mach/Re scalar viscous chains: Phase 5b/5c — deferred.
+        // For inviscid-derivable scalar sensitivities, leave the existing
+        // inviscid helpers' values (zeros if not invoked).
+    } else {
+        sensitivity_ = InviscidSensitivities(state_);
+        AlphaSensitivities(state_, sensitivity_);
+        MachSensitivities(state_, sensitivity_);
+    }
+    return sensitivity_;
+}
 
 }  // namespace cppfoil

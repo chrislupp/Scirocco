@@ -77,6 +77,9 @@ struct WakeResult {
     Vector3d R;      // Residual [th, ds, sa]
     Matrix312d R_U;  // Linearization w.r.t. lower, upper, wake states (3x12)
     std::array<int, 3> J;  // Indices: lower TE, upper TE, first wake
+    // ∂R/∂Ma · Ma, non-zero only when at least one TE side is laminar
+    // (because ctw is then built from GetCttr which is Ma-dependent).
+    Vector3d lin_Ma_times_Ma{Vector3d::Zero()};
 };
 
 // Construct residual system for wake initialization

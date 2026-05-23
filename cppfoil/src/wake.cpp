@@ -41,22 +41,25 @@
 
 namespace cppfoil {
 
+void RecomputeArcLength(FoilState& state) {
+    int N = state.foil.N;
+    state.foil.s(0) = 0.0;
+    for (int i = 1; i < N; ++i) {
+        state.foil.s(i) =
+            state.foil.s(i - 1) +
+            (state.foil.x.col(i) - state.foil.x.col(i - 1)).norm();
+    }
+}
+
 void StagPointFind(FoilState& state) {
     int N = state.foil.N;
     const VectorXd& gam = state.isol.gam;
 
-    // Find first index j where gamma becomes positive (matching mfoil)
-    // Use a tolerance for near-zero values to handle numerical precision
-    // (at the stagnation point, gamma should be exactly zero but numerics give
-    // ~1e-13)
-    constexpr double gam_tol = 1e-10;
-
+    // Find first index j where gamma becomes positive (matching mfoil exactly)
+    // mfoil uses strict > 0 check
     int j = 0;
     for (; j < N; ++j) {
-        // Treat values within tolerance of zero as effectively positive
-        // This handles cases where gamma at stagnation is ~1e-13 due to
-        // numerics
-        if (gam(j) > -gam_tol) break;
+        if (gam(j) > 0) break;
     }
 
     if (j == 0 || j >= N) {
@@ -89,9 +92,8 @@ void StagPointFind(FoilState& state) {
     state.isol.xstag = w1 * state.foil.x.col(i0) + w2 * state.foil.x.col(i1);
 
     // Linearization of sstag w.r.t. adjacent gammas
-    double st_g1 = g1 * (s0 - s1) / (denom * denom);
-    state.isol.sstag_g(0) = st_g1;
-    state.isol.sstag_g(1) = -st_g1;
+    state.isol.sstag_g(0) = g1 * (s0 - s1) / (denom * denom);
+    state.isol.sstag_g(1) = -g0 * (s0 - s1) / (denom * denom);
 
     // Set sign of edge velocity: negative on lower (i < j), positive on upper
     // (i >= j)
@@ -104,12 +106,8 @@ void StagPointFind(FoilState& state) {
         }
     }
 
-    // Linearization of sstag w.r.t. edge velocity (ue)
-    // ga_ue = dgamma/due = sign(gam) for inviscid
-    double ga_ue0 = (std::abs(g0) > 1e-12) ? g0 / std::abs(g0) : 0.0;
-    double ga_ue1 = (std::abs(g1) > 1e-12) ? g1 / std::abs(g1) : 0.0;
-    state.isol.sstag_ue(0) = state.isol.sstag_g(0) * ga_ue0;
-    state.isol.sstag_ue(1) = state.isol.sstag_g(1) * ga_ue1;
+    // NOTE: sstag_ue is NOT computed here (matching mfoil).
+    // It is set later by StagPointMove during viscous iterations.
 
     // Compute xi (distance from stagnation point) for foil points only
     // Wake points will be added after BuildWake is called
@@ -158,13 +156,15 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
     double disc = std::max(b * b - 4.0 * a * c, 0.0);
     double r = 1.0 + (-b + std::sqrt(disc)) / (2.0 * a);
 
-    // Newton iterations
-    for (int k = 0; k < 10; ++k) {
+    // Newton iterations — tighten to 1e-14 so derivatives through the
+    // implicit r* are precise enough for CS validation (loose 1e-6 makes
+    // d(sv[i])/d(ds1) noisy at ~1e-6, breaking the wake chain).
+    for (int k = 0; k < 20; ++k) {
         double rN = std::pow(r, N);
         double R = rN - 1.0 - d * (r - 1.0);
         double R_r = N * std::pow(r, N - 1) - d;
         double dr = -R / R_r;
-        if (std::abs(dr) < 1e-6) break;
+        if (std::abs(dr) < 1e-14) break;
         r += dr;
     }
 
@@ -226,47 +226,35 @@ void BuildWake(FoilState& state) {
     double alpha = state.oper.alpha;
 
     // Generate wake points via predictor-corrector streamline tracing
-    for (int i = 1; i < Nw; ++i) {
-        Vector2d x0 = state.wake.x.col(i - 1);
-        double ds = sv(i) - sv(i - 1);  // Distance to next point
+    // Matching mfoil exactly: loop over i=0..Nw-2, storing tw[:,i]=v1
+    // (predictor velocity at point i) and tw[:,i+1]=v2 (corrector velocity
+    // at predicted point i+1). tw[:,i+1] gets overwritten in the next
+    // iteration except for the last point.
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds = sv(i + 1) - sv(i);
 
-        // Predictor: velocity at current point
-        Vector2d V0 =
-            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x0);
+        // v1 = velocity at current point, normalized
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
+                                       alpha, state.wake.x.col(i));
         double V0mag = V0.norm();
         if (V0mag < 1e-10) V0mag = 1e-10;
-        Vector2d t0 = V0 / V0mag;
+        Vector2d v1 = V0 / V0mag;
+        state.wake.t.col(i) = v1;
 
         // Predictor step
-        Vector2d x1_pred = x0 + ds * t0;
+        Vector2d x_pred = state.wake.x.col(i) + ds * v1;
 
-        // Corrector: velocity at predicted point
-        Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
-                                       alpha, x1_pred);
+        // v2 = velocity at predicted point, normalized
+        Vector2d V1 =
+            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x_pred);
         double V1mag = V1.norm();
         if (V1mag < 1e-10) V1mag = 1e-10;
-        Vector2d t1 = V1 / V1mag;
+        Vector2d v2 = V1 / V1mag;
+        state.wake.t.col(i + 1) = v2;
 
-        // Corrector step (average tangent)
-        Vector2d t_avg = 0.5 * (t0 + t1);
-        double tmag = t_avg.norm();
-        if (tmag < 1e-10) tmag = 1e-10;
-        t_avg /= tmag;
-
-        state.wake.x.col(i) = x0 + ds * t_avg;
-        state.wake.t.col(i - 1) = t_avg;
+        // Corrector step (no renormalization of average, matching mfoil)
+        state.wake.x.col(i + 1) = state.wake.x.col(i) + ds * 0.5 * (v1 + v2);
     }
-
-    // First tangent (same as first computed tangent)
-    {
-        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
-                                       alpha, state.wake.x.col(0));
-        double V0mag = V0.norm();
-        if (V0mag < 1e-10) V0mag = 1e-10;
-        state.wake.t.col(0) = V0 / V0mag;
-    }
-    // Last tangent
-    state.wake.t.col(Nw - 1) = state.wake.t.col(Nw - 2);
 
     // Compute wake inviscid edge velocities
     state.isol.uewi.resize(Nw);

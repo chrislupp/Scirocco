@@ -36,6 +36,10 @@
 
 namespace cppfoil {
 
+// Recompute foil.s (arc-length parametrization) from foil.x as cumulative
+// panel lengths. Call after perturbing foil.x so that foil.s is consistent.
+void RecomputeArcLength(FoilState& state);
+
 // Build wake grid from inviscid solution
 // INPUT:
 //   state : FoilState with inviscid solution

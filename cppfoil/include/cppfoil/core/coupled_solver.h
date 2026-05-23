@@ -60,6 +60,9 @@ void RebuildUeM(FoilState& state);
 // Rebuild inviscid solution after alpha change
 void RebuildIsol(FoilState& state);
 
+// Store SparseLU factorization for adjoint solves (post-convergence)
+void StoreAdjointFactorization(FoilState& state);
+
 }  // namespace cppfoil
 
 #endif  // CPPFOIL_CORE_COUPLED_SOLVER_H

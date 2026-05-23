@@ -121,8 +121,12 @@ ScalarLin4 GetHs(const Vector4d& U, const Param& param) {
             Vector4d Hr_U = (Ho_U - Hk_U) / (Ho - 1.0) -
                             (Ho - Hk) / ((Ho - 1.0) * (Ho - 1.0)) * Ho_U;
 
-            double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr * Hr;
-            Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr * Hr +
+            // Match mfoil's exact FP ordering: Hr**2 is computed as a single
+            // scalar, then the vector is multiplied by it ONCE — not
+            // (vector*Hr)*Hr which has different rounding.
+            double Hr2 = Hr * Hr;
+            double aa = (2.0 - Hsmin - 4.0 / Reb) * Hr2;
+            Vector4d aa_U = (4.0 / (Reb * Reb) * Reb_U) * Hr2 +
                             (2.0 - Hsmin - 4.0 / Reb) * 2.0 * Hr * Hr_U;
 
             Hs = Hsmin + 4.0 / Reb + aa * 1.5 / (Hk + 0.5);
@@ -192,12 +196,40 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param) {
     double th = std::max(U(0), 1e-12);
     double ue = U(3);
 
-    double Ret = param.rho0 * std::abs(ue) * th / param.mu0;
+    if (param.Minf > 0) {
+        auto [M2, M2_U] = GetMach2(U, param);
+        auto [uk, uk_U] = GetUk(ue, param);
+        double H0 = param.H0;
+        double gmi = param.gam - 1.0;
+        double Ts = param.Tsrat;
+        // Temperature ratio
+        double Tr = 1.0 - 0.5 * uk * uk / H0;
+        double Tr_uk = -uk / H0;
+        // Sutherland's law
+        double f = std::pow(Tr, 1.5) * (1.0 + Ts) / (Tr + Ts);
+        double f_Tr = 1.5 * f / Tr - f / (Tr + Ts);
+        double mu = param.mu0 * f;
+        double mu_uk = param.mu0 * f_Tr * Tr_uk;
+        // Isentropic density
+        double den = 1.0 + 0.5 * gmi * M2;
+        double den_M2 = 0.5 * gmi;
+        double rho = param.rho0 * std::pow(den, -1.0 / gmi);
+        Vector4d rho_U = (-1.0 / gmi) * rho / den * den_M2 * M2_U;
+        // Ret
+        double Ret = rho * uk * th / mu;
+        Vector4d Ret_U = rho_U * uk * th / mu;
+        double uk_u = uk_U(3);
+        Vector4d due = Vector4d::Zero();
+        due(3) = uk_u;
+        Ret_U += (rho * th / mu - Ret / mu * mu_uk) * due;
+        Ret_U(0) += rho * uk / mu;
+        return {Ret, Ret_U};
+    }
 
+    double Ret = param.rho0 * ue * th / param.mu0;
     Vector4d Ret_U = Vector4d::Zero();
-    Ret_U(0) = param.rho0 * std::abs(ue) / param.mu0;
-    Ret_U(3) = param.rho0 * th * (ue > 0 ? 1.0 : -1.0) / param.mu0;
-
+    Ret_U(0) = param.rho0 * ue / param.mu0;
+    Ret_U(3) = param.rho0 * th / param.mu0;
     return {Ret, Ret_U};
 }
 
@@ -273,7 +305,7 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar dissipation (used by laminar flow and as floor for turbulent)
-static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
     auto [Hk, Hk_U] = GetHk(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
 
@@ -297,7 +329,7 @@ static ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
 }
 
 // Helper: turbulent wall contribution
-static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
     if (param.wake) return {0.0, Vector4d::Zero()};
 
     auto [cf, cf_U] = GetCf(U, param);
@@ -326,7 +358,7 @@ static ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
 }
 
 // Helper: outer layer contribution (turbulent)
-static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
     if (!param.turb) return {0.0, Vector4d::Zero()};
 
     auto [Hs, Hs_U] = GetHs(U, param);
@@ -345,7 +377,7 @@ static ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar stress contribution (turbulent)
-static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
+ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
     auto [Hs, Hs_U] = GetHs(U, param);
     auto [Us, Us_U] = GetUs(U, param);
     auto [Ret, Ret_U] = GetRet(U, param);
@@ -363,7 +395,7 @@ static ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param) {
 }
 
 // Helper: laminar wake dissipation (matches mfoil get_cDi_lamwake)
-static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
+ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
     // Force laminar mode for sub-function calls
     Param param = paramin;
     param.turb = false;
@@ -374,12 +406,6 @@ static ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
 
     double HsRet = Hs * Ret;
     Vector4d HsRet_U = Hs_U * Ret + Hs * Ret_U;
-
-    // Limit Hk
-    if (Hk < 1.05) {
-        Hk = 1.05;
-        Hk_U.setZero();
-    }
 
     // num = 2*1.1*(1-1/Hk)^2*(1/Hk)
     double Hk_inv = 1.0 / Hk;
@@ -444,16 +470,21 @@ ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
 ScalarLin4 GetCpFromUe(double ue, const Param& param) {
     double Vinf = std::max(param.Vinf, 1e-10);
     double cp = 1.0 - (ue / Vinf) * (ue / Vinf);
+    double dcp_due = -2.0 * ue / (Vinf * Vinf);
 
-    // Karman-Tsien correction
+    // Karman-Tsien correction. Match mfoil's get_cp: compute den from
+    // cp_inc, then update cp to KT-corrected, then chain dcp/due using
+    // (1 - cp_KT * den_cp) / den_inc.
     if (param.KTl > 0) {
-        double denom = param.KTb + param.KTl * (1.0 + param.KTb) * 0.5 * cp;
-        if (std::abs(denom) > 1e-10) {
-            cp = cp / denom;
+        double b = param.KTb;
+        double l = param.KTl;
+        double den = b + 0.5 * l * (1.0 + b) * cp;
+        double den_cp = 0.5 * l * (1.0 + b);
+        if (std::abs(den) > 1e-10) {
+            cp = cp / den;
+            dcp_due *= (1.0 - cp * den_cp) / den;
         }
     }
-
-    double dcp_due = -2.0 * ue / (Vinf * Vinf);
 
     Vector4d cp_U = Vector4d::Zero();
     cp_U(3) = dcp_due;
@@ -462,39 +493,53 @@ ScalarLin4 GetCpFromUe(double ue, const Param& param) {
 }
 
 ScalarLin4 GetUk(double ue, const Param& param) {
-    // Compressible velocity correction (simplified)
-    double uk = ue;
+    if (param.Minf > 0) {
+        double l = param.KTl;
+        double Vinf = param.Vinf;
+        double den = 1.0 - l * (ue / Vinf) * (ue / Vinf);
+        double den_u = -2.0 * l * ue / (Vinf * Vinf);
+        double uk = ue * (1.0 - l) / den;
+        double uk_u = (1.0 - l) / den - (uk / den) * den_u;
+        Vector4d uk_U = Vector4d::Zero();
+        uk_U(3) = uk_u;
+        return {uk, uk_U};
+    }
     Vector4d uk_U = Vector4d::Zero();
     uk_U(3) = 1.0;
-
-    return {uk, uk_U};
+    return {ue, uk_U};
 }
 
 ScalarLin4 GetMach2(const Vector4d& U, const Param& param) {
-    double ue = U(3);
-    double a_inf = param.Vinf / std::max(param.Minf, 1e-10);
-
-    double M2 = (ue / a_inf) * (ue / a_inf);
-
-    Vector4d M2_U = Vector4d::Zero();
-    M2_U(3) = 2.0 * ue / (a_inf * a_inf);
-
-    return {M2, M2_U};
+    if (param.Minf > 0) {
+        double H0 = param.H0;
+        double g = param.gam;
+        auto [uk, uk_U] = GetUk(U(3), param);
+        double c2 = (g - 1.0) * (H0 - 0.5 * uk * uk);
+        double c2_uk = (g - 1.0) * (-uk);
+        double M2 = uk * uk / c2;
+        double M2_uk = 2.0 * uk / c2 - M2 / c2 * c2_uk;
+        Vector4d M2_U = Vector4d::Zero();
+        M2_U(3) = M2_uk * uk_U(3);
+        return {M2, M2_U};
+    }
+    return {0.0, Vector4d::Zero()};
 }
 
 ScalarLin4 GetRho(const Vector4d& U, const Param& param) {
-    // Density from isentropic relations (simplified)
+    // Local density from stagnation density + isentropic relation:
+    //   rho = rho0 / (1 + 0.5·(γ-1)·M²)^(1/(γ-1))
+    // Matches mfoil's get_rho (param.rho0 IS the stagnation density set by
+    // init_thermo as rhoinf·(1+0.5·(γ-1)·Minf²)^(1/(γ-1))).
     double rho = param.rho0;
     Vector4d rho_U = Vector4d::Zero();
 
     if (param.Minf > 0) {
         auto [M2, M2_U] = GetMach2(U, param);
-        double gam = param.gam;
-        double fac = 1.0 + 0.5 * (gam - 1.0) * param.Minf * param.Minf;
-        double fac_local = 1.0 + 0.5 * (gam - 1.0) * M2;
-        rho = param.rho0 * std::pow(fac / fac_local, 1.0 / (gam - 1.0));
-
-        double drho_dM2 = -0.5 * rho / fac_local;
+        double gmi = param.gam - 1.0;
+        double den = 1.0 + 0.5 * gmi * M2;
+        double den_M2 = 0.5 * gmi;
+        rho = param.rho0 * std::pow(den, -1.0 / gmi);
+        double drho_dM2 = (-1.0 / gmi) * rho / den * den_M2;
         rho_U = drho_dM2 * M2_U;
     }
 
@@ -621,13 +666,17 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
         }
     }
 
-    double num = CC * Hs * (Hk - 1.0) * Hkc * Hkc;
-    Vector4d num_U =
-        CC * (Hs_U * (Hk - 1.0) * Hkc * Hkc + Hs * Hk_U * Hkc * Hkc +
-              Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
+    // Match mfoil's exact FP ordering: precompute Hkc**2 and Hk**2 as
+    // single scalars so vector * scalar^2 is one multiplication, not two
+    // sequential vector*scalar steps with different rounding.
+    double Hkc2 = Hkc * Hkc;
+    double Hk2 = Hk * Hk;
+    double num = CC * Hs * (Hk - 1.0) * Hkc2;
+    Vector4d num_U = CC * (Hs_U * (Hk - 1.0) * Hkc2 + Hs * Hk_U * Hkc2 +
+                           Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
 
-    double den = (1.0 - Us) * H * Hk * Hk;
-    Vector4d den_U = (-Us_U) * H * Hk * Hk + (1.0 - Us) * H_U * Hk * Hk +
+    double den = (1.0 - Us) * H * Hk2;
+    Vector4d den_U = (-Us_U) * H * Hk2 + (1.0 - Us) * H_U * Hk2 +
                      (1.0 - Us) * H * 2.0 * Hk * Hk_U;
 
     double cteq = std::sqrt(num / den);
@@ -708,10 +757,15 @@ ScalarLin8 Upwind(double upw, const Vector8d& upw_U, double f1,
                   const Vector4d& f1_U1, double f2, const Vector4d& f2_U2) {
     double f = (1.0 - upw) * f1 + upw * f2;
 
-    Vector8d f_U;
-    f_U.head<4>() = (1.0 - upw) * f1_U1;
-    f_U.tail<4>() = upw * f2_U2;
-    f_U += upw_U * (f2 - f1);
+    // Match mfoil's exact FP ordering:
+    //   f_U = (-upw_U)*f1 + upw_U*f2 + concat((1-upw)*f1_U1, upw*f2_U2)
+    // Refactoring to `upw_U*(f2 - f1)` is mathematically equivalent but
+    // produces different floating-point rounding when f1 ≈ f2 (typical
+    // for upwinded BL closures), which the ForwardRx reference test
+    // detects at the 1e-9 rel level.
+    Vector8d f_U = (-upw_U) * f1 + upw_U * f2;
+    f_U.head<4>() += (1.0 - upw) * f1_U1;
+    f_U.tail<4>() += upw * f2_U2;
 
     return {f, f_U};
 }
@@ -765,7 +819,7 @@ ScalarLin4 GetUs(const Vector4d& U, const Param& param) {
 
     // Limits
     if (!param.wake) {
-        if (Us > 0.98) {
+        if (Us > 0.95) {
             Us = 0.98;
             Us_U.setZero();
         }
@@ -829,10 +883,14 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
         Hkc_U.setZero();
     }
 
-    double ut = 0.5 * cf - (Hkc / (A * Hk)) * (Hkc / (A * Hk));
+    // Match mfoil ordering: compute scalars once (avoid `A*Hk*Hk` left-to-right
+    // which has different FP rounding than `A * (Hk**2)`).
+    double AHk = A * Hk;
+    double Hk2 = Hk * Hk;
+    double AHk2 = A * Hk2;
+    double ut = 0.5 * cf - (Hkc / AHk) * (Hkc / AHk);
     Vector8d ut_U =
-        0.5 * cf_U - 2.0 * (Hkc / (A * Hk)) *
-                         (Hkc_U / (A * Hk) - Hkc / (A * Hk * Hk) * Hk_U_use);
+        0.5 * cf_U - 2.0 * (Hkc / AHk) * (Hkc_U / AHk - Hkc / AHk2 * Hk_U_use);
 
     double ds_safe = std::max(ds, 1e-12);
     double uq = ut / (beta * ds_safe);
