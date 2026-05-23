@@ -2231,6 +2231,16 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
     double ctl, ctu;
     Vector4d ctl_Ul = Vector4d::Zero();
     Vector4d ctu_Uu = Vector4d::Zero();
+    double ctl_dMa = 0.0;
+    double ctu_dMa = 0.0;
+    bool any_lam_TE = !state.vsol.turb[il] || !state.vsol.turb[iu];
+    // GetCttr internally forces wake=false; param has turb=true already.
+    Param p_cttr = param;
+    p_cttr.wake = false;
+    ThermoMaDeriv d_Ma;
+    if (any_lam_TE) {
+        d_Ma = ComputeThermoMaDeriv(p_cttr, p_cttr.Vinf, 0.0);
+    }
 
     if (state.vsol.turb[il]) {
         ctl = Ul(2);
@@ -2239,6 +2249,7 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
         auto [ct, ct_U] = GetCttr(Ul, param);
         ctl = ct;
         ctl_Ul = ct_U;
+        ctl_dMa = GetCttr_dMa(Ul, p_cttr, d_Ma);
     }
 
     if (state.vsol.turb[iu]) {
@@ -2248,6 +2259,7 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
         auto [ct, ct_U] = GetCttr(Uu, param);
         ctu = ct;
         ctu_Uu = ct_U;
+        ctu_dMa = GetCttr_dMa(Uu, p_cttr, d_Ma);
     }
 
     // Theta-weighted average of ctau
@@ -2284,6 +2296,15 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
     result.R_U(0, 8) = 1.0;
     result.R_U(1, 9) = 1.0;
     result.R_U(2, 10) = 1.0;
+
+    // ∂R/∂Ma · Ma. Only R(2) = Uw(2) - ctw has Ma dependence (through ctl/ctu
+    // when the corresponding TE side is laminar). R(0), R(1) are theta/ds
+    // balances with no closure Ma dep.
+    if (any_lam_TE) {
+        double ctw_dMa = (ctl_dMa * Ul(0) + ctu_dMa * Uu(0)) / thsum;
+        double Ma_v = param.Minf;
+        result.lin_Ma_times_Ma(2) = -ctw_dMa * Ma_v;
+    }
 
     return result;
 }

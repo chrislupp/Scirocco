@@ -337,6 +337,7 @@ void BuildGlobSys(FoilState& state) {
             // Store first point system
             int Ig = 3 * Is[i0];
             state.glob.R.segment<3>(Ig) = R1;
+            state.glob.dR_dMa_times_Ma.segment<3>(Ig) += wake.lin_Ma_times_Ma;
             // Add wake state contribution
             for (int k = 0; k < 3; ++k) {
                 for (int c = 0; c < 4; ++c) {
