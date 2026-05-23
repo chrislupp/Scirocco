@@ -635,17 +635,27 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         }
     }
 
-    // ---- B2c: dCsig wake-source-panel chain (non-self-influence) ----------
+    // ---- B2c: dCsig wake-source-panel chain --------------------------------
     //
     // For each wake eval j_eval > 0 and each wake source panel index
     // wp (0..Nw-1, corresponds to Csig column N-1+wp-1 / N-1+wp / N-1+wp+1
-    // depending on the half-panel decomposition; matches CalcUeM line 840-911).
+    // depending on the half-panel decomposition; matches CalcUeM
+    // mfoil.py:1533-1569).
     //
     // Cases:
-    //   self-influence (j_eval == wp): log formulas — TODO, skip for now.
-    //   wp == 0 (first wake panel): half-panel decomp on right side only.
-    //   wp == Nw-1 (last wake panel): const-source full panel.
-    //   interior: left + right half panels.
+    //   self-influence interior (1 ≤ j_eval = wp ≤ Nw-2): log-formula
+    //     contribution implemented below (the standalone block right after
+    //     this comment, guarded by `j_eval >= 1 && j_eval <= Nw - 2`).
+    //   self-influence wp == 0 (TE three-panel system): unreachable — the
+    //     outer loop starts at j_eval = 1, and Dw[0,:] is overridden by
+    //     Bp[N-1,:] for continuity (handled in B1; see lambda_f_eff bump at
+    //     line ~316), so Csig[0,:] never enters the VJP.
+    //   self-influence wp == Nw-1 (ghost-extended last panel): identically
+    //     zero (mfoil.py:1550-1551, "no self effect of last pan").
+    //   non-self wp == 0 (first wake panel): half-panel decomp on right side
+    //     only.
+    //   non-self wp == Nw-1 (last wake panel): const-source full panel.
+    //   non-self interior: left + right half panels.
     //
     // Chain through wake.x (panel coords + midpoint coords) and wake.t (dwt).
     {

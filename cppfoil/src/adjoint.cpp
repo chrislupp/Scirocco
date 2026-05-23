@@ -851,10 +851,19 @@ VectorXd DRVDAlpha(FoilState& state) {
         // panel's endpoints).
         for (int wp = 0; wp < Nw; ++wp) {
             if (wp == jw) {
-                // Self-influence interior: aa = (0.25/kPi)·log(d1/d2) where
-                // d1 = |Xm - Xl|, d2 = |Xr - Xm|, with Xm = wake.x[wp],
-                // Xl = 0.5(wake.x[wp-1]+wake.x[wp]), Xr = 0.5(wake.x[wp]+
-                // wake.x[wp+1]). Csig contributes aa to two phi cols.
+                // Self-influence (eval point on the same wake panel as source).
+                // Three cases per CalcUeM (mfoil.py:1543-1551):
+                //   interior (1 ≤ wp ≤ Nw-2): aa = (0.25/kPi)·log(d1/d2) where
+                //     d1 = |Xm - Xl|, d2 = |Xr - Xm|, with Xm = wake.x[wp],
+                //     Xl = 0.5(wake.x[wp-1]+wake.x[wp]), Xr = 0.5(wake.x[wp]+
+                //     wake.x[wp+1]). Csig contributes aa to two phi cols.
+                //   wp == 0 (TE three-panel system): unreachable here — the
+                //     outer loop starts at jw=1, and wake row 0 of ue_sigma is
+                //     overridden by Bp[N-1,:] for continuity (handled at
+                //     line ~682 via dgam_dalpha), so Csig[0,:] never enters
+                //     the chain.
+                //   wp == Nw-1 (ghost-extended last panel): identically zero
+                //     (mfoil.py:1550-1551, "no self effect").
                 if (wp >= 1 && wp <= Nw - 2) {
                     Vector2d Xl =
                         0.5 * (state.wake.x.col(wp - 1) + state.wake.x.col(wp));
@@ -878,7 +887,7 @@ VectorXd DRVDAlpha(FoilState& state) {
                             daa * (phi(col_prev) + phi(col_curr));
                     }
                 }
-                // wp=0 self (TE special) and wp=Nw-1 self (no effect): TODO.
+                // wp == 0 unreachable (see above); wp == Nw-1 contributes 0.
                 continue;
             }
             // Non-self contributions: build panel velocity derivatives.
