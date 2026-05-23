@@ -34,8 +34,27 @@ make
 ```
 
 Build options:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `CPPFOIL_BUILD_TESTS` | `ON` | Build the default test suite (4 gtest executables — primal + Jacobian unit + end-to-end adjoint vs CS) |
+| `CPPFOIL_BUILD_EXAMPLES` | `ON` | Build example programs |
+| `CPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_chain`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
+| `CPPFOIL_BUILD_PROBES` | `OFF` | Build the 14 standalone `probe_*` diagnostic binaries |
+| `CPPFOIL_COVERAGE` | `OFF` | Instrument library + tests with `-fprofile-instr-generate -fcoverage-mapping` for `llvm-cov` |
+| `CPPFOIL_NATIVE_ARCH` | `ON` | Pass `-march=native` in Release builds |
+
+Example — lean default build:
 ```bash
-cmake -DCPPFOIL_BUILD_TESTS=ON -DCPPFOIL_BUILD_EXAMPLES=ON ..
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+Example — full debug build for sensitivity work:
+```bash
+cmake -B build-debug -DCMAKE_BUILD_TYPE=Release \
+      -DCPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON \
+      -DCPPFOIL_BUILD_PROBES=ON
 ```
 
 ## Usage
@@ -165,14 +184,47 @@ cppfoil/
 
 ## Testing
 
+The default suite (`CPPFOIL_BUILD_TESTS=ON`, all other test flags off) builds four gtest executables that together cover every `src/*.cpp` file:
+
+| Executable | Purpose |
+|---|---|
+| `cppfoil_tests` | Spline, geometry, and the mfoil primal reference suite |
+| `cppfoil_forward_ref_tests` | Forward `R_x` / `R_U` partials vs mfoil |
+| `cppfoil_ping_tests` | Analytic Jacobians vs mfoil-CS references (BL, residuals, BuildGlobSys, WakeSys, forces) |
+| `cppfoil_sensitivity_ref_tests` | End-to-end adjoint `dJ/d{x, α, Ma, Re}` vs complex-step references |
+
+Run it:
 ```bash
-cd build
-ctest
-# or
-./cppfoil_tests
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
 ```
 
-The test suite validates against reference data from mfoil to ensure numerical accuracy.
+Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `CPPFOIL_COVERAGE` below).
+
+### Sensitivity-debug suite (opt-in)
+
+When the end-to-end `sensitivity_ref` tests regress, turn on `CPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON` to build four chain-piece test executables that isolate which link is broken: `cppfoil_sensitivity_tests` (per-panel influence derivs), `cppfoil_viscous_chain_tests` (geometric chain), `cppfoil_viscous_residual_tests` (residual partials), `cppfoil_viscous_output_ping_tests` (force output partials). These exercise the same source files as the end-to-end test, so they don't add coverage — they add diagnostic resolution.
+
+### Probe binaries (opt-in)
+
+`CPPFOIL_BUILD_PROBES=ON` builds 14 standalone `probe_*` diagnostic binaries (no gtest, not part of `ctest`) used for ad-hoc adjoint debugging.
+
+### Coverage measurement
+
+```bash
+cmake -B build-cov -DCMAKE_BUILD_TYPE=Release -DCPPFOIL_COVERAGE=ON
+cmake --build build-cov -j
+cd build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
+xcrun llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
+xcrun llvm-cov report \
+    cppfoil_tests \
+    -object cppfoil_forward_ref_tests \
+    -object cppfoil_sensitivity_ref_tests \
+    -object cppfoil_ping_tests \
+    -instr-profile=cov.profdata \
+    $(ls ../src/*.cpp)
+```
 
 ## Solver Details
 
