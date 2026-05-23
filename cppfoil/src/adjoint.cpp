@@ -760,8 +760,8 @@ VectorXd DRVDAlpha(FoilState& state) {
         Xj_R.col(1) = X_right;
         // Endpoint α-derivs:
         Vector2d dXjL_0 = dwx_col(j);
-        Vector2d dXjL_1 = dXm;
-        Vector2d dXjR_0 = dXm;
+        const Vector2d& dXjL_1 = dXm;
+        const Vector2d& dXjR_0 = dXm;
         Vector2d dXjR_1 = dXr;
         for (int i = 0; i < N; ++i) {
             Vector2d xi = state.foil.x.col(i);
