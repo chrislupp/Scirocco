@@ -50,7 +50,7 @@ jobs:
     - name: Install Dependencies
       run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
 
-    - name: Configure CMake
+    - name: Configure CMake (default suite)
       run: >
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/cppfoil
@@ -64,3 +64,128 @@ jobs:
     - name: Tests
       working-directory: ${{github.workspace}}/build
       run: ctest -C ${{ matrix.build_type }} --output-on-failure
+
+  build-debug-suite:
+    needs: [format]
+    runs-on: ubuntu-24.04
+
+    name: GCC 14 / Release / Sensitivity-Debug Suite
+
+    env:
+      CC: gcc-14
+      CXX: g++-14
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
+
+    - name: Configure CMake (chain-piece debug tests + probes)
+      run: >
+        cmake -B ${{github.workspace}}/build
+        -S ${{github.workspace}}/cppfoil
+        -DCMAKE_BUILD_TYPE=Release
+        -DCPPFOIL_BUILD_TESTS=ON
+        -DCPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON
+        -DCPPFOIL_BUILD_PROBES=ON
+        -DCPPFOIL_NATIVE_ARCH=OFF
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config Release -j$(nproc)
+
+    - name: Tests
+      working-directory: ${{github.workspace}}/build
+      run: ctest --output-on-failure
+
+  coverage:
+    needs: [format]
+    runs-on: ubuntu-24.04
+
+    name: Coverage
+
+    env:
+      CC: clang-18
+      CXX: clang++-18
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18
+
+    - name: Configure CMake
+      run: >
+        cmake -B ${{github.workspace}}/build
+        -S ${{github.workspace}}/cppfoil
+        -DCMAKE_BUILD_TYPE=Release
+        -DCPPFOIL_BUILD_TESTS=ON
+        -DCPPFOIL_COVERAGE=ON
+        -DCPPFOIL_NATIVE_ARCH=OFF
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build -j$(nproc)
+
+    - name: Run Tests
+      working-directory: ${{github.workspace}}/build
+      env:
+        LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
+      run: ctest --output-on-failure
+
+    - name: Generate Coverage Report
+      run: |
+        llvm-profdata-18 merge -sparse ${{github.workspace}}/build/coverage-*.profraw -o coverage.profdata
+        TEST_BINS=$(find ${{github.workspace}}/build -maxdepth 1 -type f -executable -name 'cppfoil_*' | sed '1!s/^/-object /')
+        llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
+          $(find ${{github.workspace}}/cppfoil/src -name '*.cpp')
+        llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
+          -ignore-filename-regex='(_deps|tests/|examples/|/usr/)' > coverage.info
+
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage.info
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  valgrind:
+    needs: [format]
+    runs-on: ubuntu-24.04
+
+    name: Valgrind (memory leak check)
+
+    env:
+      CC: gcc-14
+      CXX: g++-14
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev valgrind
+
+    - name: Configure CMake (Debug, no -march=native)
+      run: >
+        cmake -B ${{github.workspace}}/build
+        -S ${{github.workspace}}/cppfoil
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        -DCPPFOIL_BUILD_TESTS=ON
+        -DCPPFOIL_NATIVE_ARCH=OFF
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build -j$(nproc)
+
+    - name: Run tests under Valgrind
+      working-directory: ${{github.workspace}}/build
+      run: |
+        ctest --output-on-failure \
+              --overwrite MemoryCheckCommand=$(command -v valgrind) \
+              --overwrite MemoryCheckCommandOptions="--leak-check=full --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect --error-exitcode=1 --track-origins=yes" \
+              -T memcheck
+
+    - name: Show Valgrind output on failure
+      if: failure()
+      working-directory: ${{github.workspace}}/build
+      run: |
+        find Testing -name 'MemoryChecker.*.log' -print -exec cat {} \;
