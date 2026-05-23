@@ -6,17 +6,18 @@
     Licensed under the Apache License, Version 2.0 (the "License").
 */
 
+#include <H5Cpp.h>
 #include <gtest/gtest.h>
 
 #include <Eigen/Dense>
 #include <cmath>
+#include <vector>
 
 #include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
-#include "cppfoil/util/math_utils.h"
 
 using namespace cppfoil;
 using namespace Eigen;
@@ -82,7 +83,10 @@ TEST_F(ViscousOutputPingTest, CmVMatchesCmUe) {
     }
 }
 
-TEST_F(ViscousOutputPingTest, CdUMatchesFD) {
+// CS reference: ∂cd/∂Uw at iw computed via mfoil_cs complex-step on
+// calc_force at perturbed glob.U[:, iw]. Reference file:
+// extract_viscous_output_ping_cs.py.
+TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
     auto& s = foil_.GetState();
     int Nsys = static_cast<int>(s.glob.U.cols());
 
@@ -90,28 +94,22 @@ TEST_F(ViscousOutputPingTest, CdUMatchesFD) {
     ASSERT_FALSE(s.vsol.Is[2].empty());
     int iw = s.vsol.Is[2].back();
 
-    // Reference cd from current state
-    double cd0 = s.post.cd;
+    // Load CS reference
+    H5::H5File file(VISCOUS_OUTPUT_PING_REFERENCE_FILE, H5F_ACC_RDONLY);
+    int iw_ref = 0;
+    file.openDataSet("iw").read(&iw_ref, H5::PredType::NATIVE_INT);
+    ASSERT_EQ(iw, iw_ref);
+    std::vector<double> cd_U_cs(4);
+    file.openDataSet("cd_U").read(cd_U_cs.data(), H5::PredType::NATIVE_DOUBLE);
 
-    // Forward-difference each Uw[k] and compare to cd_U[k].
-    // Squire-Young is smooth and well-conditioned; h=1e-6 gives ~1e-7 FD noise.
-    const double h = 1e-6;
-    Vector4d cd_U_fd;
-    for (int k = 0; k < 4; ++k) {
-        FoilState s_perturbed = s;
-        s_perturbed.glob.U(k, iw) += h;
-        CalcForce(s_perturbed);
-        cd_U_fd(k) = (s_perturbed.post.cd - cd0) / h;
-    }
-
-    // Hybrid tolerance: rel 1e-5, abs 1e-9 (FD noise floor).
+    // Compare analytic to mfoil-CS at machine precision.
     for (int k = 0; k < 4; ++k) {
         double got = s.post.cd_U(k);
-        double ref = cd_U_fd(k);
+        double ref = cd_U_cs[k];
         double err = std::abs(got - ref);
-        double tol = 1e-5 * std::abs(ref) + 1e-9;
+        double tol = 1e-9 * std::abs(ref) + 1e-12;
         EXPECT_LE(err, tol)
-            << "cd_U[" << k << "]: got=" << got << " fd=" << ref
+            << "cd_U[" << k << "]: got=" << got << " cs=" << ref
             << " abs=" << err;
     }
 
@@ -144,80 +142,41 @@ TEST_F(ViscousOutputPingTest, DcdDxPartialIsZero) {
 // alpha, recomputes the global system, takes (R(α+h) - R(α-h))/(2h) and
 // compares to analytic DRVDAlpha. Central FD at h=1e-6 → noise ~1e-12.
 // ============================================================================
-TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesFD) {
+// CS reference: ∂R_V/∂alpha at fixed glob.U via mfoil_cs complex-step.
+// Reference matches cppfoil's ue-based convention (StagPointMove with
+// fixed glob.U[3]).
+TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesCS) {
     auto& s = foil_.GetState();
     int Nsys = s.glob.Nsys;
 
-    // Analytical
     VectorXd dR_analytic = DRVDAlpha(s);
 
-    // DRVDAlpha is itself a 4th-order central FD over a full geometry
-    // rebuild (gam, wake.x, wake.t, ue_sigma) at perturbed alpha at fixed U.
-    // To validate, compute the same R_V FD with a 2nd-order central FD via
-    // BuildWake/CalcUeM/BuildGlobSys pipeline and compare.
-    auto full_eval_RV = [&](double alpha) -> VectorXd {
-        FoilState sp = s;
-        sp.oper.alpha = alpha;
-        RebuildIsol(sp);
-        BuildWake(sp);
-        // Production uses ue-based xi (StagPointMove with fixed glob.U).
-        // StagPointFind would use gamma-based weights and produce a
-        // gamma-chain that DRVDAlpha doesn't include, so use StagPointMove
-        // to match the partial-at-fixed-U convention.
-        StagPointMove(sp);
-        ExtendXiToWake(sp);
-        IdentifySurfaces(sp);
-        SetWakeGap(sp);
-        CalcUeM(sp);
-        sp.glob.realloc = true;
-        BuildGlobSys(sp);
-        // Assemble R_V (R_BL || R_ue) at fixed U.
-        VectorXd R = VectorXd::Zero(4 * Nsys);
-        R.head(3 * Nsys) = sp.glob.R;
-        VectorXd mass(Nsys);
-        int N = sp.foil.N;
-        for (int j = 0; j < Nsys; ++j)
-            mass(j) = sp.glob.U(1, j) * sp.glob.U(3, j);
-        VectorXd src = sp.vsol.ue_m * mass;
-        for (int i = 0; i < Nsys; ++i) {
-            double ueinv_i;
-            if (i < N) ueinv_i = sp.isol.sgnue(i) * sp.isol.gam(i);
-            else if (i - N == 0)
-                ueinv_i = sp.isol.sgnue(N - 1) * sp.isol.gam(N - 1);
-            else
-                ueinv_i = sp.isol.uewi(i - N);
-            R(3 * Nsys + i) = sp.glob.U(3, i) - ueinv_i - src(i);
-        }
-        return R;
-    };
-    double alpha0 = s.oper.alpha;
-    double h = 1e-5;
-    VectorXd Rp = full_eval_RV(alpha0 + h);
-    VectorXd Rm = full_eval_RV(alpha0 - h);
-    VectorXd dR_fd = (Rp - Rm) / (2.0 * h);
+    H5::H5File file(VISCOUS_OUTPUT_PING_REFERENCE_FILE, H5F_ACC_RDONLY);
+    int Nsys_ref = 0;
+    file.openDataSet("Nsys").read(&Nsys_ref, H5::PredType::NATIVE_INT);
+    ASSERT_EQ(Nsys, Nsys_ref);
+    std::vector<double> dRV_dalpha_cs(4 * Nsys);
+    file.openDataSet("dRV_dalpha")
+        .read(dRV_dalpha_cs.data(), H5::PredType::NATIVE_DOUBLE);
+    VectorXd dR_cs = Eigen::Map<VectorXd>(dRV_dalpha_cs.data(), 4 * Nsys);
 
-    double max_err = (dR_analytic - dR_fd).cwiseAbs().maxCoeff();
-    int worst_i;
-    (dR_analytic - dR_fd).cwiseAbs().maxCoeff(&worst_i);
-    std::cout << "DRVDAlpha: max abs vs 2nd-order FD = " << max_err
+    double max_abs = (dR_analytic - dR_cs).cwiseAbs().maxCoeff();
+    int worst_i = 0;
+    (dR_analytic - dR_cs).cwiseAbs().maxCoeff(&worst_i);
+    std::cout << "DRVDAlpha: max abs vs CS = " << max_abs
               << " at row " << worst_i
               << " (analytic=" << dR_analytic(worst_i)
-              << " fd=" << dR_fd(worst_i) << ")" << std::endl;
-    // Compute worst rel for entries with |value| > 1e-3.
+              << " cs=" << dR_cs(worst_i) << ")" << std::endl;
     double max_rel = 0;
     for (int i = 0; i < 4 * Nsys; ++i) {
-        double mag = std::max(std::abs(dR_analytic(i)), std::abs(dR_fd(i)));
-        if (mag < 1e-3) continue;
-        double rel = std::abs(dR_analytic(i) - dR_fd(i)) / mag;
+        double mag = std::max(std::abs(dR_analytic(i)), std::abs(dR_cs(i)));
+        if (mag < 1e-6) continue;
+        double rel = std::abs(dR_analytic(i) - dR_cs(i)) / mag;
         if (rel > max_rel) max_rel = rel;
     }
-    std::cout << "DRVDAlpha: max rel (|val|>1e-3) = " << max_rel << std::endl;
-    // DRVDAlpha is 4th-order; the test FD here is 2nd-order. At the stagnation
-    // rows (~row 3·Istag) the BL residual has very large R''' so 2nd-order
-    // truncation at h=1e-5 gives ~1e-3 abs noise. This is FD truncation,
-    // not a chain bug. Validation at machine-precision rigour happens against
-    // the mfoil_cs CS reference in Phase 7 (ViscousAlphaSensitivity).
-    EXPECT_LE(max_rel, 1e-3);
+    std::cout << "DRVDAlpha: max rel (|val|>1e-6) = " << max_rel << std::endl;
+    EXPECT_LE(max_abs, 1e-9);
+    EXPECT_LE(max_rel, 1e-9);
 }
 
 // ============================================================================

@@ -173,12 +173,16 @@ if(CPPFOIL_BUILD_TESTS)
         target_link_libraries(cppfoil_sensitivity_tests cppfoil GTest::gtest_main)
         gtest_discover_tests(cppfoil_sensitivity_tests)
 
-        # Phase 3 viscous output partials ping test (no HDF5 needed)
-        add_executable(cppfoil_viscous_output_ping_tests
-            tests/viscous_output_ping_test.cpp)
-        target_link_libraries(cppfoil_viscous_output_ping_tests
-            cppfoil GTest::gtest_main)
-        gtest_discover_tests(cppfoil_viscous_output_ping_tests)
+        # Phase 3 viscous output partials test (uses mfoil_cs CS reference)
+        if(hdf5_FOUND)
+            add_executable(cppfoil_viscous_output_ping_tests
+                tests/viscous_output_ping_test.cpp)
+            target_link_libraries(cppfoil_viscous_output_ping_tests
+                cppfoil GTest::gtest_main hdf5_cpp-shared)
+            target_compile_definitions(cppfoil_viscous_output_ping_tests PRIVATE
+                VISCOUS_OUTPUT_PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/viscous_output_ping_reference.h5")
+            gtest_discover_tests(cppfoil_viscous_output_ping_tests)
+        endif()
     endif()
 endif()
 
