@@ -701,7 +701,7 @@ double GetCteq_dRet(const Vector4d& U, const Param& param) {
 
 // ∂uq/∂Ret_arg at fixed (ds, cf, Hk). GetUq's direct Ret argument enters
 // only via Hkc = Hk - 1 - C/Ret (foil non-wake) and the C/Ret²·Ret_U term.
-double GetUq_dRet_arg(double cf, double Hk, double Ret, double ds,
+double GetUq_dRet_arg(double /*cf*/, double Hk, double Ret, double ds,
                       const Param& param) {
     double beta = param.GB;
     double A = param.GA;

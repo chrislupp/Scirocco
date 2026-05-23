@@ -48,98 +48,6 @@
 namespace cppfoil {
 
 // ============================================================================
-// TE geometry derivatives: d(tcp)/d(x[k]) and d(tdp)/d(x[k])
-// tcp and tdp depend on nodes 0, 1, N-2, N-1 through:
-//   t1 = normalize(x[0] - x[1]), t2 = normalize(x[N-1] - x[N-2])
-//   t = normalize(0.5*(t1+t2))
-//   s = x[N-1] - x[0], p = s/|s|
-//   tcp = |t × p|, tdp = t · p
-//
-// Returns d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) for a given node k and dim.
-// Only nonzero for k ∈ {0, 1, N-2, N-1}.
-// ============================================================================
-static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
-                           double& dtdp) {
-    int N = static_cast<int>(x.cols());
-    dtcp = 0.0;
-    dtdp = 0.0;
-
-    // Only nodes 0, 1, N-2, N-1 affect tcp/tdp
-    if (k != 0 && k != 1 && k != N - 2 && k != N - 1) return;
-
-    // --- Forward computation (mirrors GetTEInfo) ---
-    Vector2d v1 = x.col(0) - x.col(1);
-    Vector2d v2 = x.col(N - 1) - x.col(N - 2);
-    double v1n = v1.norm();
-    double v2n = v2.norm();
-    if (v1n < 1e-10 || v2n < 1e-10) return;
-
-    Vector2d t1 = v1 / v1n;
-    Vector2d t2 = v2 / v2n;
-
-    Vector2d t_raw = 0.5 * (t1 + t2);
-    double tn = t_raw.norm();
-    if (tn < 1e-10) return;
-    Vector2d t = t_raw / tn;
-
-    Vector2d s = x.col(N - 1) - x.col(0);
-    double sn = s.norm();
-    if (sn < 1e-10) return;
-    Vector2d p = s / sn;
-
-    double cross = t(0) * p(1) - t(1) * p(0);
-    double tcp_val = std::abs(cross);
-    double sign_cross = (cross >= 0) ? 1.0 : -1.0;
-    // double tdp_val = t.dot(p);
-
-    // --- d(t1)/d(x[k]_dim) ---
-    // t1 = v1/|v1|, v1 = x[0]-x[1]
-    // d(v1)/d(x[0]_dim) = e_dim, d(v1)/d(x[1]_dim) = -e_dim
-    // d(t1)/d(v1) = (I - t1*t1^T)/|v1|
-    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
-    Vector2d dv1(0, 0);
-    if (k == 0)
-        dv1(dim) = 1.0;
-    else if (k == 1)
-        dv1(dim) = -1.0;
-    Vector2d dt1 = dt1_dv1 * dv1;  // d(t1)/d(x[k]_dim)
-
-    // --- d(t2)/d(x[k]_dim) ---
-    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
-    Vector2d dv2(0, 0);
-    if (k == N - 1)
-        dv2(dim) = 1.0;
-    else if (k == N - 2)
-        dv2(dim) = -1.0;
-    Vector2d dt2 = dt2_dv2 * dv2;
-
-    // --- d(t)/d(x[k]_dim) ---
-    // t = normalize(0.5*(t1+t2))
-    Vector2d dt_raw = 0.5 * (dt1 + dt2);
-    Matrix2d dt_dtraw = (Matrix2d::Identity() - t * t.transpose()) / tn;
-    Vector2d dt = dt_dtraw * dt_raw;
-
-    // --- d(p)/d(x[k]_dim) ---
-    // p = s/|s|, s = x[N-1]-x[0]
-    Vector2d ds(0, 0);
-    if (k == N - 1)
-        ds(dim) = 1.0;
-    else if (k == 0)
-        ds(dim) = -1.0;
-    Matrix2d dp_ds = (Matrix2d::Identity() - p * p.transpose()) / sn;
-    Vector2d dp = dp_ds * ds;
-
-    // --- d(tcp)/d(x[k]_dim) ---
-    // tcp = |cross| where cross = t(0)*p(1) - t(1)*p(0)
-    double dcross = dt(0) * p(1) + t(0) * dp(1) - dt(1) * p(0) - t(1) * dp(0);
-    dtcp = sign_cross * dcross;
-
-    // --- d(tdp)/d(x[k]_dim) ---
-    // tdp = t·p
-    dtdp = dt.dot(p) + t.dot(dp);
-}
-
-// ============================================================================
 // CalcForceLin: compute partial derivatives of cl, cm, cdpi w.r.t. foil.x
 // holding ue (gamma) fixed. Also computes cm_ue and cdpi_ue linearizations.
 // ============================================================================
@@ -666,7 +574,7 @@ Sensitivity ViscousSensitivities(FoilState& state) {
             Vector2d xref = state.geom.xref;
             VectorXd ue = state.glob.U.row(3).head(N).transpose();
 
-            double dcl = 0, dcm = 0, dcdpi = 0;
+            double dcl = 0, dcm = 0;
             for (int i0 = 1; i0 <= N; ++i0) {
                 int i = (i0 == N) ? 0 : i0;
                 int ip = (i0 == N) ? N - 1 : i0 - 1;
@@ -676,13 +584,11 @@ Sensitivity ViscousSensitivities(FoilState& state) {
                 Vector2d dx1 = x1 - xref;
                 Vector2d dx2 = x2 - xref;
                 double dx_lift = -dxv(0) * cosa - dxv(1) * sina;
-                double dz = dxv(1) * cosa - dxv(0) * sina;
                 double dcp_ip, d2cp_ip, dcp_i, d2cp_i;
                 ComputeCpDerivsMa(ue(ip), state.param, Ma, dcp_ip, d2cp_ip);
                 ComputeCpDerivsMa(ue(i), state.param, Ma, dcp_i, d2cp_i);
                 double dcpbar = 0.5 * (dcp_ip + dcp_i);
                 dcl += dx_lift * dcpbar;
-                dcdpi += dz * dcpbar;
                 double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
                 double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
                 dcm += dcp_ip / 3.0 * dx1nds + dcp_ip / 6.0 * dx2nds +
@@ -735,101 +641,6 @@ Sensitivity ViscousSensitivities(FoilState& state) {
 
     return sens;
 }
-
-// ============================================================================
-// EvaluateRV — assemble R_V at the current state (U fixed, BL closures
-// re-evaluated). Used by the ∂R_V/∂p chain functions below.
-// ============================================================================
-static VectorXd EvaluateRV(FoilState& state) {
-    int N = state.foil.N;
-    int Nsys = state.glob.Nsys;
-    BuildGlobSys(state);
-    VectorXd R = VectorXd::Zero(4 * Nsys);
-    R.head(3 * Nsys) = state.glob.R;
-    VectorXd mass(Nsys);
-    for (int j = 0; j < Nsys; ++j) {
-        mass(j) = state.glob.U(1, j) * state.glob.U(3, j);
-    }
-    VectorXd src = state.vsol.ue_m * mass;
-    for (int i = 0; i < Nsys; ++i) {
-        double ueinv_i;
-        if (i < N) {
-            ueinv_i = state.isol.sgnue(i) * state.isol.gam(i);
-        } else if (i - N == 0) {
-            ueinv_i = state.isol.sgnue(N - 1) * state.isol.gam(N - 1);
-        } else {
-            ueinv_i = state.isol.uewi(i - N);
-        }
-        R(3 * Nsys + i) = state.glob.U(3, i) - ueinv_i - src(i);
-    }
-    return R;
-}
-
-// 4th-order central FD: df/dx ≈ (-f(+2h) + 8f(+h) - 8f(-h) + f(-2h)) / (12h).
-// Truncation O(h^4), so optimal h is larger than 2nd-order central — pushes
-// cancellation noise below truncation. With ε_R ~ machine eps (we recompute
-// R analytically without re-solving Newton), 4th order at h~|p|·1e-2 gives
-// ~1e-12 abs precision in ∂R/∂p.
-template <typename EvalR>
-static VectorXd CentralFD4(double x0, double h, EvalR&& eval) {
-    VectorXd Rp2 = eval(x0 + 2 * h);
-    VectorXd Rp1 = eval(x0 + h);
-    VectorXd Rm1 = eval(x0 - h);
-    VectorXd Rm2 = eval(x0 - 2 * h);
-    return (-Rp2 + 8.0 * Rp1 - 8.0 * Rm1 + Rm2) / (12.0 * h);
-}
-
-// ============================================================================
-// ∂R_V/∂p at FIXED U — 4th-order central FD on the parameter p, with all
-// p-dependent geometry/closure quantities recomputed analytically (no Newton
-// re-solve, U held fixed). This is THE adjoint partial derivative needed in
-// dJ/dp = ∂J/∂p - λ^T · ∂R_V/∂p.
-//
-// Cost: 4 evaluations per parameter, each running the geometry pipeline at
-// the perturbed parameter value (BuildWake/CalcUeM/StagPointFind etc. for
-// alpha; InitThermo for Ma; mu0 update for Re) and rebuilding R_V from U.
-// ============================================================================
-namespace {
-
-// Save / restore the subset of state that gets rebuilt during parameter
-// perturbation. We deep-copy the affected fields; original chord/foil/U
-// are untouched.
-struct ParamPerturbBackup {
-    Param param;
-    Oper oper;
-    Panel wake;
-    Isol isol;
-    Vsol vsol;
-    Glob glob;
-};
-
-static ParamPerturbBackup SaveStateForPerturb(const FoilState& state) {
-    ParamPerturbBackup b;
-    b.param = state.param;
-    b.oper = state.oper;
-    b.wake = state.wake;
-    b.isol = state.isol;
-    b.vsol = state.vsol;
-    b.glob = state.glob;
-    return b;
-}
-
-static void RestoreStateForPerturb(FoilState& state,
-                                   const ParamPerturbBackup& b) {
-    state.param = b.param;
-    state.oper = b.oper;
-    state.wake = b.wake;
-    state.isol = b.isol;
-    state.vsol = b.vsol;
-    state.glob = b.glob;
-}
-
-// Evaluate R_V at the current (possibly perturbed) state, holding U fixed.
-// State must be "primed" — i.e. gam, wake.*, ue_sigma, xi, wgap recomputed
-// at the perturbed parameter. BuildGlobSys is called here.
-static VectorXd EvaluateRVFixedU(FoilState& state) { return EvaluateRV(state); }
-
-}  // namespace
 
 VectorXd DRVDAlpha(FoilState& state) {
     // Analytic forward-mode chain for ∂R_V/∂α (NO FD).

@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
+if(POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif()
+
 project(cppfoil VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -64,6 +68,9 @@ if(CPPFOIL_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
     find_package(hdf5 CONFIG QUIET)
+    if(GTest_FOUND)
+        include(GoogleTest)
+    endif()
     if(GTest_FOUND AND hdf5_FOUND)
         message(STATUS "Found HDF5: ${hdf5_VERSION}")
 
