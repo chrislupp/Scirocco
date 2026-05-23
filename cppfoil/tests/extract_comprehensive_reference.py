@@ -259,9 +259,14 @@ def compute_mfoil_lambda(M):
     lambda_cl = sparse.linalg.spsolve(R_V.T, dcl_dV)
     lambda_cd = sparse.linalg.spsolve(R_V.T, dcd_dV)
 
+    # Also return the assembled R_V (dense) so cppfoil can diff entries.
+    # Trim alpha row/col if present.
+    R_V_dense = R_V.toarray()[:4 * Nsys, :4 * Nsys]
+
     return {
         'lambda_cl': lambda_cl[:4 * Nsys],  # trim docl row if present
         'lambda_cd': lambda_cd[:4 * Nsys],
+        'R_V': R_V_dense,
     }
 
 
@@ -388,6 +393,9 @@ def main():
         if have_lambda:
             g.create_dataset('lambda_cl', data=lambdas['lambda_cl'])
             g.create_dataset('lambda_cd', data=lambdas['lambda_cd'])
+            # Dense R_V matrix for cppfoil-vs-mfoil entry-by-entry comparison.
+            # 4*Nsys x 4*Nsys, ~ 488^2 * 8 bytes = 1.9 MB; fine to store.
+            g.create_dataset('R_V', data=lambdas['R_V'])
 
     elapsed = time.time() - t0
     print(f"Done in {elapsed:.1f}s.")

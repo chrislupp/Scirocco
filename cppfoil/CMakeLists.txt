@@ -118,6 +118,12 @@ if(CPPFOIL_BUILD_TESTS)
 
         add_executable(probe_lambda_cs tests/probe_lambda_cs.cpp)
         target_link_libraries(probe_lambda_cs cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_rv_compare tests/probe_rv_compare.cpp)
+        target_link_libraries(probe_rv_compare cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_sstag_ue tests/probe_sstag_ue.cpp)
+        target_link_libraries(probe_sstag_ue cppfoil hdf5_cpp-shared)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

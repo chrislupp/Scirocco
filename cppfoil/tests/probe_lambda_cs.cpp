@@ -64,10 +64,21 @@ int main() {
     CalcForce(s);
     CalcForceLin(s);
 
-    // Override U/wgap to match HDF5 (the residual_deriv_test pattern), then
-    // re-build R_V and factor.
+    // Override U/wgap to match HDF5. CRITICAL: also refresh sstag_ue from
+    // the override U's ue values, otherwise the xi-stag chain in R_U uses
+    // stale sstag_ue from cppfoil's own Newton convergence (which lives at
+    // a different state than U_ref) and R_V differs from mfoil's at ~1e-5.
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
+    {
+        int I0 = s.isol.Istag[0], I1 = s.isol.Istag[1];
+        double ue0 = s.glob.U(3, I0), ue1 = s.glob.U(3, I1);
+        double S0 = s.foil.s(I0), S1 = s.foil.s(I1);
+        double den = ue0 + ue1;
+        s.isol.sstag_ue.resize(2);
+        s.isol.sstag_ue(0) = ue1 * (S1 - S0) / (den * den);
+        s.isol.sstag_ue(1) = -ue0 * (S1 - S0) / (den * den);
+    }
     s.glob.realloc = true;
     BuildGlobSys(s);
     StoreAdjointFactorization(s);
