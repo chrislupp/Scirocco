@@ -127,6 +127,12 @@ if(CPPFOIL_BUILD_TESTS)
 
         add_executable(probe_rv_decompose tests/probe_rv_decompose.cpp)
         target_link_libraries(probe_rv_decompose cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_drv_dre tests/probe_drv_dre.cpp)
+        target_link_libraries(probe_drv_dre cppfoil)
+
+        add_executable(probe_drv_dma tests/probe_drv_dma.cpp)
+        target_link_libraries(probe_drv_dma cppfoil)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

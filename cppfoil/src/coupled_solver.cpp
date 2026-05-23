@@ -198,11 +198,16 @@ void BuildGlobSys(FoilState& state) {
     }
 
     state.glob.R.setZero();
-    // Allocate/zero the ∂R/∂Re·Re accumulator (BL rows only).
+    // Allocate/zero the ∂R/∂Re·Re and ∂R/∂Ma·Ma accumulators (BL rows only).
     if (state.glob.dR_dRe_times_Re.size() != 3 * Nsys) {
         state.glob.dR_dRe_times_Re = VectorXd::Zero(3 * Nsys);
     } else {
         state.glob.dR_dRe_times_Re.setZero();
+    }
+    if (state.glob.dR_dMa_times_Ma.size() != 3 * Nsys) {
+        state.glob.dR_dMa_times_Ma = VectorXd::Zero(3 * Nsys);
+    } else {
+        state.glob.dR_dMa_times_Ma.setZero();
     }
 
     // Build using triplets for sparse matrix
@@ -271,6 +276,7 @@ void BuildGlobSys(FoilState& state) {
             // (Ust, Ust) inputs where Ret_1=Ret_2=Ret_m=Ret(Ust), so it
             // already represents the total Ret-derivative · Ret_Ust.
             state.glob.dR_dRe_times_Re.segment<3>(3 * Is[i0]) += res.lin_Ret;
+            state.glob.dR_dMa_times_Ma.segment<3>(3 * Is[i0]) += res.lin_Ma;
 
             // Chain rule: R1_U = R1_Ut * [Ust_U]
             // R1_Ust is 3x4: sum of both 3x4 blocks from res.lin_U
@@ -403,6 +409,7 @@ void BuildGlobSys(FoilState& state) {
             int Ig = 3 * Is[i];
             state.glob.R.segment<3>(Ig) += res.value;
             state.glob.dR_dRe_times_Re.segment<3>(Ig) += res.lin_Ret;
+            state.glob.dR_dMa_times_Ma.segment<3>(Ig) += res.lin_Ma;
 
             // Store Jacobian entries
             for (int k = 0; k < 3; ++k) {

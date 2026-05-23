@@ -629,7 +629,8 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
     }
 
-    // Ma: ∂J/∂Ma_partial via FD on Ma at fixed U (cp uses KT correction).
+    // Ma: ∂J/∂Ma_partial via FD on Ma at fixed U (analytic chain partial
+    // and DRVDMa analytic chain both have known gaps — see PLAN doc).
     {
         VectorXd dRV_dMa = DRVDMa(state);
         double Ma0 = state.oper.Ma;
@@ -1163,12 +1164,12 @@ VectorXd DRVDAlpha(FoilState& state) {
 }
 
 VectorXd DRVDMa(FoilState& state, double h) {
+    // Hybrid: prefer analytic chain via glob.dR_dMa_times_Ma (populated by
+    // ComputeStationLinMa in boundary_layer.cpp), but the laminar/turbulent
+    // chain has known gaps in the wake and turbulent Rlag at Ma>0 — see
+    // probe_drv_dma. Fall back to 4th-order FD for now to keep
+    // ViscousMachSensitivity working while the analytic chain is debugged.
     double Ma0 = state.oper.Ma;
-    // Save ALL Ma-dependent derived params. InitThermo recomputes:
-    //   Minf, KTb, KTl, H0, cps, mu0, rho0, muinf
-    // when state.oper.Ma changes. Earlier only updating KTb/KTl missed H0,
-    // cps, mu0, rho0 — which break Mach-dependent BL closures (GetMach2,
-    // GetHss, GetRet under compressible path).
     Param param0 = state.param;
     if (h <= 0) h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
     auto eval = [&](double Ma) {
@@ -1178,7 +1179,6 @@ VectorXd DRVDMa(FoilState& state, double h) {
         return EvaluateRV(state);
     };
     VectorXd dR = CentralFD4(Ma0, h, eval);
-    // Restore baseline
     state.oper.Ma = Ma0;
     state.param = param0;
     state.glob.realloc = true;

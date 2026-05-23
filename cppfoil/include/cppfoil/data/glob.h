@@ -53,6 +53,11 @@ struct Glob {
     // Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re / Re.
     // Size 3*Nsys (BL rows); ue-equation rows (3*Nsys..4*Nsys) are Re-indep.
     VectorXd dR_dRe_times_Re;
+    // ∂R_BL/∂Ma·Ma for the analytic Ma chain (accumulated from each station's
+    // ResidualLin.lin_Ma). Ma enters R via KTb/KTl/H0/cps/mu0/rho0 and Minf,
+    // and pre-multiplying by Ma here keeps the BuildGlobSys aggregation
+    // uniform: ∂R/∂Ma = dR_dMa_times_Ma / Ma. Size 3*Nsys (BL rows).
+    VectorXd dR_dMa_times_Ma;
     bool realloc = false;  // If true, system Jacobians will be reallocated
 
     // Stored SparseLU factorization of R_V for adjoint solves
