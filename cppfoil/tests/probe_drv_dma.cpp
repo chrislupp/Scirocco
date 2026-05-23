@@ -17,7 +17,10 @@ int main() {
     s.param.verb = 0;
     SolveViscous(s);
     int Nsys = s.glob.Nsys;
-    VectorXd dR_an = DRVDMa(s);
+    // Force analytic (not the FD-fallback DRVDMa)
+    BuildGlobSys(s);
+    VectorXd dR_an = VectorXd::Zero(4 * Nsys);
+    dR_an.head(3 * Nsys) = s.glob.dR_dMa_times_Ma / s.oper.Ma;
     double Ma0 = s.oper.Ma;
     double h = std::abs(Ma0) * 1e-2;
     auto eval_RBL = [&](double Ma) {
