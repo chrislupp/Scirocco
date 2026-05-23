@@ -71,13 +71,8 @@ int main() {
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     {
-        int I0 = s.isol.Istag[0], I1 = s.isol.Istag[1];
-        double ue0 = s.glob.U(3, I0), ue1 = s.glob.U(3, I1);
-        double S0 = s.foil.s(I0), S1 = s.foil.s(I1);
-        double den = ue0 + ue1;
-        s.isol.sstag_ue.resize(2);
-        s.isol.sstag_ue(0) = ue1 * (S1 - S0) / (den * den);
-        s.isol.sstag_ue(1) = -ue0 * (S1 - S0) / (den * den);
+        VectorXd sstag_ue_ref = readVector(f, "comprehensive/sstag_ue");
+        s.isol.sstag_ue = sstag_ue_ref;
     }
     s.glob.realloc = true;
     BuildGlobSys(s);

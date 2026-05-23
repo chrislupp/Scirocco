@@ -64,20 +64,17 @@ int main() {
     CalcForce(s);
     CalcForceLin(s);
 
-    // Override U/wgap to match HDF5. CRITICAL: also refresh sstag_ue from
-    // the override U's ue values, otherwise the xi-stag chain in R_U uses
-    // stale sstag_ue from cppfoil's own Newton convergence (which lives at
-    // a different state than U_ref) and R_V differs from mfoil's at ~1e-5.
+    // Override U/wgap to match HDF5. ALSO load mfoil's sstag_ue from HDF5
+    // (not recomputed locally): mfoil's reference uses sstag_ue computed at
+    // spline foil.s during the initial Newton solve, NOT the post-recompute_geom
+    // cumulative foil.s. Recomputing locally with cumulative foil.s gives a
+    // value off by ~1e-5 rel, which propagates through the xi-stag-chain
+    // augmentation as a ~0.1 abs error in R_V[Istag rows, ue-Istag cols].
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     {
-        int I0 = s.isol.Istag[0], I1 = s.isol.Istag[1];
-        double ue0 = s.glob.U(3, I0), ue1 = s.glob.U(3, I1);
-        double S0 = s.foil.s(I0), S1 = s.foil.s(I1);
-        double den = ue0 + ue1;
-        s.isol.sstag_ue.resize(2);
-        s.isol.sstag_ue(0) = ue1 * (S1 - S0) / (den * den);
-        s.isol.sstag_ue(1) = -ue0 * (S1 - S0) / (den * den);
+        VectorXd sstag_ue_ref = readVector(f, "comprehensive/sstag_ue");
+        s.isol.sstag_ue = sstag_ue_ref;
     }
     s.glob.realloc = true;
     BuildGlobSys(s);

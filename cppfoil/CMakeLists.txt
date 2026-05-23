@@ -124,6 +124,9 @@ if(CPPFOIL_BUILD_TESTS)
 
         add_executable(probe_sstag_ue tests/probe_sstag_ue.cpp)
         target_link_libraries(probe_sstag_ue cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_rv_decompose tests/probe_rv_decompose.cpp)
+        target_link_libraries(probe_rv_decompose cppfoil hdf5_cpp-shared)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

@@ -103,19 +103,21 @@ void SolveViscous(FoilState& state) {
     SolveCoupled(state);
 
     if (state.glob.conv) {
-        // Store LU factorization from the converged Newton system (ue-based xi)
+        // Stay at the ue-based xi from Newton convergence — DO NOT swap to
+        // gamma-based xi here. The previous code did StagPointFind after
+        // Newton to "match mfoil's CS reference", but mfoil_cs's actual
+        // sensitivity computation (via complex-step on alpha/foil.x) uses
+        // mfoil's natural ue-based xi from solve_viscous; only the
+        // extract_comprehensive_reference.py script does an extra
+        // stagpoint_find for Phase 2 chain-partial validation. Swapping
+        // here makes the adjoint's R_V (ue-based) inconsistent with the
+        // VJP-side R_x (was gamma-based) and with sstag_ue (still ue-based),
+        // and that inconsistency manifested as a ~0.1 abs error in R_V at
+        // the ue-Istag column → 1e-5 rel floor on all viscous gradients.
+        //
+        // Phase 2 (residual_deriv_test) now explicitly applies the gamma-xi
+        // swap in its test fixture; production sensitivities use ue-based.
         StoreAdjointFactorization(state);
-
-        // Rebuild R_x at gamma-based xi (matching mfoil's CS reference).
-        // mfoil's extract script calls stagpoint_find (gamma-based) before
-        // evaluating the residual, so the CS dR_BL/dx is at gamma-based xi.
-        // The adjoint lambda uses the ue-based R_V (stored above), but the
-        // VJP chains (R_x, wgap) must use gamma-based xi for consistency.
-        StagPointFind(state);
-        ExtendXiToWake(state);
-        SetWakeGap(state);
-        state.glob.realloc = true;
-        BuildGlobSys(state);
     }
 
     // Calculate forces

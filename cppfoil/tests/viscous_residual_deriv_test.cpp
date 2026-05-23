@@ -161,16 +161,20 @@ class ResidualDerivTest : public ::testing::Test {
         SolveViscous(s);  // converges to its own state; we'll override below
         ASSERT_TRUE(s.glob.conv) << "viscous solve did not converge";
 
-        // Override U, wgap to match the HDF5 reference, then rebuild xi
-        // (gamma-based) and R_V at that state. SolveViscous already does this
-        // rebuild at the end (see coupled_solver.cpp:108-118), so the state
-        // here is consistent.
+        // Override U, wgap to match the HDF5 reference, then explicitly
+        // swap xi to gamma-based (matching the comprehensive_reference path:
+        // mfoil's extract script calls stagpoint_find before evaluating R_x).
+        // Production SolveViscous no longer does this swap, so the test
+        // fixture must apply it explicitly.
         ASSERT_EQ(s.glob.U.cols(), U_ref.cols());
         s.glob.U = U_ref;
         ASSERT_EQ(static_cast<int>(wgap_ref.size()),
                   static_cast<int>(s.vsol.wgap.size()));
         s.vsol.wgap = wgap_ref;
 
+        StagPointFind(s);
+        ExtendXiToWake(s);
+        SetWakeGap(s);
         s.glob.realloc = true;
         BuildGlobSys(s);
 
