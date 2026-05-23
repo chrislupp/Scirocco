@@ -163,15 +163,23 @@ if(CPPFOIL_BUILD_TESTS)
         message(STATUS "Google Test not found, tests will not be built")
     endif()
 
-    # Ping tests: self-validating derivative checks (no HDF5 needed)
-    if(GTest_FOUND)
+    # Ping tests: cppfoil analytic vs mfoil-CS Jacobian references.
+    if(GTest_FOUND AND hdf5_FOUND)
         add_executable(cppfoil_ping_tests tests/ping_test.cpp)
-        target_link_libraries(cppfoil_ping_tests cppfoil GTest::gtest_main)
+        target_link_libraries(cppfoil_ping_tests
+            cppfoil GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(cppfoil_ping_tests PRIVATE
+            PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/ping_reference.h5")
         gtest_discover_tests(cppfoil_ping_tests)
 
-        add_executable(cppfoil_sensitivity_tests tests/sensitivity_ping_test.cpp)
-        target_link_libraries(cppfoil_sensitivity_tests cppfoil GTest::gtest_main)
-        gtest_discover_tests(cppfoil_sensitivity_tests)
+        if(hdf5_FOUND)
+            add_executable(cppfoil_sensitivity_tests tests/sensitivity_ping_test.cpp)
+            target_link_libraries(cppfoil_sensitivity_tests
+                cppfoil GTest::gtest_main hdf5_cpp-shared)
+            target_compile_definitions(cppfoil_sensitivity_tests PRIVATE
+                SENSITIVITY_PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/sensitivity_ping_reference.h5")
+            gtest_discover_tests(cppfoil_sensitivity_tests)
+        endif()
 
         # Phase 3 viscous output partials test (uses mfoil_cs CS reference)
         if(hdf5_FOUND)

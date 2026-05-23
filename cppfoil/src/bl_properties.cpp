@@ -526,18 +526,20 @@ ScalarLin4 GetMach2(const Vector4d& U, const Param& param) {
 }
 
 ScalarLin4 GetRho(const Vector4d& U, const Param& param) {
-    // Density from isentropic relations (simplified)
+    // Local density from stagnation density + isentropic relation:
+    //   rho = rho0 / (1 + 0.5·(γ-1)·M²)^(1/(γ-1))
+    // Matches mfoil's get_rho (param.rho0 IS the stagnation density set by
+    // init_thermo as rhoinf·(1+0.5·(γ-1)·Minf²)^(1/(γ-1))).
     double rho = param.rho0;
     Vector4d rho_U = Vector4d::Zero();
 
     if (param.Minf > 0) {
         auto [M2, M2_U] = GetMach2(U, param);
-        double gam = param.gam;
-        double fac = 1.0 + 0.5 * (gam - 1.0) * param.Minf * param.Minf;
-        double fac_local = 1.0 + 0.5 * (gam - 1.0) * M2;
-        rho = param.rho0 * std::pow(fac / fac_local, 1.0 / (gam - 1.0));
-
-        double drho_dM2 = -0.5 * rho / fac_local;
+        double gmi = param.gam - 1.0;
+        double den = 1.0 + 0.5 * gmi * M2;
+        double den_M2 = 0.5 * gmi;
+        rho = param.rho0 * std::pow(den, -1.0 / gmi);
+        double drho_dM2 = (-1.0 / gmi) * rho / den * den_M2;
         rho_U = drho_dM2 * M2_U;
     }
 
