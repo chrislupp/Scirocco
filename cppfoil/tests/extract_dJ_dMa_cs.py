@@ -10,7 +10,7 @@ import os, sys
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil_cs  # noqa
 from mfoil_cs import complex_step_mode  # noqa
 import mfoil  # noqa

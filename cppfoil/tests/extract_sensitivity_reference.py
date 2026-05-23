@@ -15,7 +15,7 @@ HDF5 structure:
   inviscid_mach/     NACA 0012, 100 panels, alpha=3, Ma=0.3
 
 Usage:
-  cd ProjectTrysil/temp
+  cd ProjectTrysil/mfoil
   python ../cppfoil/tests/extract_sensitivity_reference.py
 """
 
@@ -25,8 +25,8 @@ import time
 import numpy as np
 import h5py
 
-# Add temp/ to path for mfoil_cs
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'temp'))
+# Add mfoil/ to path for mfoil_cs
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'mfoil'))
 import mfoil_cs  # noqa: E402 — patches mfoil for complex-step compatibility
 from mfoil_cs import complex_step_mode  # noqa: E402
 import mfoil     # noqa: E402

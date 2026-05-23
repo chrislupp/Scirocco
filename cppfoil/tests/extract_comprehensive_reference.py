@@ -16,7 +16,7 @@ Also stores:
   - Full BL state U and converged gamma
 
 Usage:
-  cd ProjectTrysil/temp
+  cd ProjectTrysil/mfoil
   python ../cppfoil/tests/extract_comprehensive_reference.py
 """
 
@@ -29,7 +29,7 @@ import h5py
 from scipy import sparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil_cs
 from mfoil_cs import complex_step_mode
 import mfoil

@@ -4,7 +4,7 @@ Extract mfoil forward-pass reference data: R, R_x, R_U from build_glob_sys
 at the converged state. Used to find forward-code differences vs C++ BuildGlobSys.
 
 Usage:
-  cd ProjectTrysil/temp
+  cd ProjectTrysil/mfoil
   python ../cppfoil/tests/extract_forward_reference.py
 """
 
@@ -14,7 +14,7 @@ import numpy as np
 import h5py
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil
 
 NACA = '0012'

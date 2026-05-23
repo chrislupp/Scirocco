@@ -24,7 +24,7 @@ import h5py
 from scipy import sparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil_cs  # noqa: E402
 from mfoil_cs import complex_step_mode  # noqa: E402
 import mfoil  # noqa: E402
