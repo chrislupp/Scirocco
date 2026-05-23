@@ -1,8 +1,10 @@
 # BUG: R_V differs from mfoil at the ue-Istag column (1e-5 gradient floor)
 
-**Status:** open, gating machine-precision viscous gradients.
-**Discovered:** 2026-05-22 (see commits 98d3c00, 70bde84).
-**Affects:** all viscous sensitivities (shape, alpha, Mach, Re) — they hit
+**Status:** FIXED 2026-05-22 (commit 4051c2d). Remaining residuals at 1e-6 to
+1e-7 rel for shape, ~3e-5 for alpha (small regression — see "Remaining work"
+section).
+**Originally discovered:** 2026-05-22 (see commits 98d3c00, 70bde84).
+**Affected:** all viscous sensitivities (shape, alpha, Mach, Re) — they hit
 a 1e-5 rel floor against mfoil-CS, even with primal at 1e-13 rel.
 
 ## Symptom
@@ -127,3 +129,80 @@ with `python3 tests/add_rv_to_reference.py` if needed.
 `probe_rv_compare` should report max abs error < 1e-10 across all R_V
 entries. `probe_lambda_cs` should then show max rel < 1e-10 for both
 lambda_cl and lambda_cd.
+
+---
+
+## Resolution (2026-05-22, commit 4051c2d)
+
+### Root cause
+
+cppfoil's `SolveViscous` was doing `StagPointFind` after Newton to "match
+mfoil's CS reference", swapping xi from ue-based (Newton-converged) to
+gamma-based. But:
+- the adjoint LU was stored at ue-based state (with sstag_ue from
+  ue-based stagpoint_move)
+- R_x was rebuilt at gamma-based state
+- the xi-stag-chain augmentation `R_st * sstag_ue` thus used a stale
+  ue-based sstag_ue against a new gamma-based R_st, creating an
+  inconsistent R_V at the ue-Istag columns
+
+Diagnostic path that pinpointed this:
+1. `probe_lambda_cs` showed lambda differed from mfoil-CS at 3.5e-5 rel.
+2. `probe_rv_compare` showed R_V differed at the ue-Istag column only.
+3. `probe_rv_decompose` showed cppfoil and mfoil have IDENTICAL R1_U at
+   the simi station (171.591 each). So bug was in the augmentation.
+4. `probe_simi_lin_U_mfoil.py` showed mfoil's sstag_ue at this state is
+   `[0.0055338, -0.00985969]` while cppfoil's refresh gave
+   `[0.0055250, -0.00984399]` — diff is in the foil.s used (mfoil
+   inadvertently uses spline; cppfoil's RecomputeArcLength gives
+   cumulative).
+
+### Fix
+
+`coupled_solver.cpp`: production `SolveViscous` no longer swaps to
+gamma-based xi after Newton. The natural ue-based xi flows through the
+adjoint, matching mfoil_cs's actual sensitivity computation.
+
+`viscous_residual_deriv_test.cpp`: Phase 2 test fixture now explicitly
+applies the gamma-xi swap before evaluating ∂R/∂x (since the
+comprehensive_reference CS data was extracted at gamma-based xi).
+
+`comprehensive_reference.h5` / `add_rv_to_reference.py`: also stores
+`sstag_ue` and `sstag_g` so cppfoil's override-fixture probes load
+mfoil's values rather than recomputing locally with a slightly different
+foil.s convention.
+
+### After-fix results
+
+- `probe_rv_compare`: R_V ue-Istag column max abs 0.11 → **3.7e-10** (8
+  orders of magnitude).
+- `probe_lambda_cs`: lambda_cl rel 3.5e-5 → **2.25e-9** (machine
+  precision).
+- `ViscousShape dcl/dcd`: rel 1.9e-5 → **2.2e-6** (10×).
+- `ViscousMach dcd`: rel 3e-6 → **2.07e-8** (150×).
+- Phase 1 and Phase 2 chain tests still pass at 1e-12 rel.
+
+### Remaining work
+
+The fix exposed a smaller secondary issue:
+
+1. **ViscousShape gradient floor ~2e-6**: still above machine precision.
+   Likely cause: the analytic `DRblDFoilX` / `ComputeRueVJP` chains
+   include a `dxi/dfoil_x` term that's correct for gamma-based xi
+   (chain through sstag(gam)) but inconsistent with the now ue-based
+   production state. Need to update the chain to either skip the
+   sstag-via-gam term (ue-based path) or restore the swap and fix the
+   sstag_ue consistency a different way.
+
+2. **ViscousAlpha gradient slight regression**: dcl rel went from 1.2e-5
+   → 2.7e-5 after this fix. `DRVDAlpha` uses `DSstagDAlpha` which
+   computes `sstag_g · dgam/dalpha` — gamma-based chain. With ue-based
+   production state, the natural chain is `sstag_ue · due/dalpha`.
+   Updating `DSstagDAlpha` (and the upstream `DXiDAlpha`,
+   `DWakeXDAlpha`) to use ue-chain should resolve this.
+
+Both items boil down to: the analytic α/foil_x chain code was written
+under the assumption of gamma-based xi (matching the previous
+post-Newton swap). With the swap removed, the chain needs to be
+re-derived for ue-based xi (or the swap restored with proper sstag_ue
+refresh).
