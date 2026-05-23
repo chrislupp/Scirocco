@@ -61,21 +61,62 @@ def recompute_geom(M):
 
 def rebuild_geom_chain(M, alpha):
     """Re-run the geometric chain at the current foil.x (and updated foil.s):
-       solve_inviscid -> build_wake -> extend xi -> set_wake_gap.
+       solve_inviscid -> build_wake -> stagpoint_find -> identify_surfaces ->
+       set_wake_gap.
 
-    This is the same chain the Phase 1 C++ functions implicitly evaluate at."""
+    Used by the BASE solve (real-valued) to establish a consistent starting
+    state. Inside the CS loop we use rebuild_geom_chain_fixedU instead, which
+    holds M.glob.U[3, :] fixed and runs stagpoint_move (ue-based) — matching
+    cppfoil's production convention after commit 4051c2d."""
     mfoil.solve_inviscid(M)   # rebuilds AIC, gamref, gam, stagpoint_find (xi foil-only)
     mfoil.build_wake(M)
-    # Re-run stagpoint_find so xi includes the wake (per mfoil.solve_viscous's
-    # convention; sstag is recomputed identically to before).
     mfoil.stagpoint_find(M)
     mfoil.identify_surfaces(M)
     mfoil.set_wake_gap(M)
 
 
+def rebuild_geom_chain_fixedU(M, alpha):
+    """Hybrid convention matching cppfoil's production:
+      - sstag/xi: ue-based, with M.glob.U[3, :] HELD FIXED (matches
+        cppfoil's DSstagDFoilX reading glob.U(3, Istag) as fixed inputs).
+      - wake.x: includes the chain through gam → uewi (matches cppfoil's
+        DWakeXDFoilX which chains through DGammaDFoilX).
+
+    solve_inviscid updates gam/uewi but does NOT touch M.glob.U, so the
+    subsequent stagpoint_move still sees the fixed U[3]."""
+    mfoil.solve_inviscid(M)  # updates gam, AIC, gamref, uewi (does not touch glob.U)
+    mfoil.build_wake(M)      # uses new uewi → new wake.x (gam chain captured)
+    mfoil.stagpoint_move(M)  # ue-based, uses M.glob.U[3] which we hold fixed
+    mfoil.identify_surfaces(M)
+    mfoil.set_wake_gap(M)
+
+
+def populate_glob_U_from_inviscid(M):
+    """After solve_inviscid + build_wake + stagpoint_find, populate
+    M.glob.U[3, :] with the inviscid ue values. Other rows zeroed —
+    fixed-U CS only needs ue."""
+    N = M.foil.N
+    Nw = M.wake.N
+    Nsys = N + Nw
+    M.glob.U = np.zeros((4, Nsys), dtype=M.foil.x.dtype)
+    cs = np.array([np.cos(np.deg2rad(M.oper.alpha)),
+                   np.sin(np.deg2rad(M.oper.alpha))],
+                  dtype=M.foil.x.dtype)
+    uea = M.isol.sgnue * (M.isol.gamref @ cs)
+    M.glob.U[3, :N] = uea
+    if Nw > 0:
+        uew = M.isol.uewiref @ cs
+        # First wake node = TE continuity
+        uew[0] = uea[-1]
+        M.glob.U[3, N:] = uew
+
+
 def base_solve():
     """Build the base mfoil object, then run the full geometric chain at real
-    foil.x with cumulative-panel-norm foil.s (consistent base for CS)."""
+    foil.x with cumulative-panel-norm foil.s (consistent base for CS).
+
+    Also populates M.glob.U[3, :] with inviscid ue (held fixed during CS).
+    """
     M = mfoil.mfoil(naca=NACA, npanel=NPANEL)
     M.param.verb = 0
     M.param.doplot = False
@@ -86,24 +127,30 @@ def base_solve():
     # perturbation convention (recompute_geom inside the CS loop).
     recompute_geom(M)
     rebuild_geom_chain(M, ALPHA)
+    populate_glob_U_from_inviscid(M)
     return M
 
 
 def cs_perturb(M_base, k, d, step):
     """Deep-copy M_base, perturb foil.x[d, k] complex, recompute foil.s
-    (cumulative), re-run the geom chain. Returns the perturbed mfoil object."""
+    (cumulative), re-run the geom chain at FIXED U. Returns the perturbed
+    mfoil object."""
     M = copy.deepcopy(M_base)
-    # Promote required arrays to complex
+    # Promote required arrays to complex (M.glob.U held fixed but needs
+    # complex dtype to participate in complex_step_mode arithmetic).
     M.foil.x = M.foil.x.astype(np.complex128)
     M.foil.s = M.foil.s.astype(np.complex128)
+    M.glob.U = M.glob.U.astype(np.complex128)
     if isinstance(M.isol.gam, np.ndarray):
         M.isol.gam = M.isol.gam.astype(np.complex128)
     if isinstance(M.isol.gamref, np.ndarray):
         M.isol.gamref = M.isol.gamref.astype(np.complex128)
+    if isinstance(M.isol.uewiref, np.ndarray):
+        M.isol.uewiref = M.isol.uewiref.astype(np.complex128)
     M.foil.x[d, k] += 1j * step
     recompute_geom(M)
     with complex_step_mode():
-        rebuild_geom_chain(M, ALPHA)
+        rebuild_geom_chain_fixedU(M, ALPHA)
     return M
 
 

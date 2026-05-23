@@ -160,7 +160,11 @@ TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesFD) {
         sp.oper.alpha = alpha;
         RebuildIsol(sp);
         BuildWake(sp);
-        StagPointFind(sp);
+        // Production uses ue-based xi (StagPointMove with fixed glob.U).
+        // StagPointFind would use gamma-based weights and produce a
+        // gamma-chain that DRVDAlpha doesn't include, so use StagPointMove
+        // to match the partial-at-fixed-U convention.
+        StagPointMove(sp);
         ExtendXiToWake(sp);
         IdentifySurfaces(sp);
         SetWakeGap(sp);

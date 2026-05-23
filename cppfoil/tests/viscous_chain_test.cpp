@@ -159,6 +159,13 @@ class GeomChainTest : public ::testing::Test {
         IdentifySurfaces(s);
         SetWakeGap(s);
         Nw_ = s.wake.N;
+        // Populate glob.U(3, :) with inviscid ue so DSstagDFoilX (which
+        // reads ue-based weights from glob.U) can run. At the inviscid
+        // state ue = sgnue*gam, which matches the gamma-based stagpoint.
+        int Nsys = N_ + Nw_;
+        s.glob.U = MatrixXd::Zero(4, Nsys);
+        VectorXd ueinv = GetUeInv(s);
+        s.glob.U.row(3).head(Nsys) = ueinv.transpose();
     }
 
     void verifyBase() {
