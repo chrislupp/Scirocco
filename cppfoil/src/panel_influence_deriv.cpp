@@ -59,12 +59,20 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
 
     if (len < kEps) {
         // Zero-length panel: zero all derivatives
-        d.x1_Xj.setZero(); d.x2_Xj.setZero(); d.y_Xj.setZero();
-        d.x1_xi.setZero(); d.x2_xi.setZero(); d.y_xi.setZero();
-        d.r1_Xj.setZero(); d.r2_Xj.setZero();
-        d.r1_xi.setZero(); d.r2_xi.setZero();
-        d.theta1_Xj.setZero(); d.theta2_Xj.setZero();
-        d.theta1_xi.setZero(); d.theta2_xi.setZero();
+        d.x1_Xj.setZero();
+        d.x2_Xj.setZero();
+        d.y_Xj.setZero();
+        d.x1_xi.setZero();
+        d.x2_xi.setZero();
+        d.y_xi.setZero();
+        d.r1_Xj.setZero();
+        d.r2_Xj.setZero();
+        d.r1_xi.setZero();
+        d.r2_xi.setZero();
+        d.theta1_Xj.setZero();
+        d.theta2_Xj.setZero();
+        d.theta1_xi.setZero();
+        d.theta2_xi.setZero();
         d.len_Xj.setZero();
         return d;
     }
@@ -118,10 +126,18 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
     for (int k = 0; k < 4; ++k) {
         Vector2d ddxi1_dXjk = Vector2d::Zero();
         Vector2d ddxi2_dXjk = Vector2d::Zero();
-        if (k == 0) { ddxi1_dXjk(0) = -1.0; }
-        if (k == 1) { ddxi1_dXjk(1) = -1.0; }
-        if (k == 2) { ddxi2_dXjk(0) = -1.0; }
-        if (k == 3) { ddxi2_dXjk(1) = -1.0; }
+        if (k == 0) {
+            ddxi1_dXjk(0) = -1.0;
+        }
+        if (k == 1) {
+            ddxi1_dXjk(1) = -1.0;
+        }
+        if (k == 2) {
+            ddxi2_dXjk(0) = -1.0;
+        }
+        if (k == 3) {
+            ddxi2_dXjk(1) = -1.0;
+        }
 
         d.x1_Xj(k) = ddxi1_dXjk.dot(t) + dxi1.dot(dt_dXj.col(k));
         d.x2_Xj(k) = ddxi2_dXjk.dot(t) + dxi2.dot(dt_dXj.col(k));
@@ -176,9 +192,12 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
 
     if (r1sq > kEps * kEps) {
         double inv_r1sq = 1.0 / r1sq;
-        // dtheta1/d(Xj) = (x1_val / r1sq) * dy/d(Xj) + (-y_val / r1sq) * dx1/d(Xj)
-        d.theta1_Xj = (x1_val * inv_r1sq) * d.y_Xj + (-y_val * inv_r1sq) * d.x1_Xj;
-        d.theta1_xi = (x1_val * inv_r1sq) * d.y_xi + (-y_val * inv_r1sq) * d.x1_xi;
+        // dtheta1/d(Xj) = (x1_val / r1sq) * dy/d(Xj) + (-y_val / r1sq) *
+        // dx1/d(Xj)
+        d.theta1_Xj =
+            (x1_val * inv_r1sq) * d.y_Xj + (-y_val * inv_r1sq) * d.x1_Xj;
+        d.theta1_xi =
+            (x1_val * inv_r1sq) * d.y_xi + (-y_val * inv_r1sq) * d.x1_xi;
     } else {
         d.theta1_Xj.setZero();
         d.theta1_xi.setZero();
@@ -186,8 +205,10 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
 
     if (r2sq > kEps * kEps) {
         double inv_r2sq = 1.0 / r2sq;
-        d.theta2_Xj = (x2_val * inv_r2sq) * d.y_Xj + (-y_val * inv_r2sq) * d.x2_Xj;
-        d.theta2_xi = (x2_val * inv_r2sq) * d.y_xi + (-y_val * inv_r2sq) * d.x2_xi;
+        d.theta2_Xj =
+            (x2_val * inv_r2sq) * d.y_Xj + (-y_val * inv_r2sq) * d.x2_Xj;
+        d.theta2_xi =
+            (x2_val * inv_r2sq) * d.y_xi + (-y_val * inv_r2sq) * d.x2_xi;
     } else {
         d.theta2_Xj.setZero();
         d.theta2_xi.setZero();
@@ -207,9 +228,12 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
     const PanelInfo& info = pid.info;
 
     if (info.len < kEps) {
-        result.a = 0.0; result.b = 0.0;
-        result.a_Xj.setZero(); result.b_Xj.setZero();
-        result.a_xi.setZero(); result.b_xi.setZero();
+        result.a = 0.0;
+        result.b = 0.0;
+        result.a_Xj.setZero();
+        result.b_Xj.setZero();
+        result.a_xi.setZero();
+        result.b_xi.setZero();
         return result;
     }
 
@@ -240,23 +264,23 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
     // dlogr1/d(...) = (1/r1) * dr1/d(...) if r1 > eps
     // dlogr2/d(...) = (1/r2) * dr2/d(...) if r2 > eps
 
-    auto diff = [&](const Vector4d& x_d, const Vector4d& z_d, const Vector4d& d_d,
-                    const Vector4d& dtheta_d, const Vector4d& logr1_d,
-                    const Vector4d& logr2_d, const Vector4d& r1sq_d,
-                    const Vector4d& r2sq_d,
+    auto diff = [&](const Vector4d& x_d, const Vector4d& z_d,
+                    const Vector4d& d_d, const Vector4d& dtheta_d,
+                    const Vector4d& logr1_d, const Vector4d& logr2_d,
+                    const Vector4d& r1sq_d, const Vector4d& r2sq_d,
                     Vector4d& a_d, Vector4d& b_d) {
         // dP1 = inv_2pi * (dz*dtheta + z*d(dtheta) - dd + dx*logr1 + x*dlogr1
         //        - (dx - dd)*logr2 - (x-d)*dlogr2)
-        Vector4d dP1 = inv_2pi * (z_d * dtheta + z * dtheta_d - d_d +
-                                   x_d * logr1 + x * logr1_d -
-                                   (x_d - d_d) * logr2 - (x - d) * logr2_d);
+        Vector4d dP1 =
+            inv_2pi * (z_d * dtheta + z * dtheta_d - d_d + x_d * logr1 +
+                       x * logr1_d - (x_d - d_d) * logr2 - (x - d) * logr2_d);
 
         // dP2 = dx*P1 + x*dP1 + inv_2pi*(0.5*dr2sq*logr2 + 0.5*r2sq*dlogr2
         //        - 0.5*dr1sq*logr1 - 0.5*r1sq*dlogr1 - dr2sq/4 + dr1sq/4)
         Vector4d dP2 = x_d * P1 + x * dP1 +
-                        inv_2pi * (0.5 * r2sq_d * logr2 + 0.5 * r2_sq * logr2_d -
-                                   0.5 * r1sq_d * logr1 - 0.5 * r1_sq * logr1_d -
-                                   r2sq_d / 4.0 + r1sq_d / 4.0);
+                       inv_2pi * (0.5 * r2sq_d * logr2 + 0.5 * r2_sq * logr2_d -
+                                  0.5 * r1sq_d * logr1 - 0.5 * r1_sq * logr1_d -
+                                  r2sq_d / 4.0 + r1sq_d / 4.0);
 
         // a = P1 - P2/d, b = P2/d
         // da = dP1 - (dP2*d - P2*dd) / d^2
@@ -269,8 +293,10 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
 
     // Build derivative vectors for Xj
     Vector4d dtheta_Xj = pid.theta2_Xj - pid.theta1_Xj;
-    Vector4d logr1_Xj = (info.r1 > 1e-9) ? (pid.r1_Xj / info.r1).eval() : Vector4d::Zero();
-    Vector4d logr2_Xj = (info.r2 > 1e-9) ? (pid.r2_Xj / info.r2).eval() : Vector4d::Zero();
+    Vector4d logr1_Xj =
+        (info.r1 > 1e-9) ? (pid.r1_Xj / info.r1).eval() : Vector4d::Zero();
+    Vector4d logr2_Xj =
+        (info.r2 > 1e-9) ? (pid.r2_Xj / info.r2).eval() : Vector4d::Zero();
     Vector4d r1sq_Xj = 2.0 * info.r1 * pid.r1_Xj;
     Vector4d r2sq_Xj = 2.0 * info.r2 * pid.r2_Xj;
 
@@ -279,22 +305,26 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
 
     // Build derivative vectors for xi (len doesn't depend on xi)
     Vector2d dtheta_xi = pid.theta2_xi - pid.theta1_xi;
-    Vector2d logr1_xi = (info.r1 > 1e-9) ? (pid.r1_xi / info.r1).eval() : Vector2d::Zero();
-    Vector2d logr2_xi = (info.r2 > 1e-9) ? (pid.r2_xi / info.r2).eval() : Vector2d::Zero();
+    Vector2d logr1_xi =
+        (info.r1 > 1e-9) ? (pid.r1_xi / info.r1).eval() : Vector2d::Zero();
+    Vector2d logr2_xi =
+        (info.r2 > 1e-9) ? (pid.r2_xi / info.r2).eval() : Vector2d::Zero();
     Vector2d r1sq_xi = 2.0 * info.r1 * pid.r1_xi;
     Vector2d r2sq_xi = 2.0 * info.r2 * pid.r2_xi;
     Vector2d len_xi = Vector2d::Zero();
 
     // Reuse the diff lambda with Vector2d
     {
-        Vector2d dP1 = inv_2pi * (pid.y_xi * dtheta + z * dtheta_xi - len_xi +
-                                   pid.x1_xi * logr1 + x * logr1_xi -
-                                   (pid.x1_xi - len_xi) * logr2 - (x - d) * logr2_xi);
+        Vector2d dP1 =
+            inv_2pi *
+            (pid.y_xi * dtheta + z * dtheta_xi - len_xi + pid.x1_xi * logr1 +
+             x * logr1_xi - (pid.x1_xi - len_xi) * logr2 - (x - d) * logr2_xi);
 
-        Vector2d dP2 = pid.x1_xi * P1 + x * dP1 +
-                        inv_2pi * (0.5 * r2sq_xi * logr2 + 0.5 * r2_sq * logr2_xi -
-                                   0.5 * r1sq_xi * logr1 - 0.5 * r1_sq * logr1_xi -
-                                   r2sq_xi / 4.0 + r1sq_xi / 4.0);
+        Vector2d dP2 =
+            pid.x1_xi * P1 + x * dP1 +
+            inv_2pi * (0.5 * r2sq_xi * logr2 + 0.5 * r2_sq * logr2_xi -
+                       0.5 * r1sq_xi * logr1 - 0.5 * r1_sq * logr1_xi -
+                       r2sq_xi / 4.0 + r1sq_xi / 4.0);
 
         double inv_d_xi = 1.0 / d;
         result.a_xi = dP1 - dP2 * inv_d_xi;
@@ -308,7 +338,7 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
 // PanelConstSourceStreamDeriv
 // ============================================================================
 ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi) {
+                                                   const Vector2d& xi) {
     ConstSourceStreamDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
@@ -365,34 +395,36 @@ ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
     result.val = P;
 
     // Differentiate P (not the branch-based offset which only depends on d)
-    // Note: we treat the branch as fixed (not differentiating through the branch choice)
+    // Note: we treat the branch as fixed (not differentiating through the
+    // branch choice)
     double offset_sign = ((theta1 + theta2) > kPi) ? -0.25 : 0.75;
 
     // When r is near zero, theta and logr derivatives are zero
     Vector4d th1_Xj = r1_zero ? Vector4d::Zero() : pid.theta1_Xj;
     Vector4d th2_Xj = r2_zero ? Vector4d::Zero() : pid.theta2_Xj;
-    Vector4d logr1_Xj_d = (r1 > ep && !r1_zero) ? (pid.r1_Xj / r1).eval() : Vector4d::Zero();
-    Vector4d logr2_Xj_d = (r2 > ep && !r2_zero) ? (pid.r2_Xj / r2).eval() : Vector4d::Zero();
+    Vector4d logr1_Xj_d =
+        (r1 > ep && !r1_zero) ? (pid.r1_Xj / r1).eval() : Vector4d::Zero();
+    Vector4d logr2_Xj_d =
+        (r2 > ep && !r2_zero) ? (pid.r2_Xj / r2).eval() : Vector4d::Zero();
 
-    result.val_Xj = (1.0 / (2.0 * kPi)) * (
-        pid.x1_Xj * (theta1 - theta2) + x * (th1_Xj - th2_Xj) +
-        pid.len_Xj * theta2 + d * th2_Xj +
-        pid.y_Xj * logr1 + z * logr1_Xj_d -
-        pid.y_Xj * logr2 - z * logr2_Xj_d
-    ) + offset_sign * pid.len_Xj;
+    result.val_Xj = (1.0 / (2.0 * kPi)) *
+                        (pid.x1_Xj * (theta1 - theta2) + x * (th1_Xj - th2_Xj) +
+                         pid.len_Xj * theta2 + d * th2_Xj + pid.y_Xj * logr1 +
+                         z * logr1_Xj_d - pid.y_Xj * logr2 - z * logr2_Xj_d) +
+                    offset_sign * pid.len_Xj;
 
     // xi derivatives
     Vector2d th1_xi = r1_zero ? Vector2d::Zero() : pid.theta1_xi;
     Vector2d th2_xi = r2_zero ? Vector2d::Zero() : pid.theta2_xi;
-    Vector2d logr1_xi_d = (r1 > ep && !r1_zero) ? (pid.r1_xi / r1).eval() : Vector2d::Zero();
-    Vector2d logr2_xi_d = (r2 > ep && !r2_zero) ? (pid.r2_xi / r2).eval() : Vector2d::Zero();
+    Vector2d logr1_xi_d =
+        (r1 > ep && !r1_zero) ? (pid.r1_xi / r1).eval() : Vector2d::Zero();
+    Vector2d logr2_xi_d =
+        (r2 > ep && !r2_zero) ? (pid.r2_xi / r2).eval() : Vector2d::Zero();
 
-    result.val_xi = (1.0 / (2.0 * kPi)) * (
-        pid.x1_xi * (theta1 - theta2) + x * (th1_xi - th2_xi) +
-        d * th2_xi +
-        pid.y_xi * logr1 + z * logr1_xi_d -
-        pid.y_xi * logr2 - z * logr2_xi_d
-    );
+    result.val_xi =
+        (1.0 / (2.0 * kPi)) *
+        (pid.x1_xi * (theta1 - theta2) + x * (th1_xi - th2_xi) + d * th2_xi +
+         pid.y_xi * logr1 + z * logr1_xi_d - pid.y_xi * logr2 - z * logr2_xi_d);
 
     return result;
 }
@@ -401,16 +433,19 @@ ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
 // PanelLinVortexVelocityDeriv
 // ============================================================================
 LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi) {
+                                                   const Vector2d& xi) {
     LinVortexVelocityDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
     const PanelInfo& info = pid.info;
 
     if (info.len < kEps) {
-        result.a.setZero(); result.b.setZero();
-        result.a_Xj.setZero(); result.b_Xj.setZero();
-        result.a_xi.setZero(); result.b_xi.setZero();
+        result.a.setZero();
+        result.b.setZero();
+        result.a_Xj.setZero();
+        result.b_Xj.setZero();
+        result.a_xi.setZero();
+        result.b_xi.setZero();
         return result;
     }
 
@@ -475,20 +510,23 @@ LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
     // Differentiate u_a, u_b, v_a, v_b w.r.t. Xj and xi
     // temp2_u = (-z*logr - x*dtheta) * inv_2pi * inv_len
     // d(temp2_u) = inv_2pi * ( d[(-z*logr - x*dtheta)/len] )
-    //            = inv_2pi * ( (-dz*logr - z*dlogr - dx*dtheta - x*d(dtheta))*len
+    //            = inv_2pi * ( (-dz*logr - z*dlogr - dx*dtheta -
+    //            x*d(dtheta))*len
     //                         - (-z*logr - x*dtheta)*dlen ) / len^2
 
     auto diffCoeffs = [&](const auto& x_d, const auto& z_d, const auto& d_d,
-                          const auto& dtheta_d, const auto& logr_d,
-                          auto& ua_d, auto& ub_d, auto& va_d, auto& vb_d) {
+                          const auto& dtheta_d, const auto& logr_d, auto& ua_d,
+                          auto& ub_d, auto& va_d, auto& vb_d) {
         // dtemp1_u = d(dtheta)*inv_2pi
         auto dtemp1_u = dtheta_d * inv_2pi;
 
-        // dtemp2_u = inv_2pi * [(-dz*logr - z*dlogr - dx*dtheta - x*d(dtheta))/len
+        // dtemp2_u = inv_2pi * [(-dz*logr - z*dlogr - dx*dtheta -
+        // x*d(dtheta))/len
         //            - (-z*logr - x*dtheta)*dlen/len^2]
         double numer = -z * logr - x * dtheta;
         auto dnumer = -z_d * logr - z * logr_d - x_d * dtheta - x * dtheta_d;
-        auto dtemp2_u = inv_2pi * (dnumer * inv_len - numer * d_d * inv_len * inv_len);
+        auto dtemp2_u =
+            inv_2pi * (dnumer * inv_len - numer * d_d * inv_len * inv_len);
 
         ua_d = dtemp1_u + dtemp2_u;
         ub_d = -dtemp2_u;
@@ -498,8 +536,10 @@ LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
 
         // temp2_v = (-x*logr - len + z*dtheta) * inv_2pi * inv_len
         double numer2 = -x * logr - len + z * dtheta;
-        auto dnumer2 = -x_d * logr - x * logr_d - d_d + z_d * dtheta + z * dtheta_d;
-        auto dtemp2_v = inv_2pi * (dnumer2 * inv_len - numer2 * d_d * inv_len * inv_len);
+        auto dnumer2 =
+            -x_d * logr - x * logr_d - d_d + z_d * dtheta + z * dtheta_d;
+        auto dtemp2_v =
+            inv_2pi * (dnumer2 * inv_len - numer2 * d_d * inv_len * inv_len);
 
         va_d = dtemp1_v + dtemp2_v;
         vb_d = -dtemp2_v;
@@ -507,21 +547,21 @@ LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
 
     // Xj derivatives of coefficients
     Vector4d ua_Xj, ub_Xj, va_Xj, vb_Xj;
-    diffCoeffs(pid.x1_Xj, pid.y_Xj, pid.len_Xj, dtheta_Xj, logr_Xj,
-               ua_Xj, ub_Xj, va_Xj, vb_Xj);
+    diffCoeffs(pid.x1_Xj, pid.y_Xj, pid.len_Xj, dtheta_Xj, logr_Xj, ua_Xj,
+               ub_Xj, va_Xj, vb_Xj);
 
     // xi derivatives of coefficients
     Vector2d len_xi = Vector2d::Zero();
     Vector2d ua_xi, ub_xi, va_xi, vb_xi;
-    diffCoeffs(pid.x1_xi, pid.y_xi, len_xi, dtheta_xi, logr_xi,
-               ua_xi, ub_xi, va_xi, vb_xi);
+    diffCoeffs(pid.x1_xi, pid.y_xi, len_xi, dtheta_xi, logr_xi, ua_xi, ub_xi,
+               va_xi, vb_xi);
 
     // a = u_a*t + v_a*n => da/d(Xj_k) = dua*t + ua*dt + dva*n + va*dn
     for (int k = 0; k < 4; ++k) {
-        result.a_Xj.col(k) = ua_Xj(k) * t + u_a * dt_dXj.col(k) +
-                              va_Xj(k) * n + v_a * dn_dXj.col(k);
-        result.b_Xj.col(k) = ub_Xj(k) * t + u_b * dt_dXj.col(k) +
-                              vb_Xj(k) * n + v_b * dn_dXj.col(k);
+        result.a_Xj.col(k) = ua_Xj(k) * t + u_a * dt_dXj.col(k) + va_Xj(k) * n +
+                             v_a * dn_dXj.col(k);
+        result.b_Xj.col(k) = ub_Xj(k) * t + u_b * dt_dXj.col(k) + vb_Xj(k) * n +
+                             v_b * dn_dXj.col(k);
     }
 
     // For xi, t and n don't depend on xi
@@ -537,7 +577,7 @@ LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
 // PanelConstSourceVelocityDeriv
 // ============================================================================
 ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
-                                                        const Vector2d& xi) {
+                                                       const Vector2d& xi) {
     ConstSourceVelocityDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
@@ -581,8 +621,14 @@ ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
     // logr and dtheta derivatives
     Vector4d logr_Xj = Vector4d::Zero();
     Vector2d logr_xi = Vector2d::Zero();
-    if (info.r1 > kEps) { logr_Xj -= pid.r1_Xj / info.r1; logr_xi -= pid.r1_xi / info.r1; }
-    if (info.r2 > kEps) { logr_Xj += pid.r2_Xj / info.r2; logr_xi += pid.r2_xi / info.r2; }
+    if (info.r1 > kEps) {
+        logr_Xj -= pid.r1_Xj / info.r1;
+        logr_xi -= pid.r1_xi / info.r1;
+    }
+    if (info.r2 > kEps) {
+        logr_Xj += pid.r2_Xj / info.r2;
+        logr_xi += pid.r2_xi / info.r2;
+    }
     Vector4d dtheta_Xj = pid.theta2_Xj - pid.theta1_Xj;
     Vector2d dtheta_xi = pid.theta2_xi - pid.theta1_xi;
 
@@ -592,8 +638,8 @@ ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
     Vector2d dv_xi = inv_2pi * dtheta_xi;
 
     for (int k = 0; k < 4; ++k) {
-        result.val_Xj.col(k) = du_Xj(k) * t + u * dt_dXj.col(k) +
-                                dv_Xj(k) * n + v * dn_dXj.col(k);
+        result.val_Xj.col(k) =
+            du_Xj(k) * t + u * dt_dXj.col(k) + dv_Xj(k) * n + v * dn_dXj.col(k);
     }
     for (int k = 0; k < 2; ++k) {
         result.val_xi.col(k) = du_xi(k) * t + dv_xi(k) * n;
@@ -613,9 +659,12 @@ LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
     const PanelInfo& info = pid.info;
 
     if (info.len < kEps) {
-        result.a = 0.0; result.b = 0.0;
-        result.a_Xj.setZero(); result.b_Xj.setZero();
-        result.a_xi.setZero(); result.b_xi.setZero();
+        result.a = 0.0;
+        result.b = 0.0;
+        result.a_Xj.setZero();
+        result.b_Xj.setZero();
+        result.a_xi.setZero();
+        result.b_xi.setZero();
         return result;
     }
 
@@ -637,19 +686,24 @@ LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
     double logr1, logr2;
 
     if (r1_zero) {
-        logr1 = 0.0; theta1 = kPi; theta2 = kPi;
+        logr1 = 0.0;
+        theta1 = kPi;
+        theta2 = kPi;
     } else {
         logr1 = std::log(r1);
     }
     if (r2_zero) {
-        logr2 = 0.0; theta1 = 0.0; theta2 = 0.0;
+        logr2 = 0.0;
+        theta1 = 0.0;
+        theta2 = 0.0;
     } else {
         logr2 = std::log(r2);
     }
 
     double inv_2pi = 0.5 / kPi;
 
-    double P1 = inv_2pi * (x * (theta1 - theta2) + theta2 * d + z * logr1 - z * logr2);
+    double P1 =
+        inv_2pi * (x * (theta1 - theta2) + theta2 * d + z * logr1 - z * logr2);
     double P2 = x * P1 + inv_2pi * (0.5 * r2 * r2 * theta2 -
                                     0.5 * r1 * r1 * theta1 - 0.5 * z * d);
 
@@ -669,46 +723,56 @@ LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
     double inv_d2 = inv_d * inv_d;
 
     // Xj derivatives
-    Vector4d logr1_Xj = (!r1_zero && r1 > ep) ? (pid.r1_Xj / r1).eval() : Vector4d::Zero();
-    Vector4d logr2_Xj = (!r2_zero && r2 > ep) ? (pid.r2_Xj / r2).eval() : Vector4d::Zero();
-    Vector4d r1sq_Xj = r1_zero ? Vector4d::Zero() : (2.0 * r1 * pid.r1_Xj).eval();
-    Vector4d r2sq_Xj = r2_zero ? Vector4d::Zero() : (2.0 * r2 * pid.r2_Xj).eval();
+    Vector4d logr1_Xj =
+        (!r1_zero && r1 > ep) ? (pid.r1_Xj / r1).eval() : Vector4d::Zero();
+    Vector4d logr2_Xj =
+        (!r2_zero && r2 > ep) ? (pid.r2_Xj / r2).eval() : Vector4d::Zero();
+    Vector4d r1sq_Xj =
+        r1_zero ? Vector4d::Zero() : (2.0 * r1 * pid.r1_Xj).eval();
+    Vector4d r2sq_Xj =
+        r2_zero ? Vector4d::Zero() : (2.0 * r2 * pid.r2_Xj).eval();
     Vector4d th1_Xj = r1_zero ? Vector4d::Zero() : pid.theta1_Xj;
     Vector4d th2_Xj = r2_zero ? Vector4d::Zero() : pid.theta2_Xj;
 
     {
-        Vector4d dP1 = inv_2pi * (pid.x1_Xj * (theta1 - theta2) + x * (th1_Xj - th2_Xj) +
-                                   th2_Xj * d + theta2 * pid.len_Xj +
-                                   pid.y_Xj * logr1 + z * logr1_Xj -
-                                   pid.y_Xj * logr2 - z * logr2_Xj);
+        Vector4d dP1 =
+            inv_2pi * (pid.x1_Xj * (theta1 - theta2) + x * (th1_Xj - th2_Xj) +
+                       th2_Xj * d + theta2 * pid.len_Xj + pid.y_Xj * logr1 +
+                       z * logr1_Xj - pid.y_Xj * logr2 - z * logr2_Xj);
 
-        Vector4d dP2 = pid.x1_Xj * P1 + x * dP1 +
-                        inv_2pi * (0.5 * r2sq_Xj * theta2 + 0.5 * r2 * r2 * th2_Xj -
-                                   0.5 * r1sq_Xj * theta1 - 0.5 * r1 * r1 * th1_Xj -
-                                   0.5 * pid.y_Xj * d - 0.5 * z * pid.len_Xj);
+        Vector4d dP2 =
+            pid.x1_Xj * P1 + x * dP1 +
+            inv_2pi * (0.5 * r2sq_Xj * theta2 + 0.5 * r2 * r2 * th2_Xj -
+                       0.5 * r1sq_Xj * theta1 - 0.5 * r1 * r1 * th1_Xj -
+                       0.5 * pid.y_Xj * d - 0.5 * z * pid.len_Xj);
 
         result.a_Xj = dP1 - (dP2 * d - P2 * pid.len_Xj) * inv_d2;
         result.b_Xj = (dP2 * d - P2 * pid.len_Xj) * inv_d2;
     }
 
     // xi derivatives
-    Vector2d logr1_xi = (!r1_zero && r1 > ep) ? (pid.r1_xi / r1).eval() : Vector2d::Zero();
-    Vector2d logr2_xi = (!r2_zero && r2 > ep) ? (pid.r2_xi / r2).eval() : Vector2d::Zero();
-    Vector2d r1sq_xi = r1_zero ? Vector2d::Zero() : (2.0 * r1 * pid.r1_xi).eval();
-    Vector2d r2sq_xi = r2_zero ? Vector2d::Zero() : (2.0 * r2 * pid.r2_xi).eval();
+    Vector2d logr1_xi =
+        (!r1_zero && r1 > ep) ? (pid.r1_xi / r1).eval() : Vector2d::Zero();
+    Vector2d logr2_xi =
+        (!r2_zero && r2 > ep) ? (pid.r2_xi / r2).eval() : Vector2d::Zero();
+    Vector2d r1sq_xi =
+        r1_zero ? Vector2d::Zero() : (2.0 * r1 * pid.r1_xi).eval();
+    Vector2d r2sq_xi =
+        r2_zero ? Vector2d::Zero() : (2.0 * r2 * pid.r2_xi).eval();
     Vector2d th1_xi = r1_zero ? Vector2d::Zero() : pid.theta1_xi;
     Vector2d th2_xi = r2_zero ? Vector2d::Zero() : pid.theta2_xi;
 
     {
-        Vector2d dP1 = inv_2pi * (pid.x1_xi * (theta1 - theta2) + x * (th1_xi - th2_xi) +
-                                   th2_xi * d +
-                                   pid.y_xi * logr1 + z * logr1_xi -
-                                   pid.y_xi * logr2 - z * logr2_xi);
+        Vector2d dP1 =
+            inv_2pi * (pid.x1_xi * (theta1 - theta2) + x * (th1_xi - th2_xi) +
+                       th2_xi * d + pid.y_xi * logr1 + z * logr1_xi -
+                       pid.y_xi * logr2 - z * logr2_xi);
 
-        Vector2d dP2 = pid.x1_xi * P1 + x * dP1 +
-                        inv_2pi * (0.5 * r2sq_xi * theta2 + 0.5 * r2 * r2 * th2_xi -
-                                   0.5 * r1sq_xi * theta1 - 0.5 * r1 * r1 * th1_xi -
-                                   0.5 * pid.y_xi * d);
+        Vector2d dP2 =
+            pid.x1_xi * P1 + x * dP1 +
+            inv_2pi * (0.5 * r2sq_xi * theta2 + 0.5 * r2 * r2 * th2_xi -
+                       0.5 * r1sq_xi * theta1 - 0.5 * r1 * r1 * th1_xi -
+                       0.5 * pid.y_xi * d);
 
         result.a_xi = dP1 - dP2 * inv_d;
         result.b_xi = dP2 * inv_d;
@@ -721,16 +785,19 @@ LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
 // PanelLinSourceVelocityDeriv
 // ============================================================================
 LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi) {
+                                                   const Vector2d& xi) {
     LinSourceVelocityDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
     const PanelInfo& info = pid.info;
 
     if (info.len < kEps) {
-        result.a.setZero(); result.b.setZero();
-        result.a_Xj.setZero(); result.b_Xj.setZero();
-        result.a_xi.setZero(); result.b_xi.setZero();
+        result.a.setZero();
+        result.b.setZero();
+        result.a_Xj.setZero();
+        result.b_Xj.setZero();
+        result.a_xi.setZero();
+        result.b_xi.setZero();
         return result;
     }
 
@@ -777,8 +844,14 @@ LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
     // logr12 = log(r1) - log(r2) derivatives
     Vector4d logr12_Xj = Vector4d::Zero();
     Vector2d logr12_xi = Vector2d::Zero();
-    if (info.r1 > kEps) { logr12_Xj += pid.r1_Xj / info.r1; logr12_xi += pid.r1_xi / info.r1; }
-    if (info.r2 > kEps) { logr12_Xj -= pid.r2_Xj / info.r2; logr12_xi -= pid.r2_xi / info.r2; }
+    if (info.r1 > kEps) {
+        logr12_Xj += pid.r1_Xj / info.r1;
+        logr12_xi += pid.r1_xi / info.r1;
+    }
+    if (info.r2 > kEps) {
+        logr12_Xj -= pid.r2_Xj / info.r2;
+        logr12_xi -= pid.r2_xi / info.r2;
+    }
 
     Vector4d dtheta_Xj = pid.theta2_Xj - pid.theta1_Xj;
     Vector2d dtheta_xi = pid.theta2_xi - pid.theta1_xi;
@@ -789,33 +862,37 @@ LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
                           auto& ug1_d, auto& ug2_d, auto& wg1_d, auto& wg2_d) {
         auto dtemp1_u = logr12_d * inv_2pi;
         double numer_u = x * logr12 - d + z * dtheta;
-        auto dnumer_u = x_d * logr12 + x * logr12_d - d_d + z_d * dtheta + z * dtheta_d;
-        auto dtemp2_u = inv_2pi * (dnumer_u * inv_len - numer_u * d_d * inv_len * inv_len);
+        auto dnumer_u =
+            x_d * logr12 + x * logr12_d - d_d + z_d * dtheta + z * dtheta_d;
+        auto dtemp2_u =
+            inv_2pi * (dnumer_u * inv_len - numer_u * d_d * inv_len * inv_len);
         ug1_d = dtemp1_u - dtemp2_u;
         ug2_d = dtemp2_u;
 
         auto dtemp1_v = dtheta_d * inv_2pi;
         double numer_v = -z * logr12 + x * dtheta;
-        auto dnumer_v = -z_d * logr12 - z * logr12_d + x_d * dtheta + x * dtheta_d;
-        auto dtemp2_v = inv_2pi * (dnumer_v * inv_len - numer_v * d_d * inv_len * inv_len);
+        auto dnumer_v =
+            -z_d * logr12 - z * logr12_d + x_d * dtheta + x * dtheta_d;
+        auto dtemp2_v =
+            inv_2pi * (dnumer_v * inv_len - numer_v * d_d * inv_len * inv_len);
         wg1_d = dtemp1_v - dtemp2_v;
         wg2_d = dtemp2_v;
     };
 
     Vector4d ug1_Xj, ug2_Xj, wg1_Xj, wg2_Xj;
-    diffCoeffs(pid.x1_Xj, pid.y_Xj, pid.len_Xj, dtheta_Xj, logr12_Xj,
-               ug1_Xj, ug2_Xj, wg1_Xj, wg2_Xj);
+    diffCoeffs(pid.x1_Xj, pid.y_Xj, pid.len_Xj, dtheta_Xj, logr12_Xj, ug1_Xj,
+               ug2_Xj, wg1_Xj, wg2_Xj);
 
     Vector2d len_xi = Vector2d::Zero();
     Vector2d ug1_xi, ug2_xi, wg1_xi, wg2_xi;
-    diffCoeffs(pid.x1_xi, pid.y_xi, len_xi, dtheta_xi, logr12_xi,
-               ug1_xi, ug2_xi, wg1_xi, wg2_xi);
+    diffCoeffs(pid.x1_xi, pid.y_xi, len_xi, dtheta_xi, logr12_xi, ug1_xi,
+               ug2_xi, wg1_xi, wg2_xi);
 
     for (int k = 0; k < 4; ++k) {
         result.a_Xj.col(k) = ug1_Xj(k) * t + ug1 * dt_dXj.col(k) +
-                              wg1_Xj(k) * n + wg1 * dn_dXj.col(k);
+                             wg1_Xj(k) * n + wg1 * dn_dXj.col(k);
         result.b_Xj.col(k) = ug2_Xj(k) * t + ug2 * dt_dXj.col(k) +
-                              wg2_Xj(k) * n + wg2 * dn_dXj.col(k);
+                             wg2_Xj(k) * n + wg2 * dn_dXj.col(k);
     }
     for (int k = 0; k < 2; ++k) {
         result.a_xi.col(k) = ug1_xi(k) * t + wg1_xi(k) * n;

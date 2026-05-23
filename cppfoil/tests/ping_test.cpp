@@ -120,8 +120,8 @@ class PingTest : public ::testing::Test {
         s.param.rtol = 1e-6;
         SolveViscous(s);
         CalcForce(s);
-        file_ = std::make_unique<H5::H5File>(
-            PING_REFERENCE_FILE, H5F_ACC_RDONLY);
+        file_ =
+            std::make_unique<H5::H5File>(PING_REFERENCE_FILE, H5F_ACC_RDONLY);
     }
     static void TearDownTestSuite() {
         if (file_) file_->close();
@@ -138,26 +138,44 @@ std::unique_ptr<H5::H5File> PingTest::file_;
 // ===========================================================================
 TEST_F(PingTest, BLPropertyDerivatives) {
     using BLFunc = std::function<ScalarLin4(const Vector4d&, const Param&)>;
-    struct FuncEntry { const char* name; BLFunc func; };
-    FuncEntry funcs[] = {
-        {"GetHk",   [](const Vector4d& U, const Param& p) { return GetHk(U, p); }},
-        {"GetRet",  [](const Vector4d& U, const Param& p) { return GetRet(U, p); }},
-        {"GetCf",   [](const Vector4d& U, const Param& p) { return GetCf(U, p); }},
-        {"GetCDi",  [](const Vector4d& U, const Param& p) { return GetCDi(U, p); }},
-        {"GetHs",   [](const Vector4d& U, const Param& p) { return GetHs(U, p); }},
-        {"GetHss",  [](const Vector4d& U, const Param& p) { return GetHss(U, p); }},
-        {"GetUs",   [](const Vector4d& U, const Param& p) { return GetUs(U, p); }},
-        {"GetCteq", [](const Vector4d& U, const Param& p) { return GetCteq(U, p); }},
-        {"GetCttr", [](const Vector4d& U, const Param& p) { return GetCttr(U, p); }},
-        {"GetDe",   [](const Vector4d& U, const Param& p) { return GetDe(U, p); }},
-        {"GetDamp", [](const Vector4d& U, const Param& p) { return GetDamp(U, p); }},
-        {"GetMach2",[](const Vector4d& U, const Param& p) { return GetMach2(U, p); }},
-        {"GetRho",  [](const Vector4d& U, const Param& p) { return GetRho(U, p); }},
+    struct FuncEntry {
+        const char* name;
+        BLFunc func;
     };
-    struct Regime { const char* name; bool turb, wake; };
-    Regime regimes[] = {{"lam", false, false},
-                        {"turb", true, false},
-                        {"wake", true, true}};
+    FuncEntry funcs[] = {
+        {"GetHk",
+         [](const Vector4d& U, const Param& p) { return GetHk(U, p); }},
+        {"GetRet",
+         [](const Vector4d& U, const Param& p) { return GetRet(U, p); }},
+        {"GetCf",
+         [](const Vector4d& U, const Param& p) { return GetCf(U, p); }},
+        {"GetCDi",
+         [](const Vector4d& U, const Param& p) { return GetCDi(U, p); }},
+        {"GetHs",
+         [](const Vector4d& U, const Param& p) { return GetHs(U, p); }},
+        {"GetHss",
+         [](const Vector4d& U, const Param& p) { return GetHss(U, p); }},
+        {"GetUs",
+         [](const Vector4d& U, const Param& p) { return GetUs(U, p); }},
+        {"GetCteq",
+         [](const Vector4d& U, const Param& p) { return GetCteq(U, p); }},
+        {"GetCttr",
+         [](const Vector4d& U, const Param& p) { return GetCttr(U, p); }},
+        {"GetDe",
+         [](const Vector4d& U, const Param& p) { return GetDe(U, p); }},
+        {"GetDamp",
+         [](const Vector4d& U, const Param& p) { return GetDamp(U, p); }},
+        {"GetMach2",
+         [](const Vector4d& U, const Param& p) { return GetMach2(U, p); }},
+        {"GetRho",
+         [](const Vector4d& U, const Param& p) { return GetRho(U, p); }},
+    };
+    struct Regime {
+        const char* name;
+        bool turb, wake;
+    };
+    Regime regimes[] = {
+        {"lam", false, false}, {"turb", true, false}, {"wake", true, true}};
     double Rev[] = {2e3, 1e5};
 
     int nfail = 0;
@@ -174,10 +192,10 @@ TEST_F(PingTest, BLPropertyDerivatives) {
                 for (int k = 0; k < 4; ++k) {
                     if (!withinTol(v_U(k), cs_J(k))) {
                         ++nfail;
-                        ADD_FAILURE() << fe.name << " " << r.name
-                                      << " Re=" << Re << " k=" << k
-                                      << " analytic=" << v_U(k)
-                                      << " cs=" << cs_J(k);
+                        ADD_FAILURE()
+                            << fe.name << " " << r.name << " Re=" << Re
+                            << " k=" << k << " analytic=" << v_U(k)
+                            << " cs=" << cs_J(k);
                     }
                 }
             }
@@ -190,13 +208,17 @@ TEST_F(PingTest, BLPropertyDerivatives) {
 // A2. ResidualStation derivatives (non-stagnation)
 // ===========================================================================
 TEST_F(PingTest, ResidualStationDerivatives) {
-    struct Regime { const char* name; bool turb, wake; };
-    Regime regimes[] = {{"lam", false, false},
-                        {"turb", true, false},
-                        {"wake", true, true}};
+    struct Regime {
+        const char* name;
+        bool turb, wake;
+    };
+    Regime regimes[] = {
+        {"lam", false, false}, {"turb", true, false}, {"wake", true, true}};
     double Rev[] = {2e3, 1e5};
-    Vector2d xi_base; xi_base << 0.7, 0.8;
-    Vector2d Aux; Aux << 0.002, 0.0018;
+    Vector2d xi_base;
+    xi_base << 0.7, 0.8;
+    Vector2d Aux;
+    Aux << 0.002, 0.0018;
 
     int nfail = 0;
     for (double Re : Rev) {
@@ -210,7 +232,9 @@ TEST_F(PingTest, ResidualStationDerivatives) {
 
             auto [R, R_U, R_x, R_Ret, R_Ma] =
                 ResidualStation(param, xi_base, U, Aux);
-            (void)R; (void)R_Ret; (void)R_Ma;
+            (void)R;
+            (void)R_Ret;
+            (void)R_Ma;
 
             MatrixXd cs_R_U = readMatrix(*file_, base + "/R_U");
             MatrixXd cs_R_x = readMatrix(*file_, base + "/R_x");
@@ -219,8 +243,8 @@ TEST_F(PingTest, ResidualStationDerivatives) {
                 for (int i = 0; i < 3; ++i) {
                     if (!withinTol(R_U(i, k), cs_R_U(i, k))) {
                         ++nfail;
-                        ADD_FAILURE() << "ResidualStation R_U[" << i << ","
-                                      << k << "] " << r.name << " Re=" << Re
+                        ADD_FAILURE() << "ResidualStation R_U[" << i << "," << k
+                                      << "] " << r.name << " Re=" << Re
                                       << " analytic=" << R_U(i, k)
                                       << " cs=" << cs_R_U(i, k);
                     }
@@ -230,8 +254,8 @@ TEST_F(PingTest, ResidualStationDerivatives) {
                 for (int i = 0; i < 3; ++i) {
                     if (!withinTol(R_x(i, k), cs_R_x(i, k))) {
                         ++nfail;
-                        ADD_FAILURE() << "ResidualStation R_x[" << i << ","
-                                      << k << "] " << r.name << " Re=" << Re
+                        ADD_FAILURE() << "ResidualStation R_x[" << i << "," << k
+                                      << "] " << r.name << " Re=" << Re
                                       << " analytic=" << R_x(i, k)
                                       << " cs=" << cs_R_x(i, k);
                     }
@@ -256,7 +280,8 @@ TEST_F(PingTest, ResidualTransitionDerivatives) {
     Matrix42d U;
     U.col(0) << 0.01, 0.02, 8.95, 0.9;
     U.col(1) << 0.013, 0.023, 0.028, 0.85;
-    Vector2d x; x << 0.7, 0.8;
+    Vector2d x;
+    x << 0.7, 0.8;
     Vector2d Aux = Vector2d::Zero();
 
     auto res = ResidualTransition(state, param, x, U, Aux);
@@ -303,12 +328,15 @@ TEST_F(PingTest, ResidualStation_Stagnation) {
     Vector2d Aux = Vector2d::Zero();
 
     param.simi = true;
-    Vector2d xvec; xvec << xval, xval;
+    Vector2d xvec;
+    xvec << xval, xval;
     Matrix42d Umat;
-    Umat.col(0) = U; Umat.col(1) = U;
-    auto [R, R_U, R_x, R_Ret, R_Ma] =
-        ResidualStation(param, xvec, Umat, Aux);
-    (void)R; (void)R_Ret; (void)R_Ma;
+    Umat.col(0) = U;
+    Umat.col(1) = U;
+    auto [R, R_U, R_x, R_Ret, R_Ma] = ResidualStation(param, xvec, Umat, Aux);
+    (void)R;
+    (void)R_Ret;
+    (void)R_Ma;
 
     MatrixXd cs_R_U = readMatrix(*file_, "residual_stagnation/R_U");
     MatrixXd cs_R_x = readMatrix(*file_, "residual_stagnation/R_x");
@@ -318,9 +346,9 @@ TEST_F(PingTest, ResidualStation_Stagnation) {
         for (int i = 0; i < 3; ++i) {
             if (!withinTol(R_U(i, k), cs_R_U(i, k))) {
                 ++nfail;
-                ADD_FAILURE() << "Stagnation R_U[" << i << "," << k
-                              << "] analytic=" << R_U(i, k)
-                              << " cs=" << cs_R_U(i, k);
+                ADD_FAILURE()
+                    << "Stagnation R_U[" << i << "," << k
+                    << "] analytic=" << R_U(i, k) << " cs=" << cs_R_U(i, k);
             }
         }
     }
@@ -328,9 +356,9 @@ TEST_F(PingTest, ResidualStation_Stagnation) {
         for (int i = 0; i < 3; ++i) {
             if (!withinTol(R_x(i, k), cs_R_x(i, k))) {
                 ++nfail;
-                ADD_FAILURE() << "Stagnation R_x[" << i << "," << k
-                              << "] analytic=" << R_x(i, k)
-                              << " cs=" << cs_R_x(i, k);
+                ADD_FAILURE()
+                    << "Stagnation R_x[" << i << "," << k
+                    << "] analytic=" << R_x(i, k) << " cs=" << cs_R_x(i, k);
             }
         }
     }
@@ -382,8 +410,9 @@ TEST_F(PingTest, BuildGlobSys_Jacobians) {
         for (Eigen::Index j = 0; j < R_U_dense.cols(); ++j) {
             if (!wtol(R_U_dense(i, j), cs_R_U(i, j))) {
                 if (nfail < 5)
-                    ADD_FAILURE() << "R_U[" << i << "," << j << "] analytic="
-                                  << R_U_dense(i, j) << " cs=" << cs_R_U(i, j);
+                    ADD_FAILURE() << "R_U[" << i << "," << j
+                                  << "] analytic=" << R_U_dense(i, j)
+                                  << " cs=" << cs_R_U(i, j);
                 ++nfail;
             }
         }
@@ -392,15 +421,17 @@ TEST_F(PingTest, BuildGlobSys_Jacobians) {
         for (Eigen::Index j = 0; j < R_x_dense.cols(); ++j) {
             if (!wtol(R_x_dense(i, j), cs_R_x(i, j))) {
                 if (nfail < 5)
-                    ADD_FAILURE() << "R_x[" << i << "," << j << "] analytic="
-                                  << R_x_dense(i, j) << " cs=" << cs_R_x(i, j);
+                    ADD_FAILURE() << "R_x[" << i << "," << j
+                                  << "] analytic=" << R_x_dense(i, j)
+                                  << " cs=" << cs_R_x(i, j);
                 ++nfail;
             }
         }
     }
     (void)Nsys;
-    std::cout << "BuildGlobSys: " << nfail << " failures, max|R_U|="
-              << max_err_U << " max|R_x|=" << max_err_x << std::endl;
+    std::cout << "BuildGlobSys: " << nfail
+              << " failures, max|R_U|=" << max_err_U
+              << " max|R_x|=" << max_err_x << std::endl;
 }
 
 // ===========================================================================
@@ -433,7 +464,8 @@ TEST_F(PingTest, StagnationState_Derivatives) {
     Matrix42d U;
     U.col(0) << 5e-5, 1.1e-4, 0.0, 0.0348;
     U.col(1) << 4.9e-5, 1.09e-4, 0.0, 0.07397;
-    Vector2d x; x << 5.18e-4, 1.1e-3;
+    Vector2d x;
+    x << 5.18e-4, 1.1e-3;
 
     auto result = StagnationState(U, x);
     MatrixXd cs_Ust_U = readMatrix(*file_, "stagnation_state/Ust_U");
@@ -479,9 +511,9 @@ TEST_F(PingTest, CalcForce_Derivatives) {
         if (!withinTol(state.post.cl_ue(i), cs_cl_ue(i))) {
             ++nfail;
             if (nfail <= 5)
-                ADD_FAILURE() << "cl_ue[" << i << "] analytic="
-                              << state.post.cl_ue(i)
-                              << " cs=" << cs_cl_ue(i);
+                ADD_FAILURE()
+                    << "cl_ue[" << i << "] analytic=" << state.post.cl_ue(i)
+                    << " cs=" << cs_cl_ue(i);
         }
     }
     if (!withinTol(state.post.cl_alpha, cs_cl_alpha)) {

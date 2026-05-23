@@ -3,6 +3,7 @@
 // rows/columns of R_V differ, narrowing down where the 1e-5 lambda bug is.
 
 #include <H5Cpp.h>
+
 #include <Eigen/Dense>
 #include <Eigen/SparseLU>
 #include <algorithm>
@@ -40,8 +41,9 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const char* path = "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
-                       "tests/comprehensive_reference.h5";
+    const char* path =
+        "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
+        "tests/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");
@@ -50,7 +52,8 @@ int main() {
     try {
         R_V_ref = readMatrix(f, "comprehensive/R_V");
     } catch (...) {
-        std::cerr << "comprehensive/R_V not in HDF5; regenerate the reference\n";
+        std::cerr
+            << "comprehensive/R_V not in HDF5; regenerate the reference\n";
         return 1;
     }
 
@@ -81,10 +84,10 @@ int main() {
     int Nsys = s.glob.Nsys;
     int NN = 4 * Nsys;
     MatrixXd R_V_cpp = MatrixXd(s.glob.R_V);
-    std::cout << "R_V cppfoil dims: " << R_V_cpp.rows() << "x"
-              << R_V_cpp.cols() << "\n";
-    std::cout << "R_V mfoil dims:   " << R_V_ref.rows() << "x"
-              << R_V_ref.cols() << "\n";
+    std::cout << "R_V cppfoil dims: " << R_V_cpp.rows() << "x" << R_V_cpp.cols()
+              << "\n";
+    std::cout << "R_V mfoil dims:   " << R_V_ref.rows() << "x" << R_V_ref.cols()
+              << "\n";
 
     if (R_V_cpp.rows() != R_V_ref.rows()) return 1;
 
@@ -99,15 +102,14 @@ int main() {
               [](auto a, auto b) { return a.first > b.first; });
     for (int k = 0; k < std::min<int>(20, NN); ++k) {
         int i = row_errs[k].second;
-        const char* what = (i < 3 * Nsys) ? "R_BL"
-                                            : "R_ue";
+        const char* what = (i < 3 * Nsys) ? "R_BL" : "R_ue";
         int eq_idx = (i < 3 * Nsys) ? (i % 3) : -1;
         const char* eq[3] = {"mom", "shape", "lag"};
         int node = (i < 3 * Nsys) ? (i / 3) : (i - 3 * Nsys);
         std::cout << "  row " << i << " (" << what
                   << (eq_idx >= 0 ? std::string(" ") + eq[eq_idx] : "")
-                  << " node=" << node << "): max abs="
-                  << row_errs[k].first << "\n";
+                  << " node=" << node << "): max abs=" << row_errs[k].first
+                  << "\n";
     }
 
     // Find worst single entry
@@ -143,8 +145,8 @@ int main() {
                 wj_in_block = j;
             }
         }
-        std::cout << "  col " << var[k] << ": max=" << mx
-                  << " at node " << wj_in_block << "\n";
+        std::cout << "  col " << var[k] << ": max=" << mx << " at node "
+                  << wj_in_block << "\n";
     }
 
     // Count nonzero entries that differ significantly
@@ -157,14 +159,16 @@ int main() {
                 std::max(std::abs(R_V_cpp(i, j)), std::abs(R_V_ref(i, j)));
             if (mag > 1e-8 && e > 1e-10) {
                 n_diff++;
-                if (i < 3 * Nsys) n_diff_bl++;
-                else n_diff_ue++;
+                if (i < 3 * Nsys)
+                    n_diff_bl++;
+                else
+                    n_diff_ue++;
             }
         }
     }
     std::cout << "\nEntries with |err|>1e-10 and |val|>1e-8: " << n_diff
-              << " (BL rows: " << n_diff_bl
-              << ", ue rows: " << n_diff_ue << ")\n";
+              << " (BL rows: " << n_diff_bl << ", ue rows: " << n_diff_ue
+              << ")\n";
 
     return 0;
 }

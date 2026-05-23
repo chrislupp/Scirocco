@@ -103,8 +103,8 @@ bool Cppfoil::Solve() {
         if (state_.oper.Ma > 0.0) {
             double b = std::sqrt(1.0 - state_.oper.Ma * state_.oper.Ma);
             state_.param.KTb = b;
-            state_.param.KTl = (state_.oper.Ma * state_.oper.Ma) /
-                               ((1.0 + b) * (1.0 + b));
+            state_.param.KTl =
+                (state_.oper.Ma * state_.oper.Ma) / ((1.0 + b) * (1.0 + b));
         } else {
             state_.param.KTb = 1.0;
             state_.param.KTl = 0.0;

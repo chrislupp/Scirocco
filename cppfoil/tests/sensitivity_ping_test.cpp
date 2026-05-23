@@ -63,8 +63,8 @@ class SensitivityPingTest : public ::testing::Test {
    protected:
     static std::unique_ptr<H5::H5File> file_;
     static void SetUpTestSuite() {
-        file_ = std::make_unique<H5::H5File>(
-            SENSITIVITY_PING_REFERENCE_FILE, H5F_ACC_RDONLY);
+        file_ = std::make_unique<H5::H5File>(SENSITIVITY_PING_REFERENCE_FILE,
+                                             H5F_ACC_RDONLY);
     }
     static void TearDownTestSuite() {
         if (file_) file_->close();
@@ -223,8 +223,9 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
         for (int k = 0; k < 2; ++k) {
             if (!withinTol(d.val_xi(k), cs(k))) {
                 ++nfail;
-                ADD_FAILURE() << "CSS val_xi[" << k << "] analytic="
-                              << d.val_xi(k) << " cs=" << cs(k);
+                ADD_FAILURE()
+                    << "CSS val_xi[" << k << "] analytic=" << d.val_xi(k)
+                    << " cs=" << cs(k);
             }
         }
     }
@@ -328,8 +329,8 @@ TEST_F(SensitivityPingTest, ForcePartials_cl) {
             }
         }
     }
-    std::cout << "ForcePartials_cl: " << nfail << " failures, max|.|="
-              << max_abs << "\n";
+    std::cout << "ForcePartials_cl: " << nfail
+              << " failures, max|.|=" << max_abs << "\n";
 }
 
 // ---------------------------------------------------------------------------

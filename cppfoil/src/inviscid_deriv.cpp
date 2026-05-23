@@ -39,7 +39,7 @@
 namespace cppfoil {
 
 VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
-                             double alpha) {
+                            double alpha) {
     // Computes lambda^T * d(A*gamma - rhs)/dx_foil  [2*N]
     //
     // The inviscid residual is: R = A*gamma - rhs = 0
@@ -52,7 +52,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
     //   (c) TE source/vortex panels (nodes 0 and N-1)
     //   (d) rhs: rhs(i,0) = -xi(1), rhs(i,1) = xi(0)
     //   (e) Kutta condition row N: no coordinate dependence
-    //   (f) No-gap row N-1: depends on gamma extrapolation (no coord dependence)
+    //   (f) No-gap row N-1: depends on gamma extrapolation (no coord
+    //   dependence)
 
     int N = state.foil.N;
     VectorXd sens = VectorXd::Zero(2 * N);
@@ -76,7 +77,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
     //
     // When we perturb node k:
     //   - As xi (row i=k): dR(k)/dx_k via dxi for ALL panels j
-    //   - As Xj endpoint: for panel j=k-1 (endpoint x2=k) and j=k (endpoint x1=k)
+    //   - As Xj endpoint: for panel j=k-1 (endpoint x2=k) and j=k (endpoint
+    //   x1=k)
 
     for (int i = 0; i < N; ++i) {
         if (nogap && i == N - 1) continue;  // Skip no-gap row
@@ -92,7 +94,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
 
             auto deriv = PanelLinVortexStreamDeriv(Xj, xi);
 
-            // Contribution to gamma: dR(i)/d_something += da*gam(j) + db*gam(j+1)
+            // Contribution to gamma: dR(i)/d_something += da*gam(j) +
+            // db*gam(j+1)
             double gj = gam(j);
             double gjp = gam(j + 1);
 
@@ -100,15 +103,16 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
             // sens(2*i+0) += lam_i * (da/dxi_x * gj + db/dxi_x * gjp)
             // sens(2*i+1) += lam_i * (da/dxi_z * gj + db/dxi_z * gjp)
             sens(2 * i) += lam_i * (deriv.a_xi(0) * gj + deriv.b_xi(0) * gjp);
-            sens(2 * i + 1) += lam_i * (deriv.a_xi(1) * gj + deriv.b_xi(1) * gjp);
+            sens(2 * i + 1) +=
+                lam_i * (deriv.a_xi(1) * gj + deriv.b_xi(1) * gjp);
 
             // Xj derivatives (affect panel endpoint coordinates)
             // Xj = [x1_x, x1_z, x2_x, x2_z] = node j and j+1
             Vector4d dR_dXj = deriv.a_Xj * gj + deriv.b_Xj * gjp;
-            sens(2 * j) += lam_i * dR_dXj(0);       // x1_x = node j x
-            sens(2 * j + 1) += lam_i * dR_dXj(1);   // x1_z = node j z
-            sens(2 * (j + 1)) += lam_i * dR_dXj(2);     // x2_x = node j+1 x
-            sens(2 * (j + 1) + 1) += lam_i * dR_dXj(3); // x2_z = node j+1 z
+            sens(2 * j) += lam_i * dR_dXj(0);            // x1_x = node j x
+            sens(2 * j + 1) += lam_i * dR_dXj(1);        // x1_z = node j z
+            sens(2 * (j + 1)) += lam_i * dR_dXj(2);      // x2_x = node j+1 x
+            sens(2 * (j + 1) + 1) += lam_i * dR_dXj(3);  // x2_z = node j+1 z
         }
 
         // --- (2) TE source panel contribution ---
@@ -191,7 +195,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
 
             // Precompute TE influence at each node, weighted by lambda
             // TE source: sum_i lambda(i) * a_src(i) * 0.5 * (gam(N-1)-gam(0))
-            // TE vortex: sum_i lambda(i) * (a_vor+b_vor)(i) * 0.5 * (gam(0)-gam(N-1))
+            // TE vortex: sum_i lambda(i) * (a_vor+b_vor)(i) * 0.5 *
+            // (gam(0)-gam(N-1))
             double tcp_sum = 0.0, tdp_sum = 0.0;
             for (int i = 0; i < N; ++i) {
                 if (std::abs(lambda(i)) < 1e-20) continue;
@@ -213,47 +218,59 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
                     // Compute d(tcp)/d(x[kk]_dd) and d(tdp)/d(x[kk]_dd)
                     // Inline the derivative computation
                     Vector2d v1 = state.foil.x.col(0) - state.foil.x.col(1);
-                    Vector2d v2 = state.foil.x.col(N-1) - state.foil.x.col(N-2);
+                    Vector2d v2 =
+                        state.foil.x.col(N - 1) - state.foil.x.col(N - 2);
                     double v1n = v1.norm(), v2n = v2.norm();
                     if (v1n < 1e-10 || v2n < 1e-10) continue;
-                    Vector2d t1 = v1/v1n, t2 = v2/v2n;
-                    Vector2d traw = 0.5*(t1+t2);
+                    Vector2d t1 = v1 / v1n, t2 = v2 / v2n;
+                    Vector2d traw = 0.5 * (t1 + t2);
                     double tnorm = traw.norm();
                     if (tnorm < 1e-10) continue;
-                    Vector2d tvec = traw/tnorm;
-                    Vector2d pvec = s/sn;
+                    Vector2d tvec = traw / tnorm;
+                    Vector2d pvec = s / sn;
 
                     // dt1/d(x[kk]_dd)
-                    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1*t1.transpose())/v1n;
+                    Matrix2d dt1_dv1 =
+                        (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
                     Vector2d dv1 = Vector2d::Zero();
-                    if (kk == 0) dv1(dd) = 1.0;
-                    else if (kk == 1) dv1(dd) = -1.0;
+                    if (kk == 0)
+                        dv1(dd) = 1.0;
+                    else if (kk == 1)
+                        dv1(dd) = -1.0;
                     Vector2d dt1_d = dt1_dv1 * dv1;
 
-                    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2*t2.transpose())/v2n;
+                    Matrix2d dt2_dv2 =
+                        (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
                     Vector2d dv2 = Vector2d::Zero();
-                    if (kk == N-1) dv2(dd) = 1.0;
-                    else if (kk == N-2) dv2(dd) = -1.0;
+                    if (kk == N - 1)
+                        dv2(dd) = 1.0;
+                    else if (kk == N - 2)
+                        dv2(dd) = -1.0;
                     Vector2d dt2_d = dt2_dv2 * dv2;
 
-                    Vector2d dtraw_d = 0.5*(dt1_d + dt2_d);
-                    Matrix2d dt_dtraw = (Matrix2d::Identity() - tvec*tvec.transpose())/tnorm;
+                    Vector2d dtraw_d = 0.5 * (dt1_d + dt2_d);
+                    Matrix2d dt_dtraw =
+                        (Matrix2d::Identity() - tvec * tvec.transpose()) /
+                        tnorm;
                     Vector2d dt_d = dt_dtraw * dtraw_d;
 
                     Vector2d ds_d = Vector2d::Zero();
-                    if (kk == N-1) ds_d(dd) = 1.0;
-                    else if (kk == 0) ds_d(dd) = -1.0;
-                    Matrix2d dp_ds = (Matrix2d::Identity() - pvec*pvec.transpose())/sn;
+                    if (kk == N - 1)
+                        ds_d(dd) = 1.0;
+                    else if (kk == 0)
+                        ds_d(dd) = -1.0;
+                    Matrix2d dp_ds =
+                        (Matrix2d::Identity() - pvec * pvec.transpose()) / sn;
                     Vector2d dp_d = dp_ds * ds_d;
 
-                    double cross_val = tvec(0)*pvec(1) - tvec(1)*pvec(0);
+                    double cross_val = tvec(0) * pvec(1) - tvec(1) * pvec(0);
                     double sign_c = (cross_val >= 0) ? 1.0 : -1.0;
-                    double dcross = dt_d(0)*pvec(1) + tvec(0)*dp_d(1)
-                                  - dt_d(1)*pvec(0) - tvec(1)*dp_d(0);
+                    double dcross = dt_d(0) * pvec(1) + tvec(0) * dp_d(1) -
+                                    dt_d(1) * pvec(0) - tvec(1) * dp_d(0);
                     double dtcp_d = sign_c * dcross;
                     double dtdp_d = dt_d.dot(pvec) + tvec.dot(dp_d);
 
-                    sens(2*kk + dd) += dtcp_d * tcp_sum + dtdp_d * tdp_sum;
+                    sens(2 * kk + dd) += dtcp_d * tcp_sum + dtdp_d * tdp_sum;
                 }
             }
         }
@@ -296,12 +313,13 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
             Xj.col(1) = state.foil.x.col(j + 1);
             auto deriv = PanelLinVortexStreamDeriv(Xj, xi);
             double vj = v(j), vjp = v(j + 1);
-            sens(2 * i)     += lam_i * (deriv.a_xi(0) * vj + deriv.b_xi(0) * vjp);
-            sens(2 * i + 1) += lam_i * (deriv.a_xi(1) * vj + deriv.b_xi(1) * vjp);
+            sens(2 * i) += lam_i * (deriv.a_xi(0) * vj + deriv.b_xi(0) * vjp);
+            sens(2 * i + 1) +=
+                lam_i * (deriv.a_xi(1) * vj + deriv.b_xi(1) * vjp);
             Vector4d dR_dXj = deriv.a_Xj * vj + deriv.b_Xj * vjp;
-            sens(2 * j)         += lam_i * dR_dXj(0);
-            sens(2 * j + 1)     += lam_i * dR_dXj(1);
-            sens(2 * (j + 1))   += lam_i * dR_dXj(2);
+            sens(2 * j) += lam_i * dR_dXj(0);
+            sens(2 * j + 1) += lam_i * dR_dXj(1);
+            sens(2 * (j + 1)) += lam_i * dR_dXj(2);
             sens(2 * (j + 1) + 1) += lam_i * dR_dXj(3);
         }
 
@@ -313,12 +331,12 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
         {
             auto deriv = PanelConstSourceStreamDeriv(XjTE, xi);
             double sigma_factor = 0.5 * te.tcp * (v(N - 1) - v(0));
-            sens(2 * i)         += lam_i * deriv.val_xi(0) * sigma_factor;
-            sens(2 * i + 1)     += lam_i * deriv.val_xi(1) * sigma_factor;
-            sens(2 * (N - 1))   += lam_i * deriv.val_Xj(0) * sigma_factor;
+            sens(2 * i) += lam_i * deriv.val_xi(0) * sigma_factor;
+            sens(2 * i + 1) += lam_i * deriv.val_xi(1) * sigma_factor;
+            sens(2 * (N - 1)) += lam_i * deriv.val_Xj(0) * sigma_factor;
             sens(2 * (N - 1) + 1) += lam_i * deriv.val_Xj(1) * sigma_factor;
-            sens(0)             += lam_i * deriv.val_Xj(2) * sigma_factor;
-            sens(1)             += lam_i * deriv.val_Xj(3) * sigma_factor;
+            sens(0) += lam_i * deriv.val_Xj(2) * sigma_factor;
+            sens(1) += lam_i * deriv.val_Xj(3) * sigma_factor;
         }
 
         // (3) TE vortex panel
@@ -327,13 +345,13 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
             double v_factor = 0.5 * te.tdp * (v(0) - v(N - 1));
             double dab_dxi_x = deriv.a_xi(0) + deriv.b_xi(0);
             double dab_dxi_z = deriv.a_xi(1) + deriv.b_xi(1);
-            sens(2 * i)         += lam_i * dab_dxi_x * v_factor;
-            sens(2 * i + 1)     += lam_i * dab_dxi_z * v_factor;
+            sens(2 * i) += lam_i * dab_dxi_x * v_factor;
+            sens(2 * i + 1) += lam_i * dab_dxi_z * v_factor;
             Vector4d dab_dXj = deriv.a_Xj + deriv.b_Xj;
-            sens(2 * (N - 1))   += lam_i * dab_dXj(0) * v_factor;
+            sens(2 * (N - 1)) += lam_i * dab_dXj(0) * v_factor;
             sens(2 * (N - 1) + 1) += lam_i * dab_dXj(1) * v_factor;
-            sens(0)             += lam_i * dab_dXj(2) * v_factor;
-            sens(1)             += lam_i * dab_dXj(3) * v_factor;
+            sens(0) += lam_i * dab_dXj(2) * v_factor;
+            sens(1) += lam_i * dab_dXj(3) * v_factor;
         }
 
         // (4) NO rhs term (intentionally skipped — we want d(A*v) only).
@@ -366,7 +384,8 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
                 if (kk < 0 || kk >= N) continue;
                 for (int dd = 0; dd < 2; ++dd) {
                     Vector2d v1 = state.foil.x.col(0) - state.foil.x.col(1);
-                    Vector2d v2 = state.foil.x.col(N - 1) - state.foil.x.col(N - 2);
+                    Vector2d v2 =
+                        state.foil.x.col(N - 1) - state.foil.x.col(N - 2);
                     double v1n = v1.norm(), v2n = v2.norm();
                     if (v1n < 1e-10 || v2n < 1e-10) continue;
                     Vector2d t1 = v1 / v1n, t2 = v2 / v2n;
@@ -375,23 +394,34 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
                     if (tnorm < 1e-10) continue;
                     Vector2d tvec = traw / tnorm;
                     Vector2d pvec = s / sn;
-                    Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
+                    Matrix2d dt1_dv1 =
+                        (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
                     Vector2d dv1 = Vector2d::Zero();
-                    if (kk == 0) dv1(dd) = 1.0;
-                    else if (kk == 1) dv1(dd) = -1.0;
+                    if (kk == 0)
+                        dv1(dd) = 1.0;
+                    else if (kk == 1)
+                        dv1(dd) = -1.0;
                     Vector2d dt1_d = dt1_dv1 * dv1;
-                    Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
+                    Matrix2d dt2_dv2 =
+                        (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
                     Vector2d dv2 = Vector2d::Zero();
-                    if (kk == N - 1) dv2(dd) = 1.0;
-                    else if (kk == N - 2) dv2(dd) = -1.0;
+                    if (kk == N - 1)
+                        dv2(dd) = 1.0;
+                    else if (kk == N - 2)
+                        dv2(dd) = -1.0;
                     Vector2d dt2_d = dt2_dv2 * dv2;
                     Vector2d dtraw_d = 0.5 * (dt1_d + dt2_d);
-                    Matrix2d dt_dtraw = (Matrix2d::Identity() - tvec * tvec.transpose()) / tnorm;
+                    Matrix2d dt_dtraw =
+                        (Matrix2d::Identity() - tvec * tvec.transpose()) /
+                        tnorm;
                     Vector2d dt_d = dt_dtraw * dtraw_d;
                     Vector2d ds_d = Vector2d::Zero();
-                    if (kk == N - 1) ds_d(dd) = 1.0;
-                    else if (kk == 0) ds_d(dd) = -1.0;
-                    Matrix2d dp_ds = (Matrix2d::Identity() - pvec * pvec.transpose()) / sn;
+                    if (kk == N - 1)
+                        ds_d(dd) = 1.0;
+                    else if (kk == 0)
+                        ds_d(dd) = -1.0;
+                    Matrix2d dp_ds =
+                        (Matrix2d::Identity() - pvec * pvec.transpose()) / sn;
                     Vector2d dp_d = dp_ds * ds_d;
                     double cross_val = tvec(0) * pvec(1) - tvec(1) * pvec(0);
                     double sign_c = (cross_val >= 0) ? 1.0 : -1.0;

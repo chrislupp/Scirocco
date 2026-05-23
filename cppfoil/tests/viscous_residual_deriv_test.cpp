@@ -6,6 +6,8 @@
     Licensed under the Apache License, Version 2.0 (the "License").
 */
 
+#include "cppfoil/core/viscous_residual_deriv.h"
+
 #include <H5Cpp.h>
 #include <gtest/gtest.h>
 
@@ -17,7 +19,6 @@
 
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/viscous_geom_deriv.h"
-#include "cppfoil/core/viscous_residual_deriv.h"
 #include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
 #include "cppfoil/data/state.h"
@@ -82,8 +83,9 @@ MatrixXd read3DAsMatrix(H5::H5File& f, const std::string& p) {
     size_t total = dims[0] * dims[1] * dims[2];
     std::vector<double> b(total);
     d.read(b.data(), H5::PredType::NATIVE_DOUBLE);
-    // Source layout (C order): index (i, j, k) → i*dims[1]*dims[2] + j*dims[2] + k
-    // Target layout: row = i, col = 2*k + j (i.e. swap j and k in the column).
+    // Source layout (C order): index (i, j, k) → i*dims[1]*dims[2] + j*dims[2]
+    // + k Target layout: row = i, col = 2*k + j (i.e. swap j and k in the
+    // column).
     MatrixXd m(dims[0], dims[1] * dims[2]);
     for (hsize_t i = 0; i < dims[0]; ++i) {
         for (hsize_t j = 0; j < dims[1]; ++j) {
@@ -107,8 +109,8 @@ class ResidualDerivTest : public ::testing::Test {
 
     static void SetUpTestSuite() {
         try {
-            file_ = new H5::H5File(COMPREHENSIVE_REFERENCE_FILE,
-                                   H5F_ACC_RDONLY);
+            file_ =
+                new H5::H5File(COMPREHENSIVE_REFERENCE_FILE, H5F_ACC_RDONLY);
             loaded_ = true;
         } catch (H5::Exception& e) {
             std::cerr << "Failed to open " << COMPREHENSIVE_REFERENCE_FILE
@@ -192,11 +194,12 @@ class ResidualDerivTest : public ::testing::Test {
                     ++nfail;
                     if (printed < max_print) {
                         double err = std::abs(got(i, j) - ref(i, j));
-                        double rel = err / std::max(std::abs(ref(i, j)), 1e-300);
-                        ADD_FAILURE() << label << "[" << i << "," << j
-                                      << "] got=" << got(i, j) << " ref="
-                                      << ref(i, j) << " abs=" << err
-                                      << " rel=" << rel;
+                        double rel =
+                            err / std::max(std::abs(ref(i, j)), 1e-300);
+                        ADD_FAILURE()
+                            << label << "[" << i << "," << j
+                            << "] got=" << got(i, j) << " ref=" << ref(i, j)
+                            << " abs=" << err << " rel=" << rel;
                         ++printed;
                     }
                 }
@@ -227,7 +230,11 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
     for (Eigen::Index i = 0; i < r.rows(); ++i) {
         for (Eigen::Index j = 0; j < r.cols(); ++j) {
             double e = std::abs(a(i, j) - r(i, j));
-            if (e > overall_max) { overall_max = e; best_i = i; best_j = j; }
+            if (e > overall_max) {
+                overall_max = e;
+                best_i = i;
+                best_j = j;
+            }
             if (i >= Ig_stag && i < Ig_stag + 6) {
                 stag_row_max = std::max(stag_row_max, e);
             } else {
@@ -235,10 +242,9 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
             }
         }
     }
-    std::cout << "DRblDFoilX: max abs = " << overall_max
-              << " (stag rows " << Ig_stag << ".." << Ig_stag + 5 << " max="
-              << stag_row_max << ", other rows max=" << other_max << ")"
-              << std::endl;
+    std::cout << "DRblDFoilX: max abs = " << overall_max << " (stag rows "
+              << Ig_stag << ".." << Ig_stag + 5 << " max=" << stag_row_max
+              << ", other rows max=" << other_max << ")" << std::endl;
     double worst_ref = r(best_i, best_j);
     std::cout << "  Worst entry: [" << best_i << "," << best_j
               << "] ref=" << worst_ref
@@ -252,11 +258,15 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
             double ref = std::abs(r(i, j));
             if (ref < 1e-6) continue;
             double rel = std::abs(a(i, j) - r(i, j)) / ref;
-            if (rel > worst_rel) { worst_rel = rel; wr_i = i; wr_j = j; }
+            if (rel > worst_rel) {
+                worst_rel = rel;
+                wr_i = i;
+                wr_j = j;
+            }
         }
     }
-    std::cout << "  Worst rel (|ref|>1e-6): " << worst_rel << " at ["
-              << wr_i << "," << wr_j << "] ref=" << r(wr_i, wr_j)
+    std::cout << "  Worst rel (|ref|>1e-6): " << worst_rel << " at [" << wr_i
+              << "," << wr_j << "] ref=" << r(wr_i, wr_j)
               << " abs=" << std::abs(a(wr_i, wr_j) - r(wr_i, wr_j))
               << std::endl;
     int nfail = compareHybrid2D(a, r, "dR_BL");
@@ -279,7 +289,8 @@ TEST_F(ResidualDerivTest, DRueDFoilX) {
     double overall_max = 0, foil_max = 0, wake_max = 0, wake_inner_max = 0;
     int n_foil_above = 0, n_wake_above = 0;
     int last_row = r.rows() - 1;
-    double last_row_max = (a.row(last_row) - r.row(last_row)).cwiseAbs().maxCoeff();
+    double last_row_max =
+        (a.row(last_row) - r.row(last_row)).cwiseAbs().maxCoeff();
     for (int i = 0; i < r.rows(); ++i) {
         double row_max = (a.row(i) - r.row(i)).cwiseAbs().maxCoeff();
         overall_max = std::max(overall_max, row_max);
@@ -288,26 +299,31 @@ TEST_F(ResidualDerivTest, DRueDFoilX) {
             if (row_max > 1e-6) n_foil_above++;
         } else {
             wake_max = std::max(wake_max, row_max);
-            if (i < last_row) wake_inner_max = std::max(wake_inner_max, row_max);
+            if (i < last_row)
+                wake_inner_max = std::max(wake_inner_max, row_max);
             if (row_max > 1e-6) n_wake_above++;
         }
     }
-    std::cout << "  Last wake row [" << last_row << "] (predictor chain): "
-              << last_row_max << std::endl;
+    std::cout << "  Last wake row [" << last_row
+              << "] (predictor chain): " << last_row_max << std::endl;
     std::cout << "  Wake rows excluding last: " << wake_inner_max << std::endl;
-    std::cout << "DRueDFoilX: overall max abs error = "
-              << overall_max << std::endl;
-    std::cout << "  Foil rows: max=" << foil_max << ", fails(>1e-6)="
-              << n_foil_above << "/" << N_ << std::endl;
-    std::cout << "  Wake rows: max=" << wake_max << ", fails(>1e-6)="
-              << n_wake_above << "/" << Nw_ << std::endl;
+    std::cout << "DRueDFoilX: overall max abs error = " << overall_max
+              << std::endl;
+    std::cout << "  Foil rows: max=" << foil_max
+              << ", fails(>1e-6)=" << n_foil_above << "/" << N_ << std::endl;
+    std::cout << "  Wake rows: max=" << wake_max
+              << ", fails(>1e-6)=" << n_wake_above << "/" << Nw_ << std::endl;
     // Locate worst entry
     Eigen::Index best_i = 0, best_j = 0;
     double maxabs = 0;
     for (int i = N_; i < r.rows(); ++i) {
         for (int j = 0; j < r.cols(); ++j) {
             double e = std::abs(a(i, j) - r(i, j));
-            if (e > maxabs) { maxabs = e; best_i = i; best_j = j; }
+            if (e > maxabs) {
+                maxabs = e;
+                best_i = i;
+                best_j = j;
+            }
         }
     }
     std::cout << "  Worst wake entry: [" << best_i << "," << best_j

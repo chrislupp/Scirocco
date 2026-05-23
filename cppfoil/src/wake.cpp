@@ -45,8 +45,9 @@ void RecomputeArcLength(FoilState& state) {
     int N = state.foil.N;
     state.foil.s(0) = 0.0;
     for (int i = 1; i < N; ++i) {
-        state.foil.s(i) = state.foil.s(i - 1) +
-                           (state.foil.x.col(i) - state.foil.x.col(i - 1)).norm();
+        state.foil.s(i) =
+            state.foil.s(i - 1) +
+            (state.foil.x.col(i) - state.foil.x.col(i - 1)).norm();
     }
 }
 
@@ -233,9 +234,8 @@ void BuildWake(FoilState& state) {
         double ds = sv(i + 1) - sv(i);
 
         // v1 = velocity at current point, normalized
-        Vector2d V0 =
-            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha,
-                             state.wake.x.col(i));
+        Vector2d V0 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
+                                       alpha, state.wake.x.col(i));
         double V0mag = V0.norm();
         if (V0mag < 1e-10) V0mag = 1e-10;
         Vector2d v1 = V0 / V0mag;
@@ -245,16 +245,15 @@ void BuildWake(FoilState& state) {
         Vector2d x_pred = state.wake.x.col(i) + ds * v1;
 
         // v2 = velocity at predicted point, normalized
-        Vector2d V1 = InviscidVelocity(state.foil.x, state.isol.gam, Vinf,
-                                       alpha, x_pred);
+        Vector2d V1 =
+            InviscidVelocity(state.foil.x, state.isol.gam, Vinf, alpha, x_pred);
         double V1mag = V1.norm();
         if (V1mag < 1e-10) V1mag = 1e-10;
         Vector2d v2 = V1 / V1mag;
         state.wake.t.col(i + 1) = v2;
 
         // Corrector step (no renormalization of average, matching mfoil)
-        state.wake.x.col(i + 1) =
-            state.wake.x.col(i) + ds * 0.5 * (v1 + v2);
+        state.wake.x.col(i + 1) = state.wake.x.col(i) + ds * 0.5 * (v1 + v2);
     }
 
     // Compute wake inviscid edge velocities

@@ -56,9 +56,8 @@ MatrixXd DFoilSDFoilXCumulative(const Panel& foil) {
     //
     // So for foil.s(i):
     //   if k==0: only p(1) contributes (-u[d,1])
-    //   if 1<=k<=i-1: p(k) contributes (+u[d,k]) and p(k+1) contributes (-u[d,k+1])
-    //   if k==i: p(i) contributes (+u[d,i])
-    //   if k>i: zero
+    //   if 1<=k<=i-1: p(k) contributes (+u[d,k]) and p(k+1) contributes
+    //   (-u[d,k+1]) if k==i: p(i) contributes (+u[d,i]) if k>i: zero
     // ----------------------------------------------------------------------
     // Compute u[:,j] (the unit tangent of panel j, j ∈ [1,N-1])
     MatrixXd u(2, N);  // u(:,0) unused
@@ -130,13 +129,19 @@ void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
     // d(v1)/d(x[k]_dim), d(v2)/d(x[k]_dim), d(s)/d(x[k]_dim)
     Vector2d dv1 = Vector2d::Zero();
     Vector2d dv2 = Vector2d::Zero();
-    Vector2d ds  = Vector2d::Zero();
-    if (k == 0)         dv1(dim) =  1.0;
-    else if (k == 1)    dv1(dim) = -1.0;
-    if (k == N - 1)     dv2(dim) =  1.0;
-    else if (k == N - 2) dv2(dim) = -1.0;
-    if (k == N - 1)     ds(dim)  =  1.0;
-    else if (k == 0)    ds(dim)  = -1.0;
+    Vector2d ds = Vector2d::Zero();
+    if (k == 0)
+        dv1(dim) = 1.0;
+    else if (k == 1)
+        dv1(dim) = -1.0;
+    if (k == N - 1)
+        dv2(dim) = 1.0;
+    else if (k == N - 2)
+        dv2(dim) = -1.0;
+    if (k == N - 1)
+        ds(dim) = 1.0;
+    else if (k == 0)
+        ds(dim) = -1.0;
 
     auto normalize_jac = [](const Vector2d& u, double un) -> Matrix2d {
         return (Matrix2d::Identity() - u * u.transpose()) / un;
@@ -168,9 +173,9 @@ void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
 // DSstagDFoilX chain. Production now uses ue-based xi which doesn't need
 // a per-node gamma derivative.)
 
-
 // ============================================================================
-// DSstagDFoilX — ue-based xi convention (production state after commit 4051c2d).
+// DSstagDFoilX — ue-based xi convention (production state after commit
+// 4051c2d).
 //
 //   sstag = w1 * S[i0] + w2 * S[i1] where weights come from StagPointMove:
 //     w1 = ue[i1] / (ue[i0] + ue[i1])
@@ -250,12 +255,13 @@ void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
         r += dr;
     }
 
-    // dr/dds1: chord and L are constants → d/dds1 of  rN - 1 - (L/ds1)*(r-1) = 0
+    // dr/dds1: chord and L are constants → d/dds1 of  rN - 1 - (L/ds1)*(r-1) =
+    // 0
     //   N r^{N-1} dr + L/ds1^2 * (r-1) - L/ds1 * dr = 0
     //   dr * (N r^{N-1} - L/ds1) = -L * (r-1) / ds1^2
     //   dr_dds1 = -L * (r-1) / (ds1^2 * (N r^{N-1} - L/ds1))
-    double dr_dds1 = -L * (r - 1.0) /
-                     (ds1 * ds1 * (N * std::pow(r, N - 1) - L / ds1));
+    double dr_dds1 =
+        -L * (r - 1.0) / (ds1 * ds1 * (N * std::pow(r, N - 1) - L / ds1));
 
     sv = VectorXd::Zero(Np);
     dsv_dds1 = VectorXd::Zero(Np);
@@ -285,13 +291,14 @@ MatrixXd DWakeSDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    // d(ds1)/d(foil.x) = 0.5 * ( d(foil.s[1])/d(foil.x) - d(foil.s[0])/d(foil.x)
+    // d(ds1)/d(foil.x) = 0.5 * ( d(foil.s[1])/d(foil.x) -
+    // d(foil.s[0])/d(foil.x)
     //                          + d(foil.s[N-1])/d(foil.x)
     //                          - d(foil.s[N-2])/d(foil.x) )
-    VectorXd dds1 = 0.5 * (dfoil_s_dx.row(1).transpose() -
-                           dfoil_s_dx.row(0).transpose() +
-                           dfoil_s_dx.row(N - 1).transpose() -
-                           dfoil_s_dx.row(N - 2).transpose());
+    VectorXd dds1 =
+        0.5 *
+        (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
+         dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
     // d(foil.s[N-1])/d(foil.x)
     VectorXd dSTE = dfoil_s_dx.row(N - 1).transpose();
@@ -315,8 +322,8 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int Nsys = N + Nw;
     int twoN = 2 * N;
 
-    VectorXd dsstag = DSstagDFoilX(state, dfoil_s_dx);  // [2N]
-    MatrixXd dwake_s = DWakeSDFoilX(state, dfoil_s_dx); // [Nw x 2N]
+    VectorXd dsstag = DSstagDFoilX(state, dfoil_s_dx);   // [2N]
+    MatrixXd dwake_s = DWakeSDFoilX(state, dfoil_s_dx);  // [Nw x 2N]
 
     MatrixXd dxi = MatrixXd::Zero(Nsys, twoN);
     double sstag = state.isol.sstag;
@@ -324,9 +331,9 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     for (int i = 0; i < N; ++i) {
         double diff = state.foil.s(i) - sstag;
         double sgn = (diff >= 0.0) ? 1.0 : -1.0;
-        // d(xi[i])/d(foil.x) = sgn * (d(foil.s[i])/d(foil.x) - d(sstag)/d(foil.x))
-        dxi.row(i) =
-            sgn * (dfoil_s_dx.row(i) - dsstag.transpose());
+        // d(xi[i])/d(foil.x) = sgn * (d(foil.s[i])/d(foil.x) -
+        // d(sstag)/d(foil.x))
+        dxi.row(i) = sgn * (dfoil_s_dx.row(i) - dsstag.transpose());
     }
     for (int j = 0; j < Nw; ++j) {
         dxi.row(N + j) = dwake_s.row(j) - dsstag.transpose();
@@ -339,7 +346,8 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
 //   wgap[j] depends on hTE, dtdx, xib = (xi[N+j] - xi[N])/Lw,  Lw = flen*hTE
 //
 //   ξib = (xi[N+j] - xi[N]) / Lw
-//       = ((wake.s[j] - sstag) - (foil.s[N-1] - sstag)) / Lw   if foil.s[N-1] >= sstag
+//       = ((wake.s[j] - sstag) - (foil.s[N-1] - sstag)) / Lw   if foil.s[N-1]
+//       >= sstag
 //
 //   But wait — xi[N]  = |foil.s[N-1] - sstag|. Assuming sstag < foil.s[N-1]
 //   on the upper-surface side, xi[N] = foil.s[N-1] - sstag, and
@@ -393,10 +401,10 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    VectorXd dds1 = 0.5 * (dfoil_s_dx.row(1).transpose() -
-                           dfoil_s_dx.row(0).transpose() +
-                           dfoil_s_dx.row(N - 1).transpose() -
-                           dfoil_s_dx.row(N - 2).transpose());
+    VectorXd dds1 =
+        0.5 *
+        (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
+         dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
     MatrixXd dwgap = MatrixXd::Zero(Nw, twoN);
 
@@ -421,7 +429,8 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
                 }
                 double dLw = flen * dhTE;
                 double dsv = dsv_dds1(j) * dds1(col);
-                // xib = sv/Lw → dxib = dsv/Lw - sv/Lw^2 * dLw = dsv/Lw - xib*dLw/Lw
+                // xib = sv/Lw → dxib = dsv/Lw - sv/Lw^2 * dLw = dsv/Lw -
+                // xib*dLw/Lw
                 double dxib = dsv / Lw - xib * dLw / Lw;
                 double dA = flen * ddtdx * xib + (2.0 + flen * dtdx) * dxib;
                 double dB = -2.0 * (1.0 - xib) * dxib;
@@ -469,13 +478,10 @@ MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
 VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                                       const Vector2d& xi,
                                       const VectorXd& vortex,
-                                      const MatrixXd& dvortex_dx,
-                                      double alpha);
+                                      const MatrixXd& dvortex_dx, double alpha);
 
-VelDeriv InviscidVelocityWithDeriv(const FoilState& state,
-                                   const Vector2d& xi,
-                                   const MatrixXd& dgam_dx,
-                                   double alpha) {
+VelDeriv InviscidVelocityWithDeriv(const FoilState& state, const Vector2d& xi,
+                                   const MatrixXd& dgam_dx, double alpha) {
     return InviscidVelocityWithDerivExt(state, xi, state.isol.gam, dgam_dx,
                                         alpha);
 }
@@ -498,9 +504,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     out.V_xfoil = MatrixXd::Zero(2, twoN);
 
     // Helper lambda: write a 2-vector contribution into V_xfoil columns
-    // [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3 = x2=Xj[k1]).
-    auto add_Xj_block = [&](const Eigen::Matrix<double, 2, 4>& M_Xj,
-                            int k0, int k1) {
+    // [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3
+    // = x2=Xj[k1]).
+    auto add_Xj_block = [&](const Eigen::Matrix<double, 2, 4>& M_Xj, int k0,
+                            int k1) {
         out.V_xfoil.col(2 * k0 + 0) += M_Xj.col(0);
         out.V_xfoil.col(2 * k0 + 1) += M_Xj.col(1);
         out.V_xfoil.col(2 * k1 + 0) += M_Xj.col(2);
@@ -518,7 +525,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
         out.V_xi += d.a_xi * G(j) + d.b_xi * G(j + 1);
         // Direct panel-geom contribution (G held fixed)
         add_Xj_block(G(j) * d.a_Xj + G(j + 1) * d.b_Xj, j, j + 1);
-        // Gamma chain: V_G contribution = a * dgam_dx.row(j) + b * dgam_dx.row(j+1)
+        // Gamma chain: V_G contribution = a * dgam_dx.row(j) + b *
+        // dgam_dx.row(j+1)
         out.V_xfoil += d.a * dgam_dx.row(j) + d.b * dgam_dx.row(j + 1);
     }
 
@@ -536,9 +544,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     double sigma_te = 0.5 * tcp * (G(N - 1) - G(0));
     out.V += v_src * sigma_te;
     out.V_xi += ds.val_xi * sigma_te;
-    // Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src * d(sigma_te)/dXj_te_nodes
-    // d(sigma_te)/dXj of this panel = 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo
-    // BUT tcp depends on the global TE info — handled below as a separate global-TE contribution.
+    // Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src *
+    // d(sigma_te)/dXj_te_nodes d(sigma_te)/dXj of this panel =
+    // 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo BUT tcp depends on the
+    // global TE info — handled below as a separate global-TE contribution.
     add_Xj_block(sigma_te * ds.val_Xj, N - 1, 0);
     // Gamma chain: v_src * 0.5*tcp * (dgam[N-1] - dgam[0])
     out.V_xfoil += v_src * (0.5 * tcp * (dgam_dx.row(N - 1) - dgam_dx.row(0)));
@@ -555,8 +564,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     out.V_xfoil += f_vor * (0.5 * tdp * (dgam_dx.row(0) - dgam_dx.row(N - 1)));
 
     // ---- Global TE info dependence on foil.x[{0,1,N-2,N-1}] ----
-    // v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈ {0,1,N-2,N-1}
-    // f_vor * 0.5*tdp*(G(0)-G(N-1)) uses tdp similarly.
+    // v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈
+    // {0,1,N-2,N-1} f_vor * 0.5*tdp*(G(0)-G(N-1)) uses tdp similarly.
     {
         std::vector<int> te_nodes = {0, 1, N - 2, N - 1};
         for (int k : te_nodes) {
@@ -607,10 +616,10 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    VectorXd dds1_dx = 0.5 * (dfoil_s_dx.row(1).transpose() -
-                              dfoil_s_dx.row(0).transpose() +
-                              dfoil_s_dx.row(N - 1).transpose() -
-                              dfoil_s_dx.row(N - 2).transpose());
+    VectorXd dds1_dx =
+        0.5 *
+        (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
+         dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
     // ---- Initial wake.x[:, 0] ----
     // x_te = 0.5*(foil.x[:,0] + foil.x[:,N-1])
@@ -632,16 +641,19 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     // Tangent term: 1e-5 * chord * sign * (n_te[1], -n_te[0])
     // d(n_te[0])/d(foil.x[d',k]) = δ(d',0) * (δ(k,N-1) - δ(k,0))
     // d(n_te[1])/d(foil.x[d',k]) = δ(d',1) * (δ(k,N-1) - δ(k,0))
-    // So d(t_te[0])/d(foil.x[1, N-1]) = +sign*1, d(t_te[0])/d(foil.x[1, 0]) = -sign*1
-    //    d(t_te[1])/d(foil.x[0, N-1]) = -sign*1, d(t_te[1])/d(foil.x[0, 0]) = +sign*1
+    // So d(t_te[0])/d(foil.x[1, N-1]) = +sign*1, d(t_te[0])/d(foil.x[1, 0]) =
+    // -sign*1
+    //    d(t_te[1])/d(foil.x[0, N-1]) = -sign*1, d(t_te[1])/d(foil.x[0, 0]) =
+    //    +sign*1
     double factor = 1e-5 * chord * sign;
     dxyw_i(0, 2 * (N - 1) + 1) += factor;
-    dxyw_i(0, 2 * 0 + 1)       -= factor;
+    dxyw_i(0, 2 * 0 + 1) -= factor;
     dxyw_i(1, 2 * (N - 1) + 0) -= factor;
-    dxyw_i(1, 2 * 0 + 0)       += factor;
+    dxyw_i(1, 2 * 0 + 0) += factor;
 
     // Layout: row d*Nw + j = d(wake.x(d, j))/d(foil.x) (matches the
-    // Python extractor's np.reshape(dwake_x[2, Nw, 2N], (2*Nw, 2N)) in C order).
+    // Python extractor's np.reshape(dwake_x[2, Nw, 2N], (2*Nw, 2N)) in C
+    // order).
     MatrixXd dwake_x = MatrixXd::Zero(2 * Nw, twoN);
     dwake_x.row(0 * Nw + 0) = dxyw_i.row(0);
     dwake_x.row(1 * Nw + 0) = dxyw_i.row(1);
@@ -651,8 +663,7 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     // ---- Predictor-corrector sweep, linearised ----
     for (int i = 0; i < Nw - 1; ++i) {
         double ds_i = sv(i + 1) - sv(i);
-        VectorXd dds_i_dx =
-            (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;  // [2N]
+        VectorXd dds_i_dx = (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;  // [2N]
 
         // V0 at xyw_i
         VelDeriv vd0 = InviscidVelocityWithDeriv(state, xyw_i, dgam_dx, alpha);
@@ -660,8 +671,7 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
         double V0n = V0.norm();
         if (V0n < 1e-12) V0n = 1e-12;
         Vector2d v1 = V0 / V0n;
-        Matrix2d norm_jac1 =
-            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Matrix2d norm_jac1 = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
         MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;  // [2 x 2N]
         MatrixXd dv1_dx = norm_jac1 * dV0_dx;
 
@@ -676,15 +686,13 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
         double V1n = V1.norm();
         if (V1n < 1e-12) V1n = 1e-12;
         Vector2d v2 = V1 / V1n;
-        Matrix2d norm_jac2 =
-            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Matrix2d norm_jac2 = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
         MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
         MatrixXd dv2_dx = norm_jac2 * dV1_dx;
 
         // Corrector
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
-        MatrixXd dxyw_next = dxyw_i +
-                             (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
+        MatrixXd dxyw_next = dxyw_i + (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
                              ds_i * 0.5 * (dv1_dx + dv2_dx);
 
         dwake_x.row(0 * Nw + (i + 1)) = dxyw_next.row(0);
@@ -727,10 +735,10 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    VectorXd dds1_dx = 0.5 * (dfoil_s_dx.row(1).transpose() -
-                              dfoil_s_dx.row(0).transpose() +
-                              dfoil_s_dx.row(N - 1).transpose() -
-                              dfoil_s_dx.row(N - 2).transpose());
+    VectorXd dds1_dx =
+        0.5 *
+        (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
+         dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
     // Initial wake.x[:, 0] sensitivities (same as DWakeXDFoilX)
     Vector2d xy1 = state.foil.x.col(0);
@@ -746,9 +754,9 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
     }
     double factor = 1e-5 * chord * sign;
     dxyw_i(0, 2 * (N - 1) + 1) += factor;
-    dxyw_i(0, 2 * 0 + 1)       -= factor;
+    dxyw_i(0, 2 * 0 + 1) -= factor;
     dxyw_i(1, 2 * (N - 1) + 0) -= factor;
-    dxyw_i(1, 2 * 0 + 0)       += factor;
+    dxyw_i(1, 2 * 0 + 0) += factor;
 
     MatrixXd dwake_t = MatrixXd::Zero(2 * Nw, twoN);
     Vector2d xyw_i = state.wake.x.col(0);
@@ -763,8 +771,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         double V0n = V0.norm();
         if (V0n < 1e-12) V0n = 1e-12;
         Vector2d v1 = V0 / V0n;
-        Matrix2d norm_jac1 =
-            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Matrix2d norm_jac1 = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
         MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;
         MatrixXd dv1_dx = norm_jac1 * dV0_dx;
 
@@ -774,8 +781,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
 
         // Predictor step
         Vector2d x_pred = xyw_i + ds_i * v1;
-        MatrixXd dx_pred =
-            dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;
+        MatrixXd dx_pred = dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;
 
         // v2 at x_pred → wake.t[i+1] (overwritten except for last iter)
         VelDeriv vd1 = InviscidVelocityWithDeriv(state, x_pred, dgam_dx, alpha);
@@ -783,8 +789,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         double V1n = V1.norm();
         if (V1n < 1e-12) V1n = 1e-12;
         Vector2d v2 = V1 / V1n;
-        Matrix2d norm_jac2 =
-            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Matrix2d norm_jac2 = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
         MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
         MatrixXd dv2_dx = norm_jac2 * dV1_dx;
 
@@ -794,8 +799,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
 
         // Update for next iter (corrector → xyw_{i+1})
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
-        MatrixXd dxyw_next = dxyw_i +
-                             (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
+        MatrixXd dxyw_next = dxyw_i + (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
                              ds_i * 0.5 * (dv1_dx + dv2_dx);
         xyw_i = xyw_next;
         dxyw_i = dxyw_next;
@@ -819,9 +823,9 @@ VectorXd DGammaDAlpha(const FoilState& state) {
     // dgam[i]/dα = (-gamref[i,0]·sin α + gamref[i,1]·cos α)·deg2rad
     VectorXd dgam(N + 1);
     for (int i = 0; i < N; ++i) {
-        dgam(i) = (-state.isol.gamref(i, 0) * sa +
-                   state.isol.gamref(i, 1) * ca) *
-                  kDegToRad;
+        dgam(i) =
+            (-state.isol.gamref(i, 0) * sa + state.isol.gamref(i, 1) * ca) *
+            kDegToRad;
     }
     dgam(N) = 0.0;  // streamfunction component
     return dgam;
@@ -840,8 +844,8 @@ Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
     // It returns V including freestream. Subtract Vinf and add the
     // explicit α-derivative of the freestream.
     MatrixXd dgam_dummy = MatrixXd::Zero(N + 1, 1);  // we use the vortex slot
-    VelDeriv vd = InviscidVelocityWithDerivExt(state, xi, dgam_dalpha,
-                                                dgam_dummy, alpha);
+    VelDeriv vd =
+        InviscidVelocityWithDerivExt(state, xi, dgam_dalpha, dgam_dummy, alpha);
     Vector2d Vinf_vec(Vinf * Cosd(alpha), Vinf * Sind(alpha));
     Vector2d V_G_dgam = vd.V - Vinf_vec;  // gamma-induced part only
     // Freestream α-derivative
@@ -881,7 +885,8 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
 
         // V0 at xyw_i. ∂V/∂α = V_G · dgam_dalpha + freestream_α.
         // Also need ∂V/∂xi for the chain through dxyw_i.
-        // Get V_xi from InviscidVelocityWithDeriv (any direction gives same V_xi).
+        // Get V_xi from InviscidVelocityWithDeriv (any direction gives same
+        // V_xi).
         VelDeriv vd_for_xi = InviscidVelocityWithDeriv(
             state, xyw_i, MatrixXd::Zero(N + 1, 1), alpha);
         Vector2d V0 = vd_for_xi.V;
@@ -891,8 +896,7 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
         double V0n = V0.norm();
         if (V0n < 1e-12) V0n = 1e-12;
         Vector2d v1 = V0 / V0n;
-        Matrix2d norm_jac1 =
-            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Matrix2d norm_jac1 = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
         Vector2d dV0 = V0_alpha + V0_xi * dxyw_i;
         Vector2d dv1 = norm_jac1 * dV0;
 
@@ -905,14 +909,12 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
             state, x_pred, MatrixXd::Zero(N + 1, 1), alpha);
         Vector2d V1 = vd1_xi.V;
         Matrix2d V1_xi = vd1_xi.V_xi;
-        Vector2d V1_alpha =
-            InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
+        Vector2d V1_alpha = InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
 
         double V1n = V1.norm();
         if (V1n < 1e-12) V1n = 1e-12;
         Vector2d v2 = V1 / V1n;
-        Matrix2d norm_jac2 =
-            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Matrix2d norm_jac2 = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
         Vector2d dV1 = V1_alpha + V1_xi * dx_pred;
         Vector2d dv2 = norm_jac2 * dV1;
 
@@ -960,8 +962,7 @@ MatrixXd DWakeTDAlpha(const FoilState& state) {
         double V0n = V0.norm();
         if (V0n < 1e-12) V0n = 1e-12;
         Vector2d v1 = V0 / V0n;
-        Matrix2d norm_jac1 =
-            (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        Matrix2d norm_jac1 = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
         Vector2d dV0 = V0_alpha + vd_xi.V_xi * dxyw_i;
         Vector2d dv1 = norm_jac1 * dV0;
         dwake_t.col(i) = dv1;
@@ -972,13 +973,11 @@ MatrixXd DWakeTDAlpha(const FoilState& state) {
         VelDeriv vd1_xi = InviscidVelocityWithDeriv(
             state, x_pred, MatrixXd::Zero(N + 1, 1), alpha);
         Vector2d V1 = vd1_xi.V;
-        Vector2d V1_alpha =
-            InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
+        Vector2d V1_alpha = InviscidVelocityDAlpha(state, x_pred, dgam_dalpha);
         double V1n = V1.norm();
         if (V1n < 1e-12) V1n = 1e-12;
         Vector2d v2 = V1 / V1n;
-        Matrix2d norm_jac2 =
-            (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        Matrix2d norm_jac2 = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
         Vector2d dV1 = V1_alpha + vd1_xi.V_xi * dx_pred;
         Vector2d dv2 = norm_jac2 * dV1;
         dwake_t.col(i + 1) = dv2;  // overwritten on next iter unless last

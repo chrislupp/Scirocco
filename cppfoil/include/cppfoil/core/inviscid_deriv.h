@@ -46,7 +46,7 @@ namespace cppfoil {
 // OUTPUT:
 //   VJP vector [2*N]: the total sensitivity contribution from the AIC system
 VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
-                             double alpha);
+                            double alpha);
 
 // Compute lambda^T * d(A * v)/dx_foil — same panel-chain machinery as
 // AICResidualSensVJP but with the gamma vector replaced by an arbitrary v

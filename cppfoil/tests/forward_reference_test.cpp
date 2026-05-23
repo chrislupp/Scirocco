@@ -84,7 +84,7 @@ static MatrixXd readMatrix(H5::H5File& file, const std::string& path) {
 }
 
 static std::vector<int> readIntVector(H5::H5File& file,
-                                       const std::string& path) {
+                                      const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
     H5::DataSpace dataspace = dataset.getSpace();
     hsize_t dims[1];
@@ -127,8 +127,7 @@ class ForwardReferenceTest : public ::testing::Test {
     }
 
     void SetUp() override {
-        if (!file_loaded_)
-            GTEST_SKIP() << "Forward reference file not loaded";
+        if (!file_loaded_) GTEST_SKIP() << "Forward reference file not loaded";
     }
 
     H5::H5File& getFile() { return *file_; }
@@ -215,14 +214,16 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
 
     // ---- Compare R_x element-by-element ----
     MatrixXd R_x_cpp = MatrixXd(state.glob.R_x);
-    constexpr double ATOL = 1e-10;  // absolute tolerance (filter mfoil 1e-15 hack noise)
+    constexpr double ATOL =
+        1e-10;  // absolute tolerance (filter mfoil 1e-15 hack noise)
     // RTOL bumped from 1e-10 to 5e-9 for R_U comparison: 5 entries at turbulent
     // station 4 (Rshape/Rlag derivatives) sit at ~2.5e-9 rel — the natural FP
-    // noise floor for ~50+ cascaded BL-closure operations (Hk→Hs→cDi→Upwind→...).
-    // Formulas match mfoil exactly when inspected side-by-side; further
-    // tightening would catch nothing but FP-ordering noise. Adjoint tests
-    // already cover correctness with stricter tolerances (Phase 2: 1e-9 abs
-    // on residual partials, Phase 7: 1e-4 rel on end-to-end sensitivities).
+    // noise floor for ~50+ cascaded BL-closure operations
+    // (Hk→Hs→cDi→Upwind→...). Formulas match mfoil exactly when inspected
+    // side-by-side; further tightening would catch nothing but FP-ordering
+    // noise. Adjoint tests already cover correctness with stricter tolerances
+    // (Phase 2: 1e-9 abs on residual partials, Phase 7: 1e-4 rel on end-to-end
+    // sensitivities).
     constexpr double RTOL = 5e-9;
 
     int nfail_Rx = 0;
@@ -257,7 +258,8 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
                 std::printf("  R_x[%d,%d] = %.15e\n", r, c, v);
         }
     }
-    std::cout << "\nC++ assembled R_x at station 73 (rows 219-221):" << std::endl;
+    std::cout << "\nC++ assembled R_x at station 73 (rows 219-221):"
+              << std::endl;
     for (int r = 219; r < 222; ++r) {
         for (int c = 0; c < Nsys; ++c) {
             double v = R_x_cpp(r, c);
@@ -296,8 +298,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
                     std::cout << "    row=" << i << " (sta=" << sta
                               << " eq=" << eq << ") col=" << j
                               << " cpp=" << cpp_val << " ref=" << ref_val
-                              << " err=" << err << " rel=" << rel
-                              << std::endl;
+                              << " err=" << err << " rel=" << rel << std::endl;
                 }
             }
         }
@@ -337,8 +338,8 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
         int node = worst_RU_col / 4;
         const char* var_names[] = {"th", "ds", "sa", "ue"};
         std::cout << "  Worst: row=" << worst_RU_row << " (sta=" << sta
-                  << " eq=" << eq << ") col=" << worst_RU_col << " (node="
-                  << node << " var=" << var_names[var] << ")"
+                  << " eq=" << eq << ") col=" << worst_RU_col
+                  << " (node=" << node << " var=" << var_names[var] << ")"
                   << " cpp=" << R_U_cpp(worst_RU_row, worst_RU_col)
                   << " ref=" << R_U_ref(worst_RU_row, worst_RU_col)
                   << " rel=" << worst_RU_rel << std::endl;
@@ -363,8 +364,9 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
                     int node = j / 4;
                     const char* var_names[] = {"th", "ds", "sa", "ue"};
                     std::cout << "    row=" << i << " (sta=" << sta
-                              << " eq=" << eq << ") col=" << j << " (node="
-                              << node << " " << var_names[var] << ")"
+                              << " eq=" << eq << ") col=" << j
+                              << " (node=" << node << " " << var_names[var]
+                              << ")"
                               << " cpp=" << cpp_val << " ref=" << ref_val
                               << " rel=" << rel << std::endl;
                     printed++;
@@ -378,8 +380,10 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
     std::cout << "  R_x mismatches: " << nfail_Rx << std::endl;
     std::cout << "  R_U mismatches: " << nfail_RU << std::endl;
 
-    EXPECT_EQ(nfail_Rx, 0) << "R_x has formula differences between C++ and mfoil";
-    EXPECT_EQ(nfail_RU, 0) << "R_U has formula differences between C++ and mfoil";
+    EXPECT_EQ(nfail_Rx, 0)
+        << "R_x has formula differences between C++ and mfoil";
+    EXPECT_EQ(nfail_RU, 0)
+        << "R_U has formula differences between C++ and mfoil";
 }
 
 // ===========================================================================
@@ -430,9 +434,9 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
             double ex = (state.wake.x.col(i) - wake_x_ref.col(i)).norm();
             if (ex > 1e-12)
                 std::cout << "  wake.x[" << i << "]: cpp=("
-                          << state.wake.x(0,i) << "," << state.wake.x(1,i)
-                          << ") ref=(" << wake_x_ref(0,i) << "," << wake_x_ref(1,i)
-                          << ") err=" << ex << std::endl;
+                          << state.wake.x(0, i) << "," << state.wake.x(1, i)
+                          << ") ref=(" << wake_x_ref(0, i) << ","
+                          << wake_x_ref(1, i) << ") err=" << ex << std::endl;
         }
     }
     if (max_wt > 1e-10) {
@@ -440,9 +444,9 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
             double et = (state.wake.t.col(i) - wake_t_ref.col(i)).norm();
             if (et > 1e-12)
                 std::cout << "  wake.t[" << i << "]: cpp=("
-                          << state.wake.t(0,i) << "," << state.wake.t(1,i)
-                          << ") ref=(" << wake_t_ref(0,i) << "," << wake_t_ref(1,i)
-                          << ") err=" << et << std::endl;
+                          << state.wake.t(0, i) << "," << state.wake.t(1, i)
+                          << ") ref=(" << wake_t_ref(0, i) << ","
+                          << wake_t_ref(1, i) << ") err=" << et << std::endl;
         }
     }
 
@@ -452,16 +456,19 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
     std::cout << "  Max |gamref diff| = " << max_gamref << std::endl;
 
     // Compare uewiref
-    double max_uewiref = (state.isol.uewiref - uewiref_ref).cwiseAbs().maxCoeff();
+    double max_uewiref =
+        (state.isol.uewiref - uewiref_ref).cwiseAbs().maxCoeff();
     std::cout << "  Max |uewiref diff| = " << max_uewiref << std::endl;
     if (max_uewiref > 1e-10) {
         for (int i = 0; i < Nw; ++i) {
             for (int c = 0; c < 2; ++c) {
-                double err = std::abs(state.isol.uewiref(i,c) - uewiref_ref(i,c));
+                double err =
+                    std::abs(state.isol.uewiref(i, c) - uewiref_ref(i, c));
                 if (err > 1e-10)
-                    std::cout << "  uewiref[" << i << "," << c << "]: cpp="
-                              << state.isol.uewiref(i,c) << " ref="
-                              << uewiref_ref(i,c) << " err=" << err << std::endl;
+                    std::cout << "  uewiref[" << i << "," << c
+                              << "]: cpp=" << state.isol.uewiref(i, c)
+                              << " ref=" << uewiref_ref(i, c) << " err=" << err
+                              << std::endl;
             }
         }
     }
@@ -469,8 +476,9 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
     // Compare ue_sigma
     MatrixXd ue_sigma_cpp = state.vsol.ue_sigma;
     std::cout << "\nViscous coupling:" << std::endl;
-    std::cout << "  ue_sigma: cpp=" << ue_sigma_cpp.rows() << "x" << ue_sigma_cpp.cols()
-              << " ref=" << ue_sigma_ref.rows() << "x" << ue_sigma_ref.cols() << std::endl;
+    std::cout << "  ue_sigma: cpp=" << ue_sigma_cpp.rows() << "x"
+              << ue_sigma_cpp.cols() << " ref=" << ue_sigma_ref.rows() << "x"
+              << ue_sigma_ref.cols() << std::endl;
     if (ue_sigma_cpp.rows() == ue_sigma_ref.rows() &&
         ue_sigma_cpp.cols() == ue_sigma_ref.cols()) {
         double max_ues = (ue_sigma_cpp - ue_sigma_ref).cwiseAbs().maxCoeff();
@@ -479,8 +487,9 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
 
     // Compare sigma_m
     MatrixXd sigma_m_cpp = MatrixXd(state.vsol.sigma_m);
-    std::cout << "  sigma_m: cpp=" << sigma_m_cpp.rows() << "x" << sigma_m_cpp.cols()
-              << " ref=" << sigma_m_ref.rows() << "x" << sigma_m_ref.cols() << std::endl;
+    std::cout << "  sigma_m: cpp=" << sigma_m_cpp.rows() << "x"
+              << sigma_m_cpp.cols() << " ref=" << sigma_m_ref.rows() << "x"
+              << sigma_m_ref.cols() << std::endl;
     if (sigma_m_cpp.rows() == sigma_m_ref.rows() &&
         sigma_m_cpp.cols() == sigma_m_ref.cols()) {
         double max_sm = (sigma_m_cpp - sigma_m_ref).cwiseAbs().maxCoeff();

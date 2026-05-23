@@ -46,8 +46,9 @@ namespace cppfoil {
 // Total sensitivity: dJ/dx = dJ/dx_partial + lambda^T * d(A*gamma - rhs)/dx
 Sensitivity InviscidSensitivities(FoilState& state);
 
-// Compute force partial derivatives w.r.t. panel coordinates (holding gamma fixed)
-// Populates: dcl_dx_partial, dcm_dx_partial, dcdpi_dx_partial in state.post
+// Compute force partial derivatives w.r.t. panel coordinates (holding gamma
+// fixed) Populates: dcl_dx_partial, dcm_dx_partial, dcdpi_dx_partial in
+// state.post
 void CalcForceLin(FoilState& state);
 
 // Compute sensitivities of cl, cd, cm w.r.t. angle of attack (alpha).

@@ -121,9 +121,9 @@ void CalcForce(FoilState& state) {
         cl_alpha +=
             cpbar * (Sind(alpha) * dxv(0) - Cosd(alpha) * dxv(1)) * kDegToRad;
 
-        // cdpi_alpha: d(dz)/dalpha = (-dxv(1)*sina - dxv(0)*cosa) * deg2rad ... wait
-        // dz = dxv(1)*cos(a) - dxv(0)*sin(a)
-        // d(dz)/da = (-dxv(1)*sin(a) - dxv(0)*cos(a)) * deg2rad
+        // cdpi_alpha: d(dz)/dalpha = (-dxv(1)*sina - dxv(0)*cosa) * deg2rad ...
+        // wait dz = dxv(1)*cos(a) - dxv(0)*sin(a) d(dz)/da = (-dxv(1)*sin(a) -
+        // dxv(0)*cos(a)) * deg2rad
         cdpi_alpha +=
             cpbar * (-dxv(1) * Sind(alpha) - dxv(0) * Cosd(alpha)) * kDegToRad;
 

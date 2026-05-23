@@ -108,9 +108,8 @@ TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
         double ref = cd_U_cs[k];
         double err = std::abs(got - ref);
         double tol = 1e-9 * std::abs(ref) + 1e-12;
-        EXPECT_LE(err, tol)
-            << "cd_U[" << k << "]: got=" << got << " cs=" << ref
-            << " abs=" << err;
+        EXPECT_LE(err, tol) << "cd_U[" << k << "]: got=" << got << " cs=" << ref
+                            << " abs=" << err;
     }
 
     // cd_V must be sparse at the end-of-wake column iw only.
@@ -163,9 +162,8 @@ TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesCS) {
     double max_abs = (dR_analytic - dR_cs).cwiseAbs().maxCoeff();
     int worst_i = 0;
     (dR_analytic - dR_cs).cwiseAbs().maxCoeff(&worst_i);
-    std::cout << "DRVDAlpha: max abs vs CS = " << max_abs
-              << " at row " << worst_i
-              << " (analytic=" << dR_analytic(worst_i)
+    std::cout << "DRVDAlpha: max abs vs CS = " << max_abs << " at row "
+              << worst_i << " (analytic=" << dR_analytic(worst_i)
               << " cs=" << dR_cs(worst_i) << ")" << std::endl;
     double max_rel = 0;
     for (int i = 0; i < 4 * Nsys; ++i) {
@@ -196,8 +194,8 @@ TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
     VectorXd b = VectorXd::Random(NN);
     VectorXd g = VectorXd::Random(NN);
 
-    VectorXd y = s.glob.lu_factorization->solve(g);           // R_V^{-1} g
-    VectorXd lambda = SolveViscousAdjoint(s, b);              // R_V^{-T} b
+    VectorXd y = s.glob.lu_factorization->solve(g);  // R_V^{-1} g
+    VectorXd lambda = SolveViscousAdjoint(s, b);     // R_V^{-T} b
 
     double lhs = b.dot(y);
     double rhs = lambda.dot(g);

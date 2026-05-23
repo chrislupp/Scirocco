@@ -41,8 +41,8 @@
 #include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
-#include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/geometry.h"
+#include "cppfoil/core/inviscid.h"
 #include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
 #include "cppfoil/data/state.h"
@@ -52,7 +52,7 @@ using namespace Eigen;
 
 // Tolerance: complex-step reference is machine-precision accurate.
 // Any error beyond this indicates a bug in the C++ adjoint.
-constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
+constexpr double TOL_INVISCID = 1e-10;  // inviscid: machine precision
 // Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
 //   Shape adjoint:    ~5e-5 rel — Phase-2 chain through wake.x/ue_sigma.
 //   Alpha adjoint:    ~1e-5 cl/cd, ~1e-4 cm — DRVDAlpha now rebuilds gam,
@@ -192,10 +192,10 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
     auto sens = InviscidSensitivities(state);
 
     // Verify base solution consistency
-    double cl_err = std::abs(state.post.cl - cl_ref) /
-                    std::max(std::abs(cl_ref), 1e-10);
-    EXPECT_LT(cl_err, 1e-4) << "Base cl mismatch: cppfoil=" << state.post.cl
-                             << " ref=" << cl_ref;
+    double cl_err =
+        std::abs(state.post.cl - cl_ref) / std::max(std::abs(cl_ref), 1e-10);
+    EXPECT_LT(cl_err, 1e-4)
+        << "Base cl mismatch: cppfoil=" << state.post.cl << " ref=" << cl_ref;
 
     // Compare adjoint vs complex-step reference at each test node
     int nfail = 0;
@@ -211,9 +211,9 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
 
             if (rel > TOL_INVISCID) {
                 nfail++;
-                ADD_FAILURE() << "InviscidShape dcl node=" << node << " dim=" << dim
-                              << " adj=" << dcl_adj << " ref=" << dcl_ref_val
-                              << " rel=" << rel;
+                ADD_FAILURE() << "InviscidShape dcl node=" << node
+                              << " dim=" << dim << " adj=" << dcl_adj
+                              << " ref=" << dcl_ref_val << " rel=" << rel;
             }
 
             // Also check cm
@@ -225,14 +225,14 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
 
             if (rel_cm > TOL_INVISCID) {
                 nfail++;
-                ADD_FAILURE() << "InviscidShape dcm node=" << node << " dim=" << dim
-                              << " adj=" << dcm_adj << " ref=" << dcm_ref_val
-                              << " rel=" << rel_cm;
+                ADD_FAILURE() << "InviscidShape dcm node=" << node
+                              << " dim=" << dim << " adj=" << dcm_adj
+                              << " ref=" << dcm_ref_val << " rel=" << rel_cm;
             }
         }
     }
-    std::cout << "InviscidShapeSensitivity: " << nfail << "/" << test_nodes.size() * 4
-              << " failures" << std::endl;
+    std::cout << "InviscidShapeSensitivity: " << nfail << "/"
+              << test_nodes.size() * 4 << " failures" << std::endl;
 }
 
 // ===========================================================================
@@ -255,10 +255,10 @@ TEST_F(SensitivityReferenceTest, InviscidAlphaSensitivity) {
     double rel_cm = std::abs(sens.dcm_dalpha - dcm_ref) /
                     std::max(std::abs(dcm_ref), 1e-10);
 
-    std::cout << "InviscidAlpha: dcl adj=" << sens.dcl_dalpha << " ref=" << dcl_ref
-              << " rel=" << rel_cl << std::endl;
-    std::cout << "InviscidAlpha: dcm adj=" << sens.dcm_dalpha << " ref=" << dcm_ref
-              << " rel=" << rel_cm << std::endl;
+    std::cout << "InviscidAlpha: dcl adj=" << sens.dcl_dalpha
+              << " ref=" << dcl_ref << " rel=" << rel_cl << std::endl;
+    std::cout << "InviscidAlpha: dcm adj=" << sens.dcm_dalpha
+              << " ref=" << dcm_ref << " rel=" << rel_cm << std::endl;
 
     EXPECT_LT(rel_cl, TOL_INVISCID) << "dcl/dalpha inviscid";
     EXPECT_LT(rel_cm, TOL_INVISCID) << "dcm/dalpha inviscid";
@@ -280,10 +280,10 @@ TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
 
     auto sens = foil.ComputeSensitivities();
 
-    double rel_cl = std::abs(sens.dcl_dMa - dcl_ref) /
-                    std::max(std::abs(dcl_ref), 1e-10);
-    double rel_cm = std::abs(sens.dcm_dMa - dcm_ref) /
-                    std::max(std::abs(dcm_ref), 1e-10);
+    double rel_cl =
+        std::abs(sens.dcl_dMa - dcl_ref) / std::max(std::abs(dcl_ref), 1e-10);
+    double rel_cm =
+        std::abs(sens.dcm_dMa - dcm_ref) / std::max(std::abs(dcm_ref), 1e-10);
 
     std::cout << "InviscidMach: dcl adj=" << sens.dcl_dMa << " ref=" << dcl_ref
               << " rel=" << rel_cl << std::endl;
@@ -328,12 +328,12 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
 
     Sensitivity sens = ViscousSensitivities(s);
 
-    double rel_cl = std::abs(s.post.cl - cl_ref) /
-                    std::max(std::abs(cl_ref), 1e-10);
-    double rel_cd = std::abs(s.post.cd - cd_ref) /
-                    std::max(std::abs(cd_ref), 1e-10);
-    double rel_cm = std::abs(s.post.cm - cm_ref) /
-                    std::max(std::abs(cm_ref), 1e-10);
+    double rel_cl =
+        std::abs(s.post.cl - cl_ref) / std::max(std::abs(cl_ref), 1e-10);
+    double rel_cd =
+        std::abs(s.post.cd - cd_ref) / std::max(std::abs(cd_ref), 1e-10);
+    double rel_cm =
+        std::abs(s.post.cm - cm_ref) / std::max(std::abs(cm_ref), 1e-10);
     std::cout << "ViscousShape primal: cl=" << s.post.cl << " ref=" << cl_ref
               << " rel=" << rel_cl << std::endl;
     std::cout << "                     cd=" << s.post.cd << " ref=" << cd_ref
@@ -358,14 +358,14 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
                 double rel = err / std::max(std::abs(r), 1e-30);
                 bool pass = rel < TOL_VISC_SHAPE || err < 1e-10;
                 std::cout << "    " << name << " node " << n << " dim " << d
-                          << ": cppfoil=" << g << " ref=" << r
-                          << " abs=" << err << " rel=" << rel
-                          << (pass ? "" : "  <-- FAIL") << std::endl;
+                          << ": cppfoil=" << g << " ref=" << r << " abs=" << err
+                          << " rel=" << rel << (pass ? "" : "  <-- FAIL")
+                          << std::endl;
                 if (!pass) {
                     nfail++;
-                    ADD_FAILURE() << name << " node=" << n << " dim=" << d
-                                  << " cppfoil=" << g << " ref=" << r
-                                  << " rel=" << rel;
+                    ADD_FAILURE()
+                        << name << " node=" << n << " dim=" << d
+                        << " cppfoil=" << g << " ref=" << r << " rel=" << rel;
                 }
             }
         }

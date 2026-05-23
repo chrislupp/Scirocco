@@ -17,7 +17,9 @@
 using namespace cppfoil;
 using namespace Eigen;
 
-struct Force { double cl, cd, cm; };
+struct Force {
+    double cl, cd, cm;
+};
 
 static Force solveAt(double alpha, double Ma, double Re,
                      const MatrixXd* foil_x_override = nullptr) {
@@ -77,7 +79,8 @@ int main() {
     }
 
     // -- Shape FD at node 20, dim 0 (worst rel case) ------------------------
-    std::cout << "\n=== Shape FD at node 20 dim 0 vs analytic (Re=1e6, alpha=3) ===\n";
+    std::cout << "\n=== Shape FD at node 20 dim 0 vs analytic (Re=1e6, "
+                 "alpha=3) ===\n";
     {
         Cppfoil foil("0012", 100);
         foil.SetOper(3.0, -1.0, 1e6, 0.0);
@@ -88,7 +91,8 @@ int main() {
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        // Snapshot foil.x BEFORE solve so FD perturbations have a clean baseline
+        // Snapshot foil.x BEFORE solve so FD perturbations have a clean
+        // baseline
         MatrixXd x_base = s.foil.x.leftCols(s.foil.N);
         // For consistency with the sensitivity test, run RecomputeArcLength
         // (matches its convention)
@@ -99,8 +103,8 @@ int main() {
         double a_dcl = sens.dcl_dx(0, 20);
         double a_dcd = sens.dcd_dx(0, 20);
         double a_dcm = sens.dcm_dx(0, 20);
-        std::cout << "Analytic node 20 dim 0: dcl=" << a_dcl
-                  << " dcd=" << a_dcd << " dcm=" << a_dcm << "\n";
+        std::cout << "Analytic node 20 dim 0: dcl=" << a_dcl << " dcd=" << a_dcd
+                  << " dcm=" << a_dcm << "\n";
 
         for (double h : {1e-5, 1e-6, 1e-7, 1e-8}) {
             MatrixXd xp = x_base, xm = x_base;

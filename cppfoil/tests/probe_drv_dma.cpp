@@ -2,6 +2,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
+
 #include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/inviscid.h"
@@ -43,17 +44,17 @@ int main() {
     int wi = 0;
     for (int i = 0; i < 3 * Nsys; ++i) {
         double e = std::abs(dR_an(i) - dR_fd(i));
-        if (e > max_abs) { max_abs = e; wi = i; }
+        if (e > max_abs) {
+            max_abs = e;
+            wi = i;
+        }
     }
-    std::cout << "Worst R_BL entry: row " << wi
-              << " station " << wi / 3 << " eq " << wi % 3
-              << " analytic=" << dR_an(wi)
-              << " FD=" << dR_fd(wi)
-              << " abs=" << max_abs << "\n";
+    std::cout << "Worst R_BL entry: row " << wi << " station " << wi / 3
+              << " eq " << wi % 3 << " analytic=" << dR_an(wi)
+              << " FD=" << dR_fd(wi) << " abs=" << max_abs << "\n";
     int n_diff = 0;
     for (int i = 0; i < 3 * Nsys; ++i) {
-        if (std::abs(dR_an(i) - dR_fd(i)) > 1e-7 &&
-            std::abs(dR_fd(i)) > 1e-8) {
+        if (std::abs(dR_an(i) - dR_fd(i)) > 1e-7 && std::abs(dR_fd(i)) > 1e-8) {
             ++n_diff;
             if (n_diff <= 5) {
                 std::cout << "  station " << i / 3 << " eq " << i % 3

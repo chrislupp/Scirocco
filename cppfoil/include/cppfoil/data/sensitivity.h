@@ -38,10 +38,10 @@ namespace cppfoil {
 // Sensitivity of aerodynamic outputs w.r.t. panel node coordinates
 // Each matrix is [2 x N] matching the layout of foil.x
 struct Sensitivity {
-    MatrixXd dcl_dx;   // d(cl)/d(foil.x) [2 x N]
-    MatrixXd dcd_dx;   // d(cd)/d(foil.x) [2 x N]
-    MatrixXd dcm_dx;   // d(cm)/d(foil.x) [2 x N]
-    MatrixXd dcdpi_dx; // d(cdpi)/d(foil.x) [2 x N] (inviscid pressure drag)
+    MatrixXd dcl_dx;    // d(cl)/d(foil.x) [2 x N]
+    MatrixXd dcd_dx;    // d(cd)/d(foil.x) [2 x N]
+    MatrixXd dcm_dx;    // d(cm)/d(foil.x) [2 x N]
+    MatrixXd dcdpi_dx;  // d(cdpi)/d(foil.x) [2 x N] (inviscid pressure drag)
 
     // Scalar operating-condition sensitivities
     double dcl_dalpha = 0.0;  // d(cl)/d(alpha) [per degree]

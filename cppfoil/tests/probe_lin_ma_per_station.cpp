@@ -132,7 +132,10 @@ int main() {
             bool tran = (Is[ip] < static_cast<int>(s.vsol.turb.size())) &&
                         (Is[i] < static_cast<int>(s.vsol.turb.size())) &&
                         (s.vsol.turb[Is[ip]] != s.vsol.turb[Is[i]]);
-            if (tran) { std::cout << "  i=" << i << " [TRANSITION]\n"; continue; }
+            if (tran) {
+                std::cout << "  i=" << i << " [TRANSITION]\n";
+                continue;
+            }
             StationParam(s, param, Is[i]);
             Matrix42d U;
             U.col(0) = s.glob.U.col(Is[ip]);
@@ -158,8 +161,7 @@ int main() {
             Vector3d Rm1 = eval_R(Ma0 - h);
             Vector3d Rm2 = eval_R(Ma0 - 2 * h);
             Vector3d fd = (-Rp2 + 8 * Rp1 - 8 * Rm1 + Rm2) / (12 * h) * Ma0;
-            std::cout << "  i=" << i << " turb="
-                      << (param.turb ? "T" : "L")
+            std::cout << "  i=" << i << " turb=" << (param.turb ? "T" : "L")
                       << " an=[" << an.transpose() << "]"
                       << " fd=[" << fd.transpose() << "]\n";
         }

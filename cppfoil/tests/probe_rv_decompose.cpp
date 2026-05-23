@@ -4,17 +4,18 @@
 // Compare each piece against mfoil's totals to localize the 0.11 abs error.
 
 #include <H5Cpp.h>
+
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
 
 #include "cppfoil/core/adjoint.h"
-#include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/core/boundary_layer.h"
 #include "cppfoil/core/coupled_solver.h"
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
+#include "cppfoil/properties/bl_properties.h"
 
 using namespace cppfoil;
 using namespace Eigen;
@@ -40,8 +41,9 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const char* path = "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
-                       "tests/comprehensive_reference.h5";
+    const char* path =
+        "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
+        "tests/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");
@@ -187,20 +189,19 @@ int main() {
     std::cout << "abs diff               = "
               << std::abs(R_V_cpp(144, 195) - R_V_ref(144, 195)) << "\n";
     std::cout << "manual R1_U[0,3] (no aug) = " << R1_U_node48(0, 3) << "\n";
-    std::cout << "manual R1_U + aug         = "
-              << R1_U_node48(0, 3) + aug << "\n";
-    std::cout << "diff vs cppfoil R_V       = "
-              << std::abs(R1_U_node48(0, 3) + aug - R_V_cpp(144, 195))
+    std::cout << "manual R1_U + aug         = " << R1_U_node48(0, 3) + aug
               << "\n";
+    std::cout << "diff vs cppfoil R_V       = "
+              << std::abs(R1_U_node48(0, 3) + aug - R_V_cpp(144, 195)) << "\n";
 
     // (4) Inferred mfoil R1_U(0, 3) = mfoil R_V[144, 195] - cppfoil_aug.
     // (mfoil's aug should be same as cppfoil's if sstag_ue and R_st agree)
     double mfoil_R1U_inferred = R_V_ref(144, 195) - aug;
-    std::cout << "\nInferred mfoil R1_U[0,3] = R_V_ref[144,195] - cppfoil_aug = "
-              << mfoil_R1U_inferred << "\n";
+    std::cout
+        << "\nInferred mfoil R1_U[0,3] = R_V_ref[144,195] - cppfoil_aug = "
+        << mfoil_R1U_inferred << "\n";
     std::cout << "Diff cppfoil R1_U[0,3] vs inferred mfoil: "
-              << std::abs(R1_U_node48(0, 3) - mfoil_R1U_inferred)
-              << "  rel="
+              << std::abs(R1_U_node48(0, 3) - mfoil_R1U_inferred) << "  rel="
               << std::abs(R1_U_node48(0, 3) - mfoil_R1U_inferred) /
                      std::abs(mfoil_R1U_inferred)
               << "\n";

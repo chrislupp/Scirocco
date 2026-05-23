@@ -77,7 +77,7 @@ struct ConstSourceStreamDeriv {
     Vector2d val_xi;
 };
 ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi);
+                                                   const Vector2d& xi);
 
 // Linear vortex velocity with coordinate derivatives
 struct LinVortexVelocityDeriv {
@@ -86,7 +86,7 @@ struct LinVortexVelocityDeriv {
     Matrix2d a_xi, b_xi;
 };
 LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi);
+                                                   const Vector2d& xi);
 
 // Constant source velocity with coordinate derivatives
 struct ConstSourceVelocityDeriv {
@@ -95,7 +95,7 @@ struct ConstSourceVelocityDeriv {
     Matrix2d val_xi;
 };
 ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
-                                                        const Vector2d& xi);
+                                                       const Vector2d& xi);
 
 // Linear source streamfunction with coordinate derivatives
 struct LinSourceStreamDeriv {
@@ -113,7 +113,7 @@ struct LinSourceVelocityDeriv {
     Matrix2d a_xi, b_xi;
 };
 LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
-                                                    const Vector2d& xi);
+                                                   const Vector2d& xi);
 
 }  // namespace cppfoil
 

@@ -37,29 +37,30 @@ namespace cppfoil {
 
 // Post-processing outputs and distributions
 struct Post {
-    VectorXd cp;            // cp distribution
-    VectorXd cpi;           // Inviscid cp distribution
-    double cl = 0.0;        // Lift coefficient
-    VectorXd cl_ue;         // Linearization of cl w.r.t. ue [N, airfoil only]
-    double cl_alpha = 0.0;  // Linearization of cl w.r.t. alpha
-    double cm = 0.0;        // Moment coefficient
-    double cdpi = 0.0;       // Near-field pressure drag coefficient
+    VectorXd cp;              // cp distribution
+    VectorXd cpi;             // Inviscid cp distribution
+    double cl = 0.0;          // Lift coefficient
+    VectorXd cl_ue;           // Linearization of cl w.r.t. ue [N, airfoil only]
+    double cl_alpha = 0.0;    // Linearization of cl w.r.t. alpha
+    double cm = 0.0;          // Moment coefficient
+    double cdpi = 0.0;        // Near-field pressure drag coefficient
     double cdpi_alpha = 0.0;  // Linearization of cdpi w.r.t. alpha
-    double cd = 0.0;        // Total drag coefficient
-    Vector4d cd_U;          // Linearization of cd w.r.t. last wake state [4]
-    double cdf = 0.0;       // Skin friction drag coefficient
-    double cdp = 0.0;       // Pressure drag coefficient
+    double cd = 0.0;          // Total drag coefficient
+    Vector4d cd_U;            // Linearization of cd w.r.t. last wake state [4]
+    double cdf = 0.0;         // Skin friction drag coefficient
+    double cdp = 0.0;         // Pressure drag coefficient
 
-    // Force partial derivatives w.r.t. panel coordinates (holding ue/gamma fixed)
-    MatrixXd dcl_dx_partial;   // [2 x N]
-    MatrixXd dcm_dx_partial;   // [2 x N]
-    MatrixXd dcdpi_dx_partial; // [2 x N]
-    VectorXd cm_ue;            // Linearization of cm w.r.t. ue [N]
-    VectorXd cdpi_ue;          // Linearization of cdpi w.r.t. ue [N]
-    VectorXd cd_V;             // Full dcd/dV linearization [4*Nsys]
-    VectorXd cl_V;             // Full dcl/dV linearization [4*Nsys]
-    VectorXd cm_V;             // Full dcm/dV linearization [4*Nsys]
-    MatrixXd dcd_dx_partial;   // Partial dcd/dx (holding V fixed) [2 x N]
+    // Force partial derivatives w.r.t. panel coordinates (holding ue/gamma
+    // fixed)
+    MatrixXd dcl_dx_partial;    // [2 x N]
+    MatrixXd dcm_dx_partial;    // [2 x N]
+    MatrixXd dcdpi_dx_partial;  // [2 x N]
+    VectorXd cm_ue;             // Linearization of cm w.r.t. ue [N]
+    VectorXd cdpi_ue;           // Linearization of cdpi w.r.t. ue [N]
+    VectorXd cd_V;              // Full dcd/dV linearization [4*Nsys]
+    VectorXd cl_V;              // Full dcl/dV linearization [4*Nsys]
+    VectorXd cm_V;              // Full dcm/dV linearization [4*Nsys]
+    MatrixXd dcd_dx_partial;    // Partial dcd/dx (holding V fixed) [2 x N]
 
     // Distributions
     VectorXd th;   // Momentum thickness distribution

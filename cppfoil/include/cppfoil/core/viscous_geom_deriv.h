@@ -62,11 +62,13 @@ VectorXd DSstagDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 //
 // wake.s[i] = foil.s[N-1] + sv[i]
 //   sv[0] = 0
-//   sv[i] depends on ds1 = 0.5*((foil.s[1]-foil.s[0]) + (foil.s[N-1]-foil.s[N-2]))
-//   and on chord (constant in foil.x → contributes 0).
+//   sv[i] depends on ds1 = 0.5*((foil.s[1]-foil.s[0]) +
+//   (foil.s[N-1]-foil.s[N-2])) and on chord (constant in foil.x → contributes
+//   0).
 //
 // Chain:
-//   d(wake.s[i])/d(foil.x) = d(foil.s[N-1])/d(foil.x) + d(sv[i])/d(ds1) * d(ds1)/d(foil.s) * d(foil.s)/d(foil.x)
+//   d(wake.s[i])/d(foil.x) = d(foil.s[N-1])/d(foil.x) + d(sv[i])/d(ds1) *
+//   d(ds1)/d(foil.s) * d(foil.s)/d(foil.x)
 //
 // This is the chain the previous attempt missed (per memory:
 // "Missing d(wake.s)/d(foil.x) chain causes ~0.216 adjoint error at TE nodes").
@@ -134,7 +136,8 @@ MatrixXd DWakeTDFoilX(const FoilState& state);
 // ----- Alpha-direction (scalar) versions of the above. Used by the analytic
 // DRVDAlpha chain. Each returns a SINGLE-column derivative since α is scalar.
 
-// d(gamma)/d(alpha) [N+1] — closed-form from gamref[:,0]·cos α + gamref[:,1]·sin α.
+// d(gamma)/d(alpha) [N+1] — closed-form from gamref[:,0]·cos α +
+// gamref[:,1]·sin α.
 VectorXd DGammaDAlpha(const FoilState& state);
 
 // d(wake.x)/d(alpha) [2 x Nw] — mirrors DWakeXDFoilX's predictor-corrector
@@ -151,7 +154,8 @@ VectorXd DWakeSDAlpha(const FoilState& state);
 // d(sstag)/d(alpha) — scalar. Chain through dgamma at the stagnation panel.
 double DSstagDAlpha(const FoilState& state);
 
-// d(xi)/d(alpha) [Nsys] — chain through sstag (foil-side) and wake.s (wake-side).
+// d(xi)/d(alpha) [Nsys] — chain through sstag (foil-side) and wake.s
+// (wake-side).
 VectorXd DXiDAlpha(const FoilState& state);
 
 // d(wgap)/d(alpha) [Nw] — chain through wake.s and xi (wgap's xib).
@@ -193,8 +197,7 @@ VelDeriv InviscidVelocityWithDeriv(const FoilState& state, const Vector2d& xi,
 VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                                       const Vector2d& xi,
                                       const VectorXd& vortex,
-                                      const MatrixXd& dvortex_dx,
-                                      double alpha);
+                                      const MatrixXd& dvortex_dx, double alpha);
 
 }  // namespace cppfoil
 

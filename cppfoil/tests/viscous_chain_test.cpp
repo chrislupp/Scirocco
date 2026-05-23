@@ -44,7 +44,8 @@ using namespace Eigen;
 // this floor; numerical-precision noise saturates near these values.
 constexpr double TOL_REL = 1e-10;
 // Absolute floor reflects the measured noise of the chains:
-//   - closed-form chains  : ~5e-12  (cond(AIC) * eps_machine for the panel solve)
+//   - closed-form chains  : ~5e-12  (cond(AIC) * eps_machine for the panel
+//   solve)
 //   - iterative wake chain: ~1.5e-11 (above floor grows ~linearly with wake
 //                                     station index over Nw=21 steps)
 // 2e-11 covers both with a small margin and is still 50x below the 1e-9
@@ -112,8 +113,8 @@ class GeomChainTest : public ::testing::Test {
             file_ = new H5::H5File(GEOM_CHAIN_REFERENCE_FILE, H5F_ACC_RDONLY);
             loaded_ = true;
         } catch (H5::Exception& e) {
-            std::cerr << "Failed to open " << GEOM_CHAIN_REFERENCE_FILE
-                      << ": " << e.getCDetailMsg() << std::endl;
+            std::cerr << "Failed to open " << GEOM_CHAIN_REFERENCE_FILE << ": "
+                      << e.getCDetailMsg() << std::endl;
             loaded_ = false;
         }
     }
@@ -147,7 +148,8 @@ class GeomChainTest : public ::testing::Test {
         auto& s = foil_.GetState();
         s.foil.x = foil_x;
         s.foil.N = N_;
-        s.foil.s = foil_s;  // Match mfoil's foil.s exactly (no RecomputeArcLength)
+        s.foil.s =
+            foil_s;  // Match mfoil's foil.s exactly (no RecomputeArcLength)
         // Clear cached inviscid quantities so SolveInviscid rebuilds
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
@@ -200,9 +202,9 @@ class GeomChainTest : public ::testing::Test {
                 if (printed < max_print) {
                     double err = std::abs(v - r);
                     double rel = err / std::max(std::abs(r), 1e-300);
-                    ADD_FAILURE() << label << " idx=" << i << " got=" << v
-                                  << " ref=" << r << " abs=" << err
-                                  << " rel=" << rel;
+                    ADD_FAILURE()
+                        << label << " idx=" << i << " got=" << v << " ref=" << r
+                        << " abs=" << err << " rel=" << rel;
                     ++printed;
                 }
             }
@@ -224,9 +226,9 @@ class GeomChainTest : public ::testing::Test {
                     if (printed < max_print) {
                         double err = std::abs(v - r);
                         double rel = err / std::max(std::abs(r), 1e-300);
-                        ADD_FAILURE() << label << "[" << i << "," << j
-                                      << "] got=" << v << " ref=" << r
-                                      << " abs=" << err << " rel=" << rel;
+                        ADD_FAILURE()
+                            << label << "[" << i << "," << j << "] got=" << v
+                            << " ref=" << r << " abs=" << err << " rel=" << rel;
                         ++printed;
                     }
                 }
@@ -264,8 +266,8 @@ TEST_F(GeomChainTest, DSstagDFoilX) {
     VectorXd a = cppfoil::DSstagDFoilX(s, dfoil_s_dx_);
     VectorXd r = readVector(f(), "geom_chain/dsstag_dx");
     int nfail = compareHybrid(a, r, "dsstag_dx");
-    std::cout << "DSstagDFoilX: " << nfail << "/" << r.size()
-              << " failures" << std::endl;
+    std::cout << "DSstagDFoilX: " << nfail << "/" << r.size() << " failures"
+              << std::endl;
 }
 
 // ============================================================================
@@ -278,8 +280,8 @@ TEST_F(GeomChainTest, DWakeSDFoilX) {
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
     int nfail = compareHybrid2D(a, r, "dwake_s");
-    std::cout << "DWakeSDFoilX: " << nfail << "/" << r.size()
-              << " failures" << std::endl;
+    std::cout << "DWakeSDFoilX: " << nfail << "/" << r.size() << " failures"
+              << std::endl;
 }
 
 // ============================================================================

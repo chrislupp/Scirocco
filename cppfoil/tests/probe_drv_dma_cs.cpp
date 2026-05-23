@@ -1,7 +1,8 @@
-// Compare cppfoil analytic ∂R_BL/∂Ma vs mfoil-CS reference (drv_dma_cs_reference.h5).
-// CS-based — replaces FD-based probe_drv_dma.cpp.
-#include <Eigen/Dense>
+// Compare cppfoil analytic ∂R_BL/∂Ma vs mfoil-CS reference
+// (drv_dma_cs_reference.h5). CS-based — replaces FD-based probe_drv_dma.cpp.
 #include <H5Cpp.h>
+
+#include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -21,7 +22,8 @@ int main() {
     int Nsys = 0;
     file.openDataSet("Nsys").read(&Nsys, H5::PredType::NATIVE_INT);
     std::vector<double> dR_cs_vec(3 * Nsys);
-    file.openDataSet("dR_dMa").read(dR_cs_vec.data(), H5::PredType::NATIVE_DOUBLE);
+    file.openDataSet("dR_dMa").read(dR_cs_vec.data(),
+                                    H5::PredType::NATIVE_DOUBLE);
     VectorXd dR_cs = Map<VectorXd>(dR_cs_vec.data(), 3 * Nsys);
 
     Cppfoil foil("0012", 100);
@@ -32,8 +34,8 @@ int main() {
     s.param.verb = 0;
     SolveViscous(s);
     if (s.glob.Nsys != Nsys) {
-        std::cerr << "Nsys mismatch: cppfoil=" << s.glob.Nsys
-                  << " h5=" << Nsys << "\n";
+        std::cerr << "Nsys mismatch: cppfoil=" << s.glob.Nsys << " h5=" << Nsys
+                  << "\n";
         return 1;
     }
     BuildGlobSys(s);
@@ -43,11 +45,13 @@ int main() {
     int wi = 0;
     for (int i = 0; i < 3 * Nsys; ++i) {
         double e = std::abs(dR_an(i) - dR_cs(i));
-        if (e > max_abs) { max_abs = e; wi = i; }
+        if (e > max_abs) {
+            max_abs = e;
+            wi = i;
+        }
     }
-    std::cout << "Worst: row " << wi
-              << " station " << wi / 3 << " eq " << wi % 3
-              << " analytic=" << dR_an(wi) << " CS=" << dR_cs(wi)
+    std::cout << "Worst: row " << wi << " station " << wi / 3 << " eq "
+              << wi % 3 << " analytic=" << dR_an(wi) << " CS=" << dR_cs(wi)
               << " abs=" << max_abs << "\n";
 
     int n_diff = 0;

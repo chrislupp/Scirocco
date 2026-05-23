@@ -2,6 +2,7 @@
 // at the comprehensive_reference linearization point.
 
 #include <H5Cpp.h>
+
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
@@ -36,8 +37,9 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const char* path = "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
-                       "tests/comprehensive_reference.h5";
+    const char* path =
+        "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
+        "tests/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");
@@ -66,11 +68,9 @@ int main() {
               << s.isol.sstag_ue(1) << "]\n";
     std::cout << "  sstag_g  = [" << s.isol.sstag_g(0) << ", "
               << s.isol.sstag_g(1) << "]\n";
-    std::cout << "  ue at Istag = ["
-              << s.glob.U(3, s.isol.Istag[0]) << ", "
+    std::cout << "  ue at Istag = [" << s.glob.U(3, s.isol.Istag[0]) << ", "
               << s.glob.U(3, s.isol.Istag[1]) << "]\n";
-    std::cout << "  gam at Istag = ["
-              << s.isol.gam(s.isol.Istag[0]) << ", "
+    std::cout << "  gam at Istag = [" << s.isol.gam(s.isol.Istag[0]) << ", "
               << s.isol.gam(s.isol.Istag[1]) << "]\n";
 
     // Compute sstag_ue manually from the formula using ue values
@@ -82,8 +82,8 @@ int main() {
     double S1 = s.foil.s(I1);
     double den = ue0 + ue1;
     std::cout << "\nManual sstag_ue from converged ue, sstag formula:\n";
-    std::cout << "  (ue=ue1*(S1-S0)/(den^2)):    " << ue1 * (S1 - S0) / (den * den)
-              << "\n";
+    std::cout << "  (ue=ue1*(S1-S0)/(den^2)):    "
+              << ue1 * (S1 - S0) / (den * den) << "\n";
     std::cout << "  (ue=-ue0*(S1-S0)/(den^2)):   "
               << -ue0 * (S1 - S0) / (den * den) << "\n";
 
@@ -103,7 +103,8 @@ int main() {
     s.vsol.wgap = wgap_ref;
     s.glob.realloc = true;
     BuildGlobSys(s);
-    std::cout << "\nAfter override U=U_ref + BuildGlobSys (no StagPointMove):\n";
+    std::cout
+        << "\nAfter override U=U_ref + BuildGlobSys (no StagPointMove):\n";
     std::cout << "  Istag = [" << s.isol.Istag[0] << ", " << s.isol.Istag[1]
               << "]\n";
     std::cout << "  sstag_ue = [" << s.isol.sstag_ue(0) << ", "
@@ -114,8 +115,8 @@ int main() {
     ue1 = s.glob.U(3, I1);
     den = ue0 + ue1;
     std::cout << "\nManual sstag_ue from U_ref ue, sstag formula:\n";
-    std::cout << "  (ue=ue1*(S1-S0)/(den^2)):    " << ue1 * (S1 - S0) / (den * den)
-              << "\n";
+    std::cout << "  (ue=ue1*(S1-S0)/(den^2)):    "
+              << ue1 * (S1 - S0) / (den * den) << "\n";
     std::cout << "  (ue=-ue0*(S1-S0)/(den^2)):   "
               << -ue0 * (S1 - S0) / (den * den) << "\n";
 

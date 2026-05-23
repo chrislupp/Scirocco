@@ -36,12 +36,12 @@
 #include "cppfoil/core/forces.h"
 #include "cppfoil/core/geometry.h"
 #include "cppfoil/core/inviscid.h"
-#include "cppfoil/core/wake.h"
-#include "cppfoil/core/viscous_geom_deriv.h"
-#include "cppfoil/core/viscous_residual_deriv.h"
 #include "cppfoil/core/inviscid_deriv.h"
 #include "cppfoil/core/panel_influence.h"
 #include "cppfoil/core/panel_influence_deriv.h"
+#include "cppfoil/core/viscous_geom_deriv.h"
+#include "cppfoil/core/viscous_residual_deriv.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/properties/bl_properties.h"
 #include "cppfoil/util/math_utils.h"
 
@@ -58,8 +58,8 @@ namespace cppfoil {
 // Returns d(tcp)/d(x[k]_dim) and d(tdp)/d(x[k]_dim) for a given node k and dim.
 // Only nonzero for k ∈ {0, 1, N-2, N-1}.
 // ============================================================================
-static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim,
-                            double& dtcp, double& dtdp) {
+static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
+                           double& dtdp) {
     int N = static_cast<int>(x.cols());
     dtcp = 0.0;
     dtdp = 0.0;
@@ -98,15 +98,19 @@ static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim,
     // d(t1)/d(v1) = (I - t1*t1^T)/|v1|
     Matrix2d dt1_dv1 = (Matrix2d::Identity() - t1 * t1.transpose()) / v1n;
     Vector2d dv1(0, 0);
-    if (k == 0) dv1(dim) = 1.0;
-    else if (k == 1) dv1(dim) = -1.0;
+    if (k == 0)
+        dv1(dim) = 1.0;
+    else if (k == 1)
+        dv1(dim) = -1.0;
     Vector2d dt1 = dt1_dv1 * dv1;  // d(t1)/d(x[k]_dim)
 
     // --- d(t2)/d(x[k]_dim) ---
     Matrix2d dt2_dv2 = (Matrix2d::Identity() - t2 * t2.transpose()) / v2n;
     Vector2d dv2(0, 0);
-    if (k == N - 1) dv2(dim) = 1.0;
-    else if (k == N - 2) dv2(dim) = -1.0;
+    if (k == N - 1)
+        dv2(dim) = 1.0;
+    else if (k == N - 2)
+        dv2(dim) = -1.0;
     Vector2d dt2 = dt2_dv2 * dv2;
 
     // --- d(t)/d(x[k]_dim) ---
@@ -118,8 +122,10 @@ static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim,
     // --- d(p)/d(x[k]_dim) ---
     // p = s/|s|, s = x[N-1]-x[0]
     Vector2d ds(0, 0);
-    if (k == N - 1) ds(dim) = 1.0;
-    else if (k == 0) ds(dim) = -1.0;
+    if (k == N - 1)
+        ds(dim) = 1.0;
+    else if (k == 0)
+        ds(dim) = -1.0;
     Matrix2d dp_ds = (Matrix2d::Identity() - p * p.transpose()) / sn;
     Vector2d dp = dp_ds * ds;
 
@@ -132,13 +138,6 @@ static void GetTEInfoDeriv(const MatrixXd& x, int k, int dim,
     // tdp = t·p
     dtdp = dt.dot(p) + t.dot(dp);
 }
-
-
-
-
-
-
-
 
 // ============================================================================
 // CalcForceLin: compute partial derivatives of cl, cm, cdpi w.r.t. foil.x
@@ -164,7 +163,9 @@ void CalcForceLin(FoilState& state) {
     for (int i = 0; i < N; ++i) {
         double cp_inc = 1.0 - (ue(i) / Vinf) * (ue(i) / Vinf);
         if (state.param.KTl > 0) {
-            double denom = state.param.KTb + state.param.KTl * (1.0 + state.param.KTb) * 0.5 * cp_inc;
+            double denom = state.param.KTb + state.param.KTl *
+                                                 (1.0 + state.param.KTb) * 0.5 *
+                                                 cp_inc;
             if (std::abs(denom) > 1e-10) {
                 cp(i) = cp_inc / denom;
             } else {
@@ -194,11 +195,10 @@ void CalcForceLin(FoilState& state) {
     //   cdpi += dz * cpbar / chord
     //
     // Partial w.r.t. coordinates (holding cp fixed):
-    //   dcl/dx1_x = cpbar * cosa / chord  (from d(-dxv(0))/dx1_x = 1 => no, dxv=x2-x1)
-    //   dxv = x2 - x1 => d(dxv)/d(x1) = [-1, 0; 0, -1], d(dxv)/d(x2) = [1, 0; 0, 1]
-    //   dx = -dxv(0)*cosa - dxv(1)*sina
-    //   d(dx)/d(x1_x) = cosa, d(dx)/d(x1_z) = sina
-    //   d(dx)/d(x2_x) = -cosa, d(dx)/d(x2_z) = -sina
+    //   dcl/dx1_x = cpbar * cosa / chord  (from d(-dxv(0))/dx1_x = 1 => no,
+    //   dxv=x2-x1) dxv = x2 - x1 => d(dxv)/d(x1) = [-1, 0; 0, -1], d(dxv)/d(x2)
+    //   = [1, 0; 0, 1] dx = -dxv(0)*cosa - dxv(1)*sina d(dx)/d(x1_x) = cosa,
+    //   d(dx)/d(x1_z) = sina d(dx)/d(x2_x) = -cosa, d(dx)/d(x2_z) = -sina
 
     for (int i0 = 1; i0 <= N; ++i0) {
         int i = (i0 == N) ? 0 : i0;
@@ -236,25 +236,26 @@ void CalcForceLin(FoilState& state) {
         state.post.dcdpi_dx_partial(1, i) += cpbar * cosa / chord;
 
         // --- cm partial w.r.t. coordinates ---
-        // cm += (cp1 * dx1nds/3 + cp1 * dx2nds/6 + cp2 * dx1nds/6 + cp2 * dx2nds/3) / chord^2
-        // where dx1nds = dxv(0)*dx1(0) + dxv(1)*dx1(1)
+        // cm += (cp1 * dx1nds/3 + cp1 * dx2nds/6 + cp2 * dx1nds/6 + cp2 *
+        // dx2nds/3) / chord^2 where dx1nds = dxv(0)*dx1(0) + dxv(1)*dx1(1)
         //       dx2nds = dxv(0)*dx2(0) + dxv(1)*dx2(1)
         //
         // This depends on both dxv and dx1, dx2. The derivatives are:
-        // d(dx1nds)/d(x1_x) = -dx1(0) + dxv(0)*(-1) = -dx1(0) - dxv(0)  [d(dxv)/dx1_x = -1, d(dx1)/dx1_x = 1... wait]
-        // dxv = x2 - x1, dx1 = x1 - xref, dx2 = x2 - xref
-        // d(dxv(0))/d(x1_x) = -1, d(dx1(0))/d(x1_x) = 1
+        // d(dx1nds)/d(x1_x) = -dx1(0) + dxv(0)*(-1) = -dx1(0) - dxv(0)
+        // [d(dxv)/dx1_x = -1, d(dx1)/dx1_x = 1... wait] dxv = x2 - x1, dx1 = x1
+        // - xref, dx2 = x2 - xref d(dxv(0))/d(x1_x) = -1, d(dx1(0))/d(x1_x) = 1
         // dx1nds = dxv(0)*dx1(0) + dxv(1)*dx1(1)
         // d(dx1nds)/d(x1_x) = (-1)*dx1(0) + dxv(0)*(1) = dxv(0) - dx1(0)
         double inv_chord2 = 1.0 / (chord * chord);
 
-        // d(dx1nds)/d(x1_x) = dxv(0) - dx1(0)  ... actually let me be more careful
-        // dx1nds = dxv . dx1
-        // d(dx1nds)/d(x1_x) = d(dxv)/d(x1_x) . dx1 + dxv . d(dx1)/d(x1_x)
+        // d(dx1nds)/d(x1_x) = dxv(0) - dx1(0)  ... actually let me be more
+        // careful dx1nds = dxv . dx1 d(dx1nds)/d(x1_x) = d(dxv)/d(x1_x) . dx1 +
+        // dxv . d(dx1)/d(x1_x)
         //                   = (-1,0) . dx1 + dxv . (1,0) = -dx1(0) + dxv(0)
         double ddx1nds_dx1x = -dx1(0) + dxv(0);
         double ddx1nds_dx1z = -dx1(1) + dxv(1);
-        double ddx1nds_dx2x = dx1(0);  // d(dxv)/d(x2_x) = (1,0), d(dx1)/d(x2_x) = 0
+        double ddx1nds_dx2x =
+            dx1(0);  // d(dxv)/d(x2_x) = (1,0), d(dx1)/d(x2_x) = 0
         double ddx1nds_dx2z = dx1(1);
 
         // d(dx2nds)/d(x1_x) = (-1,0).dx2 + dxv.(0,0) = -dx2(0)
@@ -267,10 +268,14 @@ void CalcForceLin(FoilState& state) {
         double w1 = cp1 / 3.0 + cp2 / 6.0;
         double w2 = cp1 / 6.0 + cp2 / 3.0;
 
-        state.post.dcm_dx_partial(0, ip) += (w1 * ddx1nds_dx1x + w2 * ddx2nds_dx1x) * inv_chord2;
-        state.post.dcm_dx_partial(1, ip) += (w1 * ddx1nds_dx1z + w2 * ddx2nds_dx1z) * inv_chord2;
-        state.post.dcm_dx_partial(0, i) += (w1 * ddx1nds_dx2x + w2 * ddx2nds_dx2x) * inv_chord2;
-        state.post.dcm_dx_partial(1, i) += (w1 * ddx1nds_dx2z + w2 * ddx2nds_dx2z) * inv_chord2;
+        state.post.dcm_dx_partial(0, ip) +=
+            (w1 * ddx1nds_dx1x + w2 * ddx2nds_dx1x) * inv_chord2;
+        state.post.dcm_dx_partial(1, ip) +=
+            (w1 * ddx1nds_dx1z + w2 * ddx2nds_dx1z) * inv_chord2;
+        state.post.dcm_dx_partial(0, i) +=
+            (w1 * ddx1nds_dx2x + w2 * ddx2nds_dx2x) * inv_chord2;
+        state.post.dcm_dx_partial(1, i) +=
+            (w1 * ddx1nds_dx2z + w2 * ddx2nds_dx2z) * inv_chord2;
 
         // --- cm_ue linearization ---
         // cm depends on cp which depends on ue: dcp/due = -2*ue/(Vinf^2)
@@ -282,8 +287,11 @@ void CalcForceLin(FoilState& state) {
         double dcp_due_ip = cp_U_ip(3);
         double dcp_due_i = cp_U_i(3);
 
-        state.post.cm_ue(ip) += (dcp_due_ip / 3.0 * dx1nds + dcp_due_ip / 6.0 * dx2nds) * inv_chord2;
-        state.post.cm_ue(i) += (dcp_due_i / 6.0 * dx1nds + dcp_due_i / 3.0 * dx2nds) * inv_chord2;
+        state.post.cm_ue(ip) +=
+            (dcp_due_ip / 3.0 * dx1nds + dcp_due_ip / 6.0 * dx2nds) *
+            inv_chord2;
+        state.post.cm_ue(i) +=
+            (dcp_due_i / 6.0 * dx1nds + dcp_due_i / 3.0 * dx2nds) * inv_chord2;
 
         // --- cdpi_ue linearization ---
         state.post.cdpi_ue(ip) += dz * 0.5 * dcp_due_ip / chord;
@@ -292,10 +300,12 @@ void CalcForceLin(FoilState& state) {
 
     // ========================================================================
     // Viscous output partials: dJ/dV at fixed foil.x, V = U flattened [4*Nsys].
-    // - cl, cm, cdpi: only depend on U[3, i] for i ∈ [0, N) (foil edge velocity)
+    // - cl, cm, cdpi: only depend on U[3, i] for i ∈ [0, N) (foil edge
+    // velocity)
     //   so cl_V[4*i + 3] = cl_ue[i] (similar cm, cdpi). All other entries zero.
     // - cd: Squire-Young from end-of-wake state Uw only; cd_V is sparse at iw.
-    // - dcd/dx_partial = 0 because Squire-Young has no direct foil.x dependence.
+    // - dcd/dx_partial = 0 because Squire-Young has no direct foil.x
+    // dependence.
     // ========================================================================
     if (state.oper.viscous && state.glob.U.cols() > 0) {
         int Nsys = static_cast<int>(state.glob.U.cols());
@@ -324,7 +334,8 @@ void CalcForceLin(FoilState& state) {
                 // cd = 2 * Uw[0] * q^p
                 // dcd/dUw[k] = 2*δ_k0 * q^p + 2*Uw[0] * d(q^p)/dUw[k]
                 // d(q^p)/dUw[k] = q^p * (dp/dUw[k] * lnq + (p/q) * dq/dUw[k])
-                //               = q^p * (0.5*H_U[k]*lnq + (p/q)*(1/Vinf)*uk_U[k])
+                //               = q^p * (0.5*H_U[k]*lnq +
+                //               (p/q)*(1/Vinf)*uk_U[k])
                 for (int k = 0; k < 4; ++k) {
                     double dqp = qp * (0.5 * H_U(k) * lnq +
                                        (p / q) * (1.0 / Vinf) * uk_U(k));
@@ -359,7 +370,8 @@ Sensitivity InviscidSensitivities(FoilState& state) {
 
     // The AIC system is [N+1 x N+1] (includes streamfunction unknown and Kutta)
     // gamma is [N], extended to [N+1] with streamfunction as last entry
-    // dJ/dgamma_extended = [dJ/dgamma; 0] (streamfunction doesn't affect forces directly)
+    // dJ/dgamma_extended = [dJ/dgamma; 0] (streamfunction doesn't affect forces
+    // directly)
 
     VectorXd dcl_dgam = VectorXd::Zero(N + 1);
     VectorXd dcm_dgam = VectorXd::Zero(N + 1);
@@ -375,10 +387,10 @@ Sensitivity InviscidSensitivities(FoilState& state) {
     // Step 3: Solve adjoint equations: AIC^T * lambda = dJ/dgamma
     // Note: the residual is R = A*gamma - rhs = 0
     // Adjoint: A^T * lambda = (dJ/dgamma)^T
-    // But since R = A*gam - rhs, dR/dgamma = A, so adjoint is A^T * lambda = dJ/dgamma.
-    // The sign convention: dJ/dx_total = dJ/dx_partial - lambda^T * dR/dx
-    // Since dR = d(A*gam - rhs), we need to subtract.
-    // Actually, for R = A*gam - rhs = 0, implicit function theorem gives:
+    // But since R = A*gam - rhs, dR/dgamma = A, so adjoint is A^T * lambda =
+    // dJ/dgamma. The sign convention: dJ/dx_total = dJ/dx_partial - lambda^T *
+    // dR/dx Since dR = d(A*gam - rhs), we need to subtract. Actually, for R =
+    // A*gam - rhs = 0, implicit function theorem gives:
     //   dgam/dx = -A^{-1} * dR/dx  (where dR/dx = dA/dx*gam - drhs/dx)
     //   dJ/dx = dJ/dx_partial + dJ/dgam * dgam/dx
     //         = dJ/dx_partial - dJ/dgam * A^{-1} * dR/dx
@@ -413,13 +425,14 @@ Sensitivity InviscidSensitivities(FoilState& state) {
         sens.dcl_dx(1, k) = state.post.dcl_dx_partial(1, k) - vjp_cl(2 * k + 1);
         sens.dcm_dx(0, k) = state.post.dcm_dx_partial(0, k) - vjp_cm(2 * k);
         sens.dcm_dx(1, k) = state.post.dcm_dx_partial(1, k) - vjp_cm(2 * k + 1);
-        sens.dcdpi_dx(0, k) = state.post.dcdpi_dx_partial(0, k) - vjp_cdpi(2 * k);
-        sens.dcdpi_dx(1, k) = state.post.dcdpi_dx_partial(1, k) - vjp_cdpi(2 * k + 1);
+        sens.dcdpi_dx(0, k) =
+            state.post.dcdpi_dx_partial(0, k) - vjp_cdpi(2 * k);
+        sens.dcdpi_dx(1, k) =
+            state.post.dcdpi_dx_partial(1, k) - vjp_cdpi(2 * k + 1);
     }
 
     return sens;
 }
-
 
 void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
     double alpha = state.oper.alpha;
@@ -427,21 +440,21 @@ void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
     double sina = Sind(alpha);
 
     // dgam/dalpha = gamref[:,0]*(-sin a) + gamref[:,1]*(cos a), times deg2rad
-    VectorXd dgam_dalpha = (-sina * state.isol.gamref.col(0) +
-                             cosa * state.isol.gamref.col(1)) * kDegToRad;
+    VectorXd dgam_dalpha =
+        (-sina * state.isol.gamref.col(0) + cosa * state.isol.gamref.col(1)) *
+        kDegToRad;
 
     // dueinv/dalpha = sgnue .* dgam/dalpha
     VectorXd dueinv_dalpha = state.isol.sgnue.cwiseProduct(dgam_dalpha);
 
-    sens.dcl_dalpha = state.post.cl_alpha +
-                      state.post.cl_ue.dot(dueinv_dalpha);
+    sens.dcl_dalpha = state.post.cl_alpha + state.post.cl_ue.dot(dueinv_dalpha);
     sens.dcm_dalpha = 0.0 + state.post.cm_ue.dot(dueinv_dalpha);
-    sens.dcd_dalpha = state.post.cdpi_alpha +
-                      state.post.cdpi_ue.dot(dueinv_dalpha);
+    sens.dcd_dalpha =
+        state.post.cdpi_alpha + state.post.cdpi_ue.dot(dueinv_dalpha);
 }
 
 static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
-                               double& dcp_dMa, double& d2cp_duedMa) {
+                              double& dcp_dMa, double& d2cp_duedMa) {
     double Vinf = std::max(param.Vinf, 1e-10);
     double cp_inc = 1.0 - (ue / Vinf) * (ue / Vinf);
     double dcp_due_inc = -2.0 * ue / (Vinf * Vinf);
@@ -460,7 +473,8 @@ static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
     // dl/dMa = 2*Ma/(1+b)^2 - 2*Ma^2/(1+b)^3 * db
     //        = 2*Ma/(1+b)^2 + 2*Ma^3/((1+b)^3 * b)
     double opb = 1.0 + b;
-    double dl = 2.0 * Ma / (opb * opb) + 2.0 * Ma * Ma * Ma / (opb * opb * opb * b);
+    double dl =
+        2.0 * Ma / (opb * opb) + 2.0 * Ma * Ma * Ma / (opb * opb * opb * b);
 
     double den = b + 0.5 * l * (1.0 + b) * cp_inc;
     double den_cp = 0.5 * l * (1.0 + b);
@@ -479,7 +493,8 @@ static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
     // d(dcp/due)/dMa: dcp/due = dcp_due_inc * (1 - cp*den_cp) / den
     // d(dcp/due)/dMa = dcp_due_inc * d/dMa[(1 - cp*den_cp)/den]
     double dfac_dMa = (-(dcp_dMa * den_cp + cp * dden_cp_dMa) * den -
-                       (1.0 - cp * den_cp) * dden_dMa) / (den * den);
+                       (1.0 - cp * den_cp) * dden_dMa) /
+                      (den * den);
     d2cp_duedMa = dcp_due_inc * dfac_dMa;
 }
 
@@ -633,7 +648,8 @@ Sensitivity ViscousSensitivities(FoilState& state) {
     //   cl, cm, cdpi: panel integration with ∂cp/∂Ma via Karman-Tsien
     //     correction at fixed viscous ue. Uses ComputeCpDerivsMa (already
     //     analytic for inviscid MachSensitivities at line 443).
-    //   cd: viscous Squire-Young from end-of-wake state. cd = 2·Uw[0]·(uk/Vinf)^p,
+    //   cd: viscous Squire-Young from end-of-wake state. cd =
+    //   2·Uw[0]·(uk/Vinf)^p,
     //     p = (5+H)/2. H is Ma-independent at fixed U; uk has Ma dep via
     //     Karman-Tsien lambda.
     {
@@ -663,14 +679,14 @@ Sensitivity ViscousSensitivities(FoilState& state) {
                 double dz = dxv(1) * cosa - dxv(0) * sina;
                 double dcp_ip, d2cp_ip, dcp_i, d2cp_i;
                 ComputeCpDerivsMa(ue(ip), state.param, Ma, dcp_ip, d2cp_ip);
-                ComputeCpDerivsMa(ue(i),  state.param, Ma, dcp_i,  d2cp_i);
+                ComputeCpDerivsMa(ue(i), state.param, Ma, dcp_i, d2cp_i);
                 double dcpbar = 0.5 * (dcp_ip + dcp_i);
                 dcl += dx_lift * dcpbar;
                 dcdpi += dz * dcpbar;
                 double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
                 double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
                 dcm += dcp_ip / 3.0 * dx1nds + dcp_ip / 6.0 * dx2nds +
-                        dcp_i / 6.0 * dx1nds + dcp_i / 3.0 * dx2nds;
+                       dcp_i / 6.0 * dx1nds + dcp_i / 3.0 * dx2nds;
             }
             dJ_dMa(0) = dcl / chord;
             dJ_dMa(2) = dcm / (chord * chord);
@@ -680,26 +696,28 @@ Sensitivity ViscousSensitivities(FoilState& state) {
             if (state.oper.viscous && !state.vsol.Is[2].empty()) {
                 int iw = state.vsol.Is[2].back();
                 Vector4d Uw = state.glob.U.col(iw);
-                auto [H, _H_U] = GetH(Uw); (void)_H_U;
-                auto [uk, _uk_U] = GetUk(Uw(3), state.param); (void)_uk_U;
+                auto [H, _H_U] = GetH(Uw);
+                (void)_H_U;
+                auto [uk, _uk_U] = GetUk(Uw(3), state.param);
+                (void)_uk_U;
                 double Vinf = state.param.Vinf;
                 double KTb = state.param.KTb;
                 double KTl = state.param.KTl;
                 double opb = 1.0 + KTb;
                 double KTb_dMa_v = -Ma / KTb;
-                double KTl_dMa_v = 2.0 * Ma / (opb * opb) -
-                                    2.0 * Ma * Ma / (opb * opb * opb) * KTb_dMa_v;
+                double KTl_dMa_v =
+                    2.0 * Ma / (opb * opb) -
+                    2.0 * Ma * Ma / (opb * opb * opb) * KTb_dMa_v;
                 double ue_v = Uw(3);
                 double xKT = ue_v / Vinf;
                 double den_uk = 1.0 - KTl * xKT * xKT;
-                double uk_dMa = ue_v * (xKT * xKT - 1.0) /
-                                (den_uk * den_uk) * KTl_dMa_v;
+                double uk_dMa =
+                    ue_v * (xKT * xKT - 1.0) / (den_uk * den_uk) * KTl_dMa_v;
                 double q = uk / Vinf;
                 double p = 0.5 * (5.0 + H);
                 double qp = std::pow(q, p);
                 // ∂cd/∂Ma = 2·Uw[0] · p · q^(p-1) · (uk_dMa/Vinf)
-                dJ_dMa(1) = 2.0 * Uw(0) * p * qp / q *
-                             (uk_dMa / Vinf);
+                dJ_dMa(1) = 2.0 * Uw(0) * p * qp / q * (uk_dMa / Vinf);
             }
         }
         sens.dcl_dMa = dJ_dMa(0) - lambda_cl.dot(dRV_dMa);
@@ -797,7 +815,7 @@ static ParamPerturbBackup SaveStateForPerturb(const FoilState& state) {
 }
 
 static void RestoreStateForPerturb(FoilState& state,
-                                    const ParamPerturbBackup& b) {
+                                   const ParamPerturbBackup& b) {
     state.param = b.param;
     state.oper = b.oper;
     state.wake = b.wake;
@@ -809,9 +827,7 @@ static void RestoreStateForPerturb(FoilState& state,
 // Evaluate R_V at the current (possibly perturbed) state, holding U fixed.
 // State must be "primed" — i.e. gam, wake.*, ue_sigma, xi, wgap recomputed
 // at the perturbed parameter. BuildGlobSys is called here.
-static VectorXd EvaluateRVFixedU(FoilState& state) {
-    return EvaluateRV(state);
-}
+static VectorXd EvaluateRVFixedU(FoilState& state) { return EvaluateRV(state); }
 
 }  // namespace
 
@@ -836,8 +852,8 @@ VectorXd DRVDAlpha(FoilState& state) {
 
     VectorXd dgam_dalpha = DGammaDAlpha(state);
     VectorXd dxi_dalpha = DXiDAlpha(state);
-    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);   // [2 x Nw]
-    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);   // [2 x Nw]
+    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);  // [2 x Nw]
+    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);  // [2 x Nw]
 
     VectorXd dR = VectorXd::Zero(4 * Nsys);
 
@@ -851,7 +867,8 @@ VectorXd DRVDAlpha(FoilState& state) {
     for (int i = 0; i < N; ++i) {
         dueinv(i) = state.isol.sgnue(i) * dgam_dalpha(i);
     }
-    dueinv(N) = state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);  // wake[0] continuity
+    dueinv(N) =
+        state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);  // wake[0] continuity
     for (int j = 1; j < Nw; ++j) {
         Vector2d xi_w = state.wake.x.col(j);
         Vector2d t_w = state.wake.t.col(j);
@@ -896,11 +913,14 @@ VectorXd DRVDAlpha(FoilState& state) {
             dXr = dwx_col(j + 1);
         }
         // phi-weighting per CalcUeM:
-        //   left half: if j>0  → a contributes to phi[N-1+j] (w=0.5) AND phi[N-1+j-1] (w=0.5)
+        //   left half: if j>0  → a contributes to phi[N-1+j] (w=0.5) AND
+        //   phi[N-1+j-1] (w=0.5)
         //                       b contributes to phi[N-1+j] (w=1.0)
-        //              if j==0 → a no contribution (skipped); b contributes to phi[N-1] (w=1.0)
+        //              if j==0 → a no contribution (skipped); b contributes to
+        //              phi[N-1] (w=1.0)
         //   right half: if j<Nw-2 → a contributes to phi[N-1+j] (w=1.0)
-        //                          b contributes to phi[N-1+j] (w=0.5) AND phi[N-1+j+1] (w=0.5)
+        //                          b contributes to phi[N-1+j] (w=0.5) AND
+        //                          phi[N-1+j+1] (w=0.5)
         //               if j==Nw-2 → a contributes to phi[N-1+j] (w=1.0)
         //                          b contributes to phi[N-1+j] (w=1.0)
         double wL_a, wL_b, wR_a, wR_b;
@@ -939,8 +959,8 @@ VectorXd DRVDAlpha(FoilState& state) {
             // ∂a/∂α = a_Xj[0:2]·dXjL_0 + a_Xj[2:4]·dXjL_1 (no xi α-dep)
             auto chain = [&](const Vector4d& gXj, const Vector2d& dX0,
                              const Vector2d& dX1) {
-                return gXj(0) * dX0(0) + gXj(1) * dX0(1) +
-                       gXj(2) * dX1(0) + gXj(3) * dX1(1);
+                return gXj(0) * dX0(0) + gXj(1) * dX0(1) + gXj(2) * dX1(0) +
+                       gXj(3) * dX1(1);
             };
             double daL = chain(dL.a_Xj, dXjL_0, dXjL_1);
             double dbL = chain(dL.b_Xj, dXjL_0, dXjL_1);
@@ -957,13 +977,15 @@ VectorXd DRVDAlpha(FoilState& state) {
     }
 
     // Step 3: ue_sigma · phi α-derivative.
-    //   foil row i (i < N): (ue_sigma · phi)[i] = (Bp · phi)[i] = dBphi_dalpha[i].
-    //   wake row N+0: (Dw · phi)[0] = (Bp[N-1] · phi) by continuity override.
-    //   wake row N+j (j > 0): (Dw · phi)[j] = (Cgam[j,:] · Bp · phi) +
+    //   foil row i (i < N): (ue_sigma · phi)[i] = (Bp · phi)[i] =
+    //   dBphi_dalpha[i]. wake row N+0: (Dw · phi)[0] = (Bp[N-1] · phi) by
+    //   continuity override. wake row N+j (j > 0): (Dw · phi)[j] = (Cgam[j,:] ·
+    //   Bp · phi) +
     //                                          (Csig[j,:] · phi).
     //
     // Build v = Bp · phi (length N) from existing source_term: source_term =
-    // ue_m · mass = sgue · ue_sigma · phi. So ue_sigma · phi = source_term/sgue.
+    // ue_m · mass = sgue · ue_sigma · phi. So ue_sigma · phi =
+    // source_term/sgue.
     VectorXd source_term = state.vsol.ue_m * mass;
     VectorXd v(N);
     for (int k = 0; k < N; ++k) {
@@ -979,8 +1001,9 @@ VectorXd DRVDAlpha(FoilState& state) {
     // d(Cgam[j,:] · v)/dα — Cgam[j, k] = V_G_k(wake.x[j]) · wake.t[j].
     // V_G is pure-geometry (no α-dep at fixed xi), so:
     //   d(Cgam[j,:] · v) = (V_G · v)_xi · dwxj  · t_w   + (V_G · v) · dwtj
-    // where (V_G · v) at xi=wake.x[j] is obtained via InviscidVelocityWithDerivExt
-    // with vortex=v (treating v as gammas), then subtracting freestream.
+    // where (V_G · v) at xi=wake.x[j] is obtained via
+    // InviscidVelocityWithDerivExt with vortex=v (treating v as gammas), then
+    // subtracting freestream.
     //
     // d(Csig[j,:] · phi)/dα — Csig involves wake-source panel velocities at
     // wake.x[j] projected onto wake.t[j]. Chain through both eval-point
@@ -1004,8 +1027,8 @@ VectorXd DRVDAlpha(FoilState& state) {
                                                      dvortex_zero, alpha);
         Vector2d Vinf(state.oper.Vinf * Cosd(alpha),
                       state.oper.Vinf * Sind(alpha));
-        Vector2d VGv = vd_v.V - Vinf;            // V_G · v at wake.x[jw]
-        Matrix2d VGv_xi = vd_v.V_xi;              // (V_G · v)_xi (Vinf is xi-indep)
+        Vector2d VGv = vd_v.V - Vinf;  // V_G · v at wake.x[jw]
+        Matrix2d VGv_xi = vd_v.V_xi;   // (V_G · v)_xi (Vinf is xi-indep)
         dCgam_v_dalpha(jw) = t_w.dot(VGv_xi * dwxj) + VGv.dot(dwtj);
 
         // dCsig[j,:]·phi/dα: chain through wake-source panel velocities
@@ -1022,16 +1045,14 @@ VectorXd DRVDAlpha(FoilState& state) {
                 // Xl = 0.5(wake.x[wp-1]+wake.x[wp]), Xr = 0.5(wake.x[wp]+
                 // wake.x[wp+1]). Csig contributes aa to two phi cols.
                 if (wp >= 1 && wp <= Nw - 2) {
-                    Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
-                                          state.wake.x.col(wp));
+                    Vector2d Xl =
+                        0.5 * (state.wake.x.col(wp - 1) + state.wake.x.col(wp));
                     Vector2d Xm = state.wake.x.col(wp);
-                    Vector2d Xr = 0.5 * (state.wake.x.col(wp) +
-                                          state.wake.x.col(wp + 1));
-                    Vector2d dXl =
-                        0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                    Vector2d Xr =
+                        0.5 * (state.wake.x.col(wp) + state.wake.x.col(wp + 1));
+                    Vector2d dXl = 0.5 * (dwx_col(wp - 1) + dwx_col(wp));
                     Vector2d dXm = dwx_col(wp);
-                    Vector2d dXr =
-                        0.5 * (dwx_col(wp) + dwx_col(wp + 1));
+                    Vector2d dXr = 0.5 * (dwx_col(wp) + dwx_col(wp + 1));
                     Vector2d e1 = Xm - Xl;
                     Vector2d e2 = Xr - Xm;
                     double d1 = e1.norm();
@@ -1051,17 +1072,20 @@ VectorXd DRVDAlpha(FoilState& state) {
             }
             // Non-self contributions: build panel velocity derivatives.
             // Per CalcUeM lines 877-908:
-            //   wp == 0: half panel Xj = [wake.x[0], 0.5*(wake.x[0]+wake.x[1])].
+            //   wp == 0: half panel Xj = [wake.x[0],
+            //   0.5*(wake.x[0]+wake.x[1])].
             //            v.dot(ti) → cols (N-1) [from b]; (0), (N-2) [from a].
             //   wp == Nw-1: const panel Xj = [Xl, Xr] (with Xr = 2*Xm - Xl,
-            //                Xm = wake.x[wp], Xl = 0.5(wake.x[wp-1]+wake.x[wp])).
-            //                v.dot(ti) → col (Npanel-1).
+            //                Xm = wake.x[wp], Xl =
+            //                0.5(wake.x[wp-1]+wake.x[wp])). v.dot(ti) → col
+            //                (Npanel-1).
             //   interior wp: left half [Xl, Xm] + right half [Xm, Xr].
-            //                left a → col (N-1+wp-1) (w=1), b → col (N-1+wp-1) (w=0.5)
-            //                right a → col (N-1+wp) (w=0.5), b → col (N-1+wp) (w=1)
+            //                left a → col (N-1+wp-1) (w=1), b → col (N-1+wp-1)
+            //                (w=0.5) right a → col (N-1+wp) (w=0.5), b → col
+            //                (N-1+wp) (w=1)
             if (wp == 0) {
-                Vector2d Xm0 = 0.5 * (state.wake.x.col(0) +
-                                       state.wake.x.col(1));
+                Vector2d Xm0 =
+                    0.5 * (state.wake.x.col(0) + state.wake.x.col(1));
                 Vector2d dXm0 = 0.5 * (dwx_col(0) + dwx_col(1));
                 Matrix2d Xj;
                 Xj.col(0) = state.wake.x.col(0);
@@ -1091,16 +1115,14 @@ VectorXd DRVDAlpha(FoilState& state) {
                 //   col(N-2) += a.dot(ti)*phi[N-2]
                 double w_a = phi(0) + phi(N - 2);
                 double w_b = phi(N - 1);
-                dCsig_phi_dalpha(jw) +=
-                    w_a * (da.dot(t_w) + lvd.a.dot(dwtj)) +
-                    w_b * (db.dot(t_w) + lvd.b.dot(dwtj));
+                dCsig_phi_dalpha(jw) += w_a * (da.dot(t_w) + lvd.a.dot(dwtj)) +
+                                        w_b * (db.dot(t_w) + lvd.b.dot(dwtj));
             } else if (wp == Nw - 1) {
-                Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
-                                      state.wake.x.col(wp));
+                Vector2d Xl =
+                    0.5 * (state.wake.x.col(wp - 1) + state.wake.x.col(wp));
                 Vector2d Xm = state.wake.x.col(wp);
                 Vector2d Xr = 2.0 * Xm - Xl;
-                Vector2d dXl =
-                    0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                Vector2d dXl = 0.5 * (dwx_col(wp - 1) + dwx_col(wp));
                 Vector2d dXm = dwx_col(wp);
                 Vector2d dXr = 2.0 * dXm - dXl;
                 Matrix2d Xj;
@@ -1113,20 +1135,17 @@ VectorXd DRVDAlpha(FoilState& state) {
                               csv.val_Xj.col(2) * dXr(0) +
                               csv.val_Xj.col(3) * dXr(1) + csv.val_xi * dwxj;
                 double w = phi(Npanel - 1);
-                dCsig_phi_dalpha(jw) +=
-                    w * (dV.dot(t_w) + csv.val.dot(dwtj));
+                dCsig_phi_dalpha(jw) += w * (dV.dot(t_w) + csv.val.dot(dwtj));
             } else {
                 // Interior wp ∈ [1, Nw-2], wp != jw
-                Vector2d Xl = 0.5 * (state.wake.x.col(wp - 1) +
-                                      state.wake.x.col(wp));
+                Vector2d Xl =
+                    0.5 * (state.wake.x.col(wp - 1) + state.wake.x.col(wp));
                 Vector2d Xm = state.wake.x.col(wp);
-                Vector2d Xr = 0.5 * (state.wake.x.col(wp) +
-                                      state.wake.x.col(wp + 1));
-                Vector2d dXl =
-                    0.5 * (dwx_col(wp - 1) + dwx_col(wp));
+                Vector2d Xr =
+                    0.5 * (state.wake.x.col(wp) + state.wake.x.col(wp + 1));
+                Vector2d dXl = 0.5 * (dwx_col(wp - 1) + dwx_col(wp));
                 Vector2d dXm = dwx_col(wp);
-                Vector2d dXr =
-                    0.5 * (dwx_col(wp) + dwx_col(wp + 1));
+                Vector2d dXr = 0.5 * (dwx_col(wp) + dwx_col(wp + 1));
                 // Left half [Xl, Xm]
                 {
                     Matrix2d Xj_L;
@@ -1137,13 +1156,11 @@ VectorXd DRVDAlpha(FoilState& state) {
                     Vector2d da = lvd.a_Xj.col(0) * dXl(0) +
                                   lvd.a_Xj.col(1) * dXl(1) +
                                   lvd.a_Xj.col(2) * dXm(0) +
-                                  lvd.a_Xj.col(3) * dXm(1) +
-                                  lvd.a_xi * dwxj;
+                                  lvd.a_Xj.col(3) * dXm(1) + lvd.a_xi * dwxj;
                     Vector2d db = lvd.b_Xj.col(0) * dXl(0) +
                                   lvd.b_Xj.col(1) * dXl(1) +
                                   lvd.b_Xj.col(2) * dXm(0) +
-                                  lvd.b_Xj.col(3) * dXm(1) +
-                                  lvd.b_xi * dwxj;
+                                  lvd.b_Xj.col(3) * dXm(1) + lvd.b_xi * dwxj;
                     double phi_prev = phi(N - 1 + wp - 1);
                     dCsig_phi_dalpha(jw) +=
                         phi_prev * (da.dot(t_w) + lvd.a.dot(dwtj)) +
@@ -1159,13 +1176,11 @@ VectorXd DRVDAlpha(FoilState& state) {
                     Vector2d da = lvd.a_Xj.col(0) * dXm(0) +
                                   lvd.a_Xj.col(1) * dXm(1) +
                                   lvd.a_Xj.col(2) * dXr(0) +
-                                  lvd.a_Xj.col(3) * dXr(1) +
-                                  lvd.a_xi * dwxj;
+                                  lvd.a_Xj.col(3) * dXr(1) + lvd.a_xi * dwxj;
                     Vector2d db = lvd.b_Xj.col(0) * dXm(0) +
                                   lvd.b_Xj.col(1) * dXm(1) +
                                   lvd.b_Xj.col(2) * dXr(0) +
-                                  lvd.b_Xj.col(3) * dXr(1) +
-                                  lvd.b_xi * dwxj;
+                                  lvd.b_Xj.col(3) * dXr(1) + lvd.b_xi * dwxj;
                     double phi_curr = phi(N - 1 + wp);
                     dCsig_phi_dalpha(jw) +=
                         0.5 * phi_curr * (da.dot(t_w) + lvd.a.dot(dwtj)) +
@@ -1174,8 +1189,9 @@ VectorXd DRVDAlpha(FoilState& state) {
             }
         }
         // Foil-source panel α-deriv (in Csig): wp = 0..N-2.
-        // Csig[jw, wp] += v.dot(ti) where v = PanelConstSourceVelocity(Xj_foil, xi=wake.x[jw], &ti).
-        // α-chain via dwxj (eval point) and dwtj (projection); panel endpoints are foil.x (α-indep).
+        // Csig[jw, wp] += v.dot(ti) where v = PanelConstSourceVelocity(Xj_foil,
+        // xi=wake.x[jw], &ti). α-chain via dwxj (eval point) and dwtj
+        // (projection); panel endpoints are foil.x (α-indep).
         int jstart = (jw == 0) ? 1 : 0;
         int jend = (jw == 0) ? N - 2 : N - 1;
         for (int jf = jstart; jf < jend; ++jf) {
@@ -1192,10 +1208,10 @@ VectorXd DRVDAlpha(FoilState& state) {
     // Step 4: Assemble R_ue α-derivative.
     //   foil rows i < N:     dR_ue/dα = -dueinv - sgnue[i] · dBphi_dalpha[i]
     //   wake row N+0:        dR_ue/dα = -dueinv - 1 · dBphi_dalpha[N-1]
-    //   wake rows N+j j>0:   dR_ue/dα = -dueinv - 1 · (dCgam·v + Cgam·dBphi + dCsig·phi)
+    //   wake rows N+j j>0:   dR_ue/dα = -dueinv - 1 · (dCgam·v + Cgam·dBphi +
+    //   dCsig·phi)
     for (int i = 0; i < N; ++i) {
-        dR(3 * Nsys + i) = -dueinv(i) -
-                           state.isol.sgnue(i) * dBphi_dalpha(i);
+        dR(3 * Nsys + i) = -dueinv(i) - state.isol.sgnue(i) * dBphi_dalpha(i);
     }
     dR(3 * Nsys + N) = -dueinv(N) - dBphi_dalpha(N - 1);  // wake[0] continuity
     for (int j = 1; j < Nw; ++j) {

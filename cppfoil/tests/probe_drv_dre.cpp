@@ -8,8 +8,8 @@
 
 #include "cppfoil/core/adjoint.h"
 #include "cppfoil/core/coupled_solver.h"
-#include "cppfoil/core/wake.h"
 #include "cppfoil/core/inviscid.h"
+#include "cppfoil/core/wake.h"
 #include "cppfoil/cppfoil.h"
 
 using namespace cppfoil;
@@ -89,12 +89,14 @@ int main() {
     int wi = 0;
     for (int i = 0; i < 3 * Nsys; ++i) {
         double e = std::abs(dR_analytic(i) - dR_fd(i));
-        if (e > max_abs) { max_abs = e; wi = i; }
+        if (e > max_abs) {
+            max_abs = e;
+            wi = i;
+        }
     }
-    std::cout << "Worst entry: row " << wi
-              << " (station " << wi / 3 << " eq " << wi % 3 << ")"
-              << " analytic=" << dR_analytic(wi)
-              << " FD=" << dR_fd(wi)
+    std::cout << "Worst entry: row " << wi << " (station " << wi / 3 << " eq "
+              << wi % 3 << ")"
+              << " analytic=" << dR_analytic(wi) << " FD=" << dR_fd(wi)
               << " abs=" << max_abs
               << " rel=" << max_abs / std::max(std::abs(dR_fd(wi)), 1e-300)
               << "\n";
@@ -107,21 +109,26 @@ int main() {
         for (int j = 0; j < Nsys; ++j) {
             int i = 3 * j + k;
             double e = std::abs(dR_analytic(i) - dR_fd(i));
-            if (e > m) { m = e; wjk = j; }
+            if (e > m) {
+                m = e;
+                wjk = j;
+            }
         }
         std::cout << "Worst R_" << eq[k] << ": station " << wjk
                   << " analytic=" << dR_analytic(3 * wjk + k)
-                  << " FD=" << dR_fd(3 * wjk + k)
-                  << " abs=" << m << "\n";
+                  << " FD=" << dR_fd(3 * wjk + k) << " abs=" << m << "\n";
     }
 
     // Surface info
-    std::cout << "Istag=[" << s.isol.Istag[0] << ", " << s.isol.Istag[1] << "]\n";
+    std::cout << "Istag=[" << s.isol.Istag[0] << ", " << s.isol.Istag[1]
+              << "]\n";
     std::cout << "N_foil=" << s.foil.N << " N_wake=" << s.wake.N << "\n";
     // Where is transition?
     int nturb_lo = 0, nturb_up = 0;
-    for (auto i : s.vsol.Is[0]) if (s.vsol.turb[i]) nturb_lo++;
-    for (auto i : s.vsol.Is[1]) if (s.vsol.turb[i]) nturb_up++;
+    for (auto i : s.vsol.Is[0])
+        if (s.vsol.turb[i]) nturb_lo++;
+    for (auto i : s.vsol.Is[1])
+        if (s.vsol.turb[i]) nturb_up++;
     std::cout << "Lower surface turb stations: " << nturb_lo << "/"
               << s.vsol.Is[0].size() << "\n";
     std::cout << "Upper surface turb stations: " << nturb_up << "/"

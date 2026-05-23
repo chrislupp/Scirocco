@@ -672,9 +672,8 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
     double Hkc2 = Hkc * Hkc;
     double Hk2 = Hk * Hk;
     double num = CC * Hs * (Hk - 1.0) * Hkc2;
-    Vector4d num_U =
-        CC * (Hs_U * (Hk - 1.0) * Hkc2 + Hs * Hk_U * Hkc2 +
-              Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
+    Vector4d num_U = CC * (Hs_U * (Hk - 1.0) * Hkc2 + Hs * Hk_U * Hkc2 +
+                           Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_U);
 
     double den = (1.0 - Us) * H * Hk2;
     Vector4d den_U = (-Us_U) * H * Hk2 + (1.0 - Us) * H_U * Hk2 +
@@ -891,8 +890,7 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
     double AHk2 = A * Hk2;
     double ut = 0.5 * cf - (Hkc / AHk) * (Hkc / AHk);
     Vector8d ut_U =
-        0.5 * cf_U - 2.0 * (Hkc / AHk) *
-                         (Hkc_U / AHk - Hkc / AHk2 * Hk_U_use);
+        0.5 * cf_U - 2.0 * (Hkc / AHk) * (Hkc_U / AHk - Hkc / AHk2 * Hk_U_use);
 
     double ds_safe = std::max(ds, 1e-12);
     double uq = ut / (beta * ds_safe);

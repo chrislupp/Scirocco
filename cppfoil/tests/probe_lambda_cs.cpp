@@ -4,6 +4,7 @@
 // the bug is in R_V (either the assembly or the LU solve precision).
 
 #include <H5Cpp.h>
+
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
@@ -38,8 +39,9 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const char* path = "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
-                       "tests/comprehensive_reference.h5";
+    const char* path =
+        "/Users/clupp/tools/analysis/ProjectTrysil/cppfoil/"
+        "tests/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");
@@ -66,10 +68,11 @@ int main() {
 
     // Override U/wgap to match HDF5. ALSO load mfoil's sstag_ue from HDF5
     // (not recomputed locally): mfoil's reference uses sstag_ue computed at
-    // spline foil.s during the initial Newton solve, NOT the post-recompute_geom
-    // cumulative foil.s. Recomputing locally with cumulative foil.s gives a
-    // value off by ~1e-5 rel, which propagates through the xi-stag-chain
-    // augmentation as a ~0.1 abs error in R_V[Istag rows, ue-Istag cols].
+    // spline foil.s during the initial Newton solve, NOT the
+    // post-recompute_geom cumulative foil.s. Recomputing locally with
+    // cumulative foil.s gives a value off by ~1e-5 rel, which propagates
+    // through the xi-stag-chain augmentation as a ~0.1 abs error in R_V[Istag
+    // rows, ue-Istag cols].
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     {
@@ -103,18 +106,24 @@ int main() {
         int wi_abs = 0, wi_rel = 0;
         for (int i = 0; i < a.size(); ++i) {
             double e = std::abs(a(i) - b(i));
-            if (e > max_abs) { max_abs = e; wi_abs = i; }
+            if (e > max_abs) {
+                max_abs = e;
+                wi_abs = i;
+            }
             double mag = std::max(std::abs(a(i)), std::abs(b(i)));
             if (mag > 1e-6) {
                 double rel = e / mag;
-                if (rel > max_rel) { max_rel = rel; wi_rel = i; }
+                if (rel > max_rel) {
+                    max_rel = rel;
+                    wi_rel = i;
+                }
             }
         }
         std::cout << name << ": max abs=" << max_abs << " at i=" << wi_abs
                   << " (cpp=" << a(wi_abs) << " ref=" << b(wi_abs) << ")\n";
         std::cout << name << ": max rel (|val|>1e-6) = " << max_rel
-                  << " at i=" << wi_rel
-                  << " (cpp=" << a(wi_rel) << " ref=" << b(wi_rel) << ")\n";
+                  << " at i=" << wi_rel << " (cpp=" << a(wi_rel)
+                  << " ref=" << b(wi_rel) << ")\n";
     };
     compare(lambda_cl, lambda_cl_ref, "lambda_cl");
     compare(lambda_cd, lambda_cd_ref, "lambda_cd");

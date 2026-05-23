@@ -126,21 +126,51 @@ int main() {
     // analytic formula by inspecting the relevant section of
     // ComputeStationLinMa source by hand.
 
-    auto getH       = [](const Vector4d& U, const Param& p, double) { return GetH(U).value; };
-    auto getHk      = [](const Vector4d& U, const Param& p, double) { return GetHk(U, p).value; };
-    auto getHs      = [](const Vector4d& U, const Param& p, double) { return GetHs(U, p).value; };
-    auto getHss     = [](const Vector4d& U, const Param& p, double) { return GetHss(U, p).value; };
-    auto getRet     = [](const Vector4d& U, const Param& p, double) { return GetRet(U, p).value; };
-    auto getCf      = [](const Vector4d& U, const Param& p, double) { return GetCf(U, p).value; };
-    auto getCDi     = [](const Vector4d& U, const Param& p, double) { return GetCDi(U, p).value; };
-    auto getCfxt    = [](const Vector4d& U, const Param& p, double x) { return GetCfxt(U, x, p).value; };
-    auto getCDixt   = [](const Vector4d& U, const Param& p, double x) { return GetCDixt(U, x, p).value; };
-    auto getDe      = [](const Vector4d& U, const Param& p, double) { return GetDe(U, p).value; };
-    auto getUs      = [](const Vector4d& U, const Param& p, double) { return GetUs(U, p).value; };
-    auto getCteq    = [](const Vector4d& U, const Param& p, double) { return GetCteq(U, p).value; };
-    auto getMach2   = [](const Vector4d& U, const Param& p, double) { return GetMach2(U, p).value; };
-    auto getUk      = [](const Vector4d& U, const Param& p, double) { return GetUk(U(3), p).value; };
-    auto getDamp    = [](const Vector4d& U, const Param& p, double) { return GetDamp(U, p).value; };
+    auto getH = [](const Vector4d& U, const Param& p, double) {
+        return GetH(U).value;
+    };
+    auto getHk = [](const Vector4d& U, const Param& p, double) {
+        return GetHk(U, p).value;
+    };
+    auto getHs = [](const Vector4d& U, const Param& p, double) {
+        return GetHs(U, p).value;
+    };
+    auto getHss = [](const Vector4d& U, const Param& p, double) {
+        return GetHss(U, p).value;
+    };
+    auto getRet = [](const Vector4d& U, const Param& p, double) {
+        return GetRet(U, p).value;
+    };
+    auto getCf = [](const Vector4d& U, const Param& p, double) {
+        return GetCf(U, p).value;
+    };
+    auto getCDi = [](const Vector4d& U, const Param& p, double) {
+        return GetCDi(U, p).value;
+    };
+    auto getCfxt = [](const Vector4d& U, const Param& p, double x) {
+        return GetCfxt(U, x, p).value;
+    };
+    auto getCDixt = [](const Vector4d& U, const Param& p, double x) {
+        return GetCDixt(U, x, p).value;
+    };
+    auto getDe = [](const Vector4d& U, const Param& p, double) {
+        return GetDe(U, p).value;
+    };
+    auto getUs = [](const Vector4d& U, const Param& p, double) {
+        return GetUs(U, p).value;
+    };
+    auto getCteq = [](const Vector4d& U, const Param& p, double) {
+        return GetCteq(U, p).value;
+    };
+    auto getMach2 = [](const Vector4d& U, const Param& p, double) {
+        return GetMach2(U, p).value;
+    };
+    auto getUk = [](const Vector4d& U, const Param& p, double) {
+        return GetUk(U(3), p).value;
+    };
+    auto getDamp = [](const Vector4d& U, const Param& p, double) {
+        return GetDamp(U, p).value;
+    };
 
     std::vector<std::pair<std::string, double>> closure_fd_max;
     auto dump_closure = [&](const std::string& name, auto fn) {
@@ -188,7 +218,8 @@ int main() {
     };
 
     std::cout << "Per-closure FD ∂/∂Ma profile at Ma=" << s.oper.Ma << "\n";
-    std::cout << "(Use this to see which closures have non-trivial Ma dep at this state)\n\n";
+    std::cout << "(Use this to see which closures have non-trivial Ma dep at "
+                 "this state)\n\n";
     dump_closure("GetH        ", getH);
     dump_closure("GetHk       ", getHk);
     dump_closure("GetHs       ", getHs);
