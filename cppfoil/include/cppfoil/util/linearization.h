@@ -63,19 +63,19 @@ struct LinResultWithX {
 };
 
 // Residual at a station: 3 residuals with derivatives w.r.t. U[8] and x[2],
-// plus optional ∂R/∂Re·Re for the analytic Re chain. lin_Ret stores
-// sum_k (∂R/∂Ret_k · Ret_k) where k ranges over every distinct Ret value
-// used in the residual (Ret_1 at U1, Ret_2 at U2, Ret_m at Um=0.5(U1+U2),
-// plus any others). Since Re only enters Ret as Ret(U, mu0) ∝ Re/mu0 with
-// ∂Ret/∂Re = Ret/Re, the chain ∂R/∂Re = lin_Ret / Re. Pre-multiplying by
-// Ret here keeps callers from needing to track per-evaluation Ret values.
+// plus optional ∂R/∂Re·Re and ∂R/∂Ma·Ma for the analytic scalar-param chains.
 //
-// Default zero — ResidualStation populates when populate_lin_Ret is true.
+//   lin_Ret = sum_k (∂R/∂Ret_k · Ret_k) — Re chain (single param: mu0).
+//   lin_Ma  = ∂R/∂Ma · Ma — Ma chain (multi-param: KTb, KTl, H0, cps, mu0, rho0).
+//
+// Pre-multiplying by Ret resp. Ma keeps the BuildGlobSys aggregation
+// uniform: ∂R/∂Re = lin_Ret/Re, ∂R/∂Ma = lin_Ma/Ma.
 struct ResidualLin {
     Vector3d value;
-    Matrix38d lin_U;          // ∂R/∂[U1, U2]
-    Matrix32d lin_x;          // ∂R/∂[xi1, xi2]
-    Vector3d lin_Ret = Vector3d::Zero();  // sum_k ∂R/∂Ret_k · Ret_k
+    Matrix38d lin_U;
+    Matrix32d lin_x;
+    Vector3d lin_Ret = Vector3d::Zero();
+    Vector3d lin_Ma  = Vector3d::Zero();
 };
 
 }  // namespace cppfoil

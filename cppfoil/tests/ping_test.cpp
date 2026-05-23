@@ -283,9 +283,10 @@ TEST_F(PingTest, ResidualStationDerivatives) {
                 Matrix42d Umat;
                 Umat.col(0) = U1base;
                 Umat.col(1) = U2base;
-                auto [R0, R_U0, R_x0, R_Ret0] =
+                auto [R0, R_U0, R_x0, R_Ret0, R_Ma0] =
                     ResidualStation(param, xi_base, Umat, Aux);
                 (void)R_Ret0;
+                (void)R_Ma0;
 
                 // Two epsilons: ep and ep/2
                 double epi = ep;
@@ -293,9 +294,10 @@ TEST_F(PingTest, ResidualStationDerivatives) {
                     Matrix42d Umat1 = Umat;
                     Umat1(k % 4, k / 4) += epi;
                     Vector2d xi1 = xi_base + epi * dx;
-                    auto [R1, R_U1, R_x1, R_Ret1] =
+                    auto [R1, R_U1, R_x1, R_Ret1, R_Ma1] =
                         ResidualStation(param, xi1, Umat1, Aux);
                     (void)R_Ret1;
+                    (void)R_Ma1;
 
                     // Error: FD vs averaged analytical derivative
                     Vector3d v_u0 = R_U0.col(k) + R_x0 * dx;
@@ -357,7 +359,7 @@ TEST_F(PingTest, ResidualTransitionDerivatives) {
     std::array<Vector3d, 3> v_u;
 
     for (int ie = 0; ie < 3; ++ie) {
-        auto [R, R_U, R_x, R_Ret_unused] =
+        auto [R, R_U, R_x, R_Ret_unused, R_Ma_unused] =
             ResidualTransition(state, param, x, U, Aux);
         (void)R_Ret_unused;
         v[ie] = R;
@@ -407,7 +409,7 @@ TEST_F(PingTest, ResidualStation_Stagnation) {
         Matrix42d Umat;
         Umat.col(0) = U;
         Umat.col(1) = U;
-        auto [R, R_U, R_x, R_Ret_unused] =
+        auto [R, R_U, R_x, R_Ret_unused, R_Ma_unused] =
             ResidualStation(param, xvec, Umat, Aux);
         (void)R_Ret_unused;
         param.simi = false;
