@@ -1,5 +1,7 @@
 # cppfoil
 
+[![codecov](https://codecov.io/gh/chrislupp/ProjectTrysil/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/ProjectTrysil/branch/main)
+
 A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.
 
 ## Overview
