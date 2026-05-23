@@ -115,6 +115,9 @@ if(CPPFOIL_BUILD_TESTS)
 
         add_executable(probe_internal_fd tests/probe_internal_fd.cpp)
         target_link_libraries(probe_internal_fd cppfoil)
+
+        add_executable(probe_lambda_cs tests/probe_lambda_cs.cpp)
+        target_link_libraries(probe_lambda_cs cppfoil hdf5_cpp-shared)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests
