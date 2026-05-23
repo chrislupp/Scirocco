@@ -108,6 +108,10 @@ if(CPPFOIL_BUILD_TESTS)
             COMPREHENSIVE_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/comprehensive_reference.h5"
         )
         gtest_discover_tests(cppfoil_viscous_residual_tests)
+
+        # Probe binary (no gtest) for diagnosing primal mismatch
+        add_executable(probe_primal_mismatch tests/probe_primal_mismatch.cpp)
+        target_link_libraries(probe_primal_mismatch cppfoil hdf5_cpp-shared)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

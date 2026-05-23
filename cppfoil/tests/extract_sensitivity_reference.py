@@ -136,7 +136,14 @@ def cs_inviscid_shape(naca, npanel, alpha, Ma, test_nodes):
     Complex-step shape sensitivities for inviscid case.
     Returns dcl_dx [2, N+1], dcm_dx [2, N+1] (nonzero only at test_nodes).
     """
-    M_base = solve_inviscid(naca, npanel, alpha, Ma)
+    # M_base must use cumulative foil.s to match perturbation calls (see
+    # cs_viscous_shape for rationale).
+    M_base = mfoil.mfoil(naca=naca, npanel=npanel)
+    M_base.param.verb = 0
+    M_base.param.doplot = False
+    recompute_geom(M_base)
+    M_base.setoper(alpha=alpha, Ma=Ma)
+    M_base.solve()
     N = M_base.foil.N
     dcl_dx = np.zeros((2, N))
     dcm_dx = np.zeros((2, N))
@@ -168,7 +175,19 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes):
     Complex-step shape sensitivities for viscous case.
     Returns dcl_dx, dcd_dx, dcm_dx [2, N+1] (nonzero only at test_nodes).
     """
-    M_base = solve_viscous(naca, npanel, alpha, Re, Ma)
+    # IMPORTANT: M_base must use the SAME foil.s convention as the perturbation
+    # calls below (which apply recompute_geom for complex-step compatibility).
+    # mfoil's default uses scipy spline arc-length which differs from the
+    # cumulative-panel-norm by ~1e-5; if M_base uses spline while perturbations
+    # use cumulative, the saved cl_base lives at a different fixed point than
+    # what CS evaluates, and cppfoil's analytic gradient (which lines up with
+    # the CS path) can't be checked against a primal that doesn't match.
+    M_base = mfoil.mfoil(naca=naca, npanel=npanel)
+    M_base.param.verb = 0
+    M_base.param.doplot = False
+    recompute_geom(M_base)  # cumulative foil.s, same path as perturbations
+    M_base.setoper(alpha=alpha, Re=Re, Ma=Ma)
+    M_base.solve()
     N = M_base.foil.N
     dcl_dx = np.zeros((2, N))
     dcd_dx = np.zeros((2, N))
