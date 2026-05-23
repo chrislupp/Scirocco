@@ -48,7 +48,7 @@ void SolveViscous(FoilState& state) {
     // Top-level viscous solution
 
     if (state.param.verb >= 1) {
-        std::cout << "SolveViscous: starting" << std::endl;
+        std::cout << "SolveViscous: starting" << '\n';
     }
 
     // Initialize thermodynamic parameters
@@ -62,7 +62,7 @@ void SolveViscous(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "  Inviscid done, N=" << state.foil.N
                   << ", Istag=" << state.isol.Istag[0] << ","
-                  << state.isol.Istag[1] << std::endl;
+                  << state.isol.Istag[1] << '\n';
     }
 
     // Build wake
@@ -72,7 +72,7 @@ void SolveViscous(FoilState& state) {
     ExtendXiToWake(state);
 
     if (state.param.verb >= 1) {
-        std::cout << "  Wake done, Nw=" << state.wake.N << std::endl;
+        std::cout << "  Wake done, Nw=" << state.wake.N << '\n';
     }
 
     // Identify surfaces
@@ -84,7 +84,7 @@ void SolveViscous(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "  Surfaces: lower=" << state.vsol.Is[0].size()
                   << ", upper=" << state.vsol.Is[1].size()
-                  << ", wake=" << state.vsol.Is[2].size() << std::endl;
+                  << ", wake=" << state.vsol.Is[2].size() << '\n';
     }
 
     // Calculate ue sensitivities
@@ -94,8 +94,7 @@ void SolveViscous(FoilState& state) {
     if (state.oper.initbl) {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {
-            std::cout << "  BL init done, Nsys=" << state.glob.Nsys
-                      << std::endl;
+            std::cout << "  BL init done, Nsys=" << state.glob.Nsys << '\n';
         }
     }
 
@@ -126,7 +125,7 @@ void SolveViscous(FoilState& state) {
 
     if (state.param.verb >= 1) {
         std::cout << "SolveViscous: done, cl=" << state.post.cl
-                  << ", cd=" << state.post.cd << std::endl;
+                  << ", cd=" << state.post.cd << '\n';
     }
 }
 
@@ -143,8 +142,7 @@ void SolveCoupled(FoilState& state) {
         // Check convergence
         double rnorm = state.glob.R.norm();
         if (state.param.verb >= 1) {
-            std::cout << "  Iteration " << iter << ": |R| = " << rnorm
-                      << std::endl;
+            std::cout << "  Iteration " << iter << ": |R| = " << rnorm << '\n';
         }
 
         if (rnorm < rtol) {
@@ -155,8 +153,7 @@ void SolveCoupled(FoilState& state) {
         if (!std::isfinite(rnorm)) {
             state.glob.conv = false;
             if (state.param.verb >= 1) {
-                std::cout << "  Warning: NaN in residual, stopping"
-                          << std::endl;
+                std::cout << "  Warning: NaN in residual, stopping" << '\n';
             }
             return;
         }
@@ -179,7 +176,7 @@ void SolveCoupled(FoilState& state) {
 
     state.glob.conv = false;
     if (state.param.verb >= 1) {
-        std::cout << "  Warning: viscous solver did not converge" << std::endl;
+        std::cout << "  Warning: viscous solver did not converge" << '\n';
     }
 }
 
@@ -577,7 +574,7 @@ void SolveGlob(FoilState& state) {
     Eigen::SparseLU<SparseMatrixd> solver;
     solver.compute(state.glob.R_V);
     if (solver.info() != Eigen::Success) {
-        std::cerr << "  Warning: SparseLU decomposition failed" << std::endl;
+        std::cerr << "  Warning: SparseLU decomposition failed" << '\n';
         state.glob.dU.setZero();
         state.glob.dalpha = 0.0;
         return;
@@ -585,7 +582,7 @@ void SolveGlob(FoilState& state) {
 
     VectorXd dV = -solver.solve(R);
     if (solver.info() != Eigen::Success) {
-        std::cerr << "  Warning: SparseLU solve failed" << std::endl;
+        std::cerr << "  Warning: SparseLU solve failed" << '\n';
         state.glob.dU.setZero();
         state.glob.dalpha = 0.0;
         return;
@@ -1035,8 +1032,7 @@ void StoreAdjointFactorization(FoilState& state) {
     } else {
         state.glob.lu_factorization = nullptr;
         if (state.param.verb >= 1) {
-            std::cerr << "  Warning: adjoint LU factorization failed"
-                      << std::endl;
+            std::cerr << "  Warning: adjoint LU factorization failed" << '\n';
         }
     }
 }

@@ -602,10 +602,10 @@ Sensitivity ViscousSensitivities(FoilState& state) {
             if (state.oper.viscous && !state.vsol.Is[2].empty()) {
                 int iw = state.vsol.Is[2].back();
                 Vector4d Uw = state.glob.U.col(iw);
-                auto [H, _H_U] = GetH(Uw);
-                (void)_H_U;
-                auto [uk, _uk_U] = GetUk(Uw(3), state.param);
-                (void)_uk_U;
+                auto [H, unused_H_U] = GetH(Uw);
+                (void)unused_H_U;
+                auto [uk, unused_uk_U] = GetUk(Uw(3), state.param);
+                (void)unused_uk_U;
                 double Vinf = state.param.Vinf;
                 double KTb = state.param.KTb;
                 double KTl = state.param.KTl;

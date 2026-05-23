@@ -92,9 +92,9 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
 
         // Compute uelog and U[0] at the two endpoints (Karman-Tsien-corrected
         // edge velocity uk via GetUk to match residual_station internals).
-        auto [uk_prev, _uk_U_prev] =
+        auto [uk_prev, unused_uk_U_prev] =
             GetUk(state.glob.U(3, node_prev), state.param);
-        auto [uk_curr, _uk_U_curr] =
+        auto [uk_curr, unused_uk_U_curr] =
             GetUk(state.glob.U(3, node_curr), state.param);
         double uelog = std::log(uk_curr / uk_prev);
         double U0_prev = state.glob.U(0, node_prev);
@@ -721,7 +721,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                         Xj.col(0) = state.wake.x.col(0);
                         Xj.col(1) = Xm0;
                         MatrixXd dXj0 = get_dwx2(0);
-                        MatrixXd dXj1 = dXm0;
+                        const MatrixXd& dXj1 = dXm0;
                         LinSourceVelocityDeriv lvd =
                             PanelLinSourceVelocityDeriv(Xj, xi_w);
                         // Csig coefficients on (a, b) for the 3 affected cols:

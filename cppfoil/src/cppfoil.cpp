@@ -79,7 +79,7 @@ void Cppfoil::SetOper(double alpha, double cl, double Re, double Ma) {
 bool Cppfoil::Solve() {
     if (state_.param.verb >= 1) {
         std::cout << "Cppfoil::Solve viscous=" << state_.oper.viscous
-                  << ", Re=" << state_.oper.Re << std::endl;
+                  << ", Re=" << state_.oper.Re << '\n';
     }
     if (state_.oper.viscous) {
         // Initialize parameters for viscous solve.

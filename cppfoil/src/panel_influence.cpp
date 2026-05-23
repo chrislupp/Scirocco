@@ -213,7 +213,7 @@ Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
     Vector2d V = u * t + v * n;
 
     if (vdir != nullptr) {
-        return Vector2d(V.dot(*vdir), 0.0);
+        return {V.dot(*vdir), 0.0};
     }
     return V;
 }

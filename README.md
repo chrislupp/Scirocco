@@ -214,6 +214,15 @@ ctest --test-dir cppfoil/build-default --output-on-failure
 
 Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `CPPFOIL_COVERAGE` below).
 
+### Static analysis
+
+Run clang-tidy after configuring a build directory so `compile_commands.json`
+is available:
+
+```bash
+run-clang-tidy -p cppfoil/build-default -header-filter='cppfoil/include/' 'cppfoil/src/.*\.cpp$'
+```
+
 ### Sensitivity-debug suite (opt-in)
 
 When the end-to-end `sensitivity_ref` tests regress, turn on `CPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON` to build four chain-piece test executables that isolate which link is broken: `cppfoil_sensitivity_tests` (per-panel influence derivs), `cppfoil_viscous_chain_tests` (geometric chain), `cppfoil_viscous_residual_tests` (residual partials), `cppfoil_viscous_output_ping_tests` (force output partials). These exercise the same source files as the end-to-end test, so they don't add coverage — they add diagnostic resolution.

@@ -61,23 +61,29 @@ class Cppfoil {
     bool Solve();
 
     // Get results
-    double GetCl() const { return state_.post.cl; }
-    double GetCd() const { return state_.post.cd; }
-    double GetCdf() const { return state_.post.cdf; }
-    double GetCdp() const { return state_.post.cdp; }
-    double GetCm() const { return state_.post.cm; }
-    double GetAlpha() const { return state_.oper.alpha; }
-    bool IsConverged() const { return state_.glob.conv; }
+    [[nodiscard]] double GetCl() const { return state_.post.cl; }
+    [[nodiscard]] double GetCd() const { return state_.post.cd; }
+    [[nodiscard]] double GetCdf() const { return state_.post.cdf; }
+    [[nodiscard]] double GetCdp() const { return state_.post.cdp; }
+    [[nodiscard]] double GetCm() const { return state_.post.cm; }
+    [[nodiscard]] double GetAlpha() const { return state_.oper.alpha; }
+    [[nodiscard]] bool IsConverged() const { return state_.glob.conv; }
 
     // Get distributions
-    const VectorXd& GetCp() const { return state_.post.cp; }
-    const VectorXd& GetCf() const { return state_.post.cf; }
-    const VectorXd& GetTheta() const { return state_.post.th; }
-    const VectorXd& GetDeltaStar() const { return state_.post.ds; }
+    [[nodiscard]] const VectorXd& GetCp() const { return state_.post.cp; }
+    [[nodiscard]] const VectorXd& GetCf() const { return state_.post.cf; }
+    [[nodiscard]] const VectorXd& GetTheta() const { return state_.post.th; }
+    [[nodiscard]] const VectorXd& GetDeltaStar() const {
+        return state_.post.ds;
+    }
 
     // Get panel coordinates
-    const MatrixXd& GetFoilCoords() const { return state_.foil.x; }
-    const MatrixXd& GetWakeCoords() const { return state_.wake.x; }
+    [[nodiscard]] const MatrixXd& GetFoilCoords() const {
+        return state_.foil.x;
+    }
+    [[nodiscard]] const MatrixXd& GetWakeCoords() const {
+        return state_.wake.x;
+    }
 
     // Geometry modification functions
     // Deploy a flap at hinge location with given deflection angle
@@ -98,26 +104,38 @@ class Cppfoil {
     Sensitivity ComputeSensitivities();
 
     // Accessors for sensitivity results (call ComputeSensitivities first)
-    const MatrixXd& GetDclDx() const { return sensitivity_.dcl_dx; }
-    const MatrixXd& GetDcdDx() const { return sensitivity_.dcd_dx; }
-    const MatrixXd& GetDcmDx() const { return sensitivity_.dcm_dx; }
+    [[nodiscard]] const MatrixXd& GetDclDx() const {
+        return sensitivity_.dcl_dx;
+    }
+    [[nodiscard]] const MatrixXd& GetDcdDx() const {
+        return sensitivity_.dcd_dx;
+    }
+    [[nodiscard]] const MatrixXd& GetDcmDx() const {
+        return sensitivity_.dcm_dx;
+    }
 
     // Scalar operating-condition sensitivities
-    double GetDclDalpha() const { return sensitivity_.dcl_dalpha; }
-    double GetDcdDalpha() const { return sensitivity_.dcd_dalpha; }
-    double GetDcmDalpha() const { return sensitivity_.dcm_dalpha; }
+    [[nodiscard]] double GetDclDalpha() const {
+        return sensitivity_.dcl_dalpha;
+    }
+    [[nodiscard]] double GetDcdDalpha() const {
+        return sensitivity_.dcd_dalpha;
+    }
+    [[nodiscard]] double GetDcmDalpha() const {
+        return sensitivity_.dcm_dalpha;
+    }
 
-    double GetDclDMa() const { return sensitivity_.dcl_dMa; }
-    double GetDcdDMa() const { return sensitivity_.dcd_dMa; }
-    double GetDcmDMa() const { return sensitivity_.dcm_dMa; }
+    [[nodiscard]] double GetDclDMa() const { return sensitivity_.dcl_dMa; }
+    [[nodiscard]] double GetDcdDMa() const { return sensitivity_.dcd_dMa; }
+    [[nodiscard]] double GetDcmDMa() const { return sensitivity_.dcm_dMa; }
 
-    double GetDclDRe() const { return sensitivity_.dcl_dRe; }
-    double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
-    double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
+    [[nodiscard]] double GetDclDRe() const { return sensitivity_.dcl_dRe; }
+    [[nodiscard]] double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
+    [[nodiscard]] double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
 
     // Access internal state (for advanced use)
     FoilState& GetState() { return state_; }
-    const FoilState& GetState() const { return state_; }
+    [[nodiscard]] const FoilState& GetState() const { return state_; }
 
    private:
     FoilState state_;
