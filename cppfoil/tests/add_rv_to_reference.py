@@ -32,17 +32,17 @@ def recompute_geom(M):
     M.foil.s = s
 
 
-# Match comprehensive_reference solve_base() exactly: converge at spline
-# foil.s, then SWITCH to cumulative without re-converging (matches the
-# linearization point used by CS perturbations).
+# Match comprehensive_reference solve_base() exactly: ue-based xi
+# convention (after commit 4051c2d): converge at spline foil.s, switch
+# to cumulative, refresh sstag/xi via stagpoint_move at the new foil.s.
 M.solve()
 recompute_geom(M)
 mfoil.build_gamma(M, 3.0)
 mfoil.build_wake(M)
-mfoil.stagpoint_find(M)
 mfoil.identify_surfaces(M)
 mfoil.set_wake_gap(M)
 mfoil.calc_ue_m(M)
+mfoil.stagpoint_move(M)
 mfoil.build_glob_sys(M)
 
 Nsys = M.glob.Nsys

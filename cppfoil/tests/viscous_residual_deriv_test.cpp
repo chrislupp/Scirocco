@@ -161,20 +161,17 @@ class ResidualDerivTest : public ::testing::Test {
         SolveViscous(s);  // converges to its own state; we'll override below
         ASSERT_TRUE(s.glob.conv) << "viscous solve did not converge";
 
-        // Override U, wgap to match the HDF5 reference, then explicitly
-        // swap xi to gamma-based (matching the comprehensive_reference path:
-        // mfoil's extract script calls stagpoint_find before evaluating R_x).
-        // Production SolveViscous no longer does this swap, so the test
-        // fixture must apply it explicitly.
+        // Override U, wgap to match the HDF5 reference. UE-BASED xi:
+        // after overriding U=U_ref, also run StagPointMove to refresh
+        // sstag/sstag_ue/xi from U_ref's ue values at the current cumulative
+        // foil.s — this mirrors what extract_comprehensive_reference.py does
+        // in solve_base() (mfoil.stagpoint_move after recompute_geom).
         ASSERT_EQ(s.glob.U.cols(), U_ref.cols());
         s.glob.U = U_ref;
         ASSERT_EQ(static_cast<int>(wgap_ref.size()),
                   static_cast<int>(s.vsol.wgap.size()));
         s.vsol.wgap = wgap_ref;
-
-        StagPointFind(s);
-        ExtendXiToWake(s);
-        SetWakeGap(s);
+        StagPointMove(s);
         s.glob.realloc = true;
         BuildGlobSys(s);
 

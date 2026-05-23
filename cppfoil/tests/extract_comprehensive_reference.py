@@ -47,22 +47,28 @@ MA = 0.0
 
 def solve_base():
     """Solve viscous base case, then switch foil.s to cumulative panel norms
-    so the base matches the perturbation-chain convention."""
+    so the base matches the perturbation-chain convention. UE-BASED xi
+    (Newton-converged) — no post-solve stagpoint_find, matching cppfoil's
+    production SolveViscous (commit 4051c2d removed the gamma-xi swap)."""
     M = mfoil.mfoil(naca=NACA, npanel=NPANEL)
     M.param.verb = 0
     M.param.doplot = False
     M.setoper(alpha=ALPHA, Re=RE, Ma=MA)
     M.solve()
     # Replace foil.s with cumulative-panel-norm value (matches recompute_geom
-    # used during CS perturbations). Then re-run the geom chain — order matches
-    # solve_viscous: build_wake BEFORE stagpoint_find.
+    # used during CS perturbations). Then re-run the geom chain + refresh
+    # xi/sstag at the NEW cumulative foil.s by calling stagpoint_move at
+    # the converged state. This matches cppfoil's natural state after
+    # SolveViscous at cumulative foil.s (xi from last Newton stagpoint_move
+    # uses the current foil.s).
     recompute_geom(M)
     mfoil.build_gamma(M, ALPHA)
     mfoil.build_wake(M)
-    mfoil.stagpoint_find(M)
     mfoil.identify_surfaces(M)
     mfoil.set_wake_gap(M)
     mfoil.calc_ue_m(M)
+    # Refresh ue-based sstag and xi for the NEW cumulative foil.s
+    mfoil.stagpoint_move(M)
     return M
 
 
@@ -173,15 +179,17 @@ def cs_full_dRdx(M_base):
                 M.isol.uewiref = M.isol.uewiref.astype(complex)
                 M.vsol.sigma_m = M.vsol.sigma_m.astype(complex)
 
-                # Rebuild everything that depends on foil.x — match the
-                # ORDER in solve_viscous: build_wake must precede stagpoint_find
-                # so that xi at wake positions reflects the NEW wake.s.
+                # Rebuild everything that depends on foil.x. UE-BASED xi:
+                # call stagpoint_move (not stagpoint_find) to refresh sstag
+                # AND xi at the perturbed cumulative foil.s — matching
+                # cppfoil's natural state after SolveViscous (commit 4051c2d
+                # removed the post-Newton xi swap).
                 mfoil.build_gamma(M, ALPHA)
                 mfoil.build_wake(M)
-                mfoil.stagpoint_find(M)
                 mfoil.identify_surfaces(M)
                 mfoil.set_wake_gap(M)
                 mfoil.calc_ue_m(M)
+                mfoil.stagpoint_move(M)
 
                 R_pert = compute_full_residual(M)
             dR_dx[:, dim, k] = np.imag(R_pert) / CS_STEP
@@ -281,7 +289,6 @@ def fd_validate(M_base, dR_dx, validate_nodes, Nsys):
             M_p.foil.x[dim, k] += ep
             recompute_geom(M_p)
             mfoil.build_gamma(M_p, ALPHA)
-            mfoil.stagpoint_find(M_p)
             mfoil.build_wake(M_p)
             mfoil.identify_surfaces(M_p)
             mfoil.set_wake_gap(M_p)
@@ -292,7 +299,6 @@ def fd_validate(M_base, dR_dx, validate_nodes, Nsys):
             M_m.foil.x[dim, k] -= ep
             recompute_geom(M_m)
             mfoil.build_gamma(M_m, ALPHA)
-            mfoil.stagpoint_find(M_m)
             mfoil.build_wake(M_m)
             mfoil.identify_surfaces(M_m)
             mfoil.set_wake_gap(M_m)
