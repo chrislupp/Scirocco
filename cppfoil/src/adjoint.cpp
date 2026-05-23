@@ -629,24 +629,79 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
     }
 
-    // Ma: ∂J/∂Ma_partial via FD on Ma at fixed U (analytic chain partial
-    // and DRVDMa analytic chain both have known gaps — see PLAN doc).
+    // Ma: ∂J/∂Ma_partial analytically. NO FD anywhere.
+    //   cl, cm, cdpi: panel integration with ∂cp/∂Ma via Karman-Tsien
+    //     correction at fixed viscous ue. Uses ComputeCpDerivsMa (already
+    //     analytic for inviscid MachSensitivities at line 443).
+    //   cd: viscous Squire-Young from end-of-wake state. cd = 2·Uw[0]·(uk/Vinf)^p,
+    //     p = (5+H)/2. H is Ma-independent at fixed U; uk has Ma dep via
+    //     Karman-Tsien lambda.
     {
         VectorXd dRV_dMa = DRVDMa(state);
-        double Ma0 = state.oper.Ma;
-        double h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
-        auto eval_J = [&](double Ma) -> Vector3d {
-            FoilState sp = state;
-            sp.oper.Ma = Ma;
-            InitThermo(sp);
-            CalcForce(sp);
-            return Vector3d(sp.post.cl, sp.post.cd, sp.post.cm);
-        };
-        Vector3d Jp2 = eval_J(Ma0 + 2 * h);
-        Vector3d Jp1 = eval_J(Ma0 + h);
-        Vector3d Jm1 = eval_J(Ma0 - h);
-        Vector3d Jm2 = eval_J(Ma0 - 2 * h);
-        Vector3d dJ_dMa = (-Jp2 + 8.0 * Jp1 - 8.0 * Jm1 + Jm2) / (12.0 * h);
+        double Ma = state.oper.Ma;
+        Vector3d dJ_dMa = Vector3d::Zero();
+        if (Ma > 0) {
+            // cl/cm/cdpi: panel integration with ∂cp/∂Ma at fixed ue.
+            int N = state.foil.N;
+            double chord = state.geom.chord;
+            double alpha = state.oper.alpha;
+            double cosa = Cosd(alpha);
+            double sina = Sind(alpha);
+            Vector2d xref = state.geom.xref;
+            VectorXd ue = state.glob.U.row(3).head(N).transpose();
+
+            double dcl = 0, dcm = 0, dcdpi = 0;
+            for (int i0 = 1; i0 <= N; ++i0) {
+                int i = (i0 == N) ? 0 : i0;
+                int ip = (i0 == N) ? N - 1 : i0 - 1;
+                Vector2d x1 = state.foil.x.col(ip);
+                Vector2d x2 = state.foil.x.col(i);
+                Vector2d dxv = x2 - x1;
+                Vector2d dx1 = x1 - xref;
+                Vector2d dx2 = x2 - xref;
+                double dx_lift = -dxv(0) * cosa - dxv(1) * sina;
+                double dz = dxv(1) * cosa - dxv(0) * sina;
+                double dcp_ip, d2cp_ip, dcp_i, d2cp_i;
+                ComputeCpDerivsMa(ue(ip), state.param, Ma, dcp_ip, d2cp_ip);
+                ComputeCpDerivsMa(ue(i),  state.param, Ma, dcp_i,  d2cp_i);
+                double dcpbar = 0.5 * (dcp_ip + dcp_i);
+                dcl += dx_lift * dcpbar;
+                dcdpi += dz * dcpbar;
+                double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
+                double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
+                dcm += dcp_ip / 3.0 * dx1nds + dcp_ip / 6.0 * dx2nds +
+                        dcp_i / 6.0 * dx1nds + dcp_i / 3.0 * dx2nds;
+            }
+            dJ_dMa(0) = dcl / chord;
+            dJ_dMa(2) = dcm / (chord * chord);
+
+            // cd: viscous Squire-Young. Use the same uk_dMa from
+            // ComputeThermoMaDeriv chain.
+            if (state.oper.viscous && !state.vsol.Is[2].empty()) {
+                int iw = state.vsol.Is[2].back();
+                Vector4d Uw = state.glob.U.col(iw);
+                auto [H, _H_U] = GetH(Uw); (void)_H_U;
+                auto [uk, _uk_U] = GetUk(Uw(3), state.param); (void)_uk_U;
+                double Vinf = state.param.Vinf;
+                double KTb = state.param.KTb;
+                double KTl = state.param.KTl;
+                double opb = 1.0 + KTb;
+                double KTb_dMa_v = -Ma / KTb;
+                double KTl_dMa_v = 2.0 * Ma / (opb * opb) -
+                                    2.0 * Ma * Ma / (opb * opb * opb) * KTb_dMa_v;
+                double ue_v = Uw(3);
+                double xKT = ue_v / Vinf;
+                double den_uk = 1.0 - KTl * xKT * xKT;
+                double uk_dMa = ue_v * (xKT * xKT - 1.0) /
+                                (den_uk * den_uk) * KTl_dMa_v;
+                double q = uk / Vinf;
+                double p = 0.5 * (5.0 + H);
+                double qp = std::pow(q, p);
+                // ∂cd/∂Ma = 2·Uw[0] · p · q^(p-1) · (uk_dMa/Vinf)
+                dJ_dMa(1) = 2.0 * Uw(0) * p * qp / q *
+                             (uk_dMa / Vinf);
+            }
+        }
         sens.dcl_dMa = dJ_dMa(0) - lambda_cl.dot(dRV_dMa);
         sens.dcd_dMa = dJ_dMa(1) - lambda_cd.dot(dRV_dMa);
         sens.dcm_dMa = dJ_dMa(2) - lambda_cm.dot(dRV_dMa);
@@ -1164,25 +1219,20 @@ VectorXd DRVDAlpha(FoilState& state) {
 }
 
 VectorXd DRVDMa(FoilState& state, double h) {
-    // Hybrid: prefer analytic chain via glob.dR_dMa_times_Ma (populated by
-    // ComputeStationLinMa in boundary_layer.cpp), but the laminar/turbulent
-    // chain has known gaps in the wake and turbulent Rlag at Ma>0 — see
-    // probe_drv_dma. Fall back to 4th-order FD for now to keep
-    // ViscousMachSensitivity working while the analytic chain is debugged.
-    double Ma0 = state.oper.Ma;
-    Param param0 = state.param;
-    if (h <= 0) h = std::max(std::abs(Ma0) * 1e-2, 1e-3);
-    auto eval = [&](double Ma) {
-        state.oper.Ma = Ma;
-        InitThermo(state);
-        state.glob.realloc = true;
-        return EvaluateRV(state);
-    };
-    VectorXd dR = CentralFD4(Ma0, h, eval);
-    state.oper.Ma = Ma0;
-    state.param = param0;
+    // Analytic ∂R_V/∂Ma via the thermo-param chain (KTb, KTl, H0, mu0, rho0)
+    // through every Ma-dependent closure in the BL residuals. BuildGlobSys
+    // accumulates per-station ∂R/∂Ma·Ma into glob.dR_dMa_times_Ma; the
+    // chain finishes with ∂R/∂Ma = dR_dMa_times_Ma / Ma. ue-equation rows
+    // are Ma-independent (ueinv, sigma_m, ue_m, mass all Ma-indep at fixed U).
+    (void)h;
+    int Nsys = state.glob.Nsys;
     state.glob.realloc = true;
     BuildGlobSys(state);
+    VectorXd dR = VectorXd::Zero(4 * Nsys);
+    double Ma = state.oper.Ma;
+    if (Ma > 0) {
+        dR.head(3 * Nsys) = state.glob.dR_dMa_times_Ma / Ma;
+    }
     return dR;
 }
 

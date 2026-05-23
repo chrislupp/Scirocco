@@ -133,6 +133,24 @@ if(CPPFOIL_BUILD_TESTS)
 
         add_executable(probe_drv_dma tests/probe_drv_dma.cpp)
         target_link_libraries(probe_drv_dma cppfoil)
+
+        add_executable(probe_per_closure_dma tests/probe_per_closure_dma.cpp)
+        target_link_libraries(probe_per_closure_dma cppfoil)
+
+        add_executable(probe_lin_ma_per_station tests/probe_lin_ma_per_station.cpp)
+        target_link_libraries(probe_lin_ma_per_station cppfoil)
+
+        add_executable(probe_wake_closure_dma tests/probe_wake_closure_dma.cpp)
+        target_link_libraries(probe_wake_closure_dma cppfoil)
+
+        add_executable(probe_closure_dma_vs_cs tests/probe_closure_dma_vs_cs.cpp)
+        target_link_libraries(probe_closure_dma_vs_cs cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_dJ_dMa tests/probe_dJ_dMa.cpp)
+        target_link_libraries(probe_dJ_dMa cppfoil)
+
+        add_executable(probe_drv_dma_cs tests/probe_drv_dma_cs.cpp)
+        target_link_libraries(probe_drv_dma_cs cppfoil hdf5_cpp-shared)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests

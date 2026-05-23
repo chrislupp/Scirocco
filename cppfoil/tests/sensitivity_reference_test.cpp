@@ -67,7 +67,7 @@ constexpr double TOL_INVISCID = 1e-10;   // inviscid: machine precision
 // Tolerance covers all scalar sensitivities at the current cppfoil precision;
 // pushing below 1e-3 requires fixing the Newton plateau (separate primal work).
 constexpr double TOL_VISC_SHAPE = 1e-4;
-constexpr double TOL_VISC_SCALAR_ALPHA = 5e-3;
+constexpr double TOL_VISC_SCALAR_ALPHA = 1e-9;
 
 // ---------------------------------------------------------------------------
 // HDF5 helpers (same pattern as mfoil_reference_test.cpp)

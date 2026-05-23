@@ -470,24 +470,18 @@ ScalarLin4 GetCDi(const Vector4d& U, const Param& param) {
 ScalarLin4 GetCpFromUe(double ue, const Param& param) {
     double Vinf = std::max(param.Vinf, 1e-10);
     double cp = 1.0 - (ue / Vinf) * (ue / Vinf);
-
-    // Karman-Tsien correction
-    if (param.KTl > 0) {
-        double denom = param.KTb + param.KTl * (1.0 + param.KTb) * 0.5 * cp;
-        if (std::abs(denom) > 1e-10) {
-            cp = cp / denom;
-        }
-    }
-
     double dcp_due = -2.0 * ue / (Vinf * Vinf);
 
-    // Apply KT correction to dcp/due (matches mfoil get_cp)
+    // Karman-Tsien correction. Match mfoil's get_cp: compute den from
+    // cp_inc, then update cp to KT-corrected, then chain dcp/due using
+    // (1 - cp_KT * den_cp) / den_inc.
     if (param.KTl > 0) {
         double b = param.KTb;
         double l = param.KTl;
         double den = b + 0.5 * l * (1.0 + b) * cp;
         double den_cp = 0.5 * l * (1.0 + b);
         if (std::abs(den) > 1e-10) {
+            cp = cp / den;
             dcp_due *= (1.0 - cp * den_cp) / den;
         }
     }

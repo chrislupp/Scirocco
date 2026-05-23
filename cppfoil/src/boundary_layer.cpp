@@ -392,13 +392,15 @@ void InitBoundaryLayer(FoilState& state) {
 }
 
 // ============================================================================
-// ∂closure/∂Ret helpers at fixed U, used by ResidualStation to build the
-// per-station lin_Ret = ∂R/∂Ret_1, ∂R/∂Ret_2 for the analytic Re chain.
+// ∂closure/∂Ret and ∂closure/∂Ma helpers at fixed U. Used by
+// ComputeStationLinRet / ComputeStationLinMa to build the per-station
+// lin_Ret / lin_Ma for the analytic Re / Ma chains. Wrapped in detail
+// namespace (not anonymous) so they can be probed from tests.
 //
 // Each helper inspects the closure's existing formula in bl_properties.cpp
-// and extracts the explicit Ret-derivative path.
+// and extracts the explicit Ret- or Ma-derivative path.
 // ============================================================================
-namespace {
+namespace detail {
 
 double GetCf_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) return 0.0;
@@ -488,11 +490,22 @@ double GetHs_dRet(const Vector4d& U, const Param& param) {
 }
 
 double GetUs_dRet(const Vector4d& U, const Param& param) {
-    // Us = 0.5 * Hs * (1 - (4/3)*(H-1)/H). H doesn't depend on Ret. Only Hs.
+    // Us = 0.5·Hs·(1 - bi·(Hk-1)/H) with bi = 1/param.GB. Limits: if
+    // !wake and Us > 0.95 then Us = 0.98 (zero derivative).
+    // ∂Us/∂Ret at fixed U: Hk and H have no Ret dep, so only Hs chains.
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
     auto [H, _H_U] = GetH(U);
     (void)_H_U;
-    double factor = 1.0 - (4.0 / 3.0) * (H - 1.0) / H;
-    return 0.5 * factor * GetHs_dRet(U, param);
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) Hk = Hk_lim;
+    double bi = 1.0 / param.GB;
+    double factor = 1.0 - bi * (Hk - 1.0) / H;
+    double Us = 0.5 * Hs * factor;
+    if (!param.wake && Us > 0.95) return 0.0;
+    return 0.5 * GetHs_dRet(U, param) * factor;
 }
 
 double GetCDi_Lam_dRet(const Vector4d& U, const Param& param) {
@@ -962,7 +975,9 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
                             (Hk - Ho) * (Hk - Ho) * bb_dMa;
         }
     } else {
-        // Laminar: Hs depends on Hk only. Use the existing GetHs formula's Hk-derivative.
+        // Laminar: Hs depends on Hk only (no Mach correction in GetHs's
+        // laminar branch — verified by reading bl_properties.cpp:159-175).
+        // ∂Hs/∂Ma = Hs_Hk · Hk_dMa, no further correction.
         double a = Hk - 4.35;
         double Hs_Hk;
         if (Hk < 4.35) {
@@ -973,19 +988,17 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
         } else {
             Hs_Hk = 0.015 * 2.0 * a / Hk - 0.015 * a * a / (Hk * Hk);
         }
-        Hs_base_dMa = Hs_Hk * Hk_dMa;
+        return Hs_Hk * Hk_dMa;
     }
-    // Mach correction: Hs = (Hs_base + 0.028·M2)/(1 + 0.014·M2)
+    // Turbulent branch: GetHs applies the Mach correction
+    //   Hs = (Hs_base + 0.028·M²) / (1 + 0.014·M²)
+    // ∂Hs/∂Ma = (Hs_base_dMa + 0.028·M2_dMa)/den - Hs_corrected/den · 0.014·M2_dMa
     auto [M2, _M2_U] = GetMach2(U, param);
     (void)_M2_U;
     double M2_dMa = GetMach2_dMa(U, param, d);
-    // Need Hs_base value for the correction chain (∂num/∂Ma, ∂den/∂Ma).
-    // Use GetHs to get the corrected value, then back out Hs_base:
     auto [Hs_corrected, _Hs_U] = GetHs(U, param);
     (void)_Hs_U;
     double den = 1.0 + 0.014 * M2;
-    double Hs_base = Hs_corrected * den - 0.028 * M2;
-    // ∂Hs/∂Ma = (Hs_base_dMa + 0.028·M2_dMa)/den - Hs_corrected/den · 0.014·M2_dMa
     return (Hs_base_dMa + 0.028 * M2_dMa) / den -
            Hs_corrected / den * 0.014 * M2_dMa;
 }
@@ -993,10 +1006,26 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
 double GetUs_dMa(const Vector4d& U, const Param& param,
                   const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
+    // Us = 0.5·Hs·(1 - bi·(Hk-1)/H), bi = 1/param.GB.
+    // ∂Us/∂Ma at fixed U: Hs(Ma) AND Hk(Ma); H has no Ma dep.
+    //   ∂Us/∂Ma = 0.5·Hs_dMa·factor + 0.5·Hs·factor_dMa
+    //   factor = 1 - bi·(Hk-1)/H  → factor_dMa = -bi·Hk_dMa/H
+    auto [Hk, _Hk_U] = GetHk(U, param);
+    (void)_Hk_U;
     auto [H, _H_U] = GetH(U);
     (void)_H_U;
-    double factor = 1.0 - (4.0 / 3.0) * (H - 1.0) / H;
-    return 0.5 * factor * GetHs_dMa(U, param, d);
+    auto [Hs, _Hs_U] = GetHs(U, param);
+    (void)_Hs_U;
+    double Hk_dMa = GetHk_dMa(U, param, d);
+    double Hs_dMa = GetHs_dMa(U, param, d);
+    double Hk_lim = param.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) { Hk = Hk_lim; Hk_dMa = 0.0; }
+    double bi = 1.0 / param.GB;
+    double factor = 1.0 - bi * (Hk - 1.0) / H;
+    double factor_dMa = -bi * Hk_dMa / H;
+    double Us = 0.5 * Hs * factor;
+    if (!param.wake && Us > 0.95) return 0.0;
+    return 0.5 * Hs_dMa * factor + 0.5 * Hs * factor_dMa;
 }
 
 double GetCf_dMa(const Vector4d& U, const Param& param,
@@ -1216,6 +1245,109 @@ double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
                      const ThermoMaDeriv& d) {
     double th = std::max(U(0), 1e-12);
     return GetCDi_dMa(U, param, d) * x / th;
+}
+
+// ∂GetDamp/∂Ma at fixed U. Chain: GetDamp uses Hk(Ma) via Hmi, ar, da, af;
+// and Ret(Ma) via lr = log(Ret)/log(10). Laminar amplification only.
+double GetDamp_dMa(const Vector4d& U, const Param& param,
+                    const ThermoMaDeriv& d) {
+    if (param.Minf <= 0) return 0.0;
+    auto [Hk, _Hk_U] = GetHk(U, param); (void)_Hk_U;
+    double Hk_dM = GetHk_dMa(U, param, d);
+    if (Hk < 1.05) { Hk = 1.05; Hk_dM = 0.0; }
+    double Hmi = 1.0 / (Hk - 1.0);
+    double Hmi_dM = -Hmi * Hmi * Hk_dM;
+    double aa = 2.492 * std::pow(Hmi, 0.43);
+    double aa_dM = 0.43 * aa / Hmi * Hmi_dM;
+    double bb = std::tanh(14.0 * Hmi - 9.24);
+    double bb_dM = (1.0 - bb * bb) * 14.0 * Hmi_dM;
+    double lrc = aa + 0.7 * (bb + 1.0);
+    double lrc_dM = aa_dM + 0.7 * bb_dM;
+    auto [Ret_v, _r] = GetRet(U, param); (void)_r;
+    double Ret_dM = GetRet_dMa(U, param, d);
+    constexpr double lten = 2.302585092994046;
+    double lr = std::log(Ret_v) / lten;
+    double lr_dM = Ret_dM / (Ret_v * lten);
+    constexpr double dl = 0.1;
+    if (lr < lrc - dl) return 0.0;
+    double rn = (lr - (lrc - dl)) / (2.0 * dl);
+    double rn_dM = (lr_dM - lrc_dM) / (2.0 * dl);
+    double rf, rf_dM;
+    if (rn >= 1.0) { rf = 1.0; rf_dM = 0.0; }
+    else {
+        rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
+        rf_dM = (6.0 * rn - 6.0 * rn * rn) * rn_dM;
+    }
+    double ar = 3.87 * Hmi - 2.52;
+    double ar_dM = 3.87 * Hmi_dM;
+    double ex = std::exp(-ar * ar);
+    double ex_dM = ex * (-2.0 * ar * ar_dM);
+    double da = 0.028 * (Hk - 1.0) - 0.0345 * ex;
+    double da_dM = 0.028 * Hk_dM - 0.0345 * ex_dM;
+    double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi +
+                  3.0 * Hmi * Hmi * Hmi + 0.1 * std::exp(-20.0 * Hmi);
+    double af_dM = (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi -
+                      2.0 * std::exp(-20.0 * Hmi)) * Hmi_dM;
+    double th_loc = U(0);
+    return (rf_dM * af * da + rf * af_dM * da + rf * af * da_dM) / th_loc;
+}
+
+// ∂GetCteq/∂Ma — lifted from inline lambda in ComputeStationLinMa's turb
+// branch. Chains through Hs(Ma), Us(Ma), Hk(Ma), Ret(Ma), Hkc(Ma).
+double GetCteq_dMa(const Vector4d& U_in, const Param& p_in,
+                    const ThermoMaDeriv& d) {
+    if (!p_in.turb || p_in.Minf <= 0) return 0.0;
+    double CC = 0.5 / (p_in.GA * p_in.GA * p_in.GB);
+    double C = p_in.GC;
+    auto [Hk, _h] = GetHk(U_in, p_in); (void)_h;
+    auto [Hs, _hs] = GetHs(U_in, p_in); (void)_hs;
+    auto [H, _H] = GetH(U_in); (void)_H;
+    auto [Ret, _r] = GetRet(U_in, p_in); (void)_r;
+    auto [Us, _us] = GetUs(U_in, p_in); (void)_us;
+    double Hk_dM = GetHk_dMa(U_in, p_in, d);
+    double Hs_dM = GetHs_dMa(U_in, p_in, d);
+    double Us_dM = GetUs_dMa(U_in, p_in, d);
+    double Ret_dM = GetRet_dMa(U_in, p_in, d);
+    double Hkc, Hkc_dM;
+    if (p_in.wake) {
+        if (Hk < 1.00005) { Hk = 1.00005; Hk_dM = 0; }
+        Hkc = Hk - 1.0; Hkc_dM = Hk_dM;
+    } else {
+        if (Hk < 1.05) { Hk = 1.05; Hk_dM = 0; }
+        Hkc = Hk - 1.0 - C / Ret;
+        Hkc_dM = Hk_dM + C / (Ret * Ret) * Ret_dM;
+        if (Hkc < 0.01) { Hkc = 0.01; Hkc_dM = 0.0; }
+    }
+    double Hkc2 = Hkc * Hkc;
+    double Hk2 = Hk * Hk;
+    double num = CC * Hs * (Hk - 1.0) * Hkc2;
+    double num_dM = CC * (Hs_dM * (Hk - 1.0) * Hkc2 +
+                            Hs * Hk_dM * Hkc2 +
+                            Hs * (Hk - 1.0) * 2.0 * Hkc * Hkc_dM);
+    double den_v = (1.0 - Us) * H * Hk2;
+    double den_dM = (-Us_dM) * H * Hk2 +
+                      (1.0 - Us) * H * 2.0 * Hk * Hk_dM;
+    double cteq_v = std::sqrt(num / den_v);
+    return 0.5 / cteq_v *
+            (num_dM / den_v - num / (den_v * den_v) * den_dM);
+}
+
+// ∂GetCttr/∂Ma. GetCttr = c·cteq where c = CtauC·exp(-CtauE/(Hk-1)).
+// Both c and cteq depend on Ma (via Hk and the cteq chain). p must have
+// wake=false (matching GetCttr's internal `param_nowake`).
+double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
+                    const ThermoMaDeriv& d) {
+    if (p_nowake.Minf <= 0) return 0.0;
+    auto [Hk, _h] = GetHk(U, p_nowake); (void)_h;
+    double Hk_dM = GetHk_dMa(U, p_nowake, d);
+    if (Hk < 1.05) { Hk = 1.05; Hk_dM = 0.0; }
+    auto [cteq, _ct] = GetCteq(U, p_nowake); (void)_ct;
+    double cteq_dM = GetCteq_dMa(U, p_nowake, d);
+    double E = p_nowake.CtauE;
+    double Cc = p_nowake.CtauC;
+    double c = Cc * std::exp(-E / (Hk - 1.0));
+    double c_dM = c * E / ((Hk - 1.0) * (Hk - 1.0)) * Hk_dM;
+    return c_dM * cteq + c * cteq_dM;
 }
 
 // ============================================================================
@@ -1582,20 +1714,26 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         auto [de1, _de1U] = GetDe(U1, param); (void)_de1U;
         auto [de2, _de2U] = GetDe(U2, param); (void)_de2U;
         double de = 0.5 * (de1 + de2);
-        // de = δ* + (1-w)*Hk·θ-style (mfoil-equivalent). Ma chains through Hk.
-        // For simplicity, compute de_dMa via Hk chain: GetDe formula in
-        // bl_properties.cpp shows de = ds + Hk·th (with Hk_lim handling).
-        // ∂de/∂Ma at fixed U = Hk_dMa · th.
+        // Correct ∂de/∂Ma chain. From GetDe (bl_properties.cpp:778-802):
+        //   aa = 3.15 + 1.72/(Hk-1)  →  aa_dMa = -1.72/(Hk-1)² · Hk_dMa
+        //   de = th·aa + ds          [capped at 12·th]
+        // At fixed U: ∂de/∂Ma = th · aa_dMa  (if not capped).
         auto [Hk1, _Hk1U] = GetHk(U1, param); (void)_Hk1U;
         auto [Hk2, _Hk2U] = GetHk(U2, param); (void)_Hk2U;
         double Hk1_dMa = GetHk_dMa(U1, param, d);
         double Hk2_dMa = GetHk_dMa(U2, param, d);
         double th1 = std::max(U1(0), 1e-12);
         double th2 = std::max(U2(0), 1e-12);
-        // GetDe limits Hk too; assume in normal range.
-        double Hk_lim = param.wake ? 1.00005 : 1.05;
-        double de1_dMa = (Hk1 < Hk_lim) ? 0.0 : Hk1_dMa * th1;
-        double de2_dMa = (Hk2 < Hk_lim) ? 0.0 : Hk2_dMa * th2;
+        auto de_dMa_at = [&](double Hk_v, double Hk_dMa_v, double th_v,
+                              double ds_v) {
+            if (Hk_v < 1.05) return 0.0;
+            double aa = 3.15 + 1.72 / (Hk_v - 1.0);
+            // Cap condition: de = th·aa + ds compared against 12·th.
+            if (th_v * aa + ds_v >= 12.0 * th_v) return 0.0;
+            return th_v * (-1.72 / ((Hk_v - 1.0) * (Hk_v - 1.0))) * Hk_dMa_v;
+        };
+        double de1_dMa = de_dMa_at(Hk1, Hk1_dMa, th1, U1(1));
+        double de2_dMa = de_dMa_at(Hk2, Hk2_dMa, th2, U2(1));
         double de_dMa = 0.5 * (de1_dMa + de2_dMa);
 
         // cteq upwinded with upw
@@ -1722,49 +1860,9 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         // (via Hmi). Both have _dMa. Use full chain.
         // For brevity, compute damp_dMa via GetDamp using ε-style helpers:
         // This is small effort; the chain mirrors GetDamp_dRet but with
-        // Hk and Ret derivatives wrt Ma.
-        auto damp_dMa_at = [&](const Vector4d& Uin) {
-            auto [Hk, _h] = GetHk(Uin, param); (void)_h;
-            double Hk_dM = GetHk_dMa(Uin, param, d);
-            if (Hk < 1.05) { Hk = 1.05; Hk_dM = 0; }
-            double Hmi = 1.0 / (Hk - 1.0);
-            double Hmi_dM = -Hmi * Hmi * Hk_dM;
-            double aa = 2.492 * std::pow(Hmi, 0.43);
-            double aa_dM = 0.43 * aa / Hmi * Hmi_dM;
-            double bb = std::tanh(14.0 * Hmi - 9.24);
-            double bb_dM = (1.0 - bb * bb) * 14.0 * Hmi_dM;
-            double lrc = aa + 0.7 * (bb + 1.0);
-            double lrc_dM = aa_dM + 0.7 * bb_dM;
-            auto [Ret_v, _r] = GetRet(Uin, param); (void)_r;
-            double Ret_dM = GetRet_dMa(Uin, param, d);
-            constexpr double lten = 2.302585092994046;
-            double lr = std::log(Ret_v) / lten;
-            double lr_dM = Ret_dM / (Ret_v * lten);
-            constexpr double dl = 0.1;
-            if (lr < lrc - dl) return 0.0;
-            double rn = (lr - (lrc - dl)) / (2.0 * dl);
-            double rn_dM = (lr_dM - lrc_dM) / (2.0 * dl);
-            double rf, rf_dM;
-            if (rn >= 1.0) { rf = 1.0; rf_dM = 0.0; }
-            else {
-                rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
-                rf_dM = (6.0 * rn - 6.0 * rn * rn) * rn_dM;
-            }
-            double ar = 3.87 * Hmi - 2.52;
-            double ar_dM = 3.87 * Hmi_dM;
-            double ex = std::exp(-ar * ar);
-            double ex_dM = ex * (-2.0 * ar * ar_dM);
-            double da = 0.028 * (Hk - 1.0) - 0.0345 * ex;
-            double da_dM = 0.028 * Hk_dM - 0.0345 * ex_dM;
-            double af = -0.05 + 2.7 * Hmi - 5.5 * Hmi * Hmi +
-                          3.0 * Hmi * Hmi * Hmi + 0.1 * std::exp(-20.0 * Hmi);
-            double af_dM = (2.7 - 11.0 * Hmi + 9.0 * Hmi * Hmi -
-                              2.0 * std::exp(-20.0 * Hmi)) * Hmi_dM;
-            double th_loc = Uin(0);
-            return (rf_dM * af * da + rf * af_dM * da + rf * af * da_dM) / th_loc;
-        };
-        double damp1_dMa = damp_dMa_at(U1);
-        double damp2_dMa = damp_dMa_at(U2);
+        // Use the lifted GetDamp_dMa helper.
+        double damp1_dMa = GetDamp_dMa(U1, param, d);
+        double damp2_dMa = GetDamp_dMa(U2, param, d);
         double damp_dMa = 0.5 * (damp1_dMa + damp2_dMa);
         Rlag_dMa = -damp_dMa * dx;
     }
@@ -1774,7 +1872,8 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     return Vector3d(Rmom_dMa, Rshape_dMa, Rlag_dMa) * Ma;
 }
 
-}  // namespace
+}  // namespace detail
+using namespace detail;
 
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                             const Matrix42d& Uin, const Vector2d& Aux) {
@@ -2380,17 +2479,43 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                           Rt.lin_x.col(0) * xt_x2 + Rl_Utl * Utl_x2 +
                           Rt_Utt * Utt_x2;
 
-    // ∂R/∂Ma·Ma for transition station — combined laminar + turbulent partials.
-    // Like the Re chain at transition, xt depends on Ma via damp, cttr depends
-    // on Ma via cteq/Hk. For simplicity, sum the partials and rely on xt(U)
-    // chain in Rl/Rt being captured through their lin_Ma. The xt(Ma) chain
-    // adds via the same xt-implicit-FN structure.
+    // ∂R/∂Ma·Ma for transition station — mirrors the xt(Re) chain below
+    // exactly, just with GetDamp_dMa / GetCttr_dMa / GetRet/Ret value
+    // replaced by their Ma-specific analogues. At fixed U, xt depends on
+    // Ma via damp1, dampt (both have Ma dep through GetRet, GetHk in
+    // GetDamp); Utt(2) = cttr also depends on Ma via GetCttr (c·cteq).
+    //
+    // Steps mirror the Re chain (a)–(d):
+    //   (a) Rl.lin_Ma + Rt.lin_Ma (direct closure Ma-deps; xt held fixed)
+    //   (b) ∂xt/∂Ma · (Rl.lin_x.col(1) + Rt.lin_x.col(0))
+    //   (c) ∂xt/∂Ma · (Rl_Utl · Utl_xt + Rt_Utt · Utt_xt)
+    //   (d) (Rt_Utt · ê_2) · cttr_dMa · Ma
     {
-        result.lin_Ma = Rl.lin_Ma + Rt.lin_Ma;
-        // TODO: add the xt(Ma) implicit-FN chain (∂xt/∂Ma · ∂R/∂xt) for
-        // tighter match. Initial pass leaves it out; the dominant Ma
-        // contribution comes via Rl.lin_Ma + Rt.lin_Ma from the per-station
-        // closure chains.
+        Param p_lam = param_base; p_lam.turb = false;
+        ThermoMaDeriv d_Ma = ComputeThermoMaDeriv(
+            param_base, param_base.Vinf, 0.0);
+        double damp1_dMa = GetDamp_dMa(U1, p_lam, d_Ma);
+        double dampt_dMa = GetDamp_dMa(Ut, p_lam, d_Ma);
+        double Ma_v = param_base.Minf;
+        double Rxt_dMa_Ma =
+            -0.5 * (xt - x1) * (damp1_dMa + dampt_dMa) * Ma_v;
+        double xt_dMa_Ma = -Rxt_dMa_Ma / Rxt_xt;
+
+        Vector3d dR_dxt_direct = Rl.lin_x.col(1) + Rt.lin_x.col(0);
+        Vector4d Utl_xt_ma = Ut_xt; Utl_xt_ma(2) = 0;
+        Vector4d Utt_xt_ma = Ut_xt; Utt_xt_ma(2) = cttr_Ut.dot(Ut_xt);
+        Vector3d dR_dxt_via_Ut = Rl_Utl * Utl_xt_ma + Rt_Utt * Utt_xt_ma;
+
+        // cttr direct Ma chain (GetCttr uses non-wake turbulent param).
+        Param p_nowake_turb = param_base;
+        p_nowake_turb.wake = false; p_nowake_turb.turb = true;
+        double cttr_dMa_Ma =
+            GetCttr_dMa(Ut, p_nowake_turb, d_Ma) * Ma_v;
+        Vector3d dR_via_cttr = Rt_Utt.col(2) * cttr_dMa_Ma;
+
+        result.lin_Ma = Rl.lin_Ma + Rt.lin_Ma +
+                          xt_dMa_Ma * (dR_dxt_direct + dR_dxt_via_Ut) +
+                          dR_via_cttr;
     }
 
     // ∂R/∂Re·Re: at fixed U, xt is NOT independent of Re because Rxt(xt, U, Re)
