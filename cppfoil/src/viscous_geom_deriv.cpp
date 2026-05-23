@@ -164,65 +164,39 @@ void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
     dtdp = dt.dot(p) + t.dot(dp);
 }
 
-// ============================================================================
-// Helper: forward sensitivity of inviscid gamma at one node via reverse mode
-//
-// d(gamma_i)/d(foil.x) = -(AIC^T)^{-1} e_i^T · dR_AIC/d(foil.x)
-//                      = -AICResidualSensVJP(state, λ_i, alpha),
-// where λ_i = (AIC^T)^{-1} e_i (e_i ∈ R^{N+1}, the i-th basis vector).
-// ============================================================================
-static VectorXd DGammaAtNodeDFoilX(const FoilState& state, int gamma_node,
-                                   double alpha) {
-    const MatrixXd& AIC = state.isol.AIC;
-    int dim = static_cast<int>(AIC.rows());
-    if (gamma_node < 0 || gamma_node >= dim) {
-        throw std::out_of_range("DGammaAtNodeDFoilX: gamma_node out of range");
-    }
-    VectorXd e = VectorXd::Zero(dim);
-    e(gamma_node) = 1.0;
-    MatrixXd AIC_T = AIC.transpose();
-    auto lu = AIC_T.partialPivLu();
-    VectorXd lambda = lu.solve(e);
-    VectorXd vjp = AICResidualSensVJP(state, lambda, alpha);
-    return -vjp;
-}
+// (DGammaAtNodeDFoilX helper removed — was used by the old gamma-based
+// DSstagDFoilX chain. Production now uses ue-based xi which doesn't need
+// a per-node gamma derivative.)
+
 
 // ============================================================================
-// DSstagDFoilX
-//   sstag = w1 * S[i0] + w2 * S[i1],
-//   where i0=Istag[0], i1=Istag[1], g0=gam(i0), g1=gam(i1),
-//         den = g1 - g0,  w1 = g1/den,  w2 = -g0/den.
+// DSstagDFoilX — ue-based xi convention (production state after commit 4051c2d).
 //
-//   ∂sstag/∂S[i0] = w1
-//   ∂sstag/∂S[i1] = w2
-//   ∂sstag/∂g0    = sstag_g(0)   (already cached)
-//   ∂sstag/∂g1    = sstag_g(1)
+//   sstag = w1 * S[i0] + w2 * S[i1] where weights come from StagPointMove:
+//     w1 = ue[i1] / (ue[i0] + ue[i1])
+//     w2 = ue[i0] / (ue[i0] + ue[i1])
+//
+//   At fixed U (the adjoint's partial), ue at Istag is held fixed → only
+//   the foil.s chain contributes:
+//     ∂sstag/∂foil.x = w1 * ∂S[i0]/∂foil.x + w2 * ∂S[i1]/∂foil.x
+//
+//   The previous implementation used gamma-based weights and added a
+//   ∂sstag/∂gam·∂gam/∂foil.x chain — correct for gamma-based xi only.
 // ============================================================================
 VectorXd DSstagDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int twoN = 2 * N;
     int i0 = state.isol.Istag[0];
     int i1 = state.isol.Istag[1];
-    double g0 = state.isol.gam(i0);
-    double g1 = state.isol.gam(i1);
-    double den = g1 - g0;
-    double w1 = g1 / den;
-    double w2 = -g0 / den;
-    double dsstag_dg0 = state.isol.sstag_g(0);
-    double dsstag_dg1 = state.isol.sstag_g(1);
-    double alpha = state.oper.alpha;
-
-    // d(g0)/d(foil.x), d(g1)/d(foil.x)
-    VectorXd dg0 = DGammaAtNodeDFoilX(state, i0, alpha);
-    VectorXd dg1 = DGammaAtNodeDFoilX(state, i1, alpha);
+    double ue0 = state.glob.U(3, i0);
+    double ue1 = state.glob.U(3, i1);
+    double den = ue0 + ue1;
+    double w1 = ue1 / den;
+    double w2 = ue0 / den;
 
     VectorXd dsstag = VectorXd::Zero(twoN);
-    // Chain through foil.s
     dsstag += w1 * dfoil_s_dx.row(i0).transpose();
     dsstag += w2 * dfoil_s_dx.row(i1).transpose();
-    // Chain through gamma
-    dsstag += dsstag_dg0 * dg0;
-    dsstag += dsstag_dg1 * dg1;
     return dsstag;
 }
 
@@ -1031,14 +1005,16 @@ VectorXd DWakeSDAlpha(const FoilState& state) {
 }
 
 double DSstagDAlpha(const FoilState& state) {
-    // sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]] with weights depending
-    // on gamma[Istag[0]] and gamma[Istag[1]]. State.isol.sstag_g caches the
-    // derivatives of sstag w.r.t. those two gammas.
-    int i0 = state.isol.Istag[0];
-    int i1 = state.isol.Istag[1];
-    VectorXd dgam = DGammaDAlpha(state);
-    return state.isol.sstag_g(0) * dgam(i0) +
-           state.isol.sstag_g(1) * dgam(i1);
+    // Production state is ue-based xi (after the post-Newton-swap removal in
+    // commit 4051c2d). sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]]
+    // with weights depending on ue[Istag[0]] and ue[Istag[1]] (via
+    // StagPointMove). At fixed U (which is what ∂R/∂α partial requires),
+    // ue at Istag is fixed → sstag is fixed → ∂sstag/∂α = 0.
+    //
+    // The previous implementation used sstag_g·dgam/dα (gamma-based chain),
+    // valid only when production xi was gamma-based.
+    (void)state;
+    return 0.0;
 }
 
 VectorXd DXiDAlpha(const FoilState& state) {
