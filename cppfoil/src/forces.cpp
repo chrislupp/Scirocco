@@ -140,6 +140,9 @@ void CalcForce(FoilState& state) {
     cl /= chord;
     cm /= (chord * chord);
     cdpi /= chord;
+    cl_alpha /= chord;
+    cdpi_alpha /= chord;
+    state.post.cl_ue /= chord;
 
     state.post.cl = cl;
     state.post.cl_alpha = cl_alpha;

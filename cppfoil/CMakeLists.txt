@@ -112,6 +112,9 @@ if(CPPFOIL_BUILD_TESTS)
         # Probe binary (no gtest) for diagnosing primal mismatch
         add_executable(probe_primal_mismatch tests/probe_primal_mismatch.cpp)
         target_link_libraries(probe_primal_mismatch cppfoil hdf5_cpp-shared)
+
+        add_executable(probe_internal_fd tests/probe_internal_fd.cpp)
+        target_link_libraries(probe_internal_fd cppfoil)
     elseif(GTest_FOUND)
         message(STATUS "HDF5 not found, reference tests will not be built")
         add_executable(cppfoil_tests
