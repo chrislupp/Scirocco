@@ -8,8 +8,8 @@
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/properties/bl_properties.h"
+#include "scirocco/scirocco.h"
 #include "scirocco/util/math_utils.h"
 
 using namespace scirocco;

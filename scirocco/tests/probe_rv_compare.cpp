@@ -41,7 +41,8 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const std::string path = std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
+    const std::string path =
+        std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");
@@ -82,8 +83,8 @@ int main() {
     int Nsys = s.glob.Nsys;
     int NN = 4 * Nsys;
     MatrixXd R_V_cpp = MatrixXd(s.glob.R_V);
-    std::cout << "R_V scirocco dims: " << R_V_cpp.rows() << "x" << R_V_cpp.cols()
-              << "\n";
+    std::cout << "R_V scirocco dims: " << R_V_cpp.rows() << "x"
+              << R_V_cpp.cols() << "\n";
     std::cout << "R_V mfoil dims:   " << R_V_ref.rows() << "x" << R_V_ref.cols()
               << "\n";
 

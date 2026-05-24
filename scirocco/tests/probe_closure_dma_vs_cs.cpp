@@ -11,8 +11,8 @@
 #include "scirocco/core/bl_chain_internals.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/inviscid.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/properties/bl_properties.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace scirocco::detail;
@@ -47,7 +47,8 @@ static MatrixXd readMat(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const std::string path = std::string(SCIROCCO_TEST_DATA_DIR) + "/closure_dma_cs_reference.h5";
+    const std::string path =
+        std::string(SCIROCCO_TEST_DATA_DIR) + "/closure_dma_cs_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     int N = (int)readVec(f, "N")(0);
     int Nw = (int)readVec(f, "Nw")(0);

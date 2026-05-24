@@ -44,8 +44,8 @@
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/wake.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/data/state.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;
@@ -358,9 +358,9 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
                 double rel = err / std::max(std::abs(r), 1e-30);
                 bool pass = rel < TOL_VISC_SHAPE || err < 1e-10;
                 std::cout << "    " << name << " node " << n << " dim " << d
-                          << ": scirocco=" << g << " ref=" << r << " abs=" << err
-                          << " rel=" << rel << (pass ? "" : "  <-- FAIL")
-                          << std::endl;
+                          << ": scirocco=" << g << " ref=" << r
+                          << " abs=" << err << " rel=" << rel
+                          << (pass ? "" : "  <-- FAIL") << std::endl;
                 if (!pass) {
                     nfail++;
                     ADD_FAILURE()

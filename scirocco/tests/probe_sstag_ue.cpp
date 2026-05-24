@@ -37,7 +37,8 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 int main() {
-    const std::string path = std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
+    const std::string path =
+        std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
     H5::H5File f(path, H5F_ACC_RDONLY);
     MatrixXd foil_x = readMatrix(f, "comprehensive/foil_x");
     MatrixXd U_ref = readMatrix(f, "comprehensive/U");

@@ -9,8 +9,8 @@
 #include "scirocco/core/bl_chain_internals.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/inviscid.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/properties/bl_properties.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;

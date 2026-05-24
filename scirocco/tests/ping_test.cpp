@@ -26,10 +26,10 @@
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/wake.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/data/param.h"
 #include "scirocco/data/state.h"
 #include "scirocco/properties/bl_properties.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;

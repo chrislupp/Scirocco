@@ -42,8 +42,8 @@
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/geometry.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/data/state.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;

@@ -48,8 +48,8 @@
 #include "scirocco/core/spline.h"
 #include "scirocco/core/transition.h"
 #include "scirocco/core/wake.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/properties/bl_properties.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;

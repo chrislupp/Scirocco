@@ -20,8 +20,8 @@
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/viscous_geom_deriv.h"
 #include "scirocco/core/wake.h"
-#include "scirocco/scirocco.h"
 #include "scirocco/data/state.h"
+#include "scirocco/scirocco.h"
 
 using namespace scirocco;
 using namespace Eigen;

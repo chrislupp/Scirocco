@@ -15,7 +15,8 @@ using namespace scirocco;
 using namespace Eigen;
 
 int main() {
-    const std::string h5path = std::string(SCIROCCO_TEST_DATA_DIR) + "/drv_dma_cs_reference.h5";
+    const std::string h5path =
+        std::string(SCIROCCO_TEST_DATA_DIR) + "/drv_dma_cs_reference.h5";
     H5::H5File file(h5path, H5F_ACC_RDONLY);
     int Nsys = 0;
     file.openDataSet("Nsys").read(&Nsys, H5::PredType::NATIVE_INT);
