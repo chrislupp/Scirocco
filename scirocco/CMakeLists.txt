@@ -247,6 +247,16 @@ if(SCIROCCO_BUILD_EXAMPLES)
     target_link_libraries(viscous_example scirocco)
 endif()
 
+# Philote-Cpp discipline interface
+option(SCIROCCO_BUILD_PHILOTE "Build Philote-Cpp discipline interface" ON)
+
+if(SCIROCCO_BUILD_PHILOTE)
+    find_package(Protobuf CONFIG REQUIRED)
+    find_package(gRPC CONFIG REQUIRED)
+    find_package(PhiloteCpp REQUIRED)
+    add_subdirectory(src/philote)
+endif()
+
 # Installation
 install(TARGETS scirocco
     EXPORT sciroccoTargets
