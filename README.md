@@ -1,12 +1,12 @@
-# cppfoil
+# Scirocco
 
-[![codecov](https://codecov.io/gh/chrislupp/ProjectTrysil/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/ProjectTrysil/branch/main)
+[![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
 A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.
 
 ## Overview
 
-cppfoil provides computational tools for analyzing airfoil performance across different operating conditions. It predicts aerodynamic coefficients (lift, drag, moment) and boundary layer distributions using panel methods coupled with integral boundary layer equations.
+Scirocco provides computational tools for analyzing airfoil performance across different operating conditions. It predicts aerodynamic coefficients (lift, drag, moment) and boundary layer distributions using panel methods coupled with integral boundary layer equations.
 
 Key capabilities:
 - Inviscid (potential flow) analysis using linear vortex panel methods
@@ -31,8 +31,8 @@ Optional:
 From the repository root:
 
 ```bash
-cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
-cmake --build cppfoil/build-default -j
+cmake -S scirocco -B scirocco/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build-default -j
 ```
 
 Local build directories are ignored by git and are disposable; delete and
@@ -42,24 +42,24 @@ Build options:
 
 | Option | Default | Purpose |
 |---|---|---|
-| `CPPFOIL_BUILD_TESTS` | `ON` | Build the default test suite (4 gtest executables — primal + Jacobian unit + end-to-end adjoint vs CS) |
-| `CPPFOIL_BUILD_EXAMPLES` | `ON` | Build example programs |
-| `CPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_chain`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
-| `CPPFOIL_BUILD_PROBES` | `OFF` | Build the 14 standalone `probe_*` diagnostic binaries |
-| `CPPFOIL_COVERAGE` | `OFF` | Instrument library + tests with `-fprofile-instr-generate -fcoverage-mapping` for `llvm-cov` |
-| `CPPFOIL_NATIVE_ARCH` | `ON` | Pass `-march=native` in Release builds |
+| `SCIROCCO_BUILD_TESTS` | `ON` | Build the default test suite (4 gtest executables — primal + Jacobian unit + end-to-end adjoint vs CS) |
+| `SCIROCCO_BUILD_EXAMPLES` | `ON` | Build example programs |
+| `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_chain`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
+| `SCIROCCO_BUILD_PROBES` | `OFF` | Build the 14 standalone `probe_*` diagnostic binaries |
+| `SCIROCCO_COVERAGE` | `OFF` | Instrument library + tests with `-fprofile-instr-generate -fcoverage-mapping` for `llvm-cov` |
+| `SCIROCCO_NATIVE_ARCH` | `ON` | Pass `-march=native` in Release builds |
 
 Example — lean default build:
 ```bash
-cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
-cmake --build cppfoil/build-default -j
+cmake -S scirocco -B scirocco/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build-default -j
 ```
 
 Example — full debug build for sensitivity work:
 ```bash
-cmake -S cppfoil -B cppfoil/build-debug -DCMAKE_BUILD_TYPE=Release \
-      -DCPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON \
-      -DCPPFOIL_BUILD_PROBES=ON
+cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Release \
+      -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON \
+      -DSCIROCCO_BUILD_PROBES=ON
 ```
 
 ## Usage
@@ -67,9 +67,9 @@ cmake -S cppfoil -B cppfoil/build-debug -DCMAKE_BUILD_TYPE=Release \
 ### Basic Inviscid Analysis
 
 ```cpp
-#include <cppfoil/cppfoil.h>
+#include <scirocco/scirocco.h>
 
-cppfoil::Cppfoil foil("0012", 199);  // NACA 0012, 199 panels
+scirocco::Scirocco foil("0012", 199);  // NACA 0012, 199 panels
 foil.SetOper(5.0, -1.0, 0.0, 0.0);  // alpha=5°, no Re (inviscid)
 foil.Solve();
 
@@ -80,9 +80,9 @@ std::cout << "Cm = " << foil.GetCm() << std::endl;
 ### Viscous Analysis
 
 ```cpp
-#include <cppfoil/cppfoil.h>
+#include <scirocco/scirocco.h>
 
-cppfoil::Cppfoil foil("2412", 129);  // NACA 2412, 129 panels
+scirocco::Scirocco foil("2412", 129);  // NACA 2412, 129 panels
 double Re = 1.0e6;
 double Ma = 0.0;
 
@@ -101,13 +101,13 @@ std::cout << "Cdp = " << foil.GetCdp() << std::endl;  // pressure drag
 Eigen::MatrixXd coords(n, 2);  // n points, columns are x and z
 // ... fill coordinates ...
 
-cppfoil::Cppfoil foil(coords, 199);
+scirocco::Scirocco foil(coords, 199);
 ```
 
 ### Geometry Modification
 
 ```cpp
-cppfoil::Cppfoil foil("0012", 199);
+scirocco::Scirocco foil("0012", 199);
 
 // Deploy a flap
 Eigen::Vector2d hinge(0.75, 0.0);  // hinge at 75% chord
@@ -149,12 +149,12 @@ foil.GetState().param.verb = 1;
 
 ## API Reference
 
-### Cppfoil Class
+### Scirocco Class
 
 | Method | Description |
 |--------|-------------|
-| `Cppfoil(naca, npanel)` | Create airfoil from NACA designation |
-| `Cppfoil(coords, npanel)` | Create airfoil from coordinates |
+| `Scirocco(naca, npanel)` | Create airfoil from NACA designation |
+| `Scirocco(coords, npanel)` | Create airfoil from coordinates |
 | `SetOper(alpha, cl, Re, Ma)` | Set operating conditions |
 | `Solve()` | Run analysis, returns convergence status |
 | `GetCl(), GetCd(), GetCm()` | Get force coefficients |
@@ -176,8 +176,8 @@ foil.GetState().param.verb = 1;
 ## Project Structure
 
 ```
-cppfoil/
-├── include/cppfoil/
+scirocco/
+├── include/scirocco/
 │   ├── core/           # Solver modules
 │   │   ├── geometry.h      # Airfoil generation
 │   │   ├── spline.h        # Cubic spline interpolation
@@ -196,23 +196,23 @@ cppfoil/
 
 ## Testing
 
-The default suite (`CPPFOIL_BUILD_TESTS=ON`, all other test flags off) builds four gtest executables that together cover every `src/*.cpp` file:
+The default suite (`SCIROCCO_BUILD_TESTS=ON`, all other test flags off) builds four gtest executables that together cover every `src/*.cpp` file:
 
 | Executable | Purpose |
 |---|---|
-| `cppfoil_tests` | Spline, geometry, and the mfoil primal reference suite |
-| `cppfoil_forward_ref_tests` | Forward `R_x` / `R_U` partials vs mfoil |
-| `cppfoil_ping_tests` | Analytic Jacobians vs mfoil-CS references (BL, residuals, BuildGlobSys, WakeSys, forces) |
-| `cppfoil_sensitivity_ref_tests` | End-to-end adjoint `dJ/d{x, α, Ma, Re}` vs complex-step references |
+| `scirocco_tests` | Spline, geometry, and the mfoil primal reference suite |
+| `scirocco_forward_ref_tests` | Forward `R_x` / `R_U` partials vs mfoil |
+| `scirocco_ping_tests` | Analytic Jacobians vs mfoil-CS references (BL, residuals, BuildGlobSys, WakeSys, forces) |
+| `scirocco_sensitivity_ref_tests` | End-to-end adjoint `dJ/d{x, α, Ma, Re}` vs complex-step references |
 
 Run it:
 ```bash
-cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
-cmake --build cppfoil/build-default -j
-ctest --test-dir cppfoil/build-default --output-on-failure
+cmake -S scirocco -B scirocco/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build-default -j
+ctest --test-dir scirocco/build-default --output-on-failure
 ```
 
-Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `CPPFOIL_COVERAGE` below).
+Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `SCIROCCO_COVERAGE` below).
 
 ### Static analysis
 
@@ -220,29 +220,29 @@ Run clang-tidy after configuring a build directory so `compile_commands.json`
 is available:
 
 ```bash
-run-clang-tidy -p cppfoil/build-default -header-filter='cppfoil/include/' 'cppfoil/src/.*\.cpp$'
+run-clang-tidy -p scirocco/build-default -header-filter='scirocco/include/' 'scirocco/src/.*\.cpp$'
 ```
 
 ### Sensitivity-debug suite (opt-in)
 
-When the end-to-end `sensitivity_ref` tests regress, turn on `CPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON` to build four chain-piece test executables that isolate which link is broken: `cppfoil_sensitivity_tests` (per-panel influence derivs), `cppfoil_viscous_chain_tests` (geometric chain), `cppfoil_viscous_residual_tests` (residual partials), `cppfoil_viscous_output_ping_tests` (force output partials). These exercise the same source files as the end-to-end test, so they don't add coverage — they add diagnostic resolution.
+When the end-to-end `sensitivity_ref` tests regress, turn on `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` to build four chain-piece test executables that isolate which link is broken: `scirocco_sensitivity_tests` (per-panel influence derivs), `scirocco_viscous_chain_tests` (geometric chain), `scirocco_viscous_residual_tests` (residual partials), `scirocco_viscous_output_ping_tests` (force output partials). These exercise the same source files as the end-to-end test, so they don't add coverage — they add diagnostic resolution.
 
 ### Probe binaries (opt-in)
 
-`CPPFOIL_BUILD_PROBES=ON` builds 14 standalone `probe_*` diagnostic binaries (no gtest, not part of `ctest`) used for ad-hoc adjoint debugging.
+`SCIROCCO_BUILD_PROBES=ON` builds 14 standalone `probe_*` diagnostic binaries (no gtest, not part of `ctest`) used for ad-hoc adjoint debugging.
 
 ### Coverage measurement
 
 ```bash
-cmake -S cppfoil -B cppfoil/build-cov -DCMAKE_BUILD_TYPE=Release -DCPPFOIL_COVERAGE=ON
-cmake --build cppfoil/build-cov -j
-cd cppfoil/build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
+cmake -S scirocco -B scirocco/build-cov -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_COVERAGE=ON
+cmake --build scirocco/build-cov -j
+cd scirocco/build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
 xcrun llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
 xcrun llvm-cov report \
-    cppfoil_tests \
-    -object cppfoil_forward_ref_tests \
-    -object cppfoil_sensitivity_ref_tests \
-    -object cppfoil_ping_tests \
+    scirocco_tests \
+    -object scirocco_forward_ref_tests \
+    -object scirocco_sensitivity_ref_tests \
+    -object scirocco_ping_tests \
     -instr-profile=cov.profdata \
     $(ls ../src/*.cpp)
 ```
@@ -271,4 +271,4 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-cppfoil is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html) by Krzysztof J. Fidkowski. The original mfoil is a Python implementation of subsonic airfoil analysis and is licensed under the MIT License. See [NOTICE](NOTICE) for details.
+Scirocco is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html) by Krzysztof J. Fidkowski. The original mfoil is a Python implementation of subsonic airfoil analysis and is licensed under the MIT License. See [NOTICE](NOTICE) for details.
