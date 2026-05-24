@@ -16,6 +16,7 @@ option(SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS
 option(SCIROCCO_BUILD_PROBES
        "Build standalone probe diagnostic binaries" OFF)
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
+option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
 option(SCIROCCO_COVERAGE "Instrument library + tests for llvm-cov coverage" OFF)
 
@@ -61,6 +62,29 @@ if(SCIROCCO_COVERAGE)
         -fprofile-instr-generate -fcoverage-mapping)
     target_link_options(scirocco PUBLIC
         -fprofile-instr-generate -fcoverage-mapping)
+endif()
+
+# HDF5 output writer (optional separate library)
+if(SCIROCCO_HDF5_OUTPUT)
+    find_package(hdf5 CONFIG REQUIRED)
+    message(STATUS "Building scirocco_hdf5 writer (HDF5 ${hdf5_VERSION})")
+
+    add_library(scirocco_hdf5 src/hdf5_writer.cpp)
+    target_include_directories(scirocco_hdf5 PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(scirocco_hdf5 PUBLIC scirocco hdf5_cpp-shared)
+    target_compile_options(scirocco_hdf5 PRIVATE
+        -Wall -Wextra -Wpedantic
+        $<$<CONFIG:Release>:-O3>
+        $<$<AND:$<CONFIG:Release>,$<BOOL:${SCIROCCO_NATIVE_ARCH}>>:-march=native>
+    )
+
+    if(SCIROCCO_BUILD_EXAMPLES)
+        add_executable(hdf5_output_example examples/hdf5_output_example.cpp)
+        target_link_libraries(hdf5_output_example scirocco_hdf5)
+    endif()
 endif()
 
 # Tests
