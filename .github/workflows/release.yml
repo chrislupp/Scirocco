@@ -117,7 +117,7 @@ jobs:
       id: version
       run: |
         # Read current version from CMakeLists.txt
-        CURRENT=$(grep -oP 'VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' cppfoil/CMakeLists.txt | head -1)
+        CURRENT=$(grep -oP 'VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' scirocco/CMakeLists.txt | head -1)
         IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
         echo "Current version: ${MAJOR}.${MINOR}.${PATCH}"
 
@@ -158,10 +158,10 @@ jobs:
     - name: Update CMakeLists.txt version
       run: |
         NEW_VERSION="${{ steps.version.outputs.new_version }}"
-        sed -i 's/\(VERSION\s\+\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1'"$NEW_VERSION"'/' cppfoil/CMakeLists.txt
+        sed -i 's/\(VERSION\s\+\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1'"$NEW_VERSION"'/' scirocco/CMakeLists.txt
 
         echo "CMakeLists.txt updated:"
-        grep "project(cppfoil" cppfoil/CMakeLists.txt
+        grep "project(scirocco" scirocco/CMakeLists.txt
 
     # ── Update CHANGELOG.md ──────────────────────────────────────────
     - name: Update CHANGELOG.md

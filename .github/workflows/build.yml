@@ -22,7 +22,7 @@ jobs:
 
     - name: Check Formatting
       run: |
-        find cppfoil/include cppfoil/src cppfoil/tests cppfoil/examples \
+        find scirocco/include scirocco/src scirocco/tests scirocco/examples \
           -name '*.h' -o -name '*.cpp' | \
           xargs clang-format-17 --dry-run --Werror
 
@@ -46,19 +46,19 @@ jobs:
     - name: Configure CMake
       run: >
         cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/cppfoil
+        -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
-        -DCPPFOIL_BUILD_TESTS=ON
-        -DCPPFOIL_BUILD_EXAMPLES=OFF
-        -DCPPFOIL_NATIVE_ARCH=OFF
+        -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_BUILD_EXAMPLES=OFF
+        -DSCIROCCO_NATIVE_ARCH=OFF
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
     - name: Run clang-tidy
       run: >
         run-clang-tidy-18
         -p ${{github.workspace}}/build
-        -header-filter='cppfoil/include/'
-        'cppfoil/src/.*\.cpp$'
+        -header-filter='scirocco/include/'
+        'scirocco/src/.*\.cpp$'
 
   build:
     needs: [format]
@@ -87,10 +87,10 @@ jobs:
     - name: Configure CMake (default suite)
       run: >
         cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/cppfoil
+        -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCPPFOIL_BUILD_TESTS=ON
-        -DCPPFOIL_NATIVE_ARCH=OFF
+        -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_NATIVE_ARCH=OFF
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build_type }} -j$(nproc)
@@ -118,12 +118,12 @@ jobs:
     - name: Configure CMake (chain-piece debug tests + probes)
       run: >
         cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/cppfoil
+        -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
-        -DCPPFOIL_BUILD_TESTS=ON
-        -DCPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON
-        -DCPPFOIL_BUILD_PROBES=ON
-        -DCPPFOIL_NATIVE_ARCH=OFF
+        -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON
+        -DSCIROCCO_BUILD_PROBES=ON
+        -DSCIROCCO_NATIVE_ARCH=OFF
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config Release -j$(nproc)
@@ -151,11 +151,11 @@ jobs:
     - name: Configure CMake
       run: >
         cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/cppfoil
+        -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
-        -DCPPFOIL_BUILD_TESTS=ON
-        -DCPPFOIL_COVERAGE=ON
-        -DCPPFOIL_NATIVE_ARCH=OFF
+        -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_COVERAGE=ON
+        -DSCIROCCO_NATIVE_ARCH=OFF
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -169,9 +169,9 @@ jobs:
     - name: Generate Coverage Report
       run: |
         llvm-profdata-18 merge -sparse ${{github.workspace}}/build/coverage-*.profraw -o coverage.profdata
-        TEST_BINS=$(find ${{github.workspace}}/build -maxdepth 1 -type f -executable -name 'cppfoil_*' | sed '1!s/^/-object /')
+        TEST_BINS=$(find ${{github.workspace}}/build -maxdepth 1 -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
         llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
-          $(find ${{github.workspace}}/cppfoil/src -name '*.cpp')
+          $(find ${{github.workspace}}/scirocco/src -name '*.cpp')
         llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
           -ignore-filename-regex='(_deps|tests/|examples/|/usr/)' > coverage.info
 
@@ -202,10 +202,10 @@ jobs:
     - name: Configure CMake (Debug, no -march=native)
       run: >
         cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/cppfoil
+        -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        -DCPPFOIL_BUILD_TESTS=ON
-        -DCPPFOIL_NATIVE_ARCH=OFF
+        -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_NATIVE_ARCH=OFF
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
