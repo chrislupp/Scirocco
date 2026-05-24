@@ -189,8 +189,7 @@ void CalcForce(FoilState& state) {
             double rho1 = rho;
             Vector2d x1 = state.isol.xstag;
 
-            for (size_t idx = 0; idx < Is.size(); ++idx) {
-                int i = Is[idx];
+            for (int i : Is) {
                 if (i >= state.glob.U.cols()) continue;
 
                 // Update turbulence flag
@@ -254,8 +253,7 @@ void GetDistributions(FoilState& state) {
     for (int si = 0; si < 3; ++si) {
         const auto& Is = state.vsol.Is[si];
         Param param = BuildParam(state, si);
-        for (int idx = 0; idx < static_cast<int>(Is.size()); ++idx) {
-            int j = Is[idx];
+        for (int j : Is) {
             Vector4d Uj = state.glob.U.col(j);
             StationParam(state, param, j);
             auto [uk, uk_U] = GetUk(Uj(3), param);

@@ -10,7 +10,7 @@ import numpy as np
 from scipy import sparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil  # noqa: E402
 
 OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),

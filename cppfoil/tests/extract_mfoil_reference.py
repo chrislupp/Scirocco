@@ -4,7 +4,7 @@ Extract reference data from mfoil for comprehensive C++ unit testing.
 Saves data to HDF5 format for efficient loading in C++.
 """
 import sys
-sys.path.insert(0, '/Users/clupp/tools/analysis/ProjectTrysil/temp')
+sys.path.insert(0, '/Users/clupp/tools/analysis/ProjectTrysil/mfoil')
 import mfoil
 import numpy as np
 import h5py

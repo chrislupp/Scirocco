@@ -28,12 +28,15 @@ Optional:
 
 ## Building
 
+From the repository root:
+
 ```bash
-cd cppfoil
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make
+cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build cppfoil/build-default -j
 ```
+
+Local build directories are ignored by git and are disposable; delete and
+regenerate them whenever CMake or test discovery state gets stale.
 
 Build options:
 
@@ -48,13 +51,13 @@ Build options:
 
 Example — lean default build:
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build cppfoil/build-default -j
 ```
 
 Example — full debug build for sensitivity work:
 ```bash
-cmake -B build-debug -DCMAKE_BUILD_TYPE=Release \
+cmake -S cppfoil -B cppfoil/build-debug -DCMAKE_BUILD_TYPE=Release \
       -DCPPFOIL_BUILD_SENSITIVITY_DEBUG_TESTS=ON \
       -DCPPFOIL_BUILD_PROBES=ON
 ```
@@ -137,6 +140,13 @@ const Eigen::MatrixXd& foil_coords = foil.GetFoilCoords();
 const Eigen::MatrixXd& wake_coords = foil.GetWakeCoords();
 ```
 
+Solver progress output is quiet by default. Advanced/debug callers can enable
+the previous verbose behavior through the internal state:
+
+```cpp
+foil.GetState().param.verb = 1;
+```
+
 ## API Reference
 
 ### Cppfoil Class
@@ -197,12 +207,21 @@ The default suite (`CPPFOIL_BUILD_TESTS=ON`, all other test flags off) builds fo
 
 Run it:
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+cmake -S cppfoil -B cppfoil/build-default -DCMAKE_BUILD_TYPE=Release
+cmake --build cppfoil/build-default -j
+ctest --test-dir cppfoil/build-default --output-on-failure
 ```
 
 Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `CPPFOIL_COVERAGE` below).
+
+### Static analysis
+
+Run clang-tidy after configuring a build directory so `compile_commands.json`
+is available:
+
+```bash
+run-clang-tidy -p cppfoil/build-default -header-filter='cppfoil/include/' 'cppfoil/src/.*\.cpp$'
+```
 
 ### Sensitivity-debug suite (opt-in)
 
@@ -215,9 +234,9 @@ When the end-to-end `sensitivity_ref` tests regress, turn on `CPPFOIL_BUILD_SENS
 ### Coverage measurement
 
 ```bash
-cmake -B build-cov -DCMAKE_BUILD_TYPE=Release -DCPPFOIL_COVERAGE=ON
-cmake --build build-cov -j
-cd build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
+cmake -S cppfoil -B cppfoil/build-cov -DCMAKE_BUILD_TYPE=Release -DCPPFOIL_COVERAGE=ON
+cmake --build cppfoil/build-cov -j
+cd cppfoil/build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
 xcrun llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
 xcrun llvm-cov report \
     cppfoil_tests \

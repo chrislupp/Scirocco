@@ -79,12 +79,12 @@ void Cppfoil::SetOper(double alpha, double cl, double Re, double Ma) {
 bool Cppfoil::Solve() {
     if (state_.param.verb >= 1) {
         std::cout << "Cppfoil::Solve viscous=" << state_.oper.viscous
-                  << ", Re=" << state_.oper.Re << std::endl;
+                  << ", Re=" << state_.oper.Re << '\n';
     }
     if (state_.oper.viscous) {
         // Initialize parameters for viscous solve.
         // Do NOT override rtol/niglob/verb here — those are settable defaults
-        // (Param: rtol=1e-11, niglob=50, verb=1). Earlier code clamped rtol
+        // (Param: rtol=1e-11, niglob=50, verb=0). Earlier code clamped rtol
         // to 1e-6 which is far too loose for adjoint precision.
         state_.oper.initbl = true;
 

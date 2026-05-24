@@ -1,5 +1,6 @@
 # Build directories
 build/
+build-*/
 cmake-build-*/
 out/
 
@@ -26,6 +27,7 @@ compile_commands.json
 
 # Testing
 Testing/
+Testing/Temporary/
 CTestTestfile.cmake
 
 # Package files

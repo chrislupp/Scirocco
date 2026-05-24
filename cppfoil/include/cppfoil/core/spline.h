@@ -44,13 +44,13 @@ struct CubicSpline1D {
     MatrixXd c;  // Coefficients [4 x (N-1)]
 
     // Evaluate spline at parameter value
-    double Eval(double sval) const;
+    [[nodiscard]] double Eval(double sval) const;
 
     // Evaluate derivative at parameter value
-    double EvalDeriv(double sval) const;
+    [[nodiscard]] double EvalDeriv(double sval) const;
 
     // Evaluate second derivative at parameter value
-    double EvalDeriv2(double sval) const;
+    [[nodiscard]] double EvalDeriv2(double sval) const;
 };
 
 // 2D spline structure containing x and y splines

@@ -11,7 +11,7 @@ import numpy as np
 import h5py
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'temp'))
+                                '..', '..', 'mfoil'))
 import mfoil_cs  # noqa: E402 — patches mfoil for CS compat
 from mfoil_cs import complex_step_mode  # noqa: E402
 import mfoil  # noqa: E402

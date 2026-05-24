@@ -404,13 +404,13 @@ namespace detail {
 
 double GetCf_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     if (param.turb) {
-        auto [M2, _M2_U] = GetMach2(U, param);
-        (void)_M2_U;
+        auto [M2, unused_M2_U] = GetMach2(U, param);
+        (void)unused_M2_U;
         double Fc = std::sqrt(1.0 + 0.5 * (param.gam - 1.0) * M2);
         double aa = -1.33 * Hk;
         if (aa < -17.0) aa = -20.0 + 3.0 * std::exp((aa + 17.0) / 3.0);
@@ -442,12 +442,12 @@ double GetCf_dRet(const Vector4d& U, const Param& param) {
 
 double GetHs_dRet(const Vector4d& U, const Param& param) {
     if (!param.turb) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
     if (param.wake && Hk < 1.00005) Hk = 1.00005;
     if (!param.wake && Hk < 1.05) Hk = 1.05;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     constexpr double Hsmin = 1.5;
     constexpr double dHsinf = 0.015;
     double Ho = 4.0;
@@ -483,8 +483,8 @@ double GetHs_dRet(const Vector4d& U, const Param& param) {
                       (0.007 * lrb / (aa * aa) + dHsinf / Hk) +
                   (Hk - Ho) * (Hk - Ho) * bb_dRet;
     }
-    auto [M2, _M2_U] = GetMach2(U, param);
-    (void)_M2_U;
+    auto [M2, unused_M2_U] = GetMach2(U, param);
+    (void)unused_M2_U;
     double den = 1.0 + 0.014 * M2;
     return Hs_dRet / den;
 }
@@ -493,12 +493,12 @@ double GetUs_dRet(const Vector4d& U, const Param& param) {
     // Us = 0.5·Hs·(1 - bi·(Hk-1)/H) with bi = 1/param.GB. Limits: if
     // !wake and Us > 0.95 then Us = 0.98 (zero derivative).
     // ∂Us/∂Ret at fixed U: Hk and H have no Ret dep, so only Hs chains.
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [H, _H_U] = GetH(U);
-    (void)_H_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [H, unused_H_U] = GetH(U);
+    (void)unused_H_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
     double Hk_lim = param.wake ? 1.00005 : 1.05;
     if (Hk < Hk_lim) Hk = Hk_lim;
     double bi = 1.0 / param.GB;
@@ -509,10 +509,10 @@ double GetUs_dRet(const Vector4d& U, const Param& param) {
 }
 
 double GetCDi_Lam_dRet(const Vector4d& U, const Param& param) {
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double num;
     if (Hk < 4.0) {
         num = 0.00205 * std::pow(4.0 - Hk, 5.5) + 0.207;
@@ -526,16 +526,16 @@ double GetCDi_Lam_dRet(const Vector4d& U, const Param& param) {
 
 double GetCDi_TurbWall_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) return 0.0;
-    auto [cf, _cf_U] = GetCf(U, param);
-    (void)_cf_U;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [cf, unused_cf_U] = GetCf(U, param);
+    (void)unused_cf_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double cf_dRet = GetCf_dRet(U, param);
     double Hs_dRet = GetHs_dRet(U, param);
     double Us_dRet = GetUs_dRet(U, param);
@@ -554,10 +554,10 @@ double GetCDi_TurbWall_dRet(const Vector4d& U, const Param& param) {
 
 double GetCDi_Outer_dRet(const Vector4d& U, const Param& param) {
     if (!param.turb) return 0.0;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
     double Hs_dRet = GetHs_dRet(U, param);
     double Us_dRet = GetUs_dRet(U, param);
     double ct = U(2) * U(2);
@@ -566,12 +566,12 @@ double GetCDi_Outer_dRet(const Vector4d& U, const Param& param) {
 }
 
 double GetCDi_LamStress_dRet(const Vector4d& U, const Param& param) {
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double Hs_dRet = GetHs_dRet(U, param);
     double Us_dRet = GetUs_dRet(U, param);
     double HsRet = Hs * Ret;
@@ -584,12 +584,12 @@ double GetCDi_LamStress_dRet(const Vector4d& U, const Param& param) {
 double GetCDi_LamWake_dRet(const Vector4d& U, const Param& paramin) {
     Param param = paramin;
     param.turb = false;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     // Hs_dRet in laminar = 0 (Hs has no Ret dep in laminar branch)
     double HsRet = Hs * Ret;
     double HsRet_dRet = Hs;  // Hs_dRet = 0 for laminar
@@ -604,26 +604,26 @@ double GetCDi_dRet(const Vector4d& U, const Param& param) {
         double cDi_dRet = 0.0;
         double cDi_val = 0.0;
         if (!param.wake) {
-            auto [v, _vU] = GetCDi_TurbWall(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_TurbWall(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dRet += GetCDi_TurbWall_dRet(U, param);
         }
         {
-            auto [v, _vU] = GetCDi_Outer(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_Outer(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dRet += GetCDi_Outer_dRet(U, param);
         }
         {
-            auto [v, _vU] = GetCDi_LamStress(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_LamStress(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dRet += GetCDi_LamStress_dRet(U, param);
         }
-        auto [cDil, _cDil_U] =
+        auto [cDil, unused_cDil_U] =
             param.wake ? GetCDi_LamWake(U, param) : GetCDi_Lam(U, param);
-        (void)_cDil_U;
+        (void)unused_cDil_U;
         double cDil_dRet = param.wake ? GetCDi_LamWake_dRet(U, param)
                                       : GetCDi_Lam_dRet(U, param);
         if (cDil > cDi_val) cDi_dRet = cDil_dRet;
@@ -660,16 +660,16 @@ double GetCteq_dRet(const Vector4d& U, const Param& param) {
     // ∂cteq/∂Ret at fixed U: Hk and H are Ret-indep. Hs, Us, Hkc carry Ret-dep.
     double CC = 0.5 / (param.GA * param.GA * param.GB);
     double C = param.GC;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [H, _H_U] = GetH(U);
-    (void)_H_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [H, unused_H_U] = GetH(U);
+    (void)unused_H_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
     double Hs_dRet = GetHs_dRet(U, param);
     double Us_dRet = GetUs_dRet(U, param);
 
@@ -701,7 +701,7 @@ double GetCteq_dRet(const Vector4d& U, const Param& param) {
 
 // ∂uq/∂Ret_arg at fixed (ds, cf, Hk). GetUq's direct Ret argument enters
 // only via Hkc = Hk - 1 - C/Ret (foil non-wake) and the C/Ret²·Ret_U term.
-double GetUq_dRet_arg(double cf, double Hk, double Ret, double ds,
+double GetUq_dRet_arg(double /*cf*/, double Hk, double Ret, double ds,
                       const Param& param) {
     double beta = param.GB;
     double A = param.GA;
@@ -740,10 +740,10 @@ double GetDamp_dRet(const Vector4d& U, const Param& param) {
     //   af, da, ar, ex have no Ret dep.
     //   damp = rf · af · da / th → damp_dRet = rf_dRet · af · da / th
     //   ed term: tanh of sa-only, no Ret dep.
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double th = U(0);
     if (Hk < 1.05) Hk = 1.05;
 
@@ -851,8 +851,8 @@ double GetMach2_dMa(const Vector4d& U, const Param& param,
     if (param.Minf <= 0) return 0.0;
     double gam = param.gam;
     double H0 = param.H0;
-    auto [uk, _uk_U] = GetUk(U(3), param);
-    (void)_uk_U;
+    auto [uk, unused_uk_U] = GetUk(U(3), param);
+    (void)unused_uk_U;
     double uk_dMa = GetUk_dMa(U(3), param, d);
     double c2 = (gam - 1.0) * (H0 - 0.5 * uk * uk);
     double c2_dMa = (gam - 1.0) * (d.H0_dMa - uk * uk_dMa);
@@ -864,10 +864,10 @@ double GetMach2_dMa(const Vector4d& U, const Param& param,
 double GetHk_dMa(const Vector4d& U, const Param& param,
                  const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [M2, _M2_U] = GetMach2(U, param);
-    (void)_M2_U;
-    auto [H, _H_U] = GetH(U);
-    (void)_H_U;
+    auto [M2, unused_M2_U] = GetMach2(U, param);
+    (void)unused_M2_U;
+    auto [H, unused_H_U] = GetH(U);
+    (void)unused_H_U;
     double M2_dMa = GetMach2_dMa(U, param, d);
     double den = 1.0 + 0.113 * M2;
     double Hk = (H - 0.29 * M2) / den;
@@ -878,10 +878,10 @@ double GetHk_dMa(const Vector4d& U, const Param& param,
 double GetHss_dMa(const Vector4d& U, const Param& param,
                   const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [M2, _M2_U] = GetMach2(U, param);
-    (void)_M2_U;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
+    auto [M2, unused_M2_U] = GetMach2(U, param);
+    (void)unused_M2_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
     double M2_dMa = GetMach2_dMa(U, param, d);
     double Hk_dMa = GetHk_dMa(U, param, d);
     double num = 0.064 / (Hk - 0.8) + 0.251;
@@ -897,10 +897,10 @@ double GetRet_dMa(const Vector4d& U, const Param& param,
     double H0 = param.H0;
     double gmi = param.gam - 1.0;
     double Tsrat = param.Tsrat;
-    auto [M2, _M2_U] = GetMach2(U, param);
-    (void)_M2_U;
-    auto [uk, _uk_U] = GetUk(U(3), param);
-    (void)_uk_U;
+    auto [M2, unused_M2_U] = GetMach2(U, param);
+    (void)unused_M2_U;
+    auto [uk, unused_uk_U] = GetUk(U(3), param);
+    (void)unused_uk_U;
     double M2_dMa = GetMach2_dMa(U, param, d);
     double uk_dMa = GetUk_dMa(U(3), param, d);
 
@@ -931,8 +931,8 @@ double GetRet_dMa(const Vector4d& U, const Param& param,
 double GetHs_dMa(const Vector4d& U, const Param& param,
                  const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
     if (param.wake && Hk < 1.00005) {
         Hk = 1.00005;
@@ -947,8 +947,8 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
     if (param.turb) {
         constexpr double Hsmin = 1.5;
         constexpr double dHsinf = 0.015;
-        auto [Ret, _Ret_U] = GetRet(U, param);
-        (void)_Ret_U;
+        auto [Ret, unused_Ret_U] = GetRet(U, param);
+        (void)unused_Ret_U;
         double Ret_dMa = GetRet_dMa(U, param, d);
         double Ho = 4.0, Ho_dRet = 0.0;
         if (Ret > 400.0) {
@@ -1006,11 +1006,11 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
     //   Hs = (Hs_base + 0.028·M²) / (1 + 0.014·M²)
     // ∂Hs/∂Ma = (Hs_base_dMa + 0.028·M2_dMa)/den - Hs_corrected/den ·
     // 0.014·M2_dMa
-    auto [M2, _M2_U] = GetMach2(U, param);
-    (void)_M2_U;
+    auto [M2, unused_M2_U] = GetMach2(U, param);
+    (void)unused_M2_U;
     double M2_dMa = GetMach2_dMa(U, param, d);
-    auto [Hs_corrected, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
+    auto [Hs_corrected, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
     double den = 1.0 + 0.014 * M2;
     return (Hs_base_dMa + 0.028 * M2_dMa) / den -
            Hs_corrected / den * 0.014 * M2_dMa;
@@ -1023,12 +1023,12 @@ double GetUs_dMa(const Vector4d& U, const Param& param,
     // ∂Us/∂Ma at fixed U: Hs(Ma) AND Hk(Ma); H has no Ma dep.
     //   ∂Us/∂Ma = 0.5·Hs_dMa·factor + 0.5·Hs·factor_dMa
     //   factor = 1 - bi·(Hk-1)/H  → factor_dMa = -bi·Hk_dMa/H
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [H, _H_U] = GetH(U);
-    (void)_H_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [H, unused_H_U] = GetH(U);
+    (void)unused_H_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
     double Hs_dMa = GetHs_dMa(U, param, d);
     double Hk_lim = param.wake ? 1.00005 : 1.05;
@@ -1047,15 +1047,15 @@ double GetUs_dMa(const Vector4d& U, const Param& param,
 double GetCf_dMa(const Vector4d& U, const Param& param,
                  const ThermoMaDeriv& d) {
     if (param.wake || param.Minf <= 0) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
     double Ret_dMa = GetRet_dMa(U, param, d);
     if (param.turb) {
-        auto [M2, _M2_U] = GetMach2(U, param);
-        (void)_M2_U;
+        auto [M2, unused_M2_U] = GetMach2(U, param);
+        (void)unused_M2_U;
         double M2_dMa = GetMach2_dMa(U, param, d);
         double Fc = std::sqrt(1.0 + 0.5 * (param.gam - 1.0) * M2);
         double Fc_dMa = 0.5 / Fc * 0.5 * (param.gam - 1.0) * M2_dMa;
@@ -1111,10 +1111,10 @@ double GetCf_dMa(const Vector4d& U, const Param& param,
 double GetCDi_Lam_dMa(const Vector4d& U, const Param& param,
                       const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
     double Ret_dMa = GetRet_dMa(U, param, d);
     double num, num_Hk;
@@ -1134,16 +1134,16 @@ double GetCDi_Lam_dMa(const Vector4d& U, const Param& param,
 double GetCDi_TurbWall_dMa(const Vector4d& U, const Param& param,
                            const ThermoMaDeriv& d) {
     if (param.wake || param.Minf <= 0) return 0.0;
-    auto [cf, _cf_U] = GetCf(U, param);
-    (void)_cf_U;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [cf, unused_cf_U] = GetCf(U, param);
+    (void)unused_cf_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double cf_dMa = GetCf_dMa(U, param, d);
     double Hs_dMa = GetHs_dMa(U, param, d);
     double Us_dMa = GetUs_dMa(U, param, d);
@@ -1167,10 +1167,10 @@ double GetCDi_TurbWall_dMa(const Vector4d& U, const Param& param,
 double GetCDi_Outer_dMa(const Vector4d& U, const Param& param,
                         const ThermoMaDeriv& d) {
     if (!param.turb || param.Minf <= 0) return 0.0;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
     double Hs_dMa = GetHs_dMa(U, param, d);
     double Us_dMa = GetUs_dMa(U, param, d);
     double ct = U(2) * U(2);
@@ -1181,12 +1181,12 @@ double GetCDi_Outer_dMa(const Vector4d& U, const Param& param,
 double GetCDi_LamStress_dMa(const Vector4d& U, const Param& param,
                             const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Us, _Us_U] = GetUs(U, param);
-    (void)_Us_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Us, unused_Us_U] = GetUs(U, param);
+    (void)unused_Us_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double Hs_dMa = GetHs_dMa(U, param, d);
     double Us_dMa = GetUs_dMa(U, param, d);
     double Ret_dMa = GetRet_dMa(U, param, d);
@@ -1202,12 +1202,12 @@ double GetCDi_LamWake_dMa(const Vector4d& U, const Param& paramin,
     if (paramin.Minf <= 0) return 0.0;
     Param param = paramin;
     param.turb = false;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
-    auto [Hs, _Hs_U] = GetHs(U, param);
-    (void)_Hs_U;
-    auto [Ret, _Ret_U] = GetRet(U, param);
-    (void)_Ret_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
+    auto [Hs, unused_Hs_U] = GetHs(U, param);
+    (void)unused_Hs_U;
+    auto [Ret, unused_Ret_U] = GetRet(U, param);
+    (void)unused_Ret_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
     double Hs_dMa = GetHs_dMa(U, param, d);  // laminar Hs
     double Ret_dMa = GetRet_dMa(U, param, d);
@@ -1228,26 +1228,26 @@ double GetCDi_dMa(const Vector4d& U, const Param& param,
         double cDi_dMa = 0.0;
         double cDi_val = 0.0;
         if (!param.wake) {
-            auto [v, _vU] = GetCDi_TurbWall(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_TurbWall(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dMa += GetCDi_TurbWall_dMa(U, param, d);
         }
         {
-            auto [v, _vU] = GetCDi_Outer(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_Outer(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dMa += GetCDi_Outer_dMa(U, param, d);
         }
         {
-            auto [v, _vU] = GetCDi_LamStress(U, param);
-            (void)_vU;
+            auto [v, unused_vU] = GetCDi_LamStress(U, param);
+            (void)unused_vU;
             cDi_val += v;
             cDi_dMa += GetCDi_LamStress_dMa(U, param, d);
         }
-        auto [cDil, _cDil_U] =
+        auto [cDil, unused_cDil_U] =
             param.wake ? GetCDi_LamWake(U, param) : GetCDi_Lam(U, param);
-        (void)_cDil_U;
+        (void)unused_cDil_U;
         double cDil_dMa = param.wake ? GetCDi_LamWake_dMa(U, param, d)
                                      : GetCDi_Lam_dMa(U, param, d);
         if (cDil > cDi_val) cDi_dMa = cDil_dMa;
@@ -1274,8 +1274,8 @@ double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
 double GetDamp_dMa(const Vector4d& U, const Param& param,
                    const ThermoMaDeriv& d) {
     if (param.Minf <= 0) return 0.0;
-    auto [Hk, _Hk_U] = GetHk(U, param);
-    (void)_Hk_U;
+    auto [Hk, unused_Hk_U] = GetHk(U, param);
+    (void)unused_Hk_U;
     double Hk_dM = GetHk_dMa(U, param, d);
     if (Hk < 1.05) {
         Hk = 1.05;
@@ -1289,8 +1289,8 @@ double GetDamp_dMa(const Vector4d& U, const Param& param,
     double bb_dM = (1.0 - bb * bb) * 14.0 * Hmi_dM;
     double lrc = aa + 0.7 * (bb + 1.0);
     double lrc_dM = aa_dM + 0.7 * bb_dM;
-    auto [Ret_v, _r] = GetRet(U, param);
-    (void)_r;
+    auto [Ret_v, unused_r] = GetRet(U, param);
+    (void)unused_r;
     double Ret_dM = GetRet_dMa(U, param, d);
     constexpr double lten = 2.302585092994046;
     double lr = std::log(Ret_v) / lten;
@@ -1329,16 +1329,16 @@ double GetCteq_dMa(const Vector4d& U_in, const Param& p_in,
     if (!p_in.turb || p_in.Minf <= 0) return 0.0;
     double CC = 0.5 / (p_in.GA * p_in.GA * p_in.GB);
     double C = p_in.GC;
-    auto [Hk, _h] = GetHk(U_in, p_in);
-    (void)_h;
-    auto [Hs, _hs] = GetHs(U_in, p_in);
-    (void)_hs;
-    auto [H, _H] = GetH(U_in);
-    (void)_H;
-    auto [Ret, _r] = GetRet(U_in, p_in);
-    (void)_r;
-    auto [Us, _us] = GetUs(U_in, p_in);
-    (void)_us;
+    auto [Hk, unused_h] = GetHk(U_in, p_in);
+    (void)unused_h;
+    auto [Hs, unused_hs] = GetHs(U_in, p_in);
+    (void)unused_hs;
+    auto [H, unused_H] = GetH(U_in);
+    (void)unused_H;
+    auto [Ret, unused_r] = GetRet(U_in, p_in);
+    (void)unused_r;
+    auto [Us, unused_us] = GetUs(U_in, p_in);
+    (void)unused_us;
     double Hk_dM = GetHk_dMa(U_in, p_in, d);
     double Hs_dM = GetHs_dMa(U_in, p_in, d);
     double Us_dM = GetUs_dMa(U_in, p_in, d);
@@ -1380,15 +1380,15 @@ double GetCteq_dMa(const Vector4d& U_in, const Param& p_in,
 double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
                    const ThermoMaDeriv& d) {
     if (p_nowake.Minf <= 0) return 0.0;
-    auto [Hk, _h] = GetHk(U, p_nowake);
-    (void)_h;
+    auto [Hk, unused_h] = GetHk(U, p_nowake);
+    (void)unused_h;
     double Hk_dM = GetHk_dMa(U, p_nowake, d);
     if (Hk < 1.05) {
         Hk = 1.05;
         Hk_dM = 0.0;
     }
-    auto [cteq, _ct] = GetCteq(U, p_nowake);
-    (void)_ct;
+    auto [cteq, unused_ct] = GetCteq(U, p_nowake);
+    (void)unused_ct;
     double cteq_dM = GetCteq_dMa(U, p_nowake, d);
     double E = p_nowake.CtauE;
     double Cc = p_nowake.CtauC;
@@ -1434,29 +1434,29 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
     if (param.simi) {
         uelog = 1.0;
     } else {
-        auto [uk1, _uk1] = GetUk(U1(3), param);
-        auto [uk2, _uk2] = GetUk(U2(3), param);
-        (void)_uk1;
-        (void)_uk2;
+        auto [uk1, unused_uk1] = GetUk(U1(3), param);
+        auto [uk2, unused_uk2] = GetUk(U2(3), param);
+        (void)unused_uk1;
+        (void)unused_uk2;
         uelog = std::log(std::max(uk2, 1e-12) / std::max(uk1, 1e-12));
     }
 
     // Upwind factor (Hk-only → no Ret dep, but we need the value for
     // weighting Ret-deps of cfxtu/cDixt).
-    auto [upw, _upw_U] = GetUpw(U1, U2, param);
-    (void)_upw_U;
+    auto [upw, unused_upw_U] = GetUpw(U1, U2, param);
+    (void)unused_upw_U;
 
     // Hs (turb-dep on Ret), needed for Rshape coefficients
-    auto [Hs1, _Hs1_U] = GetHs(U1, param);
-    auto [Hs2, _Hs2_U] = GetHs(U2, param);
-    (void)_Hs1_U;
-    (void)_Hs2_U;
+    auto [Hs1, unused_Hs1_U] = GetHs(U1, param);
+    auto [Hs2, unused_Hs2_U] = GetHs(U2, param);
+    (void)unused_Hs1_U;
+    (void)unused_Hs2_U;
     double Hs1_dRet = GetHs_dRet(U1, param);
     double Hs2_dRet = GetHs_dRet(U2, param);
-    auto [Ret1_at_1, _R1_U] = GetRet(U1, param);
-    auto [Ret2_at_2, _R2_U] = GetRet(U2, param);
-    (void)_R1_U;
-    (void)_R2_U;
+    auto [Ret1_at_1, unused_R1_U] = GetRet(U1, param);
+    auto [Ret2_at_2, unused_R2_U] = GetRet(U2, param);
+    (void)unused_R1_U;
+    (void)unused_R2_U;
     double Hs1_dRet_Ret = Hs1_dRet * Ret1_at_1;
     double Hs2_dRet_Ret = Hs2_dRet * Ret2_at_2;
     double Hs = 0.5 * (Hs1 + Hs2);
@@ -1470,10 +1470,10 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
     }
 
     // Hss is Mach-only, no Ret dep.
-    auto [Hss1, _Hss1] = GetHss(U1, param);
-    auto [Hss2, _Hss2] = GetHss(U2, param);
-    (void)_Hss1;
-    (void)_Hss2;
+    auto [Hss1, unused_Hss1] = GetHss(U1, param);
+    auto [Hss2, unused_Hss2] = GetHss(U2, param);
+    (void)unused_Hss1;
+    (void)unused_Hss2;
     double Hss = 0.5 * (Hss1 + Hss2);
 
     // cfxt symmetric-average derivative
@@ -1482,8 +1482,8 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
     Vector4d Um = 0.5 * (U1 + U2);
     double xm = 0.5 * (x(0) + x(1));
     double cfxtm_dRet_at_Um = GetCfxt_dRet(Um, xm, param);
-    auto [Retm_at_Um, _Retm_U] = GetRet(Um, param);
-    (void)_Retm_U;
+    auto [Retm_at_Um, unused_Retm_U] = GetRet(Um, param);
+    (void)unused_Retm_U;
     double cfxt_dRet_Ret = 0.25 * cfxt1_dRet_at_U1 * Ret1_at_1 +
                            0.5 * cfxtm_dRet_at_Um * Retm_at_Um +
                            0.25 * cfxt2_dRet_at_U2 * Ret2_at_2;
@@ -1520,26 +1520,26 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
         // Rlag = Clag·(cteq - ald·saa)·dx - 2·de·salog + 2·de·(uq·dx -
         // uelog)·Cuq Ret-dep components: Clag(Us), cteq (Hs,Hkc,Us), uq (cf
         // upwind + Ret_avg direct arg). de, saa, salog, uelog are Ret-indep.
-        auto [Us1, _Us1_U] = GetUs(U1, param);
-        auto [Us2, _Us2_U] = GetUs(U2, param);
-        (void)_Us1_U;
-        (void)_Us2_U;
+        auto [Us1, unused_Us1_U] = GetUs(U1, param);
+        auto [Us2, unused_Us2_U] = GetUs(U2, param);
+        (void)unused_Us1_U;
+        (void)unused_Us2_U;
         double Us1_dRet = GetUs_dRet(U1, param);
         double Us2_dRet = GetUs_dRet(U2, param);
         double Us_avg = 0.5 * (Us1 + Us2);
         double Us_dRet_Ret =
             0.5 * (Us1_dRet * Ret1_at_1 + Us2_dRet * Ret2_at_2);
 
-        auto [de1, _de1_U] = GetDe(U1, param);
-        auto [de2, _de2_U] = GetDe(U2, param);
-        (void)_de1_U;
-        (void)_de2_U;
+        auto [de1, unused_de1_U] = GetDe(U1, param);
+        auto [de2, unused_de2_U] = GetDe(U2, param);
+        (void)unused_de1_U;
+        (void)unused_de2_U;
         double de = 0.5 * (de1 + de2);
 
-        auto [cteq1, _cteq1_U] = GetCteq(U1, param);
-        auto [cteq2, _cteq2_U] = GetCteq(U2, param);
-        (void)_cteq1_U;
-        (void)_cteq2_U;
+        auto [cteq1, unused_cteq1_U] = GetCteq(U1, param);
+        auto [cteq2, unused_cteq2_U] = GetCteq(U2, param);
+        (void)unused_cteq1_U;
+        (void)unused_cteq2_U;
         double cteq1_dRet = GetCteq_dRet(U1, param);
         double cteq2_dRet = GetCteq_dRet(U2, param);
         double cteq_v = (1.0 - upw) * cteq1 + upw * cteq2;
@@ -1547,15 +1547,15 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
             (1.0 - upw) * cteq1_dRet * Ret1_at_1 + upw * cteq2_dRet * Ret2_at_2;
 
         // uq inputs: dsa, cf (upwind), Hk (upwind), Ret_avg = 0.5(Ret1+Ret2)
-        auto [Hk1, _Hk1_U] = GetHk(U1, param);
-        auto [Hk2, _Hk2_U] = GetHk(U2, param);
-        (void)_Hk1_U;
-        (void)_Hk2_U;
+        auto [Hk1, unused_Hk1_U] = GetHk(U1, param);
+        auto [Hk2, unused_Hk2_U] = GetHk(U2, param);
+        (void)unused_Hk1_U;
+        (void)unused_Hk2_U;
         double Hk_up = (1.0 - upw) * Hk1 + upw * Hk2;
-        auto [cf1, _cf1_U] = GetCf(U1, param);
-        auto [cf2, _cf2_U] = GetCf(U2, param);
-        (void)_cf1_U;
-        (void)_cf2_U;
+        auto [cf1, unused_cf1_U] = GetCf(U1, param);
+        auto [cf2, unused_cf2_U] = GetCf(U2, param);
+        (void)unused_cf1_U;
+        (void)unused_cf2_U;
         double cf_up = (1.0 - upw) * cf1 + upw * cf2;
         double cf1_dRet = GetCf_dRet(U1, param);
         double cf2_dRet = GetCf_dRet(U2, param);
@@ -1595,7 +1595,7 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
     }
     // Laminar simi: Rlag = sa1 + sa2 — no Ret dep, stays at 0.
 
-    return Vector3d(Rmom_dRet_Ret, Rshape_dRet_Ret, Rlag_dRet_Ret);
+    return {Rmom_dRet_Ret, Rshape_dRet_Ret, Rlag_dRet_Ret};
 }
 
 // ============================================================================
@@ -1638,10 +1638,10 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     if (param.simi) {
         uelog = 1.0;
     } else {
-        auto [uk1, _u1] = GetUk(U1(3), param);
-        (void)_u1;
-        auto [uk2, _u2] = GetUk(U2(3), param);
-        (void)_u2;
+        auto [uk1, unused_u1] = GetUk(U1(3), param);
+        (void)unused_u1;
+        auto [uk2, unused_u2] = GetUk(U2(3), param);
+        (void)unused_u2;
         uelog = std::log(std::max(uk2, 1e-12) / std::max(uk1, 1e-12));
         double uk1_dMa = GetUk_dMa(U1(3), param, d);
         double uk2_dMa = GetUk_dMa(U2(3), param, d);
@@ -1650,18 +1650,18 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     }
 
     // Upwind factor — depends on Hk → Ma. Need upw_dMa.
-    auto [upw, _upw_U] = GetUpw(U1, U2, param);
-    (void)_upw_U;
+    auto [upw, unused_upw_U] = GetUpw(U1, U2, param);
+    (void)unused_upw_U;
     // upw formula: upw = 1 - 0.5·exp(-Hls·Huc). Hls depends on Hk1, Hk2
     // (Ma-dep). Huc depends on Hk2 (Ma-dep). Compute upw_dMa from GetUpw's
     // chain:
     //   Hk1, Hk2 both have Ma dep. Other constants don't.
     double upw_dMa;
     {
-        auto [Hk1, _Hk1_U] = GetHk(U1, param);
-        (void)_Hk1_U;
-        auto [Hk2, _Hk2_U] = GetHk(U2, param);
-        (void)_Hk2_U;
+        auto [Hk1, unused_Hk1_U] = GetHk(U1, param);
+        (void)unused_Hk1_U;
+        auto [Hk2, unused_Hk2_U] = GetHk(U2, param);
+        (void)unused_Hk2_U;
         double Hk1_dMa = GetHk_dMa(U1, param, d);
         double Hk2_dMa = GetHk_dMa(U2, param, d);
         double Hut = 1.0;
@@ -1683,10 +1683,10 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     }
 
     // Hs averaged
-    auto [Hs1, _Hs1_U] = GetHs(U1, param);
-    (void)_Hs1_U;
-    auto [Hs2, _Hs2_U] = GetHs(U2, param);
-    (void)_Hs2_U;
+    auto [Hs1, unused_Hs1_U] = GetHs(U1, param);
+    (void)unused_Hs1_U;
+    auto [Hs2, unused_Hs2_U] = GetHs(U2, param);
+    (void)unused_Hs2_U;
     double Hs1_dMa = GetHs_dMa(U1, param, d);
     double Hs2_dMa = GetHs_dMa(U2, param, d);
     double Hs = 0.5 * (Hs1 + Hs2);
@@ -1700,22 +1700,22 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     }
 
     // H, Hw — no Ma dep (Hw depends on Aux, no Ma)
-    auto [H1, _H1_U] = GetH(U1);
-    (void)_H1_U;
-    auto [H2, _H2_U] = GetH(U2);
-    (void)_H2_U;
+    auto [H1, unused_H1_U] = GetH(U1);
+    (void)unused_H1_U;
+    auto [H2, unused_H2_U] = GetH(U2);
+    (void)unused_H2_U;
     double H = 0.5 * (H1 + H2);
-    auto [Hw1, _Hw1_U] = GetHw(U1, Aux(0));
-    (void)_Hw1_U;
-    auto [Hw2, _Hw2_U] = GetHw(U2, Aux(1));
-    (void)_Hw2_U;
+    auto [Hw1, unused_Hw1_U] = GetHw(U1, Aux(0));
+    (void)unused_Hw1_U;
+    auto [Hw2, unused_Hw2_U] = GetHw(U2, Aux(1));
+    (void)unused_Hw2_U;
     double Hw = 0.5 * (Hw1 + Hw2);
 
     // Ms = upwinded M2 (0.5 symmetric average per the formula in GetMach2 use)
-    auto [Ms1, _Ms1_U] = GetMach2(U1, param);
-    (void)_Ms1_U;
-    auto [Ms2, _Ms2_U] = GetMach2(U2, param);
-    (void)_Ms2_U;
+    auto [Ms1, unused_Ms1_U] = GetMach2(U1, param);
+    (void)unused_Ms1_U;
+    auto [Ms2, unused_Ms2_U] = GetMach2(U2, param);
+    (void)unused_Ms2_U;
     double Ms1_dMa = GetMach2_dMa(U1, param, d);
     double Ms2_dMa = GetMach2_dMa(U2, param, d);
     double Ms = 0.5 * (Ms1 + Ms2);
@@ -1730,30 +1730,30 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     double cfxt_dMa = 0.25 * cfxt1_dMa + 0.5 * cfxtm_dMa + 0.25 * cfxt2_dMa;
 
     // cfxtu, cDixt — upwinded (upw has Ma dep)
-    auto [cfxt1_v, _cfxt1_U, _cfxt1_x] = GetCfxt(U1, x(0), param);
-    auto [cfxt2_v, _cfxt2_U, _cfxt2_x] = GetCfxt(U2, x(1), param);
-    (void)_cfxt1_U;
-    (void)_cfxt1_x;
-    (void)_cfxt2_U;
-    (void)_cfxt2_x;
+    auto [cfxt1_v, unused_cfxt1_U, unused_cfxt1_x] = GetCfxt(U1, x(0), param);
+    auto [cfxt2_v, unused_cfxt2_U, unused_cfxt2_x] = GetCfxt(U2, x(1), param);
+    (void)unused_cfxt1_U;
+    (void)unused_cfxt1_x;
+    (void)unused_cfxt2_U;
+    (void)unused_cfxt2_x;
     double cfxtu_dMa = -upw_dMa * cfxt1_v + upw_dMa * cfxt2_v +
                        (1.0 - upw) * cfxt1_dMa + upw * cfxt2_dMa;
-    auto [cDixt1_v, _cD1_U, _cD1_x] = GetCDixt(U1, x(0), param);
-    auto [cDixt2_v, _cD2_U, _cD2_x] = GetCDixt(U2, x(1), param);
-    (void)_cD1_U;
-    (void)_cD1_x;
-    (void)_cD2_U;
-    (void)_cD2_x;
+    auto [cDixt1_v, unused_cD1_U, unused_cD1_x] = GetCDixt(U1, x(0), param);
+    auto [cDixt2_v, unused_cD2_U, unused_cD2_x] = GetCDixt(U2, x(1), param);
+    (void)unused_cD1_U;
+    (void)unused_cD1_x;
+    (void)unused_cD2_U;
+    (void)unused_cD2_x;
     double cDixt1_dMa = GetCDixt_dMa(U1, x(0), param, d);
     double cDixt2_dMa = GetCDixt_dMa(U2, x(1), param, d);
     double cDixt_dMa = -upw_dMa * cDixt1_v + upw_dMa * cDixt2_v +
                        (1.0 - upw) * cDixt1_dMa + upw * cDixt2_dMa;
 
     // Hss averaged
-    auto [Hss1, _Hss1_U] = GetHss(U1, param);
-    (void)_Hss1_U;
-    auto [Hss2, _Hss2_U] = GetHss(U2, param);
-    (void)_Hss2_U;
+    auto [Hss1, unused_Hss1_U] = GetHss(U1, param);
+    (void)unused_Hss1_U;
+    auto [Hss2, unused_Hss2_U] = GetHss(U2, param);
+    (void)unused_Hss2_U;
     double Hss = 0.5 * (Hss1 + Hss2);
     double Hss_dMa =
         0.5 * (GetHss_dMa(U1, param, d) + GetHss_dMa(U2, param, d));
@@ -1780,28 +1780,28 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         // Rlag = Clag·(cteq - ald·saa)·dx - 2·de·salog + 2·de·(uq·dx -
         // uelog)·Cuq de uses Hk (Ma-dep). cteq, Us, cf all Ma-dep. uq via cf,
         // Hk, Ret.
-        auto [Us1, _u1U] = GetUs(U1, param);
-        (void)_u1U;
-        auto [Us2, _u2U] = GetUs(U2, param);
-        (void)_u2U;
+        auto [Us1, unused_u1U] = GetUs(U1, param);
+        (void)unused_u1U;
+        auto [Us2, unused_u2U] = GetUs(U2, param);
+        (void)unused_u2U;
         double Us1_dMa = GetUs_dMa(U1, param, d);
         double Us2_dMa = GetUs_dMa(U2, param, d);
         double Us_avg = 0.5 * (Us1 + Us2);
         double Us_dMa = 0.5 * (Us1_dMa + Us2_dMa);
 
-        auto [de1, _de1U] = GetDe(U1, param);
-        (void)_de1U;
-        auto [de2, _de2U] = GetDe(U2, param);
-        (void)_de2U;
+        auto [de1, unused_de1U] = GetDe(U1, param);
+        (void)unused_de1U;
+        auto [de2, unused_de2U] = GetDe(U2, param);
+        (void)unused_de2U;
         double de = 0.5 * (de1 + de2);
         // Correct ∂de/∂Ma chain. From GetDe (bl_properties.cpp:778-802):
         //   aa = 3.15 + 1.72/(Hk-1)  →  aa_dMa = -1.72/(Hk-1)² · Hk_dMa
         //   de = th·aa + ds          [capped at 12·th]
         // At fixed U: ∂de/∂Ma = th · aa_dMa  (if not capped).
-        auto [Hk1, _Hk1U] = GetHk(U1, param);
-        (void)_Hk1U;
-        auto [Hk2, _Hk2U] = GetHk(U2, param);
-        (void)_Hk2U;
+        auto [Hk1, unused_Hk1U] = GetHk(U1, param);
+        (void)unused_Hk1U;
+        auto [Hk2, unused_Hk2U] = GetHk(U2, param);
+        (void)unused_Hk2U;
         double Hk1_dMa = GetHk_dMa(U1, param, d);
         double Hk2_dMa = GetHk_dMa(U2, param, d);
         double th1 = std::max(U1(0), 1e-12);
@@ -1819,25 +1819,25 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         double de_dMa = 0.5 * (de1_dMa + de2_dMa);
 
         // cteq upwinded with upw
-        auto [cteq1, _ct1U] = GetCteq(U1, param);
-        (void)_ct1U;
-        auto [cteq2, _ct2U] = GetCteq(U2, param);
-        (void)_ct2U;
+        auto [cteq1, unused_ct1U] = GetCteq(U1, param);
+        (void)unused_ct1U;
+        auto [cteq2, unused_ct2U] = GetCteq(U2, param);
+        (void)unused_ct2U;
         // GetCteq_dMa: need to derive. For brevity, chain through Hs, Us, Ret,
         // Hkc — all already available via *_dMa helpers. Inline:
         auto compute_cteq_dMa = [&](const Vector4d& Uin, const Param& p_in) {
             double CC = 0.5 / (p_in.GA * p_in.GA * p_in.GB);
             double C = p_in.GC;
-            auto [Hk, _h] = GetHk(Uin, p_in);
-            (void)_h;
-            auto [Hs, _hs] = GetHs(Uin, p_in);
-            (void)_hs;
-            auto [H, _H] = GetH(Uin);
-            (void)_H;
-            auto [Ret, _r] = GetRet(Uin, p_in);
-            (void)_r;
-            auto [Us, _us] = GetUs(Uin, p_in);
-            (void)_us;
+            auto [Hk, unused_h] = GetHk(Uin, p_in);
+            (void)unused_h;
+            auto [Hs, unused_hs] = GetHs(Uin, p_in);
+            (void)unused_hs;
+            auto [H, unused_H] = GetH(Uin);
+            (void)unused_H;
+            auto [Ret, unused_r] = GetRet(Uin, p_in);
+            (void)unused_r;
+            auto [Us, unused_us] = GetUs(Uin, p_in);
+            (void)unused_us;
             double Hk_dM = GetHk_dMa(Uin, p_in, d);
             double Hs_dM = GetHs_dMa(Uin, p_in, d);
             double Us_dM = GetUs_dMa(Uin, p_in, d);
@@ -1882,10 +1882,10 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
                           (1.0 - upw) * cteq1_dMa + upw * cteq2_dMa;
 
         // cf upwinded, Hk upwinded
-        auto [cf1, _cf1U] = GetCf(U1, param);
-        (void)_cf1U;
-        auto [cf2, _cf2U] = GetCf(U2, param);
-        (void)_cf2U;
+        auto [cf1, unused_cf1U] = GetCf(U1, param);
+        (void)unused_cf1U;
+        auto [cf2, unused_cf2U] = GetCf(U2, param);
+        (void)unused_cf2U;
         double cf1_dMa = GetCf_dMa(U1, param, d);
         double cf2_dMa = GetCf_dMa(U2, param, d);
         double cf_up = (1.0 - upw) * cf1 + upw * cf2;
@@ -1894,10 +1894,10 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         double Hk_up = (1.0 - upw) * Hk1 + upw * Hk2;
         double Hk_up_dMa = -upw_dMa * Hk1 + upw_dMa * Hk2 +
                            (1.0 - upw) * Hk1_dMa + upw * Hk2_dMa;
-        auto [Ret1_v, _R1] = GetRet(U1, param);
-        (void)_R1;
-        auto [Ret2_v, _R2] = GetRet(U2, param);
-        (void)_R2;
+        auto [Ret1_v, unused_R1] = GetRet(U1, param);
+        (void)unused_R1;
+        auto [Ret2_v, unused_R2] = GetRet(U2, param);
+        (void)unused_R2;
         double Ret_avg = 0.5 * (Ret1_v + Ret2_v);
         double Ret_avg_dMa =
             0.5 * (GetRet_dMa(U1, param, d) + GetRet_dMa(U2, param, d));
@@ -1959,10 +1959,9 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         // T3 = 2·de·(uq·dx - uelog)·Cuq
         double T1_dMa = Clag_dMa * (cteq_v - ald * saa) * dx +
                         Clag * (cteq_dMa - ald * saa_dMa) * dx;
-        double T2_dMa = -2.0 * de_dMa * salog;
         // need salog value...we have it from `std::log(sa2_safe/sa1_safe)`
         double salog_v = std::log(sa2_safe / sa1_safe);
-        T2_dMa = -2.0 * de_dMa * salog_v;
+        double T2_dMa = -2.0 * de_dMa * salog_v;
         // uq value (needed for T3)
         double ut = 0.5 * cf_up - (Hkc_uq / AHk) * (Hkc_uq / AHk);
         double uq_v = ut / (beta * ds_safe);
@@ -1984,7 +1983,7 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     // Laminar simi: Rlag = sa1 + sa2, no Ma dep.
 
     // Pre-multiply by Ma (matches lin_Ret · Ret convention).
-    return Vector3d(Rmom_dMa, Rshape_dMa, Rlag_dMa) * Ma;
+    return Vector3d{Rmom_dMa, Rshape_dMa, Rlag_dMa} * Ma;
 }
 
 }  // namespace detail
@@ -2675,10 +2674,10 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         p_lam.turb = false;
         double damp1_dRet = GetDamp_dRet(U1, p_lam);
         double dampt_dRet = GetDamp_dRet(Ut, p_lam);
-        auto [Ret1_v, _Ret1_U] = GetRet(U1, p_lam);
-        (void)_Ret1_U;
-        auto [Rett_v, _Rett_U] = GetRet(Ut, p_lam);
-        (void)_Rett_U;
+        auto [Ret1_v, unused_Ret1_U] = GetRet(U1, p_lam);
+        (void)unused_Ret1_U;
+        auto [Rett_v, unused_Rett_U] = GetRet(Ut, p_lam);
+        (void)unused_Rett_U;
         double Rxt_Re_Re =
             -0.5 * (xt - x1) * (damp1_dRet * Ret1_v + dampt_dRet * Rett_v);
         double xt_dRe_Re = -Rxt_Re_Re / Rxt_xt;
@@ -2701,8 +2700,8 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         Param p_nowake = param_base;
         p_nowake.wake = false;
         p_nowake.turb = true;
-        auto [Hk_at_Ut, _Hk_U] = GetHk(Ut, p_nowake);
-        (void)_Hk_U;
+        auto [Hk_at_Ut, unused_Hk_U] = GetHk(Ut, p_nowake);
+        (void)unused_Hk_U;
         double Hk_lim = Hk_at_Ut;
         if (Hk_lim < 1.05) Hk_lim = 1.05;
         double c =

@@ -1,6 +1,8 @@
 # Build directories
 build/
+build-*/
 cmake-build-*/
+Testing/
 
 # IDE/editor files
 .cache/
