@@ -48,7 +48,7 @@ __pycache__/
 # Local debug scratch (numpy dumps, binary state captures, validation scripts)
 *.npy
 *.bin
-cppfoil/tests/validate_*.py
-cppfoil/tests/extract_vjp_chain_reference.py
-cppfoil/tests/extract_wake_geom_reference.py
-cppfoil/tests/isolate_ue_partials.py
+scirocco/tests/validate_*.py
+scirocco/tests/extract_vjp_chain_reference.py
+scirocco/tests/extract_wake_geom_reference.py
+scirocco/tests/isolate_ue_partials.py
