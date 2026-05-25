@@ -18,8 +18,6 @@ option(SCIROCCO_BUILD_PROBES
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
-option(SCIROCCO_COVERAGE "Instrument library + tests for llvm-cov coverage" OFF)
-
 # Find Eigen3 (3.4+ or 5.x)
 find_package(Eigen3 REQUIRED)
 
@@ -57,17 +55,20 @@ target_compile_options(scirocco PRIVATE
     $<$<AND:$<CONFIG:Release>,$<BOOL:${SCIROCCO_NATIVE_ARCH}>>:-march=native>
 )
 
-if(SCIROCCO_COVERAGE)
-    target_compile_options(scirocco PUBLIC
-        -fprofile-instr-generate -fcoverage-mapping)
-    target_link_options(scirocco PUBLIC
-        -fprofile-instr-generate -fcoverage-mapping)
-endif()
-
 # HDF5 output writer (optional separate library)
 if(SCIROCCO_HDF5_OUTPUT)
-    find_package(hdf5 CONFIG REQUIRED)
-    message(STATUS "Building scirocco_hdf5 writer (HDF5 ${hdf5_VERSION})")
+    find_package(hdf5 CONFIG QUIET)
+    if(NOT hdf5_FOUND)
+        find_package(HDF5 COMPONENTS CXX REQUIRED)
+        if(NOT TARGET hdf5_cpp-shared)
+            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+            set_target_properties(hdf5_cpp-shared PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+            )
+        endif()
+    endif()
+    message(STATUS "Building scirocco_hdf5 writer")
 
     add_library(scirocco_hdf5 src/hdf5_writer.cpp)
     target_include_directories(scirocco_hdf5 PUBLIC
@@ -92,11 +93,22 @@ if(SCIROCCO_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
     find_package(hdf5 CONFIG QUIET)
+    if(NOT hdf5_FOUND)
+        find_package(HDF5 COMPONENTS CXX QUIET)
+        if(HDF5_FOUND AND NOT TARGET hdf5_cpp-shared)
+            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+            set_target_properties(hdf5_cpp-shared PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+            )
+            set(hdf5_FOUND TRUE)
+        endif()
+    endif()
     if(GTest_FOUND)
         include(GoogleTest)
     endif()
     if(GTest_FOUND AND hdf5_FOUND)
-        message(STATUS "Found HDF5: ${hdf5_VERSION}")
+        message(STATUS "Found HDF5")
 
         # --- Default suite: primal + end-to-end adjoint coverage ---
 
@@ -269,6 +281,39 @@ if(SCIROCCO_BUILD_EXAMPLES)
 
     add_executable(viscous_example examples/viscous_example.cpp)
     target_link_libraries(viscous_example scirocco)
+endif()
+
+# Philote-Cpp discipline interface
+option(SCIROCCO_BUILD_PHILOTE "Build Philote-Cpp discipline interface" ON)
+
+if(SCIROCCO_BUILD_PHILOTE)
+    find_package(Protobuf CONFIG QUIET)
+    if(NOT Protobuf_FOUND)
+        find_package(Protobuf REQUIRED)
+        if(NOT TARGET protobuf::libprotobuf AND TARGET protobuf::protobuf)
+            add_library(protobuf::libprotobuf ALIAS protobuf::protobuf)
+        elseif(NOT TARGET protobuf::libprotobuf)
+            add_library(protobuf::libprotobuf INTERFACE IMPORTED)
+            set_target_properties(protobuf::libprotobuf PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${Protobuf_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${Protobuf_LIBRARIES}"
+            )
+        endif()
+    endif()
+    find_package(gRPC CONFIG QUIET)
+    if(NOT gRPC_FOUND)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(GRPC REQUIRED grpc++)
+        if(NOT TARGET gRPC::grpc++)
+            add_library(gRPC::grpc++ INTERFACE IMPORTED)
+            set_target_properties(gRPC::grpc++ PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${GRPC_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${GRPC_LINK_LIBRARIES}"
+            )
+        endif()
+    endif()
+    find_package(PhiloteCpp REQUIRED)
+    add_subdirectory(src/philote)
 endif()
 
 # Installation

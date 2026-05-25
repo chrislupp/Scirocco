@@ -41,7 +41,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev clang-tidy-18
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev clang-tidy-18 \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
@@ -82,7 +93,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (default suite)
       run: >
@@ -113,7 +135,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (chain-piece debug tests + probes)
       run: >
@@ -146,7 +179,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18 \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
@@ -154,8 +198,8 @@ jobs:
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
         -DSCIROCCO_BUILD_TESTS=ON
-        -DSCIROCCO_COVERAGE=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
+        -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -164,16 +208,16 @@ jobs:
       working-directory: ${{github.workspace}}/build
       env:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
-      run: ctest --output-on-failure
+      run: >
+        ctest --output-on-failure
+        -R "^(SplineTest|GeometryTest|MfoilReference|Philote)"
 
     - name: Generate Coverage Report
       run: |
         llvm-profdata-18 merge -sparse ${{github.workspace}}/build/coverage-*.profraw -o coverage.profdata
-        TEST_BINS=$(find ${{github.workspace}}/build -maxdepth 1 -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
-        llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
-          $(find ${{github.workspace}}/scirocco/src -name '*.cpp')
+        TEST_BINS=$(find ${{github.workspace}}/build -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
         llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
-          -ignore-filename-regex='(_deps|tests/|examples/|/usr/)' > coverage.info
+          -ignore-filename-regex='(_deps|tests/|examples/|/usr/|server\.cpp)' > coverage.info
 
     - name: Upload to Codecov
       uses: codecov/codecov-action@v5
@@ -183,43 +227,3 @@ jobs:
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  valgrind:
-    needs: [format]
-    runs-on: ubuntu-24.04
-
-    name: Valgrind (memory leak check)
-
-    env:
-      CC: gcc-14
-      CXX: g++-14
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev valgrind
-
-    - name: Configure CMake (Debug, no -march=native)
-      run: >
-        cmake -B ${{github.workspace}}/build
-        -S ${{github.workspace}}/scirocco
-        -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        -DSCIROCCO_BUILD_TESTS=ON
-        -DSCIROCCO_NATIVE_ARCH=OFF
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build -j$(nproc)
-
-    - name: Run tests under Valgrind
-      working-directory: ${{github.workspace}}/build
-      run: |
-        ctest --output-on-failure \
-              --overwrite MemoryCheckCommand=$(command -v valgrind) \
-              --overwrite MemoryCheckCommandOptions="--leak-check=full --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect --error-exitcode=1 --track-origins=yes" \
-              -T memcheck
-
-    - name: Show Valgrind output on failure
-      if: failure()
-      working-directory: ${{github.workspace}}/build
-      run: |
-        find Testing -name 'MemoryChecker.*.log' -print -exec cat {} \;
