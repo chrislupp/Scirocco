@@ -18,8 +18,6 @@ option(SCIROCCO_BUILD_PROBES
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
-option(SCIROCCO_COVERAGE "Instrument library + tests for llvm-cov coverage" OFF)
-
 # Find Eigen3 (3.4+ or 5.x)
 find_package(Eigen3 REQUIRED)
 
@@ -56,13 +54,6 @@ target_compile_options(scirocco PRIVATE
     $<$<CONFIG:Release>:-O3>
     $<$<AND:$<CONFIG:Release>,$<BOOL:${SCIROCCO_NATIVE_ARCH}>>:-march=native>
 )
-
-if(SCIROCCO_COVERAGE)
-    target_compile_options(scirocco PUBLIC
-        -fprofile-instr-generate -fcoverage-mapping)
-    target_link_options(scirocco PUBLIC
-        -fprofile-instr-generate -fcoverage-mapping)
-endif()
 
 # HDF5 output writer (optional separate library)
 if(SCIROCCO_HDF5_OUTPUT)

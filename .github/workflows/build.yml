@@ -198,8 +198,8 @@ jobs:
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
         -DSCIROCCO_BUILD_TESTS=ON
-        -DSCIROCCO_COVERAGE=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
+        -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -214,8 +214,6 @@ jobs:
       run: |
         llvm-profdata-18 merge -sparse ${{github.workspace}}/build/coverage-*.profraw -o coverage.profdata
         TEST_BINS=$(find ${{github.workspace}}/build -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
-        llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
-          $(find ${{github.workspace}}/scirocco/src -name '*.cpp')
         llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
           -ignore-filename-regex='(_deps|tests/|examples/|/usr/|server\.cpp)' > coverage.info
 
