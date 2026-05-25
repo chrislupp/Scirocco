@@ -503,6 +503,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     out.V_xi.setZero();
     out.V_xfoil = MatrixXd::Zero(2, twoN);
 
+    bool has_gam_chain = (dgam_dx.cols() == twoN);
+
     // Helper lambda: write a 2-vector contribution into V_xfoil columns
     // [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3
     // = x2=Xj[k1]).
@@ -527,7 +529,9 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
         add_Xj_block(G(j) * d.a_Xj + G(j + 1) * d.b_Xj, j, j + 1);
         // Gamma chain: V_G contribution = a * dgam_dx.row(j) + b *
         // dgam_dx.row(j+1)
-        out.V_xfoil += d.a * dgam_dx.row(j) + d.b * dgam_dx.row(j + 1);
+        if (has_gam_chain) {
+            out.V_xfoil += d.a * dgam_dx.row(j) + d.b * dgam_dx.row(j + 1);
+        }
     }
 
     // ---- TE info ----
@@ -550,7 +554,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     // global TE info — handled below as a separate global-TE contribution.
     add_Xj_block(sigma_te * ds.val_Xj, N - 1, 0);
     // Gamma chain: v_src * 0.5*tcp * (dgam[N-1] - dgam[0])
-    out.V_xfoil += v_src * (0.5 * tcp * (dgam_dx.row(N - 1) - dgam_dx.row(0)));
+    if (has_gam_chain) {
+        out.V_xfoil +=
+            v_src * (0.5 * tcp * (dgam_dx.row(N - 1) - dgam_dx.row(0)));
+    }
 
     // ---- TE vortex panel ----
     LinVortexVelocityDeriv dv = PanelLinVortexVelocityDeriv(XjTE, xi);
@@ -561,7 +568,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     // Direct geom on Xj of this panel (G held fixed)
     add_Xj_block(tdp_factor * (dv.a_Xj + dv.b_Xj), N - 1, 0);
     // Gamma chain: f_vor * 0.5*tdp * (dgam[0] - dgam[N-1])
-    out.V_xfoil += f_vor * (0.5 * tdp * (dgam_dx.row(0) - dgam_dx.row(N - 1)));
+    if (has_gam_chain) {
+        out.V_xfoil +=
+            f_vor * (0.5 * tdp * (dgam_dx.row(0) - dgam_dx.row(N - 1)));
+    }
 
     // ---- Global TE info dependence on foil.x[{0,1,N-2,N-1}] ----
     // v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈
