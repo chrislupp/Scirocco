@@ -41,7 +41,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev clang-tidy-18
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev clang-tidy-18 \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
@@ -82,7 +93,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (default suite)
       run: >
@@ -113,7 +135,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (chain-piece debug tests + probes)
       run: >
@@ -146,7 +179,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18 \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
@@ -169,7 +213,7 @@ jobs:
     - name: Generate Coverage Report
       run: |
         llvm-profdata-18 merge -sparse ${{github.workspace}}/build/coverage-*.profraw -o coverage.profdata
-        TEST_BINS=$(find ${{github.workspace}}/build -maxdepth 1 -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
+        TEST_BINS=$(find ${{github.workspace}}/build -type f -executable -name 'scirocco_*' | sed '1!s/^/-object /')
         llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
           $(find ${{github.workspace}}/scirocco/src -name '*.cpp')
         llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
@@ -197,7 +241,18 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev valgrind
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev valgrind \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+
+    - name: Build and Install Philote-Cpp
+      run: |
+        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j$(nproc)
+        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (Debug, no -march=native)
       run: >
