@@ -275,15 +275,18 @@ endif()
 option(SCIROCCO_BUILD_PHILOTE "Build Philote-Cpp discipline interface" ON)
 
 if(SCIROCCO_BUILD_PHILOTE)
-    find_package(Protobuf REQUIRED)
-    if(NOT TARGET protobuf::libprotobuf AND TARGET protobuf::protobuf)
-        add_library(protobuf::libprotobuf ALIAS protobuf::protobuf)
-    elseif(NOT TARGET protobuf::libprotobuf)
-        add_library(protobuf::libprotobuf INTERFACE IMPORTED)
-        set_target_properties(protobuf::libprotobuf PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${Protobuf_INCLUDE_DIRS}"
-            INTERFACE_LINK_LIBRARIES "${Protobuf_LIBRARIES}"
-        )
+    find_package(Protobuf CONFIG QUIET)
+    if(NOT Protobuf_FOUND)
+        find_package(Protobuf REQUIRED)
+        if(NOT TARGET protobuf::libprotobuf AND TARGET protobuf::protobuf)
+            add_library(protobuf::libprotobuf ALIAS protobuf::protobuf)
+        elseif(NOT TARGET protobuf::libprotobuf)
+            add_library(protobuf::libprotobuf INTERFACE IMPORTED)
+            set_target_properties(protobuf::libprotobuf PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${Protobuf_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${Protobuf_LIBRARIES}"
+            )
+        endif()
     endif()
     find_package(gRPC CONFIG QUIET)
     if(NOT gRPC_FOUND)

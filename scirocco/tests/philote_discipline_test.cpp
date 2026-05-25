@@ -108,6 +108,24 @@ google::protobuf::Struct BuildNacaOptions(const std::string& naca, int npanel) {
     return opts;
 }
 
+google::protobuf::Struct BuildCoordOptions(const scirocco::MatrixXd& coords,
+                                           int npanel) {
+    google::protobuf::Struct opts;
+    (*opts.mutable_fields())["npanel"].set_number_value(npanel);
+
+    auto& coord_struct =
+        *(*opts.mutable_fields())["coordinates"].mutable_struct_value();
+    auto& x_list = *(*coord_struct.mutable_fields())["x"].mutable_list_value();
+    auto& z_list = *(*coord_struct.mutable_fields())["z"].mutable_list_value();
+
+    for (int i = 0; i < coords.cols(); ++i) {
+        x_list.add_values()->set_number_value(coords(0, i));
+        z_list.add_values()->set_number_value(coords(1, i));
+    }
+
+    return opts;
+}
+
 void RunLifecycle(scirocco::SiroccoDiscipline& disc,
                   const google::protobuf::Struct& opts,
                   philote::Variables& inputs, philote::Variables& outputs,
@@ -192,6 +210,60 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
     EXPECT_NEAR(outputs.at("cl")(0), ref.GetCl(), 1e-12);
     EXPECT_NEAR(outputs.at("cd")(0), ref.GetCd(), 1e-12);
     EXPECT_NEAR(outputs.at("cm")(0), ref.GetCm(), 1e-12);
+}
+
+// ===========================================================================
+// Coordinate-input options path
+// ===========================================================================
+
+TEST(PhilotePrimalTest, CoordinateOptionsMatchNaca) {
+    scirocco::Scirocco naca_src("0012", 99);
+    auto coords = naca_src.GetFoilCoords();
+
+    scirocco::Scirocco ref(coords, 99);
+    ref.SetOper(5.0);
+    ref.Solve();
+
+    scirocco::SiroccoDiscipline disc;
+    philote::Variables inputs, outputs;
+    philote::Partials partials;
+    RunLifecycle(disc, BuildCoordOptions(coords, 99), inputs, outputs,
+                 partials);
+
+    SetCoordinateInputs(inputs, ref.GetFoilCoords(), 5.0, 0.0, 0.0);
+    disc.Compute(inputs, outputs);
+
+    EXPECT_NEAR(outputs.at("cl")(0), ref.GetCl(), 1e-12);
+    EXPECT_NEAR(outputs.at("cd")(0), ref.GetCd(), 1e-12);
+    EXPECT_NEAR(outputs.at("cm")(0), ref.GetCm(), 1e-12);
+}
+
+// ===========================================================================
+// SetOptions error handling
+// ===========================================================================
+
+TEST(PhiloteOptionsTest, BothNacaAndCoordinatesThrows) {
+    scirocco::SiroccoDiscipline disc;
+    disc.Initialize();
+
+    google::protobuf::Struct opts;
+    (*opts.mutable_fields())["naca"].set_string_value("0012");
+    auto& coord_struct =
+        *(*opts.mutable_fields())["coordinates"].mutable_struct_value();
+    (*coord_struct.mutable_fields())["x"].mutable_list_value();
+    (*coord_struct.mutable_fields())["z"].mutable_list_value();
+
+    EXPECT_THROW(disc.SetOptions(opts), std::invalid_argument);
+}
+
+TEST(PhiloteOptionsTest, NeitherNacaNorCoordinatesThrows) {
+    scirocco::SiroccoDiscipline disc;
+    disc.Initialize();
+
+    google::protobuf::Struct opts;
+    (*opts.mutable_fields())["npanel"].set_number_value(99);
+
+    EXPECT_THROW(disc.SetOptions(opts), std::invalid_argument);
 }
 
 // ===========================================================================

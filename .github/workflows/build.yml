@@ -217,7 +217,7 @@ jobs:
         llvm-cov-18 report -instr-profile=coverage.profdata $TEST_BINS \
           $(find ${{github.workspace}}/scirocco/src -name '*.cpp')
         llvm-cov-18 export -format=lcov -instr-profile=coverage.profdata $TEST_BINS \
-          -ignore-filename-regex='(_deps|tests/|examples/|/usr/)' > coverage.info
+          -ignore-filename-regex='(_deps|tests/|examples/|/usr/|server\.cpp)' > coverage.info
 
     - name: Upload to Codecov
       uses: codecov/codecov-action@v5
