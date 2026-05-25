@@ -57,8 +57,18 @@ target_compile_options(scirocco PRIVATE
 
 # HDF5 output writer (optional separate library)
 if(SCIROCCO_HDF5_OUTPUT)
-    find_package(hdf5 CONFIG REQUIRED)
-    message(STATUS "Building scirocco_hdf5 writer (HDF5 ${hdf5_VERSION})")
+    find_package(hdf5 CONFIG QUIET)
+    if(NOT hdf5_FOUND)
+        find_package(HDF5 COMPONENTS CXX REQUIRED)
+        if(NOT TARGET hdf5_cpp-shared)
+            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+            set_target_properties(hdf5_cpp-shared PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+            )
+        endif()
+    endif()
+    message(STATUS "Building scirocco_hdf5 writer")
 
     add_library(scirocco_hdf5 src/hdf5_writer.cpp)
     target_include_directories(scirocco_hdf5 PUBLIC
@@ -83,11 +93,22 @@ if(SCIROCCO_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
     find_package(hdf5 CONFIG QUIET)
+    if(NOT hdf5_FOUND)
+        find_package(HDF5 COMPONENTS CXX QUIET)
+        if(HDF5_FOUND AND NOT TARGET hdf5_cpp-shared)
+            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+            set_target_properties(hdf5_cpp-shared PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+            )
+            set(hdf5_FOUND TRUE)
+        endif()
+    endif()
     if(GTest_FOUND)
         include(GoogleTest)
     endif()
     if(GTest_FOUND AND hdf5_FOUND)
-        message(STATUS "Found HDF5: ${hdf5_VERSION}")
+        message(STATUS "Found HDF5")
 
         # --- Default suite: primal + end-to-end adjoint coverage ---
 
