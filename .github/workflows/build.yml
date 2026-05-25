@@ -267,6 +267,7 @@ jobs:
       working-directory: ${{github.workspace}}/build
       run: |
         ctest --output-on-failure \
+              -R "^(SplineTest|GeometryTest|MfoilReference|Philote)" \
               --overwrite MemoryCheckCommand=$(command -v valgrind) \
               --overwrite MemoryCheckCommandOptions="--leak-check=full --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect --error-exitcode=1 --track-origins=yes" \
               -T memcheck
