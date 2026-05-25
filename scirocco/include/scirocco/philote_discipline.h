@@ -32,12 +32,12 @@
 */
 #pragma once
 
-#include "scirocco/scirocco.h"
+#include <explicit.h>
 
 #include <memory>
 #include <string>
 
-#include <explicit.h>
+#include "scirocco/scirocco.h"
 
 namespace scirocco {
 
@@ -75,7 +75,7 @@ namespace scirocco {
  * - `cm` ({1}): Moment coefficient
  */
 class SiroccoDiscipline : public philote::ExplicitDiscipline {
-public:
+   public:
     SiroccoDiscipline() = default;
     ~SiroccoDiscipline() noexcept = default;
 
@@ -89,7 +89,7 @@ public:
     void ComputePartials(const philote::Variables& inputs,
                          philote::Partials& partials) override;
 
-private:
+   private:
     std::unique_ptr<Scirocco> solver_;
     int npanel_ = 199;
     int nnodes_ = 0;

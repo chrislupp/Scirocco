@@ -33,11 +33,10 @@
 
 #include "scirocco/philote_discipline.h"
 
+#include <Eigen/Core>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <Eigen/Core>
 
 namespace scirocco {
 
@@ -47,15 +46,15 @@ void SiroccoDiscipline::Initialize() {
     AddOption("npanel", "int");
 }
 
-void SiroccoDiscipline::SetOptions(
-    const google::protobuf::Struct& options) {
+void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
     const auto& fields = options.fields();
 
     if (fields.count("npanel")) {
         npanel_ = static_cast<int>(fields.at("npanel").number_value());
     }
 
-    bool has_naca = fields.count("naca") && fields.at("naca").has_string_value();
+    bool has_naca =
+        fields.count("naca") && fields.at("naca").has_string_value();
     bool has_coords = fields.count("coordinates") &&
                       fields.at("coordinates").has_struct_value();
 

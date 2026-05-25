@@ -31,13 +31,13 @@
     Scirocco Philote Server
 */
 
-#include "scirocco/philote_discipline.h"
+#include <grpcpp/grpcpp.h>
 
 #include <iostream>
 #include <memory>
 #include <string>
 
-#include <grpcpp/grpcpp.h>
+#include "scirocco/philote_discipline.h"
 
 int main(int argc, char* argv[]) {
     std::string address = "localhost:50051";

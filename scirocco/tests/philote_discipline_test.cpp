@@ -36,19 +36,20 @@
 */
 
 #include "scirocco/philote_discipline.h"
-#include "scirocco/scirocco.h"
 
+#include <H5Cpp.h>
+#include <google/protobuf/struct.pb.h>
+#include <gtest/gtest.h>
+#include <variable.h>
+
+#include <Eigen/Core>
 #include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <H5Cpp.h>
-#include <Eigen/Core>
-#include <gtest/gtest.h>
-#include <google/protobuf/struct.pb.h>
-#include <variable.h>
+#include "scirocco/scirocco.h"
 
 using namespace Eigen;
 
@@ -118,8 +119,7 @@ void RunLifecycle(scirocco::SiroccoDiscipline& disc,
 
     for (const auto& meta : disc.var_meta()) {
         std::vector<size_t> shape;
-        for (auto dim : meta.shape())
-            shape.push_back(static_cast<size_t>(dim));
+        for (auto dim : meta.shape()) shape.push_back(static_cast<size_t>(dim));
 
         if (meta.type() == philote::kInput)
             inputs[meta.name()] = philote::Variable(philote::kInput, shape);
@@ -129,8 +129,7 @@ void RunLifecycle(scirocco::SiroccoDiscipline& disc,
 
     for (const auto& meta : disc.partials_meta()) {
         std::vector<size_t> shape;
-        for (auto dim : meta.shape())
-            shape.push_back(static_cast<size_t>(dim));
+        for (auto dim : meta.shape()) shape.push_back(static_cast<size_t>(dim));
 
         partials[std::make_pair(meta.name(), meta.subname())] =
             philote::Variable(philote::kPartial, shape);
@@ -138,8 +137,8 @@ void RunLifecycle(scirocco::SiroccoDiscipline& disc,
 }
 
 void SetCoordinateInputs(philote::Variables& inputs,
-                          const scirocco::MatrixXd& foil_x, double alpha,
-                          double Re, double Ma) {
+                         const scirocco::MatrixXd& foil_x, double alpha,
+                         double Re, double Ma) {
     int nnodes = static_cast<int>(foil_x.cols());
     auto& x_var = inputs.at("x");
     for (int i = 0; i < nnodes; ++i) {
@@ -161,7 +160,8 @@ TEST(PhilotePrimalTest, InviscidMatchesStandalone) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 199), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 199), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 199);
     ref.SetOper(5.0);
@@ -179,7 +179,8 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 199), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 199), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 199);
     ref.SetOper(3.0, -1.0, 1e6, 0.0);
@@ -198,7 +199,7 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
 // ===========================================================================
 
 class PhilotePartialsTest : public ::testing::Test {
-protected:
+   protected:
     static H5::H5File* file_;
     static bool file_loaded_;
 
@@ -262,7 +263,8 @@ TEST_F(PhilotePartialsTest, InviscidMach) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 100);
     ref.SetOper(3.0, -1.0, 0.0, 0.3);
@@ -306,17 +308,15 @@ TEST_F(PhilotePartialsTest, InviscidShape) {
             int idx = dim * N_ref + node;
             double dcl_got = dcl_dx(idx);
             double dcl_ref_val = dcl_dx_ref(dim, node);
-            double rel =
-                std::abs(dcl_got - dcl_ref_val) /
-                std::max(std::abs(dcl_ref_val), 1e-10);
+            double rel = std::abs(dcl_got - dcl_ref_val) /
+                         std::max(std::abs(dcl_ref_val), 1e-10);
             EXPECT_LT(rel, TOL_INVISCID)
                 << "dcl/dx node=" << node << " dim=" << dim;
 
             double dcm_got = dcm_dx(idx);
             double dcm_ref_val = dcm_dx_ref(dim, node);
-            double rel_cm =
-                std::abs(dcm_got - dcm_ref_val) /
-                std::max(std::abs(dcm_ref_val), 1e-10);
+            double rel_cm = std::abs(dcm_got - dcm_ref_val) /
+                            std::max(std::abs(dcm_ref_val), 1e-10);
             EXPECT_LT(rel_cm, TOL_INVISCID)
                 << "dcm/dx node=" << node << " dim=" << dim;
         }
@@ -331,7 +331,8 @@ TEST_F(PhilotePartialsTest, ViscousAlpha) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 100);
     ref.SetOper(3.0, -1.0, 1e6, 0.0);
@@ -358,7 +359,8 @@ TEST_F(PhilotePartialsTest, ViscousMach) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 100);
     ref.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -385,7 +387,8 @@ TEST_F(PhilotePartialsTest, ViscousRe) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 100);
     ref.SetOper(3.0, -1.0, 1e6, 0.0);
@@ -411,7 +414,8 @@ TEST_F(PhilotePartialsTest, ViscousShape) {
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs, partials);
+    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
 
     scirocco::Scirocco ref("0012", 100);
     ref.SetOper(3.0, -1.0, 1e6, 0.0);
