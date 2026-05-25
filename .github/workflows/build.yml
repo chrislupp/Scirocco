@@ -48,7 +48,7 @@ jobs:
 
     - name: Build and Install Philote-Cpp
       run: |
-        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
@@ -100,7 +100,7 @@ jobs:
 
     - name: Build and Install Philote-Cpp
       run: |
-        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
@@ -142,7 +142,7 @@ jobs:
 
     - name: Build and Install Philote-Cpp
       run: |
-        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
@@ -186,7 +186,7 @@ jobs:
 
     - name: Build and Install Philote-Cpp
       run: |
-        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
@@ -248,7 +248,7 @@ jobs:
 
     - name: Build and Install Philote-Cpp
       run: |
-        git clone --depth 1 https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
