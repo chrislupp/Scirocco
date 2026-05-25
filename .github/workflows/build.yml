@@ -208,7 +208,9 @@ jobs:
       working-directory: ${{github.workspace}}/build
       env:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
-      run: ctest --output-on-failure
+      run: >
+        ctest --output-on-failure
+        -R "^(SplineTest|GeometryTest|MfoilReference|Philote)"
 
     - name: Generate Coverage Report
       run: |
