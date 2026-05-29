@@ -185,16 +185,26 @@ Item {
                 ctx.lineTo(tx, ty)
                 ctx.stroke()
 
-                // Arrowhead
+                // Arrowhead direction: positive Cp points toward surface, negative away
                 var ux = dx / len
                 var uy = dy / len
-                var px1 = tx - headLen * ux + headLen * 0.4 * uy
-                var py1 = ty - headLen * uy - headLen * 0.4 * ux
-                var px2 = tx - headLen * ux - headLen * 0.4 * uy
-                var py2 = ty - headLen * uy + headLen * 0.4 * ux
+                var hx, hy, hdx, hdy
+                if (cpVals[a] > 0) {
+                    // Head at base end (pointing toward airfoil)
+                    hx = bx; hy = by
+                    hdx = ux; hdy = uy
+                } else {
+                    // Head at tip end (pointing away from airfoil)
+                    hx = tx; hy = ty
+                    hdx = -ux; hdy = -uy
+                }
+                var px1 = hx + headLen * hdx + headLen * 0.4 * hdy
+                var py1 = hy + headLen * hdy - headLen * 0.4 * hdx
+                var px2 = hx + headLen * hdx - headLen * 0.4 * hdy
+                var py2 = hy + headLen * hdy + headLen * 0.4 * hdx
 
                 ctx.beginPath()
-                ctx.moveTo(tx, ty)
+                ctx.moveTo(hx, hy)
                 ctx.lineTo(px1, py1)
                 ctx.lineTo(px2, py2)
                 ctx.closePath()
