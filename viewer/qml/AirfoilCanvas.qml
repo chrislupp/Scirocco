@@ -6,6 +6,11 @@ Item {
     property bool showArrows: false
     property bool showPanels: false
 
+    // Arrow display settings (controlled from Main.qml)
+    property real arrowLineWidth: 1.5
+    property real arrowScale: 1.0
+    property string arrowColormap: "coolwarm"   // "coolwarm", "viridis", "mono"
+
     property real dataXMin: 0
     property real dataXMax: 1
     property real dataYMin: -0.2
@@ -21,6 +26,9 @@ Item {
 
     onShowArrowsChanged: canvas.requestPaint()
     onShowPanelsChanged: canvas.requestPaint()
+    onArrowLineWidthChanged: canvas.requestPaint()
+    onArrowScaleChanged: canvas.requestPaint()
+    onArrowColormapChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
 
@@ -82,13 +90,53 @@ Item {
         return h / 2 - (y - cy) * pxPerUnit
     }
 
+    function cpColor(cp, cpMin, cpMax) {
+        if (arrowColormap === "mono")
+            return Theme.arrowStroke.toString()
+
+        var range = cpMax - cpMin
+        if (range < 1e-12) range = 1
+        var t = (cp - cpMin) / range
+
+        if (arrowColormap === "viridis") {
+            // Simplified viridis: purple → teal → yellow
+            var r, g, b
+            if (t < 0.5) {
+                var s = t * 2
+                r = Math.round(68 + s * (33 - 68))
+                g = Math.round(1 + s * (144 - 1))
+                b = Math.round(84 + s * (140 - 84))
+            } else {
+                var s2 = (t - 0.5) * 2
+                r = Math.round(33 + s2 * (253 - 33))
+                g = Math.round(144 + s2 * (231 - 144))
+                b = Math.round(140 + s2 * (37 - 140))
+            }
+            return "rgb(" + r + "," + g + "," + b + ")"
+        }
+
+        // coolwarm: blue → white → red
+        var r2, g2, b2
+        if (t < 0.5) {
+            var s3 = t * 2
+            r2 = Math.round(59 + s3 * (221 - 59))
+            g2 = Math.round(76 + s3 * (221 - 76))
+            b2 = Math.round(192 + s3 * (221 - 192))
+        } else {
+            var s4 = (t - 0.5) * 2
+            r2 = Math.round(221 + s4 * (180 - 221))
+            g2 = Math.round(221 + s4 * (4 - 221))
+            b2 = Math.round(221 + s4 * (38 - 221))
+        }
+        return "rgb(" + r2 + "," + g2 + "," + b2 + ")"
+    }
+
     function draw() {
         var ctx = canvas.getContext("2d")
         ctx.clearRect(0, 0, canvas.width, canvas.height)
 
         var foil = reader.airfoilSeries
         if (foil.length === 0) {
-            // Empty state
             ctx.fillStyle = Theme.textDim.toString()
             ctx.font = Theme.fsControl + "px sans-serif"
             ctx.textAlign = "center"
@@ -102,14 +150,56 @@ Item {
         if (showArrows && reader.hasArrows) {
             var bases = reader.arrowBases
             var tips = reader.arrowTips
-            ctx.strokeStyle = Theme.arrowStroke.toString()
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            for (var a = 0; a < bases.length; a++) {
-                ctx.moveTo(mapX(bases[a].x), mapY(bases[a].y))
-                ctx.lineTo(mapX(tips[a].x), mapY(tips[a].y))
+            var cpVals = reader.arrowCpValues
+            var headLen = 5 + root.arrowLineWidth * 2
+
+            // Find Cp range for colormap
+            var cpMin = Infinity, cpMax = -Infinity
+            for (var c = 0; c < cpVals.length; c++) {
+                cpMin = Math.min(cpMin, cpVals[c])
+                cpMax = Math.max(cpMax, cpVals[c])
             }
-            ctx.stroke()
+
+            for (var a = 0; a < bases.length; a++) {
+                var bx = mapX(bases[a].x)
+                var by = mapY(bases[a].y)
+                // Apply arrow scale: interpolate tip between base and full tip
+                var fullTx = mapX(tips[a].x)
+                var fullTy = mapY(tips[a].y)
+                var tx = bx + (fullTx - bx) * root.arrowScale
+                var ty = by + (fullTy - by) * root.arrowScale
+
+                var dx = tx - bx
+                var dy = ty - by
+                var len = Math.sqrt(dx * dx + dy * dy)
+                if (len < 2) continue
+
+                var color = cpColor(cpVals[a], cpMin, cpMax)
+                ctx.strokeStyle = color
+                ctx.fillStyle = color
+                ctx.lineWidth = root.arrowLineWidth
+
+                // Arrow shaft
+                ctx.beginPath()
+                ctx.moveTo(bx, by)
+                ctx.lineTo(tx, ty)
+                ctx.stroke()
+
+                // Arrowhead
+                var ux = dx / len
+                var uy = dy / len
+                var px1 = tx - headLen * ux + headLen * 0.4 * uy
+                var py1 = ty - headLen * uy - headLen * 0.4 * ux
+                var px2 = tx - headLen * ux - headLen * 0.4 * uy
+                var py2 = ty - headLen * uy + headLen * 0.4 * ux
+
+                ctx.beginPath()
+                ctx.moveTo(tx, ty)
+                ctx.lineTo(px1, py1)
+                ctx.lineTo(px2, py2)
+                ctx.closePath()
+                ctx.fill()
+            }
         }
 
         // Draw wake
@@ -143,10 +233,10 @@ Item {
             ctx.fillStyle = Theme.accent.toString()
             var r = 2.5
             for (var p = 0; p < foil.length; p++) {
-                var px = mapX(foil[p].x)
-                var py = mapY(foil[p].y)
+                var ppx = mapX(foil[p].x)
+                var ppy = mapY(foil[p].y)
                 ctx.beginPath()
-                ctx.arc(px, py, r, 0, 2 * Math.PI)
+                ctx.arc(ppx, ppy, r, 0, 2 * Math.PI)
                 ctx.fill()
             }
         }

@@ -30,6 +30,8 @@ class Hdf5Reader : public QObject {
                    NOTIFY iterationChanged)
     Q_PROPERTY(
         QList<QPointF> arrowTips READ arrowTips NOTIFY iterationChanged)
+    Q_PROPERTY(QList<qreal> arrowCpValues READ arrowCpValues
+                   NOTIFY iterationChanged)
     Q_PROPERTY(bool hasArrows READ hasArrows NOTIFY iterationChanged)
 
 
@@ -52,6 +54,7 @@ public:
     QList<QPointF> cpiSeries() const { return cpiSeries_; }
     QList<QPointF> arrowBases() const { return arrowBases_; }
     QList<QPointF> arrowTips() const { return arrowTips_; }
+    QList<qreal> arrowCpValues() const { return arrowCpValues_; }
     bool hasArrows() const { return !arrowBases_.isEmpty(); }
 
 
@@ -88,6 +91,7 @@ private:
     QList<QPointF> cpiSeries_;
     QList<QPointF> arrowBases_;
     QList<QPointF> arrowTips_;
+    QList<qreal> arrowCpValues_;
 
     QList<QPointF> clHistory_;
     QList<QPointF> cdHistory_;

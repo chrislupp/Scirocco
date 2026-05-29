@@ -13,7 +13,7 @@ Rectangle {
     property bool hudEnabled: false
 
     signal sectionClicked(int index)
-    signal arrowsToggled(bool on)
+    signal arrowsMenuRequested(real buttonY)
     signal panelsToggled(bool on)
     signal hudMenuRequested(real buttonY)
     signal exportRequested()
@@ -100,13 +100,14 @@ Rectangle {
             }
         }
 
-        // Arrows toggle
+        // Arrows menu
         RailButton {
+            id: arrowsButton
             icon: "arrows"
             checked: root.arrowsEnabled
             onClicked: {
-                root.arrowsEnabled = !root.arrowsEnabled
-                root.arrowsToggled(root.arrowsEnabled)
+                var pos = arrowsButton.mapToItem(null, 0, 0)
+                root.arrowsMenuRequested(pos.y)
             }
         }
 

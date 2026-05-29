@@ -23,6 +23,12 @@ ApplicationWindow {
     property int hudFontSize: 14
     property bool showHudPanel: false
 
+    // Arrow settings
+    property real arrowLineWidth: 1.5
+    property real arrowScale: 1.0
+    property string arrowColormap: "coolwarm"
+    property bool showArrowsPanel: false
+
     // Keyboard shortcuts
     Shortcut { sequence: "Left";  onActivated: reader.setCurrentIteration(reader.currentIteration - 1) }
     Shortcut { sequence: "Right"; onActivated: reader.setCurrentIteration(reader.currentIteration + 1) }
@@ -87,7 +93,10 @@ ApplicationWindow {
         hudEnabled: root.showHud
 
         onSectionClicked: function(idx) { root.activeSection = idx }
-        onArrowsToggled: function(on) { root.showCpArrows = on }
+        onArrowsMenuRequested: function(buttonY) {
+            arrowsPanel.panelY = buttonY
+            root.showArrowsPanel = !root.showArrowsPanel
+        }
         onPanelsToggled: function(on) { root.showPanels = on }
         onHudMenuRequested: function(buttonY) {
             hudPanel.panelY = buttonY
@@ -113,6 +122,9 @@ ApplicationWindow {
             anchors.bottom: chartPanel.visible ? chartPanel.top : parent.bottom
             showArrows: root.showCpArrows
             showPanels: root.showPanels
+            arrowLineWidth: root.arrowLineWidth
+            arrowScale: root.arrowScale
+            arrowColormap: root.arrowColormap
         }
 
         // Chart panel (bottom portion, slides up when active)
@@ -290,6 +302,109 @@ ApplicationWindow {
                     Chip { text: "M";  checked: root.hudFontSize === 14; onClicked: root.hudFontSize = 14 }
                     Chip { text: "L";  checked: root.hudFontSize === 20; onClicked: root.hudFontSize = 20 }
                     Chip { text: "XL"; checked: root.hudFontSize === 28; onClicked: root.hudFontSize = 28 }
+                }
+            }
+        }
+
+        // Arrows settings panel (slides out from rail, aligned to icon)
+        Panel {
+            id: arrowsPanel
+            property real panelY: 0
+            width: 220
+            height: arrowsPanelCol.implicitHeight + 2 * Theme.s4
+            y: Math.min(panelY, parent.height - height - Theme.s3)
+            x: root.showArrowsPanel ? Theme.s3 : -width - Theme.s3
+            visible: x > -width
+            z: 2
+
+            Behavior on x {
+                NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+            }
+
+            ColumnLayout {
+                id: arrowsPanelCol
+                anchors.fill: parent
+                anchors.margins: Theme.s4
+                spacing: Theme.s3
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "Cp Arrows"
+                        font.pixelSize: Theme.fsTitle
+                        font.weight: Font.DemiBold
+                        color: Theme.textPrimary
+                        Layout.fillWidth: true
+                    }
+                    Rectangle {
+                        width: 28; height: 28
+                        radius: Theme.rControl
+                        color: arrowsCloseMa.containsMouse ? Theme.hover : "transparent"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            font.pixelSize: 12
+                            color: Theme.textMuted
+                        }
+                        MouseArea {
+                            id: arrowsCloseMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.showArrowsPanel = false
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
+
+                // Visible toggle
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "Visible"
+                        font.pixelSize: Theme.fsBody
+                        color: Theme.textPrimary
+                        Layout.fillWidth: true
+                    }
+                    Chip {
+                        text: root.showCpArrows ? "On" : "Off"
+                        checked: root.showCpArrows
+                        onClicked: root.showCpArrows = !root.showCpArrows
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
+
+                // Line width
+                SectionHeader { text: "Line Width" }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.s2
+                    Chip { text: "Thin";   checked: root.arrowLineWidth === 1.0; onClicked: root.arrowLineWidth = 1.0 }
+                    Chip { text: "Medium"; checked: root.arrowLineWidth === 1.5; onClicked: root.arrowLineWidth = 1.5 }
+                    Chip { text: "Thick";  checked: root.arrowLineWidth === 2.5; onClicked: root.arrowLineWidth = 2.5 }
+                }
+
+                // Arrow scale
+                SectionHeader { text: "Arrow Length" }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.s2
+                    Chip { text: "0.5x"; checked: root.arrowScale === 0.5; onClicked: root.arrowScale = 0.5 }
+                    Chip { text: "1x";   checked: root.arrowScale === 1.0; onClicked: root.arrowScale = 1.0 }
+                    Chip { text: "2x";   checked: root.arrowScale === 2.0; onClicked: root.arrowScale = 2.0 }
+                    Chip { text: "3x";   checked: root.arrowScale === 3.0; onClicked: root.arrowScale = 3.0 }
+                }
+
+                // Colormap
+                SectionHeader { text: "Colormap" }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.s2
+                    Chip { text: "Coolwarm"; checked: root.arrowColormap === "coolwarm"; onClicked: root.arrowColormap = "coolwarm" }
+                    Chip { text: "Viridis";  checked: root.arrowColormap === "viridis";  onClicked: root.arrowColormap = "viridis" }
+                    Chip { text: "Mono";     checked: root.arrowColormap === "mono";     onClicked: root.arrowColormap = "mono" }
                 }
             }
         }

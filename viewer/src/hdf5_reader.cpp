@@ -196,6 +196,7 @@ void Hdf5Reader::buildSeries() {
 void Hdf5Reader::buildCpArrows() {
     arrowBases_.clear();
     arrowTips_.clear();
+    arrowCpValues_.clear();
     int N = currentData_.foilN;
     if (N == 0 || currentData_.cp.size() < N) return;
 
@@ -211,13 +212,16 @@ void Hdf5Reader::buildCpArrows() {
         double ny = tx / mag;
 
         double cp = currentData_.cp[i];
-        double dx = -cp * nx * scale;
-        double dy = -cp * ny * scale;
+        // Always point outward: use |Cp| along the outward normal
+        double absCp = std::abs(cp);
+        double dx = absCp * nx * scale;
+        double dy = absCp * ny * scale;
 
         double bx = currentData_.foil_x[i];
         double by = currentData_.foil_y[i];
         arrowBases_.append(QPointF(bx, by));
         arrowTips_.append(QPointF(bx + dx, by + dy));
+        arrowCpValues_.append(cp);
     }
 }
 
