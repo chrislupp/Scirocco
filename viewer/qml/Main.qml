@@ -19,6 +19,7 @@ ApplicationWindow {
     property bool showCpArrows: false
     property bool showPanels: false
     property string activeChart: "cp"
+    property bool showHud: false
 
     // Keyboard shortcuts
     Shortcut { sequence: "Left";  onActivated: reader.setCurrentIteration(reader.currentIteration - 1) }
@@ -26,6 +27,7 @@ ApplicationWindow {
     Shortcut { sequence: "Home";  onActivated: reader.setCurrentIteration(0) }
     Shortcut { sequence: "End";   onActivated: reader.setCurrentIteration(reader.numIterations - 1) }
     Shortcut { sequences: [StandardKey.Open]; onActivated: fileDialog.open() }
+    Shortcut { sequence: "Space"; onActivated: statusBar.togglePlay() }
 
     FileDialog {
         id: fileDialog
@@ -33,6 +35,33 @@ ApplicationWindow {
         nameFilters: ["HDF5 files (*.h5 *.hdf5)", "All files (*)"]
         onAccepted: reader.openFile(selectedFile.toString().replace("file://", ""))
     }
+
+    property bool savedDarkMode: true
+
+    FileDialog {
+        id: exportDialog
+        title: "Export Video"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["MP4 video (*.mp4)"]
+        property bool exportDark: true
+        onAccepted: {
+            var path = selectedFile.toString().replace("file://", "")
+            root.savedDarkMode = Theme.darkMode
+            Theme.darkMode = exportDark
+            videoExporter.exportVideo(mainArea, path, exportDark, 10)
+        }
+    }
+
+    Connections {
+        target: videoExporter
+        function onFinished(path) { Theme.darkMode = root.savedDarkMode }
+        function onError(msg) { Theme.darkMode = root.savedDarkMode }
+    }
+
+    Shortcut { sequence: "Ctrl+E"; onActivated: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() } }
+    Shortcut { sequence: "Meta+E"; onActivated: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() } }
+    Shortcut { sequence: "Ctrl+Shift+E"; onActivated: { exportDialog.exportDark = !Theme.darkMode; exportDialog.open() } }
+    Shortcut { sequence: "Meta+Shift+E"; onActivated: { exportDialog.exportDark = !Theme.darkMode; exportDialog.open() } }
 
     // --- Layout ---
 
@@ -45,9 +74,13 @@ ApplicationWindow {
         arrowsEnabled: root.showCpArrows
         panelsEnabled: root.showPanels
 
+        hudEnabled: root.showHud
+
         onSectionClicked: function(idx) { root.activeSection = idx }
         onArrowsToggled: function(on) { root.showCpArrows = on }
         onPanelsToggled: function(on) { root.showPanels = on }
+        onHudToggled: function(on) { root.showHud = on }
+        onExportRequested: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() }
     }
 
     // Main content area (right of rail, above status bar)
@@ -120,6 +153,46 @@ ApplicationWindow {
                 CpChart {}
                 DistributionChart {}
                 ConvergenceChart {}
+            }
+        }
+
+        // HUD overlay (top-right)
+        Column {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: Theme.s3
+            anchors.rightMargin: Theme.s3
+            spacing: 2
+            visible: root.showHud && reader.numIterations > 0
+            z: 1
+
+            Text {
+                anchors.right: parent.right
+                text: "Iteration " + reader.currentIteration
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fsBody
+                color: Theme.textMuted
+            }
+            Text {
+                anchors.right: parent.right
+                text: "α = " + reader.data.alpha.toFixed(2) + "°"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fsBody
+                color: Theme.textPrimary
+            }
+            Text {
+                anchors.right: parent.right
+                text: "Cl = " + reader.data.cl.toFixed(4)
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fsBody
+                color: Theme.textPrimary
+            }
+            Text {
+                anchors.right: parent.right
+                text: "Cd = " + reader.data.cd.toFixed(5)
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fsBody
+                color: Theme.textPrimary
             }
         }
 

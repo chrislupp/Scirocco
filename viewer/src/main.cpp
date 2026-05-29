@@ -4,6 +4,7 @@
 #include <QQuickStyle>
 
 #include "hdf5_reader.h"
+#include "video_exporter.h"
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
@@ -12,9 +13,11 @@ int main(int argc, char* argv[]) {
     QQuickStyle::setStyle("Fusion");
 
     Hdf5Reader reader;
+    VideoExporter exporter(&reader);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("reader", &reader);
+    engine.rootContext()->setContextProperty("videoExporter", &exporter);
     engine.loadFromModule("SciroccoViewer", "Main");
 
     if (engine.rootObjects().isEmpty()) return -1;

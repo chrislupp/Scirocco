@@ -20,6 +20,8 @@ set(VIEWER_SOURCES
     src/hdf5_reader.h
     src/hdf5_reader.cpp
     src/iteration_data.h
+    src/video_exporter.h
+    src/video_exporter.cpp
 )
 
 # --- Executable (macOS app bundle) ---

@@ -2,35 +2,37 @@ pragma Singleton
 import QtQuick
 
 QtObject {
+    property bool darkMode: true
+
     // Surfaces
-    readonly property color bgCanvas:    "#0e1116"
-    readonly property color panelBg:     Qt.rgba(0.078, 0.086, 0.110, 0.72)
-    readonly property color panelBgSolid:Qt.rgba(0.078, 0.086, 0.110, 1.0)
-    readonly property color panelBorder: Qt.rgba(1, 1, 1, 0.08)
-    readonly property color railBg:      Qt.rgba(0.047, 0.055, 0.071, 0.85)
-    readonly property color statusBg:    Qt.rgba(0.047, 0.055, 0.071, 0.85)
-    readonly property color hover:       Qt.rgba(1, 1, 1, 0.06)
-    readonly property color active:      Qt.rgba(1, 1, 1, 0.10)
-    readonly property color divider:     Qt.rgba(1, 1, 1, 0.06)
+    readonly property color bgCanvas:    darkMode ? "#0e1116" : "#f5f5f7"
+    readonly property color panelBg:     darkMode ? Qt.rgba(0.078, 0.086, 0.110, 0.72) : Qt.rgba(1, 1, 1, 0.85)
+    readonly property color panelBgSolid:darkMode ? Qt.rgba(0.078, 0.086, 0.110, 1.0) : Qt.rgba(1, 1, 1, 1.0)
+    readonly property color panelBorder: darkMode ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.10)
+    readonly property color railBg:      darkMode ? Qt.rgba(0.047, 0.055, 0.071, 0.85) : Qt.rgba(0.95, 0.95, 0.96, 0.92)
+    readonly property color statusBg:    darkMode ? Qt.rgba(0.047, 0.055, 0.071, 0.85) : Qt.rgba(0.95, 0.95, 0.96, 0.92)
+    readonly property color hover:       darkMode ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.05)
+    readonly property color active:      darkMode ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+    readonly property color divider:     darkMode ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.08)
     readonly property color chartBg:     "transparent"
 
     // Text
-    readonly property color textPrimary: "#e7ecf2"
-    readonly property color textMuted:   "#8b94a3"
-    readonly property color textDim:     "#5b6473"
+    readonly property color textPrimary: darkMode ? "#e7ecf2" : "#1d1d1f"
+    readonly property color textMuted:   darkMode ? "#8b94a3" : "#6e6e73"
+    readonly property color textDim:     darkMode ? "#5b6473" : "#aeaeb2"
 
     // Accent
-    readonly property color accent:      "#7cc4ff"
-    readonly property color accentDim:   Qt.rgba(0.486, 0.769, 1.0, 0.18)
+    readonly property color accent:      darkMode ? "#7cc4ff" : "#0071e3"
+    readonly property color accentDim:   darkMode ? Qt.rgba(0.486, 0.769, 1.0, 0.18) : Qt.rgba(0, 0.443, 0.890, 0.12)
 
     // Lines
-    readonly property color foilStroke:  "#e7ecf2"
-    readonly property color wakeStroke:  "#5b6473"
-    readonly property color cpLine:      "#7cc4ff"
-    readonly property color cpiLine:     Qt.rgba(0.486, 0.769, 1.0, 0.4)
-    readonly property color arrowStroke: Qt.rgba(0.486, 0.769, 1.0, 0.5)
-    readonly property color gridLine:    Qt.rgba(1, 1, 1, 0.06)
-    readonly property color axisLabel:   "#8b94a3"
+    readonly property color foilStroke:  darkMode ? "#e7ecf2" : "#1d1d1f"
+    readonly property color wakeStroke:  darkMode ? "#5b6473" : "#aeaeb2"
+    readonly property color cpLine:      darkMode ? "#7cc4ff" : "#0071e3"
+    readonly property color cpiLine:     darkMode ? Qt.rgba(0.486, 0.769, 1.0, 0.4) : Qt.rgba(0, 0.443, 0.890, 0.35)
+    readonly property color arrowStroke: darkMode ? Qt.rgba(0.486, 0.769, 1.0, 0.5) : Qt.rgba(0, 0.443, 0.890, 0.45)
+    readonly property color gridLine:    darkMode ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.08)
+    readonly property color axisLabel:   darkMode ? "#8b94a3" : "#6e6e73"
 
     // Typography
     readonly property string fontMono: "Menlo"

@@ -8,6 +8,17 @@ Rectangle {
     height: Theme.statusHeight
     color: Theme.statusBg
 
+    function togglePlay() {
+        if (playTimer.running) {
+            playTimer.stop()
+        } else {
+            if (reader.currentIteration >= reader.numIterations - 1)
+                reader.setCurrentIteration(0)
+            playTimer.start()
+        }
+        playIcon.requestPaint()
+    }
+
     Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
@@ -132,6 +143,67 @@ Rectangle {
             }
         }
 
+        // Play/Pause
+        Rectangle {
+            Layout.preferredWidth: 24; Layout.preferredHeight: 24
+            radius: Theme.rControl
+            color: playMa.containsMouse ? Theme.hover : "transparent"
+            opacity: reader.numIterations > 1 ? 1.0 : 0.3
+
+            Canvas {
+                id: playIcon
+                anchors.centerIn: parent
+                width: 12; height: 12
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    ctx.fillStyle = playTimer.running ? Theme.accent.toString() : Theme.textMuted.toString()
+                    if (playTimer.running) {
+                        ctx.fillRect(1, 1, 3.5, 10)
+                        ctx.fillRect(7.5, 1, 3.5, 10)
+                    } else {
+                        ctx.beginPath()
+                        ctx.moveTo(1, 0)
+                        ctx.lineTo(12, 6)
+                        ctx.lineTo(1, 12)
+                        ctx.closePath()
+                        ctx.fill()
+                    }
+                }
+            }
+
+            MouseArea {
+                id: playMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (playTimer.running) {
+                        playTimer.stop()
+                    } else {
+                        if (reader.currentIteration >= reader.numIterations - 1)
+                            reader.setCurrentIteration(0)
+                        playTimer.start()
+                    }
+                    playIcon.requestPaint()
+                }
+            }
+        }
+
+        Timer {
+            id: playTimer
+            interval: 200
+            repeat: true
+            onTriggered: {
+                if (reader.currentIteration < reader.numIterations - 1) {
+                    reader.setCurrentIteration(reader.currentIteration + 1)
+                } else {
+                    stop()
+                    playIcon.requestPaint()
+                }
+            }
+        }
+
         // Iteration label
         Text {
             text: reader.numIterations > 0
@@ -153,6 +225,30 @@ Rectangle {
             StatusValue { label: "α"; value: reader.data.alpha.toFixed(2) + "°" }
             StatusValue { label: "Cl"; value: reader.data.cl.toFixed(4) }
             StatusValue { label: "Cd"; value: reader.data.cd.toFixed(5) }
+        }
+
+        // Export progress
+        Row {
+            spacing: Theme.s2
+            visible: videoExporter.exporting
+
+            Text {
+                text: "Exporting " + videoExporter.progress + "%"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fsCaption
+                color: Theme.accent
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Rectangle {
+                width: 60; height: 3; radius: 2
+                color: Theme.divider
+                anchors.verticalCenter: parent.verticalCenter
+                Rectangle {
+                    width: parent.width * videoExporter.progress / 100
+                    height: parent.height; radius: 2
+                    color: Theme.accent
+                }
+            }
         }
 
         Item { Layout.fillWidth: true }

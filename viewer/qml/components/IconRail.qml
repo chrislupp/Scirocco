@@ -10,10 +10,13 @@ Rectangle {
     property int activeSection: -1
     property bool arrowsEnabled: false
     property bool panelsEnabled: false
+    property bool hudEnabled: false
 
     signal sectionClicked(int index)
     signal arrowsToggled(bool on)
     signal panelsToggled(bool on)
+    signal hudToggled(bool on)
+    signal exportRequested()
 
     Rectangle {
         anchors.top: parent.top
@@ -76,6 +79,16 @@ Rectangle {
 
         Item { Layout.fillHeight: true }
 
+        // HUD toggle
+        RailButton {
+            icon: "hud"
+            checked: root.hudEnabled
+            onClicked: {
+                root.hudEnabled = !root.hudEnabled
+                root.hudToggled(root.hudEnabled)
+            }
+        }
+
         // Panels toggle
         RailButton {
             icon: "panels"
@@ -95,6 +108,22 @@ Rectangle {
                 root.arrowsToggled(root.arrowsEnabled)
             }
         }
+
+        // Export video
+        RailButton {
+            icon: "export"
+            checked: false
+            onClicked: root.exportRequested()
+        }
+
+        Item { Layout.preferredHeight: Theme.s2 }
+
+        // Theme toggle
+        RailButton {
+            icon: Theme.darkMode ? "sun" : "moon"
+            checked: false
+            onClicked: Theme.darkMode = !Theme.darkMode
+        }
     }
 
     component RailButton: Rectangle {
@@ -102,6 +131,7 @@ Rectangle {
         property bool checked: false
         signal clicked()
         onCheckedChanged: iconCanvas.requestPaint()
+        onIconChanged: iconCanvas.requestPaint()
 
         Layout.alignment: Qt.AlignHCenter
         Layout.preferredWidth: 36
@@ -148,6 +178,13 @@ Rectangle {
                     ctx.moveTo(2, 16); ctx.lineTo(18, 16)
                     ctx.moveTo(10, 4); ctx.lineTo(10, 16)
                     ctx.stroke()
+                } else if (parent.icon === "hud") {
+                    // Text/info icon
+                    ctx.beginPath()
+                    ctx.moveTo(4, 5); ctx.lineTo(16, 5)
+                    ctx.moveTo(4, 10); ctx.lineTo(13, 10)
+                    ctx.moveTo(4, 15); ctx.lineTo(10, 15)
+                    ctx.stroke()
                 } else if (parent.icon === "panels") {
                     // Dots/nodes icon
                     ctx.beginPath()
@@ -162,6 +199,35 @@ Rectangle {
                         ctx.fillStyle = ctx.strokeStyle
                         ctx.fill()
                     }
+                } else if (parent.icon === "export") {
+                    // Film/export icon
+                    ctx.beginPath()
+                    ctx.moveTo(10, 3); ctx.lineTo(10, 13)
+                    ctx.moveTo(6, 9); ctx.lineTo(10, 13); ctx.lineTo(14, 9)
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(3, 16); ctx.lineTo(17, 16)
+                    ctx.stroke()
+                } else if (parent.icon === "sun") {
+                    ctx.beginPath()
+                    ctx.arc(10, 10, 4, 0, 2 * Math.PI)
+                    ctx.stroke()
+                    var rays = 8
+                    for (var r = 0; r < rays; r++) {
+                        var a = r * Math.PI * 2 / rays
+                        ctx.beginPath()
+                        ctx.moveTo(10 + 6 * Math.cos(a), 10 + 6 * Math.sin(a))
+                        ctx.lineTo(10 + 8 * Math.cos(a), 10 + 8 * Math.sin(a))
+                        ctx.stroke()
+                    }
+                } else if (parent.icon === "moon") {
+                    ctx.beginPath()
+                    ctx.arc(10, 10, 6, 0, 2 * Math.PI)
+                    ctx.stroke()
+                    ctx.fillStyle = (parent.parent && parent.parent.color) ? parent.parent.color.toString() : Theme.railBg.toString()
+                    ctx.beginPath()
+                    ctx.arc(13, 8, 5, 0, 2 * Math.PI)
+                    ctx.fill()
                 } else if (parent.icon === "arrows") {
                     // Arrows icon
                     ctx.beginPath()

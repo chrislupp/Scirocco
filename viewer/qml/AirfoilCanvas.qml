@@ -29,6 +29,11 @@ Item {
         function onIterationChanged() { computeBounds(); canvas.requestPaint() }
     }
 
+    Connections {
+        target: Theme
+        function onDarkModeChanged() { canvas.requestPaint() }
+    }
+
     function computeBounds() {
         var foil = reader.airfoilSeries
         if (foil.length === 0) return
@@ -124,7 +129,7 @@ Item {
         // Draw airfoil contour
         var dimmed = showArrows || showPanels
         ctx.strokeStyle = dimmed
-            ? Qt.rgba(0.906, 0.925, 0.949, 0.5).toString()
+            ? Qt.rgba(Theme.foilStroke.r, Theme.foilStroke.g, Theme.foilStroke.b, 0.5).toString()
             : Theme.foilStroke.toString()
         ctx.lineWidth = dimmed ? 1.5 : 2
         ctx.beginPath()
