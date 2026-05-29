@@ -1,86 +1,98 @@
 import QtQuick
 import QtCharts
+import SciroccoViewer
 
 Item {
     ChartView {
         id: chart
         anchors.fill: parent
         antialiasing: true
+        backgroundColor: "transparent"
+        plotAreaColor: "transparent"
         legend.visible: true
+        legend.labelColor: Theme.textMuted
+        legend.font.pixelSize: Theme.fsCaption
+        margins { left: 4; right: 4; top: 4; bottom: 4 }
 
         ValueAxis {
             id: xAxisConv
-            titleText: "Iteration"
             min: 0
             max: Math.max(reader.numIterations - 1, 1)
+            color: Theme.divider
+            gridLineColor: Theme.gridLine
+            labelsColor: Theme.axisLabel
+            labelsFont.family: Theme.fontMono
+            labelsFont.pixelSize: Theme.fsCaption
+            titleText: "Iteration"
+            titleFont.pixelSize: Theme.fsCaption
+            titleBrush: Theme.textDim
         }
 
         ValueAxis {
             id: yAxisCl
-            titleText: "Cl, Cm"
+            color: Theme.divider
+            gridLineColor: Theme.gridLine
+            labelsColor: Theme.axisLabel
+            labelsFont.family: Theme.fontMono
+            labelsFont.pixelSize: Theme.fsCaption
+            titleVisible: false
         }
 
         ValueAxis {
             id: yAxisCd
-            titleText: "Cd"
+            color: Theme.divider
+            gridVisible: false
+            labelsColor: Theme.axisLabel
+            labelsFont.family: Theme.fontMono
+            labelsFont.pixelSize: Theme.fsCaption
+            titleVisible: false
         }
 
         LineSeries {
             id: clLine
-            axisX: xAxisConv
-            axisY: yAxisCl
+            axisX: xAxisConv; axisY: yAxisCl
             name: "Cl"
-            color: "blue"
-            width: 2
+            color: Theme.cpLine
+            width: 1.5
         }
 
         LineSeries {
             id: cmLine
-            axisX: xAxisConv
-            axisY: yAxisCl
+            axisX: xAxisConv; axisY: yAxisCl
             name: "Cm"
-            color: "green"
-            width: 2
+            color: "#5be0a8"
+            width: 1.5
         }
 
         LineSeries {
             id: cdLine
-            axisX: xAxisConv
-            axisYRight: yAxisCd
+            axisX: xAxisConv; axisYRight: yAxisCd
             name: "Cd"
-            color: "red"
-            width: 2
+            color: "#ff7eb6"
+            width: 1.5
         }
 
         ScatterSeries {
             id: currentMarkerCl
-            axisX: xAxisConv
-            axisY: yAxisCl
-            markerSize: 10
-            color: "blue"
-            borderColor: "black"
-            borderWidth: 1
+            axisX: xAxisConv; axisY: yAxisCl
+            markerSize: 8
+            color: Theme.cpLine
+            borderColor: "transparent"
         }
 
         ScatterSeries {
             id: currentMarkerCd
-            axisX: xAxisConv
-            axisYRight: yAxisCd
-            markerSize: 10
-            color: "red"
-            borderColor: "black"
-            borderWidth: 1
+            axisX: xAxisConv; axisYRight: yAxisCd
+            markerSize: 8
+            color: "#ff7eb6"
+            borderColor: "transparent"
         }
     }
 
     Connections {
         target: reader
-        function onFileChanged() {
-            loadHistory()
-        }
-        function onIterationChanged() {
-            updateMarker()
-        }
+        function onFileChanged() { loadHistory() }
+        function onIterationChanged() { updateMarker() }
     }
 
     function loadHistory() {
@@ -88,9 +100,7 @@ Item {
         var cd = reader.cdHistory
         var cm = reader.cmHistory
 
-        clLine.clear()
-        cdLine.clear()
-        cmLine.clear()
+        clLine.clear(); cdLine.clear(); cmLine.clear()
 
         var clMin = Infinity, clMax = -Infinity
         var cdMin = Infinity, cdMax = -Infinity

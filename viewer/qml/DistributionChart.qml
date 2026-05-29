@@ -2,19 +2,37 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtCharts
+import SciroccoViewer
 
 Item {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        ComboBox {
-            id: distSelector
-            Layout.leftMargin: 8
-            Layout.topMargin: 4
-            Layout.preferredWidth: 200
-            model: ["cf", "ue", "ue_inv", "θ", "δ*", "n/Cτ", "Reθ", "Hk"]
-            onCurrentTextChanged: updateDist()
+        // Chip row
+        Flow {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.s3
+            Layout.topMargin: Theme.s2
+            Layout.bottomMargin: Theme.s2
+            spacing: Theme.s2
+
+            Chip {
+                text: "cf"; checked: true
+                ButtonGroup.group: distGroup
+            }
+            Chip { text: "ue"; ButtonGroup.group: distGroup }
+            Chip { text: "θ"; ButtonGroup.group: distGroup }
+            Chip { text: "δ*"; ButtonGroup.group: distGroup }
+            Chip { text: "Hk"; ButtonGroup.group: distGroup }
+            Chip { text: "Reθ"; ButtonGroup.group: distGroup }
+            Chip { text: "n/Cτ"; ButtonGroup.group: distGroup }
+        }
+
+        ButtonGroup {
+            id: distGroup
+            exclusive: true
+            onCheckedButtonChanged: updateDist()
         }
 
         ChartView {
@@ -22,44 +40,54 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             antialiasing: true
+            backgroundColor: "transparent"
+            plotAreaColor: "transparent"
             legend.visible: false
+            margins { left: 4; right: 4; top: 4; bottom: 4 }
 
             ValueAxis {
                 id: xAxisDist
+                min: 0; max: 1
+                color: Theme.divider
+                gridLineColor: Theme.gridLine
+                labelsColor: Theme.axisLabel
+                labelsFont.family: Theme.fontMono
+                labelsFont.pixelSize: Theme.fsCaption
                 titleText: "x/c"
-                min: 0
-                max: 1
+                titleFont.pixelSize: Theme.fsCaption
+                titleBrush: Theme.textDim
             }
 
             ValueAxis {
                 id: yAxisDist
-                titleText: distSelector.currentText
+                color: Theme.divider
+                gridLineColor: Theme.gridLine
+                labelsColor: Theme.axisLabel
+                labelsFont.family: Theme.fontMono
+                labelsFont.pixelSize: Theme.fsCaption
+                titleVisible: false
             }
 
             LineSeries {
                 id: distLine
-                axisX: xAxisDist
-                axisY: yAxisDist
-                color: "darkgreen"
-                width: 2
+                axisX: xAxisDist; axisY: yAxisDist
+                color: Theme.accent
+                width: 1.5
             }
         }
     }
 
     Connections {
         target: reader
-        function onIterationChanged() {
-            updateDist()
-        }
+        function onIterationChanged() { updateDist() }
     }
 
     function updateDist() {
-        var pts = reader.distributionSeries(distSelector.currentText)
+        var name = distGroup.checkedButton ? distGroup.checkedButton.text : "cf"
+        var pts = reader.distributionSeries(name)
         distLine.clear()
         for (var i = 0; i < pts.length; i++)
             distLine.append(pts[i].x, pts[i].y)
-
-        yAxisDist.titleText = distSelector.currentText
 
         if (pts.length > 0) {
             var ymin = Infinity, ymax = -Infinity

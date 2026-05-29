@@ -1,41 +1,54 @@
 import QtQuick
 import QtCharts
+import SciroccoViewer
 
 Item {
     ChartView {
         id: chart
         anchors.fill: parent
         antialiasing: true
-        legend.visible: true
+        backgroundColor: "transparent"
+        plotAreaColor: "transparent"
+        legend.visible: false
+        margins { left: 4; right: 4; top: 4; bottom: 4 }
 
         ValueAxis {
             id: xAxisCp
+            min: 0; max: 1
+            color: Theme.divider
+            gridLineColor: Theme.gridLine
+            labelsColor: Theme.axisLabel
+            labelsFont.family: Theme.fontMono
+            labelsFont.pixelSize: Theme.fsCaption
             titleText: "x/c"
-            min: 0
-            max: 1
+            titleFont.pixelSize: Theme.fsCaption
+            titleBrush: Theme.textDim
         }
 
         ValueAxis {
             id: yAxisCp
-            titleText: "Cp"
             reverse: true
+            color: Theme.divider
+            gridLineColor: Theme.gridLine
+            labelsColor: Theme.axisLabel
+            labelsFont.family: Theme.fontMono
+            labelsFont.pixelSize: Theme.fsCaption
+            titleText: "Cp"
+            titleFont.pixelSize: Theme.fsCaption
+            titleBrush: Theme.textDim
         }
 
         LineSeries {
             id: cpLine
-            axisX: xAxisCp
-            axisY: yAxisCp
-            name: "Cp"
-            color: "blue"
-            width: 2
+            axisX: xAxisCp; axisY: yAxisCp
+            color: Theme.cpLine
+            width: 1.5
         }
 
         LineSeries {
             id: cpiLine
-            axisX: xAxisCp
-            axisY: yAxisCp
-            name: "Cp inv"
-            color: "blue"
+            axisX: xAxisCp; axisY: yAxisCp
+            color: Theme.cpiLine
             width: 1
             style: Qt.DashLine
         }
@@ -43,9 +56,7 @@ Item {
 
     Connections {
         target: reader
-        function onIterationChanged() {
-            updateCp()
-        }
+        function onIterationChanged() { updateCp() }
     }
 
     function updateCp() {
@@ -59,7 +70,6 @@ Item {
         for (var j = 0; j < cpi.length; j++)
             cpiLine.append(cpi[j].x, cpi[j].y)
 
-        // Auto-range y axis
         if (cp.length > 0) {
             var ymin = Infinity, ymax = -Infinity
             for (var k = 0; k < cp.length; k++) {

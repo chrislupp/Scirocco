@@ -32,17 +32,24 @@ set_target_properties(scirocco_viewer_app PROPERTIES
 )
 
 # --- QML module ---
+set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(scirocco_viewer_app
     URI SciroccoViewer
     VERSION 1.0
     QML_FILES
         qml/Main.qml
-        qml/AirfoilChart.qml
+        qml/Theme.qml
+        qml/AirfoilCanvas.qml
         qml/CpChart.qml
         qml/DistributionChart.qml
         qml/ConvergenceChart.qml
-        qml/CoeffPanel.qml
-        qml/IterationControl.qml
+        qml/components/Panel.qml
+        qml/components/IconRail.qml
+        qml/components/StatusBar.qml
+        qml/components/InspectorPanel.qml
+        qml/components/Chip.qml
+        qml/components/SectionHeader.qml
 )
 
 # --- Include & link ---
