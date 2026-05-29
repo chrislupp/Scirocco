@@ -18,6 +18,11 @@ target_link_libraries(SiroccoPhilote
 
 target_compile_features(SiroccoPhilote PUBLIC cxx_std_17)
 
+if(SCIROCCO_HDF5_OUTPUT AND TARGET scirocco_hdf5)
+    target_link_libraries(SiroccoPhilote PUBLIC scirocco_hdf5)
+    target_compile_definitions(SiroccoPhilote PUBLIC SCIROCCO_HDF5)
+endif()
+
 # Server executable
 add_executable(scirocco_server server.cpp)
 target_link_libraries(scirocco_server PRIVATE SiroccoPhilote)

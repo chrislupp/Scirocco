@@ -44,6 +44,7 @@ void SiroccoDiscipline::Initialize() {
     AddOption("naca", "string");
     AddOption("coordinates", "dict");
     AddOption("npanel", "int");
+    AddOption("hdf5_file", "string");
 }
 
 void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
@@ -88,6 +89,14 @@ void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
     }
 
     nnodes_ = static_cast<int>(solver_->GetFoilCoords().cols());
+
+#ifdef SCIROCCO_HDF5
+    if (fields.count("hdf5_file") &&
+        fields.at("hdf5_file").has_string_value()) {
+        hdf5_writer_ =
+            std::make_unique<Hdf5Writer>(fields.at("hdf5_file").string_value());
+    }
+#endif
 }
 
 void SiroccoDiscipline::Configure() {}
@@ -133,6 +142,12 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
     outputs.at("cl")(0) = solver_->GetCl();
     outputs.at("cd")(0) = solver_->GetCd();
     outputs.at("cm")(0) = solver_->GetCm();
+
+#ifdef SCIROCCO_HDF5
+    if (hdf5_writer_) {
+        hdf5_writer_->WriteIteration(*solver_);
+    }
+#endif
 }
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
