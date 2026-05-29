@@ -93,8 +93,8 @@ void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
 #ifdef SCIROCCO_HDF5
     if (fields.count("hdf5_file") &&
         fields.at("hdf5_file").has_string_value()) {
-        hdf5_writer_ = std::make_unique<Hdf5Writer>(
-            fields.at("hdf5_file").string_value());
+        hdf5_writer_ =
+            std::make_unique<Hdf5Writer>(fields.at("hdf5_file").string_value());
     }
 #endif
 }
