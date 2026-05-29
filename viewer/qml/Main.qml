@@ -17,6 +17,7 @@ ApplicationWindow {
     // -1 = airfoil only, 0 = not used, 1 = charts, 2 = inspector
     property int activeSection: -1
     property bool showCpArrows: false
+    property bool showPanels: false
     property string activeChart: "cp"
 
     // Keyboard shortcuts
@@ -42,9 +43,11 @@ ApplicationWindow {
         anchors.bottom: statusBar.top
         activeSection: root.activeSection
         arrowsEnabled: root.showCpArrows
+        panelsEnabled: root.showPanels
 
         onSectionClicked: function(idx) { root.activeSection = idx }
         onArrowsToggled: function(on) { root.showCpArrows = on }
+        onPanelsToggled: function(on) { root.showPanels = on }
     }
 
     // Main content area (right of rail, above status bar)
@@ -62,6 +65,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.bottom: chartPanel.visible ? chartPanel.top : parent.bottom
             showArrows: root.showCpArrows
+            showPanels: root.showPanels
         }
 
         // Chart panel (bottom portion, slides up when active)

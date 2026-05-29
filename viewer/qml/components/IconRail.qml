@@ -9,9 +9,11 @@ Rectangle {
 
     property int activeSection: -1
     property bool arrowsEnabled: false
+    property bool panelsEnabled: false
 
     signal sectionClicked(int index)
     signal arrowsToggled(bool on)
+    signal panelsToggled(bool on)
 
     Rectangle {
         anchors.top: parent.top
@@ -73,6 +75,16 @@ Rectangle {
         }
 
         Item { Layout.fillHeight: true }
+
+        // Panels toggle
+        RailButton {
+            icon: "panels"
+            checked: root.panelsEnabled
+            onClicked: {
+                root.panelsEnabled = !root.panelsEnabled
+                root.panelsToggled(root.panelsEnabled)
+            }
+        }
 
         // Arrows toggle
         RailButton {
@@ -136,6 +148,20 @@ Rectangle {
                     ctx.moveTo(2, 16); ctx.lineTo(18, 16)
                     ctx.moveTo(10, 4); ctx.lineTo(10, 16)
                     ctx.stroke()
+                } else if (parent.icon === "panels") {
+                    // Dots/nodes icon
+                    ctx.beginPath()
+                    ctx.moveTo(2, 10)
+                    ctx.bezierCurveTo(6, 6, 14, 6, 18, 10)
+                    ctx.stroke()
+                    var dots = [3, 7, 11, 15]
+                    for (var d = 0; d < dots.length; d++) {
+                        ctx.beginPath()
+                        var dy = 10 - 2.5 * Math.sin((dots[d] - 2) / 16 * Math.PI)
+                        ctx.arc(dots[d], dy, 2, 0, 2 * Math.PI)
+                        ctx.fillStyle = ctx.strokeStyle
+                        ctx.fill()
+                    }
                 } else if (parent.icon === "arrows") {
                     // Arrows icon
                     ctx.beginPath()

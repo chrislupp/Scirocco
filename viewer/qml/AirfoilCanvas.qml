@@ -4,6 +4,7 @@ import SciroccoViewer
 Item {
     id: root
     property bool showArrows: false
+    property bool showPanels: false
 
     property real dataXMin: 0
     property real dataXMax: 1
@@ -19,6 +20,7 @@ Item {
     }
 
     onShowArrowsChanged: canvas.requestPaint()
+    onShowPanelsChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
 
@@ -120,14 +122,28 @@ Item {
         }
 
         // Draw airfoil contour
-        ctx.strokeStyle = showArrows
+        var dimmed = showArrows || showPanels
+        ctx.strokeStyle = dimmed
             ? Qt.rgba(0.906, 0.925, 0.949, 0.5).toString()
             : Theme.foilStroke.toString()
-        ctx.lineWidth = showArrows ? 1.5 : 2
+        ctx.lineWidth = dimmed ? 1.5 : 2
         ctx.beginPath()
         ctx.moveTo(mapX(foil[0].x), mapY(foil[0].y))
         for (var i = 1; i < foil.length; i++)
             ctx.lineTo(mapX(foil[i].x), mapY(foil[i].y))
         ctx.stroke()
+
+        // Draw panel node dots
+        if (showPanels) {
+            ctx.fillStyle = Theme.accent.toString()
+            var r = 2.5
+            for (var p = 0; p < foil.length; p++) {
+                var px = mapX(foil[p].x)
+                var py = mapY(foil[p].y)
+                ctx.beginPath()
+                ctx.arc(px, py, r, 0, 2 * Math.PI)
+                ctx.fill()
+            }
+        }
     }
 }
