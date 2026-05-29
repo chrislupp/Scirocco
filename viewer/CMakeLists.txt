@@ -52,6 +52,7 @@ qt_add_qml_module(scirocco_viewer_app
         qml/components/InspectorPanel.qml
         qml/components/Chip.qml
         qml/components/SectionHeader.qml
+        qml/components/ExportOptions.qml
 )
 
 # --- Include & link ---

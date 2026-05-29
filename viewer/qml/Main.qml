@@ -39,16 +39,18 @@ ApplicationWindow {
     property bool savedDarkMode: true
 
     FileDialog {
-        id: exportDialog
+        id: exportFileDialog
         title: "Export Video"
         fileMode: FileDialog.SaveFile
         nameFilters: ["MP4 video (*.mp4)"]
-        property bool exportDark: true
         onAccepted: {
             var path = selectedFile.toString().replace("file://", "")
             root.savedDarkMode = Theme.darkMode
-            Theme.darkMode = exportDark
-            videoExporter.exportVideo(mainArea, path, exportDark, 10)
+            Theme.darkMode = exportOptions.exportDark
+            videoExporter.exportVideo(mainArea, path,
+                                     exportOptions.exportDark,
+                                     exportOptions.exportFps,
+                                     exportOptions.exportScale)
         }
     }
 
@@ -58,10 +60,16 @@ ApplicationWindow {
         function onError(msg) { Theme.darkMode = root.savedDarkMode }
     }
 
-    Shortcut { sequence: "Ctrl+E"; onActivated: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() } }
-    Shortcut { sequence: "Meta+E"; onActivated: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() } }
-    Shortcut { sequence: "Ctrl+Shift+E"; onActivated: { exportDialog.exportDark = !Theme.darkMode; exportDialog.open() } }
-    Shortcut { sequence: "Meta+Shift+E"; onActivated: { exportDialog.exportDark = !Theme.darkMode; exportDialog.open() } }
+    Shortcut { sequence: "Ctrl+E"; onActivated: exportOptions.show() }
+    Shortcut { sequence: "Meta+E"; onActivated: exportOptions.show() }
+
+    // Export options overlay
+    ExportOptions {
+        id: exportOptions
+        anchors.centerIn: parent
+        z: 10
+        onExportClicked: exportFileDialog.open()
+    }
 
     // --- Layout ---
 
@@ -80,12 +88,13 @@ ApplicationWindow {
         onArrowsToggled: function(on) { root.showCpArrows = on }
         onPanelsToggled: function(on) { root.showPanels = on }
         onHudToggled: function(on) { root.showHud = on }
-        onExportRequested: { exportDialog.exportDark = Theme.darkMode; exportDialog.open() }
+        onExportRequested: exportOptions.show()
     }
 
     // Main content area (right of rail, above status bar)
-    Item {
+    Rectangle {
         id: mainArea
+        color: Theme.bgCanvas
         anchors.left: rail.right
         anchors.right: parent.right
         anchors.top: parent.top

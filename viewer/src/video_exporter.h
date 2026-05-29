@@ -22,7 +22,8 @@ public:
 
     Q_INVOKABLE void exportVideo(QQuickItem* captureItem,
                                  const QString& outputPath,
-                                 bool darkMode, int fps = 10);
+                                 bool darkMode, int fps = 10,
+                                 int scale = 2);
     Q_INVOKABLE void cancel();
 
 signals:

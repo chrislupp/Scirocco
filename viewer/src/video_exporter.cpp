@@ -13,7 +13,7 @@ VideoExporter::VideoExporter(Hdf5Reader* reader, QObject* parent)
 
 void VideoExporter::exportVideo(QQuickItem* captureItem,
                                 const QString& outputPath,
-                                bool darkMode, int fps) {
+                                bool darkMode, int fps, int scale) {
     if (exporting_ || !captureItem || reader_->numIterations() < 2) return;
 
     captureItem_ = captureItem;
@@ -24,10 +24,10 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
     targetDarkMode_ = darkMode;
     fps_ = fps;
 
-    grabW_ = static_cast<int>(captureItem->width());
-    grabH_ = static_cast<int>(captureItem->height());
-    grabW_ = (grabW_ / 2) * 2;
-    grabH_ = (grabH_ / 2) * 2;
+    int logicalW = static_cast<int>(captureItem->width());
+    int logicalH = static_cast<int>(captureItem->height());
+    grabW_ = ((logicalW * scale) / 2) * 2;
+    grabH_ = ((logicalH * scale) / 2) * 2;
 
     exporting_ = true;
     progress_ = 0;
@@ -52,7 +52,7 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
          << "-c:v" << "libx264"
          << "-pix_fmt" << "yuv420p"
          << "-preset" << "medium"
-         << "-crf" << "18"
+         << "-crf" << "15"
          << outputPath;
 
     ffmpeg_->start(ffmpegBin, args);
@@ -66,7 +66,7 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
     }
 
     reader_->setCurrentIteration(0);
-    timer_.start(150);
+    timer_.start(200);
 }
 
 void VideoExporter::cancel() {
@@ -124,7 +124,7 @@ void VideoExporter::captureNextFrame() {
             emit finished(outputPath_);
         } else {
             reader_->setCurrentIteration(currentFrame_);
-            timer_.start(150);
+            timer_.start(200);
         }
     });
 }
