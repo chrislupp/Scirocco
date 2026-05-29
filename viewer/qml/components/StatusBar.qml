@@ -44,41 +44,69 @@ Rectangle {
             }
         }
 
-        // Slider
-        Slider {
-            id: iterSlider
+        // Iteration scrubber
+        Item {
+            id: scrubber
             Layout.preferredWidth: 160
-            from: 0
-            to: Math.max(reader.numIterations - 1, 0)
-            stepSize: 1
-            value: reader.currentIteration
-            enabled: reader.numIterations > 1
-            onMoved: reader.setCurrentIteration(Math.round(value))
+            Layout.preferredHeight: Theme.statusHeight - 4
 
-            background: Rectangle {
-                x: iterSlider.leftPadding
-                y: iterSlider.topPadding + iterSlider.availableHeight / 2 - 1.5
-                width: iterSlider.availableWidth
+            property int maxVal: Math.max(reader.numIterations - 1, 0)
+            property real pos: maxVal > 0 ? reader.currentIteration / maxVal : 0
+
+            Rectangle {
+                id: track
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 7
+                anchors.rightMargin: 7
                 height: 3
                 radius: 2
                 color: Theme.divider
 
                 Rectangle {
-                    width: iterSlider.visualPosition * parent.width
+                    width: scrubber.pos * parent.width
                     height: parent.height
                     radius: 2
                     color: Theme.accent
                 }
             }
 
-            handle: Rectangle {
-                x: iterSlider.leftPadding + iterSlider.visualPosition * (iterSlider.availableWidth - width)
-                y: iterSlider.topPadding + iterSlider.availableHeight / 2 - height / 2
-                width: 14; height: 14
-                radius: 7
-                color: iterSlider.pressed ? Theme.accent : "#ffffff"
+            Rectangle {
+                id: knob
+                width: 14; height: 14; radius: 7
+                y: (scrubber.height - height) / 2
+                x: 7 + scrubber.pos * track.width - 7
+                color: scrubDrag.drag.active ? Theme.accent : "#ffffff"
                 border.width: 2
                 border.color: Theme.accent
+
+                Behavior on color { ColorAnimation { duration: 120 } }
+            }
+
+            MouseArea {
+                id: scrubDrag
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                enabled: reader.numIterations > 1
+
+                property bool dragging: false
+
+                onPressed: function(mouse) {
+                    dragging = true
+                    updateFromMouse(mouse.x)
+                }
+                onReleased: { dragging = false }
+                onPositionChanged: function(mouse) {
+                    if (dragging) updateFromMouse(mouse.x)
+                }
+
+                function updateFromMouse(mx) {
+                    var frac = (mx - 7) / track.width
+                    frac = Math.max(0, Math.min(1, frac))
+                    var idx = Math.round(frac * scrubber.maxVal)
+                    reader.setCurrentIteration(idx)
+                }
             }
         }
 
