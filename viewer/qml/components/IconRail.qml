@@ -15,7 +15,7 @@ Rectangle {
     signal sectionClicked(int index)
     signal arrowsToggled(bool on)
     signal panelsToggled(bool on)
-    signal hudToggled(bool on)
+    signal hudMenuRequested(real buttonY)
     signal exportRequested()
 
     Rectangle {
@@ -79,13 +79,14 @@ Rectangle {
 
         Item { Layout.fillHeight: true }
 
-        // HUD toggle
+        // HUD menu
         RailButton {
+            id: hudButton
             icon: "hud"
             checked: root.hudEnabled
             onClicked: {
-                root.hudEnabled = !root.hudEnabled
-                root.hudToggled(root.hudEnabled)
+                var pos = hudButton.mapToItem(null, 0, 0)
+                root.hudMenuRequested(pos.y)
             }
         }
 
@@ -130,6 +131,7 @@ Rectangle {
         property string icon
         property bool checked: false
         signal clicked()
+        signal rightClicked()
         onCheckedChanged: iconCanvas.requestPaint()
         onIconChanged: iconCanvas.requestPaint()
 
@@ -246,9 +248,15 @@ Rectangle {
         MouseArea {
             id: mouseArea
             anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: parent.clicked()
+            onClicked: function(mouse) {
+                if (mouse.button === Qt.RightButton)
+                    parent.rightClicked()
+                else
+                    parent.clicked()
+            }
         }
     }
 }

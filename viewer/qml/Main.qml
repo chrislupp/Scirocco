@@ -20,6 +20,8 @@ ApplicationWindow {
     property bool showPanels: false
     property string activeChart: "cp"
     property bool showHud: false
+    property int hudFontSize: 14
+    property bool showHudPanel: false
 
     // Keyboard shortcuts
     Shortcut { sequence: "Left";  onActivated: reader.setCurrentIteration(reader.currentIteration - 1) }
@@ -87,7 +89,10 @@ ApplicationWindow {
         onSectionClicked: function(idx) { root.activeSection = idx }
         onArrowsToggled: function(on) { root.showCpArrows = on }
         onPanelsToggled: function(on) { root.showPanels = on }
-        onHudToggled: function(on) { root.showHud = on }
+        onHudMenuRequested: function(buttonY) {
+            hudPanel.panelY = buttonY
+            root.showHudPanel = !root.showHudPanel
+        }
         onExportRequested: exportOptions.show()
     }
 
@@ -167,6 +172,7 @@ ApplicationWindow {
 
         // HUD overlay (top-right)
         Column {
+            id: hudOverlay
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.topMargin: Theme.s3
@@ -179,29 +185,112 @@ ApplicationWindow {
                 anchors.right: parent.right
                 text: "Iteration " + reader.currentIteration
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fsBody
+                font.pixelSize: root.hudFontSize
                 color: Theme.textMuted
             }
             Text {
                 anchors.right: parent.right
                 text: "α = " + reader.data.alpha.toFixed(2) + "°"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fsBody
+                font.pixelSize: root.hudFontSize
                 color: Theme.textPrimary
             }
             Text {
                 anchors.right: parent.right
                 text: "Cl = " + reader.data.cl.toFixed(4)
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fsBody
+                font.pixelSize: root.hudFontSize
                 color: Theme.textPrimary
             }
             Text {
                 anchors.right: parent.right
                 text: "Cd = " + reader.data.cd.toFixed(5)
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fsBody
+                font.pixelSize: root.hudFontSize
                 color: Theme.textPrimary
+            }
+        }
+
+        // HUD settings panel (slides out from rail, aligned to icon)
+        Panel {
+            id: hudPanel
+            property real panelY: 0
+            width: 200
+            height: hudPanelCol.implicitHeight + 2 * Theme.s4
+            y: Math.min(panelY, parent.height - height - Theme.s3)
+            x: root.showHudPanel ? Theme.s3 : -width - Theme.s3
+            visible: x > -width
+            z: 2
+
+            Behavior on x {
+                NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+            }
+
+            ColumnLayout {
+                id: hudPanelCol
+                anchors.fill: parent
+                anchors.margins: Theme.s4
+                spacing: Theme.s3
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "HUD"
+                        font.pixelSize: Theme.fsTitle
+                        font.weight: Font.DemiBold
+                        color: Theme.textPrimary
+                        Layout.fillWidth: true
+                    }
+                    Rectangle {
+                        width: 28; height: 28
+                        radius: Theme.rControl
+                        color: hudCloseMa.containsMouse ? Theme.hover : "transparent"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            font.pixelSize: 12
+                            color: Theme.textMuted
+                        }
+                        MouseArea {
+                            id: hudCloseMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.showHudPanel = false
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
+
+                // Show HUD toggle
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "Visible"
+                        font.pixelSize: Theme.fsBody
+                        color: Theme.textPrimary
+                        Layout.fillWidth: true
+                    }
+                    Chip {
+                        text: root.showHud ? "On" : "Off"
+                        checked: root.showHud
+                        onClicked: root.showHud = !root.showHud
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
+
+                SectionHeader { text: "Text Size" }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.s2
+                    Chip { text: "S";  checked: root.hudFontSize === 10; onClicked: root.hudFontSize = 10 }
+                    Chip { text: "M";  checked: root.hudFontSize === 14; onClicked: root.hudFontSize = 14 }
+                    Chip { text: "L";  checked: root.hudFontSize === 20; onClicked: root.hudFontSize = 20 }
+                    Chip { text: "XL"; checked: root.hudFontSize === 28; onClicked: root.hudFontSize = 28 }
+                }
             }
         }
 

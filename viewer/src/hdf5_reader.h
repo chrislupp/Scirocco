@@ -32,6 +32,7 @@ class Hdf5Reader : public QObject {
         QList<QPointF> arrowTips READ arrowTips NOTIFY iterationChanged)
     Q_PROPERTY(bool hasArrows READ hasArrows NOTIFY iterationChanged)
 
+
     Q_PROPERTY(QList<QPointF> clHistory READ clHistory NOTIFY fileChanged)
     Q_PROPERTY(QList<QPointF> cdHistory READ cdHistory NOTIFY fileChanged)
     Q_PROPERTY(QList<QPointF> cmHistory READ cmHistory NOTIFY fileChanged)
@@ -53,6 +54,7 @@ public:
     QList<QPointF> arrowTips() const { return arrowTips_; }
     bool hasArrows() const { return !arrowBases_.isEmpty(); }
 
+
     QList<QPointF> clHistory() const { return clHistory_; }
     QList<QPointF> cdHistory() const { return cdHistory_; }
     QList<QPointF> cmHistory() const { return cmHistory_; }
@@ -70,6 +72,7 @@ private:
     void loadCoeffHistory();
     void buildSeries();
     void buildCpArrows();
+
     QList<QPointF> vecToSeries(const QVector<double>& xv,
                                const QVector<double>& yv) const;
 
