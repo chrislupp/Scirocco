@@ -39,6 +39,10 @@
 
 #include "scirocco/scirocco.h"
 
+#ifdef SCIROCCO_HDF5
+#include "scirocco/io/hdf5_writer.h"
+#endif
+
 namespace scirocco {
 
 /**
@@ -93,6 +97,10 @@ class SiroccoDiscipline : public philote::ExplicitDiscipline {
     std::unique_ptr<Scirocco> solver_;
     int npanel_ = 199;
     int nnodes_ = 0;
+
+#ifdef SCIROCCO_HDF5
+    std::unique_ptr<Hdf5Writer> hdf5_writer_;
+#endif
 };
 
 }  // namespace scirocco
