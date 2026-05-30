@@ -15,7 +15,7 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 
-    Scirocco GeometryDiscipline Philote Server
+    Scirocco KulfanDiscipline Philote Server
 */
 
 #include <grpcpp/grpcpp.h>
@@ -24,7 +24,7 @@
 #include <memory>
 #include <string>
 
-#include "scirocco/geometry_discipline.h"
+#include "scirocco/kulfan_discipline.h"
 
 int main(int argc, char* argv[]) {
     std::string address = "localhost:50052";
@@ -32,14 +32,14 @@ int main(int argc, char* argv[]) {
         address = argv[1];
     }
 
-    auto discipline = std::make_shared<scirocco::GeometryDiscipline>();
+    auto discipline = std::make_shared<scirocco::KulfanDiscipline>();
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     discipline->RegisterServices(builder);
 
     std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
-    std::cout << "Scirocco geometry-discipline server listening on " << address
+    std::cout << "Scirocco Kulfan-discipline server listening on " << address
               << '\n';
     server->Wait();
 

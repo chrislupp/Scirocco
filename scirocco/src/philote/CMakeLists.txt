@@ -1,6 +1,6 @@
 add_library(SiroccoPhilote
     philote_discipline.cpp
-    geometry_discipline.cpp
+    kulfan_discipline.cpp
 )
 
 add_library(Scirocco::Philote ALIAS SiroccoPhilote)
@@ -28,8 +28,8 @@ endif()
 add_executable(scirocco_server server.cpp)
 target_link_libraries(scirocco_server PRIVATE SiroccoPhilote)
 
-add_executable(scirocco_geometry_server geometry_server.cpp)
-target_link_libraries(scirocco_geometry_server PRIVATE SiroccoPhilote)
+add_executable(scirocco_kulfan_server kulfan_server.cpp)
+target_link_libraries(scirocco_kulfan_server PRIVATE SiroccoPhilote)
 
 # Tests
 if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
@@ -45,13 +45,13 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
     gtest_discover_tests(scirocco_philote_tests)
 endif()
 
-# Geometry discipline tests (no HDF5 dependency)
+# Kulfan discipline tests (no HDF5 dependency)
 if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
-    add_executable(scirocco_geometry_discipline_tests
-        ${PROJECT_SOURCE_DIR}/tests/geometry_discipline_test.cpp
+    add_executable(scirocco_kulfan_discipline_tests
+        ${PROJECT_SOURCE_DIR}/tests/kulfan_discipline_test.cpp
     )
-    target_link_libraries(scirocco_geometry_discipline_tests
+    target_link_libraries(scirocco_kulfan_discipline_tests
         PRIVATE SiroccoPhilote GTest::gtest_main
     )
-    gtest_discover_tests(scirocco_geometry_discipline_tests)
+    gtest_discover_tests(scirocco_kulfan_discipline_tests)
 endif()
