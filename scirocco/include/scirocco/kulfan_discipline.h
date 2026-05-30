@@ -61,6 +61,12 @@ namespace scirocco {
  * @par Outputs
  * - `x` ({2·npoint}): panel node coordinates, x-block then y-block,
  *   TE_lower → LE → TE_upper ordering.
+ * - `smoothness_upper` ({n_cst_upper − 2}),
+ *   `smoothness_lower` ({n_cst_lower − 2}): second differences of the
+ *   CST coefficients, `D_i = A_{i+2} − 2 A_{i+1} + A_i`. Since
+ *   `S''(ψ) = n(n−1) · Σ D_i · B^(n−2)_i(ψ)` for a Bernstein expansion,
+ *   bounding `|D_i|` directly caps the leading curvature term — linear
+ *   in cst with constant tri-banded partials.
  */
 class KulfanDiscipline : public philote::ExplicitDiscipline {
    public:
@@ -82,23 +88,17 @@ class KulfanDiscipline : public philote::ExplicitDiscipline {
     [[nodiscard]] int npanel() const { return npanel_; }
     [[nodiscard]] int n_cst_upper() const { return n_cst_upper_; }
     [[nodiscard]] int n_cst_lower() const { return n_cst_lower_; }
-    [[nodiscard]] int n_kappa_samples() const { return n_kappa_samples_; }
     [[nodiscard]] const VectorXd& psi_eval() const { return psi_eval_; }
-    [[nodiscard]] const VectorXd& psi_kappa() const { return psi_kappa_; }
 
    private:
     void BuildEvalStations();
     void BuildBasisMatrices();
-    void BuildKappaBasisMatrices();
 
     int n_cst_upper_ = 6;
     int n_cst_lower_ = 6;
     int npanel_ = 200;
     double te_upper_ = 0.0;
     double te_lower_ = 0.0;
-    int n_kappa_samples_ = 30;
-    double psi_kappa_min_ = 0.02;
-    double psi_kappa_max_ = 0.98;
 
     int N_per_side_ = 0;  // npanel_ / 2
     int npoint_ = 0;      // npanel_ + 1
@@ -112,17 +112,6 @@ class KulfanDiscipline : public philote::ExplicitDiscipline {
     // so that y_u(ψ_q) = (Φ_u · cst_upper)_q + ψ_q · te_upper
     MatrixXd Phi_u_;  // [N_per_side + 1, n_cst_upper_]
     MatrixXd Phi_l_;  // [N_per_side + 1, n_cst_lower_]
-
-    // Curvature sampling — ψ stations and the per-station class-function
-    // values C, C', C'' plus the Bernstein basis matrices for S, S', S''
-    // evaluated at those stations. y, y', y'' are linear in cst, κ is the
-    // nonlinear combination y'' / (1 + y'²)^(3/2).
-    VectorXd psi_kappa_;             // [n_kappa_samples_]
-    VectorXd C_kappa_;               // [n_kappa_samples_]  C(ψ_j)
-    VectorXd Cp_kappa_;              // [n_kappa_samples_]  C'(ψ_j)
-    VectorXd Cpp_kappa_;             // [n_kappa_samples_]  C''(ψ_j)
-    MatrixXd M0_u_, M1_u_, M2_u_;    // [n_kappa_samples_, n_cst_upper_]
-    MatrixXd M0_l_, M1_l_, M2_l_;    // [n_kappa_samples_, n_cst_lower_]
 };
 
 }  // namespace scirocco

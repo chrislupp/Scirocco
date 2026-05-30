@@ -50,9 +50,6 @@ void KulfanDiscipline::Initialize() {
     AddOption("npanel", "int");
     AddOption("te_upper", "double");
     AddOption("te_lower", "double");
-    AddOption("n_kappa_samples", "int");
-    AddOption("psi_kappa_min", "double");
-    AddOption("psi_kappa_max", "double");
 }
 
 void KulfanDiscipline::SetOptions(const google::protobuf::Struct& options) {
@@ -75,16 +72,6 @@ void KulfanDiscipline::SetOptions(const google::protobuf::Struct& options) {
     if (fields.count("te_lower")) {
         te_lower_ = fields.at("te_lower").number_value();
     }
-    if (fields.count("n_kappa_samples")) {
-        n_kappa_samples_ =
-            static_cast<int>(fields.at("n_kappa_samples").number_value());
-    }
-    if (fields.count("psi_kappa_min")) {
-        psi_kappa_min_ = fields.at("psi_kappa_min").number_value();
-    }
-    if (fields.count("psi_kappa_max")) {
-        psi_kappa_max_ = fields.at("psi_kappa_max").number_value();
-    }
 
     if (npanel_ < 4 || npanel_ % 2 != 0) {
         throw std::invalid_argument(
@@ -96,22 +83,12 @@ void KulfanDiscipline::SetOptions(const google::protobuf::Struct& options) {
         throw std::invalid_argument(
             "KulfanDiscipline: n_cst_upper / n_cst_lower must be >= 3");
     }
-    if (n_kappa_samples_ < 2) {
-        throw std::invalid_argument(
-            "KulfanDiscipline: n_kappa_samples must be >= 2");
-    }
-    if (psi_kappa_min_ <= 0.0 || psi_kappa_max_ <= psi_kappa_min_ ||
-        psi_kappa_max_ > 1.0) {
-        throw std::invalid_argument(
-            "KulfanDiscipline: require 0 < psi_kappa_min < psi_kappa_max <= 1");
-    }
 
     N_per_side_ = npanel_ / 2;
     npoint_ = npanel_ + 1;
 
     BuildEvalStations();
     BuildBasisMatrices();
-    BuildKappaBasisMatrices();
 }
 
 void KulfanDiscipline::Configure() {}
@@ -120,8 +97,6 @@ void KulfanDiscipline::Setup() {
     AddInput("cst_upper", {n_cst_upper_}, "");
     AddInput("cst_lower", {n_cst_lower_}, "");
     AddOutput("x", {2 * npoint_}, "m");
-    AddOutput("kappa_upper", {n_kappa_samples_}, "1/m");
-    AddOutput("kappa_lower", {n_kappa_samples_}, "1/m");
     // Second-difference smoothness:  D_i = A_{i+2} − 2·A_{i+1} + A_i
     // for i = 0..n_cst-3. S''(ψ) is the Bernstein expansion of D scaled by
     // n(n−1), so bounding |D| directly caps the leading curvature term and
@@ -133,9 +108,6 @@ void KulfanDiscipline::Setup() {
 void KulfanDiscipline::SetupPartials() {
     DeclarePartials("x", "cst_upper");
     DeclarePartials("x", "cst_lower");
-    // kappa on a given surface is independent of the other surface's CPs.
-    DeclarePartials("kappa_upper", "cst_upper");
-    DeclarePartials("kappa_lower", "cst_lower");
     DeclarePartials("smoothness_upper", "cst_upper");
     DeclarePartials("smoothness_lower", "cst_lower");
 }
@@ -185,93 +157,6 @@ void KulfanDiscipline::BuildBasisMatrices() {
     build(n_cst_lower_, Phi_l_);
 }
 
-void KulfanDiscipline::BuildKappaBasisMatrices() {
-    const int Nk = n_kappa_samples_;
-
-    // Cosine-cluster ψ_kappa over [psi_kappa_min, psi_kappa_max] so we get
-    // tight sampling near both LE-skip boundary and TE-skip boundary.
-    psi_kappa_.resize(Nk);
-    const double span = psi_kappa_max_ - psi_kappa_min_;
-    for (int j = 0; j < Nk; ++j) {
-        const double cos_arg = M_PI * j / (Nk - 1);
-        psi_kappa_(j) = psi_kappa_min_ + 0.5 * span * (1.0 - std::cos(cos_arg));
-    }
-
-    // Class function and its first two derivatives at each ψ_kappa station.
-    //   C(ψ)   = √ψ (1−ψ)
-    //   C'(ψ)  = (1 − 3ψ) / (2√ψ)
-    //   C''(ψ) = −(1 + 3ψ) / (4 ψ^(3/2))
-    C_kappa_.resize(Nk);
-    Cp_kappa_.resize(Nk);
-    Cpp_kappa_.resize(Nk);
-    for (int j = 0; j < Nk; ++j) {
-        const double psi = psi_kappa_(j);
-        const double sp = std::sqrt(psi);
-        C_kappa_(j) = sp * (1.0 - psi);
-        Cp_kappa_(j) = (1.0 - 3.0 * psi) / (2.0 * sp);
-        Cpp_kappa_(j) = -(1.0 + 3.0 * psi) / (4.0 * psi * sp);
-    }
-
-    // Bernstein-basis values and their first two derivatives, by direct
-    // differentiation of B_i(ψ) = K_i ψ^i (1−ψ)^(n−i):
-    //   B'_i(ψ)  = K_i [ i ψ^(i−1) (1−ψ)^(n−i)
-    //                    − (n−i) ψ^i (1−ψ)^(n−i−1) ]
-    //   B''_i(ψ) = K_i [ i(i−1) ψ^(i−2) (1−ψ)^(n−i)
-    //                    − 2 i (n−i) ψ^(i−1) (1−ψ)^(n−i−1)
-    //                    + (n−i)(n−i−1) ψ^i (1−ψ)^(n−i−2) ]
-    // ψ stays bounded away from 0 and 1 by psi_kappa_min / psi_kappa_max,
-    // so all negative-exponent powers stay finite.
-    auto build_kappa_basis = [&](int n_cst, MatrixXd& M0, MatrixXd& M1,
-                                 MatrixXd& M2) {
-        const int order = n_cst - 1;
-        VectorXd binom(n_cst);
-        for (int i = 0; i < n_cst; ++i) binom(i) = Binomial(order, i);
-
-        M0.resize(Nk, n_cst);
-        M1.resize(Nk, n_cst);
-        M2.resize(Nk, n_cst);
-        for (int j = 0; j < Nk; ++j) {
-            const double psi = psi_kappa_(j);
-            const double one_m = 1.0 - psi;
-            for (int i = 0; i < n_cst; ++i) {
-                const int p = i;          // power on ψ
-                const int q = order - i;  // power on (1−ψ)
-
-                const double pip = std::pow(psi, p);
-                const double opq = std::pow(one_m, q);
-                M0(j, i) = binom(i) * pip * opq;
-
-                // B'
-                double dval = 0.0;
-                if (p >= 1) {
-                    dval += p * std::pow(psi, p - 1) * opq;
-                }
-                if (q >= 1) {
-                    dval -= q * pip * std::pow(one_m, q - 1);
-                }
-                M1(j, i) = binom(i) * dval;
-
-                // B''
-                double d2val = 0.0;
-                if (p >= 2) {
-                    d2val += p * (p - 1) * std::pow(psi, p - 2) * opq;
-                }
-                if (p >= 1 && q >= 1) {
-                    d2val -= 2.0 * p * q * std::pow(psi, p - 1) *
-                             std::pow(one_m, q - 1);
-                }
-                if (q >= 2) {
-                    d2val += q * (q - 1) * pip * std::pow(one_m, q - 2);
-                }
-                M2(j, i) = binom(i) * d2val;
-            }
-        }
-    };
-
-    build_kappa_basis(n_cst_upper_, M0_u_, M1_u_, M2_u_);
-    build_kappa_basis(n_cst_lower_, M0_l_, M1_l_, M2_l_);
-}
-
 void KulfanDiscipline::Compute(const philote::Variables& inputs,
                                philote::Variables& outputs) {
     const auto& upper_var = inputs.at("cst_upper");
@@ -309,39 +194,6 @@ void KulfanDiscipline::Compute(const philote::Variables& inputs,
         }
     }
 
-    // ─── Curvature outputs ────────────────────────────────────────────────
-    // For each ψ_kappa station compute
-    //   y(ψ)  = ±C(ψ)·S(ψ) + ψ·y_te    (te term doesn't affect y'')
-    //   y'(ψ) = ±(C'·S + C·S') + y_te
-    //   y''(ψ) = ±(C''·S + 2 C'·S' + C·S'')
-    //   κ(ψ)   = y'' / (1 + y'²)^(3/2)
-    // Sign s = +1 for upper, −1 for lower.
-    const VectorXd S_u = M0_u_ * cst_u;
-    const VectorXd Sp_u = M1_u_ * cst_u;
-    const VectorXd Spp_u = M2_u_ * cst_u;
-    const VectorXd S_l = M0_l_ * cst_l;
-    const VectorXd Sp_l = M1_l_ * cst_l;
-    const VectorXd Spp_l = M2_l_ * cst_l;
-
-    auto& kappa_u = outputs.at("kappa_upper");
-    auto& kappa_l = outputs.at("kappa_lower");
-    for (int j = 0; j < n_kappa_samples_; ++j) {
-        const double C = C_kappa_(j);
-        const double Cp = Cp_kappa_(j);
-        const double Cpp = Cpp_kappa_(j);
-
-        const double yp_u = (Cp * S_u(j) + C * Sp_u(j)) + te_upper_;
-        const double ypp_u = Cpp * S_u(j) + 2.0 * Cp * Sp_u(j) + C * Spp_u(j);
-        const double denom_u = std::pow(1.0 + yp_u * yp_u, 1.5);
-        kappa_u(j) = ypp_u / denom_u;
-
-        const double yp_l = -(Cp * S_l(j) + C * Sp_l(j)) + te_lower_;
-        const double ypp_l = -(Cpp * S_l(j) + 2.0 * Cp * Sp_l(j) +
-                               C * Spp_l(j));
-        const double denom_l = std::pow(1.0 + yp_l * yp_l, 1.5);
-        kappa_l(j) = ypp_l / denom_l;
-    }
-
     // ─── Smoothness outputs (second differences of cst) ──────────────────
     auto& sm_u = outputs.at("smoothness_upper");
     for (int i = 0; i < n_cst_upper_ - 2; ++i) {
@@ -353,7 +205,7 @@ void KulfanDiscipline::Compute(const philote::Variables& inputs,
     }
 }
 
-void KulfanDiscipline::ComputePartials(const philote::Variables& inputs,
+void KulfanDiscipline::ComputePartials(const philote::Variables& /*inputs*/,
                                        philote::Partials& partials) {
     const int N = N_per_side_;
 
@@ -389,64 +241,6 @@ void KulfanDiscipline::ComputePartials(const philote::Variables& inputs,
             for (int i = 0; i < n_cst_upper_; ++i) {
                 d_u(yrow_u * n_cst_upper_ + i) = Phi_u_(q, i);
             }
-        }
-    }
-
-    // ─── Curvature partials ──────────────────────────────────────────────
-    // κ = y'' / (1 + y'²)^(3/2). With y = ±C·S + ψ·y_te, S linear in cst:
-    //   ∂y'/∂A_i  = ±(C'·M0[j,i] + C·M1[j,i])
-    //   ∂y''/∂A_i = ±(C''·M0[j,i] + 2 C'·M1[j,i] + C·M2[j,i])
-    //   ∂κ/∂A_i   = ∂y''/∂A_i / (1+y'²)^(3/2)
-    //              − 3·y'·y''·∂y'/∂A_i / (1+y'²)^(5/2)
-    const auto& upper_var = inputs.at("cst_upper");
-    const auto& lower_var = inputs.at("cst_lower");
-    VectorXd cst_u(n_cst_upper_);
-    for (int i = 0; i < n_cst_upper_; ++i) cst_u(i) = upper_var(i);
-    VectorXd cst_l(n_cst_lower_);
-    for (int i = 0; i < n_cst_lower_; ++i) cst_l(i) = lower_var(i);
-
-    const VectorXd S_u = M0_u_ * cst_u;
-    const VectorXd Sp_u = M1_u_ * cst_u;
-    const VectorXd Spp_u = M2_u_ * cst_u;
-    const VectorXd S_l = M0_l_ * cst_l;
-    const VectorXd Sp_l = M1_l_ * cst_l;
-    const VectorXd Spp_l = M2_l_ * cst_l;
-
-    auto& d_ku = partials[{"kappa_upper", "cst_upper"}];
-    auto& d_kl = partials[{"kappa_lower", "cst_lower"}];
-
-    for (int j = 0; j < n_kappa_samples_; ++j) {
-        const double C = C_kappa_(j);
-        const double Cp = Cp_kappa_(j);
-        const double Cpp = Cpp_kappa_(j);
-
-        // Upper surface (sign +1)
-        const double yp_u = (Cp * S_u(j) + C * Sp_u(j)) + te_upper_;
-        const double ypp_u = Cpp * S_u(j) + 2.0 * Cp * Sp_u(j) + C * Spp_u(j);
-        const double one_plus = 1.0 + yp_u * yp_u;
-        const double D32_u = std::pow(one_plus, 1.5);
-        const double D52_u = D32_u * one_plus;
-        const double coeff_u = -3.0 * yp_u * ypp_u / D52_u;
-        for (int i = 0; i < n_cst_upper_; ++i) {
-            const double dyp = Cp * M0_u_(j, i) + C * M1_u_(j, i);
-            const double dypp = Cpp * M0_u_(j, i) + 2.0 * Cp * M1_u_(j, i) +
-                                C * M2_u_(j, i);
-            d_ku(j * n_cst_upper_ + i) = dypp / D32_u + coeff_u * dyp;
-        }
-
-        // Lower surface (sign −1)
-        const double yp_l = -(Cp * S_l(j) + C * Sp_l(j)) + te_lower_;
-        const double ypp_l = -(Cpp * S_l(j) + 2.0 * Cp * Sp_l(j) +
-                               C * Spp_l(j));
-        const double one_plus_l = 1.0 + yp_l * yp_l;
-        const double D32_l = std::pow(one_plus_l, 1.5);
-        const double D52_l = D32_l * one_plus_l;
-        const double coeff_l = -3.0 * yp_l * ypp_l / D52_l;
-        for (int i = 0; i < n_cst_lower_; ++i) {
-            const double dyp = -(Cp * M0_l_(j, i) + C * M1_l_(j, i));
-            const double dypp = -(Cpp * M0_l_(j, i) + 2.0 * Cp * M1_l_(j, i) +
-                                  C * M2_l_(j, i));
-            d_kl(j * n_cst_lower_ + i) = dypp / D32_l + coeff_l * dyp;
         }
     }
 
