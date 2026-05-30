@@ -44,11 +44,12 @@ from philote_mdo.openmdao import RemoteExplicitComponent
 NPANEL = 100              # panels; nnodes = NPANEL + 1
 N_CST_UPPER = 8
 N_CST_LOWER = 8
-N_KAPPA_SAMPLES = 30      # surface-curvature evaluation stations per surface
-KAPPA_MAX = 8.0           # |κ| bound (1/chord). NACA-0012 peaks at ~11 over
-                          # psi ∈ [0.02, 0.98]; 8 is tighter than baseline,
-                          # forcing the optimizer to find a smoother airfoil
-                          # than the unconstrained minimum (|κ|=12.6).
+SMOOTHNESS_MAX = 0.05     # bound on |A_{i+2} − 2 A_{i+1} + A_i|. For an
+                          # n=8 Bernstein expansion, |S''| ≤ 56·max|D|, so
+                          # 0.05 caps the Bernstein contribution to S'' at
+                          # about 2.8 — comparable to the NACA-0012 baseline.
+                          # Linear-in-cst constraint, n_cst − 2 inequalities
+                          # per surface (cheap vs sampled curvature).
 NACA_TMAX = 0.12          # initial NACA-0012-like thickness
 TE_OFFSET = 0.5 * NACA_TMAX * (
     0.2969 - 0.126 - 0.3516 + 0.2843 - 0.1015
@@ -210,7 +211,6 @@ def _build_problem(analysis_channel, geometry_channel, hdf5_file=None):
         npanel=NPANEL,
         te_upper=TE_UPPER,
         te_lower=TE_LOWER,
-        n_kappa_samples=N_KAPPA_SAMPLES,
     )
     analysis_kwargs = dict(
         channel=analysis_channel,
@@ -226,7 +226,7 @@ def _build_problem(analysis_channel, geometry_channel, hdf5_file=None):
     model.add_subsystem(
         "geometry",
         RemoteExplicitComponent(**geometry_kwargs),
-        promotes_outputs=["x", "kappa_upper", "kappa_lower"],
+        promotes_outputs=["x", "smoothness_upper", "smoothness_lower"],
         promotes_inputs=["cst_upper", "cst_lower"],
     )
     model.add_subsystem(
@@ -344,15 +344,18 @@ def example_optimization(analysis_channel, geometry_channel, target_cl=0.5):
     prob.model.add_constraint(
         "area_comp.area", lower=min_area, ref=init_area,
     )
-    # Smoothness constraint: bound surface curvature |κ| ≤ KAPPA_MAX at every
-    # κ sample station. Signed κ is exposed (κ < 0 on upper, > 0 on lower)
-    # so the two-sided bound rules out wavy surfaces and inflection points
-    # without forcing one. Analytic partials come from KulfanDiscipline.
+    # Smoothness constraint: bound second differences |A_{i+2} − 2 A_{i+1}
+    # + A_i| ≤ SMOOTHNESS_MAX per surface. S''(ψ) is the Bernstein expansion
+    # of these second differences scaled by n(n−1), so this directly caps
+    # the leading curvature term. Linear in cst, so the Jacobian is a
+    # constant tri-banded matrix — n_cst − 2 inequalities per surface.
     prob.model.add_constraint(
-        "kappa_upper", lower=-KAPPA_MAX, upper=KAPPA_MAX, ref=KAPPA_MAX,
+        "smoothness_upper", lower=-SMOOTHNESS_MAX, upper=SMOOTHNESS_MAX,
+        ref=SMOOTHNESS_MAX,
     )
     prob.model.add_constraint(
-        "kappa_lower", lower=-KAPPA_MAX, upper=KAPPA_MAX, ref=KAPPA_MAX,
+        "smoothness_lower", lower=-SMOOTHNESS_MAX, upper=SMOOTHNESS_MAX,
+        ref=SMOOTHNESS_MAX,
     )
 
     prob.setup()
@@ -364,8 +367,8 @@ def example_optimization(analysis_channel, geometry_channel, target_cl=0.5):
     print(f"  DVs: {N_CST_UPPER} upper CST + {N_CST_LOWER} lower CST + alpha")
     print(f"  Area constraint: area >= {min_area:.6f} "
           f"(80% of NACA-0012 init = {init_area:.6f})")
-    print(f"  Curvature constraint: |κ| <= {KAPPA_MAX:g} (1/chord) at "
-          f"{N_KAPPA_SAMPLES} stations / surface")
+    print(f"  Smoothness constraint: |A_{{i+2}}-2A_{{i+1}}+A_i| <= "
+          f"{SMOOTHNESS_MAX} per surface (n_cst-2 inequalities each)")
     print("=" * 60 + "\n")
 
     prob.run_driver()

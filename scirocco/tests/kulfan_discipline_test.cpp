@@ -489,3 +489,51 @@ TEST(KulfanDisciplineTest, Naca0012CurvatureIsBounded) {
     EXPECT_LT(max_kappa, 100.0);
     EXPECT_GT(max_kappa, 1.0);  // sanity: not identically zero
 }
+
+// ---------------------------------------------------------------------------
+// Smoothness output: D_i = A_{i+2} − 2 A_{i+1} + A_i, with constant
+// linear partials. Verify both the values and the [1, −2, 1] Jacobian.
+// ---------------------------------------------------------------------------
+
+TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
+    scirocco::KulfanDiscipline disc;
+    philote::Variables inputs, outputs;
+    philote::Partials partials;
+    RunLifecycle(disc, BuildOptions(6, 6, 40, 0.0, 0.0), inputs, outputs,
+                 partials);
+
+    const int n_u = disc.n_cst_upper();
+    const int n_l = disc.n_cst_lower();
+    std::vector<double> raw_u = {0.30, 0.05, 0.40, 0.02, 0.35, 0.04};
+    std::vector<double> raw_l = {0.10, 0.20, 0.10, 0.20, 0.10, 0.20};
+    for (int i = 0; i < n_u; ++i) inputs.at("cst_upper")(i) = raw_u[i];
+    for (int i = 0; i < n_l; ++i) inputs.at("cst_lower")(i) = raw_l[i];
+
+    disc.Compute(inputs, outputs);
+
+    // Values match the closed-form second differences.
+    for (int i = 0; i < n_u - 2; ++i) {
+        const double expected =
+            raw_u[i + 2] - 2.0 * raw_u[i + 1] + raw_u[i];
+        EXPECT_NEAR(outputs.at("smoothness_upper")(i), expected, 1e-14);
+    }
+    for (int i = 0; i < n_l - 2; ++i) {
+        const double expected =
+            raw_l[i + 2] - 2.0 * raw_l[i + 1] + raw_l[i];
+        EXPECT_NEAR(outputs.at("smoothness_lower")(i), expected, 1e-14);
+    }
+
+    // Constant Jacobian — verify the [1, −2, 1] band exactly.
+    disc.ComputePartials(inputs, partials);
+    const auto& d_su = partials[{"smoothness_upper", "cst_upper"}];
+    for (int i = 0; i < n_u - 2; ++i) {
+        for (int j = 0; j < n_u; ++j) {
+            const double expected = (j == i)       ? 1.0
+                                    : (j == i + 1) ? -2.0
+                                    : (j == i + 2) ? 1.0
+                                                   : 0.0;
+            EXPECT_NEAR(d_su(i * n_u + j), expected, 1e-14)
+                << "row=" << i << " col=" << j;
+        }
+    }
+}

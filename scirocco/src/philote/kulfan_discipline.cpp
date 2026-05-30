@@ -90,9 +90,11 @@ void KulfanDiscipline::SetOptions(const google::protobuf::Struct& options) {
         throw std::invalid_argument(
             "KulfanDiscipline: npanel must be an even integer >= 4");
     }
-    if (n_cst_upper_ < 2 || n_cst_lower_ < 2) {
+    if (n_cst_upper_ < 3 || n_cst_lower_ < 3) {
+        // smoothness output is the second-difference vector of length n-2,
+        // which requires at least 3 CPs per surface.
         throw std::invalid_argument(
-            "KulfanDiscipline: n_cst_upper / n_cst_lower must be >= 2");
+            "KulfanDiscipline: n_cst_upper / n_cst_lower must be >= 3");
     }
     if (n_kappa_samples_ < 2) {
         throw std::invalid_argument(
@@ -120,6 +122,12 @@ void KulfanDiscipline::Setup() {
     AddOutput("x", {2 * npoint_}, "m");
     AddOutput("kappa_upper", {n_kappa_samples_}, "1/m");
     AddOutput("kappa_lower", {n_kappa_samples_}, "1/m");
+    // Second-difference smoothness:  D_i = A_{i+2} − 2·A_{i+1} + A_i
+    // for i = 0..n_cst-3. S''(ψ) is the Bernstein expansion of D scaled by
+    // n(n−1), so bounding |D| directly caps the leading curvature term and
+    // is linear in cst (constant tri-banded partial).
+    AddOutput("smoothness_upper", {n_cst_upper_ - 2}, "");
+    AddOutput("smoothness_lower", {n_cst_lower_ - 2}, "");
 }
 
 void KulfanDiscipline::SetupPartials() {
@@ -128,6 +136,8 @@ void KulfanDiscipline::SetupPartials() {
     // kappa on a given surface is independent of the other surface's CPs.
     DeclarePartials("kappa_upper", "cst_upper");
     DeclarePartials("kappa_lower", "cst_lower");
+    DeclarePartials("smoothness_upper", "cst_upper");
+    DeclarePartials("smoothness_lower", "cst_lower");
 }
 
 void KulfanDiscipline::BuildEvalStations() {
@@ -331,6 +341,16 @@ void KulfanDiscipline::Compute(const philote::Variables& inputs,
         const double denom_l = std::pow(1.0 + yp_l * yp_l, 1.5);
         kappa_l(j) = ypp_l / denom_l;
     }
+
+    // ─── Smoothness outputs (second differences of cst) ──────────────────
+    auto& sm_u = outputs.at("smoothness_upper");
+    for (int i = 0; i < n_cst_upper_ - 2; ++i) {
+        sm_u(i) = cst_u(i + 2) - 2.0 * cst_u(i + 1) + cst_u(i);
+    }
+    auto& sm_l = outputs.at("smoothness_lower");
+    for (int i = 0; i < n_cst_lower_ - 2; ++i) {
+        sm_l(i) = cst_l(i + 2) - 2.0 * cst_l(i + 1) + cst_l(i);
+    }
 }
 
 void KulfanDiscipline::ComputePartials(const philote::Variables& inputs,
@@ -429,6 +449,23 @@ void KulfanDiscipline::ComputePartials(const philote::Variables& inputs,
             d_kl(j * n_cst_lower_ + i) = dypp / D32_l + coeff_l * dyp;
         }
     }
+
+    // ─── Smoothness partials (constant tri-banded [1, −2, 1]) ────────────
+    // D_i = A_{i+2} − 2 A_{i+1} + A_i, so the Jacobian has row-major shape
+    // [n_cst − 2, n_cst] with row i having +1 at col i, −2 at col i+1,
+    // +1 at col i+2.
+    auto fill_smoothness = [](philote::Variable& dst, int n_d, int n_cst) {
+        for (int i = 0; i < n_d * n_cst; ++i) dst(i) = 0.0;
+        for (int i = 0; i < n_d; ++i) {
+            dst(i * n_cst + i) = 1.0;
+            dst(i * n_cst + i + 1) = -2.0;
+            dst(i * n_cst + i + 2) = 1.0;
+        }
+    };
+    fill_smoothness(partials[{"smoothness_upper", "cst_upper"}],
+                    n_cst_upper_ - 2, n_cst_upper_);
+    fill_smoothness(partials[{"smoothness_lower", "cst_lower"}],
+                    n_cst_lower_ - 2, n_cst_lower_);
 }
 
 }  // namespace scirocco
