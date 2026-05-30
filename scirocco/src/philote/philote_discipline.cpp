@@ -38,6 +38,10 @@
 #include <string>
 #include <vector>
 
+#include "scirocco/core/geometry.h"
+#include "scirocco/core/inviscid.h"
+#include "scirocco/core/paneling.h"
+
 namespace scirocco {
 
 void SiroccoDiscipline::Initialize() {
@@ -126,11 +130,23 @@ void SiroccoDiscipline::SetupPartials() {
 void SiroccoDiscipline::Compute(const philote::Variables& inputs,
                                 philote::Variables& outputs) {
     const auto& x_var = inputs.at("x");
-    auto& foil_x = solver_->GetState().foil.x;
+    auto& state = solver_->GetState();
+    auto& foil_x = state.foil.x;
     for (int i = 0; i < nnodes_; ++i) {
         foil_x(0, i) = x_var(i);
         foil_x(1, i) = x_var(nnodes_ + i);
     }
+
+    // After overwriting panel node coordinates in place, refresh the
+    // derived geometric state (arc length, tangents) so it's consistent
+    // with the new foil.x. Without this the BL solver runs on the new
+    // nodes with stale tangents from the initial paneling, producing an
+    // inconsistent state and breaking the adjoint LU factorization on R_V.
+    RefreshPanelGeometry(state.foil);
+    // Also wipe leftover BL solution state so the next Solve starts from a
+    // clean init rather than warm-starting from a different geometry's
+    // converged BL state.
+    ClearSolution(state);
 
     double alpha = inputs.at("alpha")(0);
     double Re = inputs.at("Re")(0);

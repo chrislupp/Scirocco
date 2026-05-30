@@ -55,6 +55,13 @@ struct SpacingResult {
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt = VectorXd());
 
+// Refresh panel.s (arc length) and panel.t (tangent) from panel.x, leaving
+// panel.x untouched. Use after directly setting panel.x to new node
+// coordinates (e.g. from an upstream geometry discipline) so derived
+// geometric state stays consistent with panel.x — without re-spacing,
+// which would break upstream gradient chains.
+void RefreshPanelGeometry(Panel& panel);
+
 // Spline points with curvature-based spacing
 // INPUT:
 //   points : Input points to spline [2 x N]
