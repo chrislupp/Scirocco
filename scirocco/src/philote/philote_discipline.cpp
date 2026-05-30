@@ -168,7 +168,39 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
                                         philote::Partials& partials) {
-    Sensitivity sens = solver_->ComputeSensitivities();
+    // Try to compute fresh sensitivities. If the adjoint LU factorization
+    // throws (which can happen on intermediate iterates the optimizer
+    // explores, even when the primal converged via PTC), fall back to the
+    // last successful sensitivities so SLSQP doesn't crash mid-run. The
+    // first failure with no cached state returns zeros — a warning is
+    // printed to stderr in both cases.
+    Sensitivity sens;
+    try {
+        sens = solver_->ComputeSensitivities();
+        cached_sens_ = sens;
+        has_cached_sens_ = true;
+    } catch (const std::exception& e) {
+        std::cerr << "SiroccoDiscipline: ComputeSensitivities failed ("
+                  << e.what() << "); ";
+        if (has_cached_sens_) {
+            std::cerr << "reusing last-good sensitivities.\n";
+            sens = cached_sens_;
+        } else {
+            std::cerr << "returning zeros (no cache yet).\n";
+            sens.dcl_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcd_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcm_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcl_dalpha = 0.0;
+            sens.dcd_dalpha = 0.0;
+            sens.dcm_dalpha = 0.0;
+            sens.dcl_dRe = 0.0;
+            sens.dcd_dRe = 0.0;
+            sens.dcm_dRe = 0.0;
+            sens.dcl_dMa = 0.0;
+            sens.dcd_dMa = 0.0;
+            sens.dcm_dMa = 0.0;
+        }
+    }
 
     // d(cl,cd,cm)/dx — flatten [2 x N] row-major into [2N]
     auto& dcl_dx = partials[{"cl", "x"}];
