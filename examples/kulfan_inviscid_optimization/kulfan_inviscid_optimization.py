@@ -31,7 +31,7 @@ Two Philote-Cpp gRPC servers run side by side: the geometry server on
 50052, the analysis server on 50051. OpenMDAO chains them.
 
 Usage:
-    python kulfan_optimization.py
+    python kulfan_inviscid_optimization.py
 """
 
 import subprocess
@@ -308,7 +308,9 @@ def example_optimization(analysis_channel, geometry_channel, target_cl=0.5):
     section design problem.
     """
     nn = NPANEL + 1
-    hdf5_path = Path(__file__).with_name("kulfan_optimization_history.h5")
+    hdf5_path = Path(__file__).with_name(
+        "kulfan_inviscid_optimization_history.h5"
+    )
 
     cst_u_init, cst_l_init = _initial_cps()
     init_area, x_init = _reference_area(
@@ -421,7 +423,7 @@ def plot_results(x_init, x_opt, nn, target_cl, opt_cm, opt_alpha,
     ax_cps.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    out = Path(__file__).with_name("kulfan_optimization_result.png")
+    out = Path(__file__).with_name("kulfan_inviscid_optimization_result.png")
     fig.savefig(out, dpi=150)
     plt.show()
     print(f"Plot saved to {out}")
