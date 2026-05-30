@@ -1,5 +1,6 @@
 add_library(SiroccoPhilote
     philote_discipline.cpp
+    geometry_discipline.cpp
 )
 
 add_library(Scirocco::Philote ALIAS SiroccoPhilote)
@@ -39,4 +40,15 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
         SENSITIVITY_REFERENCE_FILE="${PROJECT_SOURCE_DIR}/tests/sensitivity_reference.h5"
     )
     gtest_discover_tests(scirocco_philote_tests)
+endif()
+
+# Geometry discipline tests (no HDF5 dependency)
+if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
+    add_executable(scirocco_geometry_discipline_tests
+        ${PROJECT_SOURCE_DIR}/tests/geometry_discipline_test.cpp
+    )
+    target_link_libraries(scirocco_geometry_discipline_tests
+        PRIVATE SiroccoPhilote GTest::gtest_main
+    )
+    gtest_discover_tests(scirocco_geometry_discipline_tests)
 endif()
