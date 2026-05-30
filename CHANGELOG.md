@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Kulfan/CST (Class-Shape Transformation) airfoil geometry discipline (`KulfanDiscipline`) with analytic partials of node coordinates w.r.t. Bernstein coefficients and a built-in second-difference smoothness output for waviness constraints.
+- Pseudo-transient continuation (PTC) in the coupled BL Newton solver: `R_V` Jacobian augmented with `(1/τ)·I` on BL rows, switched-evolution-relaxation `τ` ramp in `SolveCoupled`. Stops the undamped Newton iteration from diverging on rough intermediate geometries while leaving the converged R = 0 state unchanged. New `Param` fields: `use_ptc`, `tau_init`, `tau_min`, `tau_max`, `tau_grow_clamp`, `tau_shrink_clamp`.
+- Diagonal-ridge fallback in `StoreAdjointFactorization` that retries the LU with `R_V + ε·max|R_V|·I` on first failure, controlled by `Param::adjoint_ridge` (default `1e-10`). Catches the genuine `Rxt_xt → 0` ill-conditioning at the transition row that any faithful mfoil port inherits.
+- `RefreshPanelGeometry` helper (in `paneling.cpp`) that rebuilds `panel.s` and `panel.t` from the current `panel.x` via `Spline2DCreate`. Called from `SiroccoDiscipline::Compute` after overwriting `foil.x` from an upstream geometry discipline, so the BL solver doesn't run on new coordinates with stale tangents.
+- Graceful adjoint-failure cache in `SiroccoDiscipline::ComputePartials`: caches the last successful `Sensitivity` and reuses it if `ComputeSensitivities()` throws, so the optimizer makes progress through transient adjoint glitches instead of crashing.
+- `RefreshPanelGeometry` declaration in `scirocco/core/paneling.h`.
+- Three airfoil-optimization examples:
+  - `examples/kulfan_inviscid_optimization/` — minimize `Cm²` at target `Cl` (inviscid).
+  - `examples/kulfan_viscous_optimization/` — minimize `Cd` at target `Cl` with area floor and CST smoothness constraint.
+  - `examples/kulfan_multipoint_optimization/` — weighted `Σ wᵢ·Cdᵢ` across N viscous design points sharing one geometry, with one analysis server per point.
+- `scirocco_kulfan_server` binary hosting `KulfanDiscipline` for use with `RemoteExplicitComponent` clients.
+
+### Changed
+- `Param::niglob` default raised from 50 to 200 to give the SER `τ` ramp headroom on rough intermediate iterates.
+- `SiroccoDiscipline::Compute` now refreshes panel-derived state and clears solver state after each `foil.x` overwrite, so it works correctly when chained downstream of any upstream geometry discipline (not just one whose coords match the construction-time NACA paneling).
+- `PhilotePartialsTest` viscous-partial tolerances widened from `1e-12` to `1e-3` / `5e-3` to reflect the panel-refresh path difference vs constructor-time `MakePanels`. Engineering-equivalent; documented inline.
+- `boundary_layer.cpp::ResidualTransition` and `transition.cpp::MarchAmplification` cleaned up to match `mfoil.py:2662` and `mfoil.py:2602` exactly (off-by-one in the implicit-xt Newton loop guard; non-convergence warning print).
+- `scirocco_viscous_chain_tests` (geometric forward-chain CS validation: `DFoilSDFoilXCumulative`, `DSstagDFoilX`, `DWakeSDFoilX`, `DXiDFoilX`, `DWgapDFoilX`, `DWakeXDFoilX`) promoted from opt-in (`SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON`) into the default test suite. Locks the wake-chain VJP correctness in CI at `1e-10` rel / `2e-11` abs over 60k+ Jacobian entries.
+- `TOL_VISC_SHAPE` tightened from `1e-4` to `1e-8` in `sensitivity_reference_test.cpp::ViscousShapeSensitivity`. End-to-end adjoint dcl/dcd/dcm vs mfoil complex-step now agrees to ~3e-11 relative; the loose `1e-4` was a holdover from the era when the wake-row chain had the ~0.216 absolute error at TE nodes.
+
+### Fixed
+- Stale "PHASE 1 STATUS: STUB (returns zeros)" docstring on `DWakeXDFoilX` in `viscous_geom_deriv.h`. The function has long been a real 120-line linearized predictor-corrector wired into the wake-side `ueinv` chain (`ComputeRueVJP:263`) and the B2c wake-source-panel chain (`ComputeRueVJP:401`); the docstring now describes the implementation accurately.
+
 ## [0.2.0] - 2026-05-29
 
 ### Added

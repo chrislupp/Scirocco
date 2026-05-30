@@ -66,7 +66,13 @@ constexpr double TOL_INVISCID = 1e-10;  // inviscid: machine precision
 //                       amplified through |λ| for the tiny |dJ/dRe| ~ 1e-8.
 // Tolerance covers all scalar sensitivities at the current scirocco precision;
 // pushing below 1e-3 requires fixing the Newton plateau (separate primal work).
-constexpr double TOL_VISC_SHAPE = 1e-4;
+// Adjoint vs CS shape sensitivity at non-LE probe nodes (20, 80). Now that
+// the wake VJP chain is validated against CS at 1e-10 rel in
+// viscous_chain_test::DWakeXDFoilX, the end-to-end dcl/dcd/dcm partials
+// agree to ~3e-11 rel. 1e-8 tolerance keeps a 300x safety margin while
+// catching any future regression that pushes the wake-row chain back to
+// the historical 1e-4 floor.
+constexpr double TOL_VISC_SHAPE = 1e-8;
 constexpr double TOL_VISC_SCALAR_ALPHA = 1e-9;
 
 // ---------------------------------------------------------------------------

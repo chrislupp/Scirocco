@@ -313,7 +313,8 @@ TEST_F(GeomChainTest, DWgapDFoilX) {
 }
 
 // ============================================================================
-// DWakeXDFoilX — currently STUBBED (returns zero). Re-enable when implemented.
+// DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via the
+// linearized BuildWake predictor-corrector sweep.
 // ============================================================================
 TEST_F(GeomChainTest, DWakeXDFoilX) {
     auto& s = foil_.GetState();
