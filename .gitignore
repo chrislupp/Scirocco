@@ -47,8 +47,13 @@ __pycache__/
 
 # Local debug scratch (numpy dumps, binary state captures, validation scripts)
 *.npy
+*.npz
 *.bin
 scirocco/tests/validate_*.py
 scirocco/tests/extract_vjp_chain_reference.py
 scirocco/tests/extract_wake_geom_reference.py
 scirocco/tests/isolate_ue_partials.py
+
+# OpenMDAO per-problem report directories (auto-generated next to scripts and
+# in the repo root when examples or ad-hoc scripts run)
+*_out/

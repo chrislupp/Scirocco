@@ -114,6 +114,26 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
     return result;
 }
 
+void RefreshPanelGeometry(Panel& panel) {
+    const int N = panel.N;
+    if (N < 2) return;
+
+    // Build a 2-D arc-length-parameterized cubic spline through the current
+    // panel nodes. Spline2DCreate keeps the input nodes exactly and iterates
+    // the s parameter values to true arc length.
+    Spline2D spline = Spline2DCreate(panel.x);
+    panel.s = spline.X.s;
+    panel.t = SplineTangent(spline, panel.s);
+
+    // Normalize tangents (matching MakePanels convention).
+    for (int i = 0; i < N; ++i) {
+        const double tnorm = panel.t.col(i).norm();
+        if (tnorm > 1e-10) {
+            panel.t.col(i) /= tnorm;
+        }
+    }
+}
+
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt) {
     int N = npanel + 1;  // Number of nodes

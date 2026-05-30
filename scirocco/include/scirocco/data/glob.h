@@ -63,6 +63,11 @@ struct Glob {
 
     // Stored SparseLU factorization of R_V for adjoint solves
     std::shared_ptr<Eigen::SparseLU<SparseMatrixd>> lu_factorization;
+
+    // PTC state — current pseudo-time step and the previous-iter residual
+    // norm, used by the SER tau update in SolveCoupled.
+    double tau = 0.0;
+    double R_norm_prev = 0.0;
 };
 
 }  // namespace scirocco

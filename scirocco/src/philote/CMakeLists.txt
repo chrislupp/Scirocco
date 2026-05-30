@@ -1,5 +1,6 @@
 add_library(SiroccoPhilote
     philote_discipline.cpp
+    kulfan_discipline.cpp
 )
 
 add_library(Scirocco::Philote ALIAS SiroccoPhilote)
@@ -23,9 +24,12 @@ if(SCIROCCO_HDF5_OUTPUT AND TARGET scirocco_hdf5)
     target_compile_definitions(SiroccoPhilote PUBLIC SCIROCCO_HDF5)
 endif()
 
-# Server executable
+# Server executables
 add_executable(scirocco_server server.cpp)
 target_link_libraries(scirocco_server PRIVATE SiroccoPhilote)
+
+add_executable(scirocco_kulfan_server kulfan_server.cpp)
+target_link_libraries(scirocco_kulfan_server PRIVATE SiroccoPhilote)
 
 # Tests
 if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
@@ -39,4 +43,15 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
         SENSITIVITY_REFERENCE_FILE="${PROJECT_SOURCE_DIR}/tests/sensitivity_reference.h5"
     )
     gtest_discover_tests(scirocco_philote_tests)
+endif()
+
+# Kulfan discipline tests (no HDF5 dependency)
+if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
+    add_executable(scirocco_kulfan_discipline_tests
+        ${PROJECT_SOURCE_DIR}/tests/kulfan_discipline_test.cpp
+    )
+    target_link_libraries(scirocco_kulfan_discipline_tests
+        PRIVATE SiroccoPhilote GTest::gtest_main
+    )
+    gtest_discover_tests(scirocco_kulfan_discipline_tests)
 endif()

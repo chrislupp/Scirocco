@@ -38,6 +38,10 @@
 #include <string>
 #include <vector>
 
+#include "scirocco/core/geometry.h"
+#include "scirocco/core/inviscid.h"
+#include "scirocco/core/paneling.h"
+
 namespace scirocco {
 
 void SiroccoDiscipline::Initialize() {
@@ -126,11 +130,23 @@ void SiroccoDiscipline::SetupPartials() {
 void SiroccoDiscipline::Compute(const philote::Variables& inputs,
                                 philote::Variables& outputs) {
     const auto& x_var = inputs.at("x");
-    auto& foil_x = solver_->GetState().foil.x;
+    auto& state = solver_->GetState();
+    auto& foil_x = state.foil.x;
     for (int i = 0; i < nnodes_; ++i) {
         foil_x(0, i) = x_var(i);
         foil_x(1, i) = x_var(nnodes_ + i);
     }
+
+    // After overwriting panel node coordinates in place, refresh the
+    // derived geometric state (arc length, tangents) so it's consistent
+    // with the new foil.x. Without this the BL solver runs on the new
+    // nodes with stale tangents from the initial paneling, producing an
+    // inconsistent state and breaking the adjoint LU factorization on R_V.
+    RefreshPanelGeometry(state.foil);
+    // Also wipe leftover BL solution state so the next Solve starts from a
+    // clean init rather than warm-starting from a different geometry's
+    // converged BL state.
+    ClearSolution(state);
 
     double alpha = inputs.at("alpha")(0);
     double Re = inputs.at("Re")(0);
@@ -152,7 +168,39 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
                                         philote::Partials& partials) {
-    Sensitivity sens = solver_->ComputeSensitivities();
+    // Try to compute fresh sensitivities. If the adjoint LU factorization
+    // throws (which can happen on intermediate iterates the optimizer
+    // explores, even when the primal converged via PTC), fall back to the
+    // last successful sensitivities so SLSQP doesn't crash mid-run. The
+    // first failure with no cached state returns zeros — a warning is
+    // printed to stderr in both cases.
+    Sensitivity sens;
+    try {
+        sens = solver_->ComputeSensitivities();
+        cached_sens_ = sens;
+        has_cached_sens_ = true;
+    } catch (const std::exception& e) {
+        std::cerr << "SiroccoDiscipline: ComputeSensitivities failed ("
+                  << e.what() << "); ";
+        if (has_cached_sens_) {
+            std::cerr << "reusing last-good sensitivities.\n";
+            sens = cached_sens_;
+        } else {
+            std::cerr << "returning zeros (no cache yet).\n";
+            sens.dcl_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcd_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcm_dx = MatrixXd::Zero(2, nnodes_);
+            sens.dcl_dalpha = 0.0;
+            sens.dcd_dalpha = 0.0;
+            sens.dcm_dalpha = 0.0;
+            sens.dcl_dRe = 0.0;
+            sens.dcd_dRe = 0.0;
+            sens.dcm_dRe = 0.0;
+            sens.dcl_dMa = 0.0;
+            sens.dcd_dMa = 0.0;
+            sens.dcm_dMa = 0.0;
+        }
+    }
 
     // d(cl,cd,cm)/dx — flatten [2 x N] row-major into [2N]
     auto& dcl_dx = partials[{"cl", "x"}];

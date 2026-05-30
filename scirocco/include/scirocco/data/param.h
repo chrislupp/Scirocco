@@ -38,7 +38,29 @@ struct Param {
     // Solver parameters
     int verb = 0;         // Printing verbosity level (higher = more verbose)
     double rtol = 1e-11;  // Residual tolerance for Newton
-    int niglob = 50;      // Maximum number of global iterations
+    int niglob = 200;     // Maximum number of global iterations (raised from
+                          // 50 to give PTC headroom on rough intermediate
+                          // iterates that need extra Newton steps to ramp
+                          // tau back up to full Newton)
+
+    // Pseudo-transient continuation (PTC) for the coupled BL Newton solve.
+    // Adds (1/tau) * I to the Jacobian diagonal so that early Newton steps
+    // are regularized: (R_U + (1/tau) I) dU = -R. tau is grown by SER
+    // (switched evolution-relaxation) as the residual decreases, so the
+    // iteration recovers full Newton near the solution and the converged
+    // R = 0 is unchanged.
+    bool use_ptc = true;  // PTC on/off (use_ptc=false -> pure Newton)
+    // Start with effectively no damping (1/tau ~ 1e-6); SER shrinks tau only
+    // when the residual increases. This preserves full-Newton behavior on
+    // well-behaved cases (the test reference) while still catching the
+    // divergence pattern (R: 0.97 -> 98 -> 1e15) we observed on rough
+    // intermediate iterates: when R jumps by a large factor, SER shrinks
+    // tau hard (clamped by tau_shrink_clamp) and the next step is damped.
+    double tau_init = 1e6;          // initial pseudo-time step
+    double tau_min = 1e-2;          // floor on tau (max regularization)
+    double tau_max = 1e8;           // cap on tau (effectively "PTC off")
+    double tau_grow_clamp = 4.0;    // cap per-iter tau growth ratio
+    double tau_shrink_clamp = 0.1;  // cap per-iter tau shrink ratio
 
     // Viscous parameters
     double ncrit = 9.0;  // Critical amplification factor
