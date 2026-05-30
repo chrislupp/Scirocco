@@ -318,20 +318,18 @@ def example_optimization(analysis_channel, geometry_channel, target_cl=0.5):
 
     # Bernstein non-negativity guarantees a physical airfoil whenever all
     # coefficients are >= 0 (with the upper/lower sign convention). The
-    # bounds are intentionally tight around the NACA-0012-equivalent
-    # initial guess so SLSQP stays in a region where the viscous BL
-    # solver — undamped Newton — converges. With wider bounds the optimizer
-    # can reach CST configurations that produce oscillatory surface
-    # curvature; the BL Newton iteration then diverges and the adjoint LU
-    # fails. A line-searched BL solver would lift this constraint.
+    # viscous BL solver now uses pseudo-transient continuation, which
+    # regularizes the Newton step and keeps the iteration stable even when
+    # SLSQP visits geometries with oscillatory surface curvature — so we
+    # can use the wider bounds that the parameterization actually permits.
     prob.model.add_design_var(
-        "cst_upper", lower=0.10, upper=0.25, ref=0.18,
+        "cst_upper", lower=0.0, upper=0.40, ref=0.20,
     )
     prob.model.add_design_var(
-        "cst_lower", lower=0.10, upper=0.25, ref=0.18,
+        "cst_lower", lower=0.0, upper=0.40, ref=0.20,
     )
     prob.model.add_design_var(
-        "analysis.alpha", lower=-2.0, upper=8.0, ref=5.0,
+        "analysis.alpha", lower=-2.0, upper=10.0, ref=5.0,
     )
 
     prob.model.add_objective("analysis.cd", ref=0.01)

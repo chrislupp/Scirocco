@@ -30,6 +30,7 @@
 */
 #include "scirocco/core/coupled_solver.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -130,10 +131,16 @@ void SolveViscous(FoilState& state) {
 }
 
 void SolveCoupled(FoilState& state) {
-    // Coupled Newton iteration
+    // Coupled Newton iteration with pseudo-transient continuation (PTC).
+    // SolveGlob reads state.glob.tau and adds (1/tau)*I to the BL rows of
+    // the augmented Jacobian; SER ramps tau as the residual decreases so
+    // we recover full Newton once we're close enough to converge cleanly.
 
     int niglob = state.param.niglob;
     double rtol = state.param.rtol;
+
+    state.glob.tau = state.param.tau_init;
+    state.glob.R_norm_prev = 0.0;
 
     for (int iter = 0; iter < niglob; ++iter) {
         // Build global system
@@ -142,7 +149,8 @@ void SolveCoupled(FoilState& state) {
         // Check convergence
         double rnorm = state.glob.R.norm();
         if (state.param.verb >= 1) {
-            std::cout << "  Iteration " << iter << ": |R| = " << rnorm << '\n';
+            std::cout << "  Iteration " << iter << ": |R| = " << rnorm
+                      << ", tau = " << state.glob.tau << '\n';
         }
 
         if (rnorm < rtol) {
@@ -157,6 +165,21 @@ void SolveCoupled(FoilState& state) {
             }
             return;
         }
+
+        // SER tau update — skip on first iter (no previous norm yet).
+        // ratio = ||R_{n-1}|| / ||R_n|| : > 1 when residual decreased
+        // (grow tau, less damping); < 1 when residual increased (shrink
+        // tau, more damping). Clamp the ratio per-iter to avoid wild
+        // swings and clamp tau itself to [tau_min, tau_max].
+        if (state.param.use_ptc && iter > 0 && state.glob.R_norm_prev > 0.0) {
+            double ratio = state.glob.R_norm_prev / rnorm;
+            ratio = std::clamp(ratio, state.param.tau_shrink_clamp,
+                               state.param.tau_grow_clamp);
+            state.glob.tau = std::clamp(state.glob.tau * ratio,
+                                        state.param.tau_min,
+                                        state.param.tau_max);
+        }
+        state.glob.R_norm_prev = rnorm;
 
         // Solve and update
         SolveGlob(state);
@@ -564,6 +587,21 @@ void SolveGlob(FoilState& state) {
             }
             duinv_dalpha *= kDegToRad;
             triplets.emplace_back(3 * Nsys + i, NN - 1, -duinv_dalpha);
+        }
+    }
+
+    // Pseudo-transient continuation: add (1/tau)*I to the diagonal of the
+    // 4*Nsys BL rows (not the alpha row — alpha is an outer DV, not a
+    // transient state). setFromTriplets sums duplicate entries, so this
+    // augments any existing diagonal entries. tau is managed by
+    // SolveCoupled via the SER rule; at convergence ||R|| < rtol, the
+    // (1/tau)(U_{n+1} - U_n) term vanishes (U_{n+1} = U_n), so the
+    // converged R = 0 root is unchanged and the adjoint's StoreAdjoint-
+    // Factorization (which uses state.glob.R_U, not R_V) is untouched.
+    if (state.param.use_ptc && state.glob.tau > 0.0) {
+        const double lambda = 1.0 / state.glob.tau;
+        for (int i = 0; i < 4 * Nsys; ++i) {
+            triplets.emplace_back(i, i, lambda);
         }
     }
 
