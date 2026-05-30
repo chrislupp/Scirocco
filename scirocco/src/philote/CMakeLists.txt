@@ -24,9 +24,12 @@ if(SCIROCCO_HDF5_OUTPUT AND TARGET scirocco_hdf5)
     target_compile_definitions(SiroccoPhilote PUBLIC SCIROCCO_HDF5)
 endif()
 
-# Server executable
+# Server executables
 add_executable(scirocco_server server.cpp)
 target_link_libraries(scirocco_server PRIVATE SiroccoPhilote)
+
+add_executable(scirocco_geometry_server geometry_server.cpp)
+target_link_libraries(scirocco_geometry_server PRIVATE SiroccoPhilote)
 
 # Tests
 if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
