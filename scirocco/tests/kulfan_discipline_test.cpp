@@ -378,3 +378,114 @@ TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
     EXPECT_LT(max_err_u, 1e-8);
     EXPECT_LT(max_err_l, 1e-8);
 }
+
+// ---------------------------------------------------------------------------
+// Curvature output: analytic ∂κ/∂cst matches central FD.
+// ---------------------------------------------------------------------------
+
+TEST(KulfanDisciplineTest, CurvaturePartialsMatchCentralFD) {
+    scirocco::KulfanDiscipline disc;
+    philote::Variables inputs, outputs;
+    philote::Partials partials;
+    RunLifecycle(disc, BuildOptions(6, 6, 40, 0.001, -0.001), inputs, outputs,
+                 partials);
+
+    const int n_u = disc.n_cst_upper();
+    const int n_l = disc.n_cst_lower();
+    const int n_k = disc.n_kappa_samples();
+
+    std::vector<double> raw_u = {0.20, 0.18, 0.16, 0.20, 0.18, 0.16};
+    std::vector<double> raw_l = {0.18, 0.16, 0.14, 0.18, 0.16, 0.14};
+    auto& up = inputs.at("cst_upper");
+    auto& lo = inputs.at("cst_lower");
+    for (int i = 0; i < n_u; ++i) up(i) = raw_u[i];
+    for (int i = 0; i < n_l; ++i) lo(i) = raw_l[i];
+
+    disc.ComputePartials(inputs, partials);
+    const auto& d_ku = partials[{"kappa_upper", "cst_upper"}];
+    const auto& d_kl = partials[{"kappa_lower", "cst_lower"}];
+
+    auto eval_kappa = [&](const std::string& name, int idx, double delta,
+                          const std::string& out_name) {
+        const double save = inputs.at(name)(idx);
+        inputs.at(name)(idx) = save + delta;
+        philote::Variables out_local = outputs;
+        disc.Compute(inputs, out_local);
+        VectorXd v(n_k);
+        for (int j = 0; j < n_k; ++j) v(j) = out_local.at(out_name)(j);
+        inputs.at(name)(idx) = save;
+        return v;
+    };
+
+    const double h = 1e-6;
+    double max_err_u = 0.0;
+    for (int i = 0; i < n_u; ++i) {
+        VectorXd up_d = eval_kappa("cst_upper", i, +h, "kappa_upper");
+        VectorXd dn_d = eval_kappa("cst_upper", i, -h, "kappa_upper");
+        VectorXd fd = (up_d - dn_d) / (2.0 * h);
+        for (int j = 0; j < n_k; ++j) {
+            const double an = d_ku(j * n_u + i);
+            max_err_u = std::max(max_err_u, std::abs(an - fd(j)));
+        }
+    }
+    double max_err_l = 0.0;
+    for (int i = 0; i < n_l; ++i) {
+        VectorXd up_d = eval_kappa("cst_lower", i, +h, "kappa_lower");
+        VectorXd dn_d = eval_kappa("cst_lower", i, -h, "kappa_lower");
+        VectorXd fd = (up_d - dn_d) / (2.0 * h);
+        for (int j = 0; j < n_k; ++j) {
+            const double an = d_kl(j * n_l + i);
+            max_err_l = std::max(max_err_l, std::abs(an - fd(j)));
+        }
+    }
+
+    // κ has a cubic in the denominator; FD noise on h=1e-6 floors at ~1e-5.
+    EXPECT_LT(max_err_u, 1e-5);
+    EXPECT_LT(max_err_l, 1e-5);
+}
+
+// ---------------------------------------------------------------------------
+// Curvature on a NACA-0012 CST fit is bounded and well-behaved away from LE.
+// ---------------------------------------------------------------------------
+
+TEST(KulfanDisciplineTest, Naca0012CurvatureIsBounded) {
+    const int n_cst = 8;
+    const double te_thk = NacaT(1.0, 0.12);
+
+    const int n_fit = 200;
+    std::vector<double> psi_samples(n_fit), y_samples(n_fit);
+    for (int j = 0; j < n_fit; ++j) {
+        const double psi = static_cast<double>(j) / (n_fit - 1);
+        psi_samples[j] = psi;
+        y_samples[j] = NacaT(psi, 0.12);
+    }
+    const VectorXd cst_fit =
+        FitCstSurface(n_cst, te_thk, psi_samples, y_samples);
+
+    scirocco::KulfanDiscipline disc;
+    philote::Variables inputs, outputs;
+    philote::Partials partials;
+    RunLifecycle(disc, BuildOptions(n_cst, n_cst, 200, te_thk, -te_thk),
+                 inputs, outputs, partials);
+
+    auto& up = inputs.at("cst_upper");
+    auto& lo = inputs.at("cst_lower");
+    for (int i = 0; i < n_cst; ++i) {
+        up(i) = cst_fit(i);
+        lo(i) = cst_fit(i);
+    }
+    disc.Compute(inputs, outputs);
+
+    const int n_k = disc.n_kappa_samples();
+    double max_kappa = 0.0;
+    for (int j = 0; j < n_k; ++j) {
+        max_kappa = std::max(max_kappa,
+                             std::abs(outputs.at("kappa_upper")(j)));
+        max_kappa = std::max(max_kappa,
+                             std::abs(outputs.at("kappa_lower")(j)));
+    }
+    // NACA-0012 curvature past psi_min=0.02 is well under 100 in 1/chord
+    // units; the optimization will use ~100 as a typical bound.
+    EXPECT_LT(max_kappa, 100.0);
+    EXPECT_GT(max_kappa, 1.0);  // sanity: not identically zero
+}
