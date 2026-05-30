@@ -402,13 +402,11 @@ TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
 
     // Values match the closed-form second differences.
     for (int i = 0; i < n_u - 2; ++i) {
-        const double expected =
-            raw_u[i + 2] - 2.0 * raw_u[i + 1] + raw_u[i];
+        const double expected = raw_u[i + 2] - 2.0 * raw_u[i + 1] + raw_u[i];
         EXPECT_NEAR(outputs.at("smoothness_upper")(i), expected, 1e-14);
     }
     for (int i = 0; i < n_l - 2; ++i) {
-        const double expected =
-            raw_l[i + 2] - 2.0 * raw_l[i + 1] + raw_l[i];
+        const double expected = raw_l[i + 2] - 2.0 * raw_l[i + 1] + raw_l[i];
         EXPECT_NEAR(outputs.at("smoothness_lower")(i), expected, 1e-14);
     }
 

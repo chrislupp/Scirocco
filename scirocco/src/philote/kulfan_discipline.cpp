@@ -144,8 +144,7 @@ void KulfanDiscipline::BuildBasisMatrices() {
         for (int q = 0; q <= N; ++q) {
             const double psi = psi_eval_(q);
             const double one_minus_psi = 1.0 - psi;
-            const double C =
-                std::pow(psi, kN1) * std::pow(one_minus_psi, kN2);
+            const double C = std::pow(psi, kN1) * std::pow(one_minus_psi, kN2);
             for (int i = 0; i < n_cst; ++i) {
                 Phi(q, i) = C * binom(i) * std::pow(psi, i) *
                             std::pow(one_minus_psi, order - i);

@@ -49,7 +49,7 @@ struct Param {
     // (switched evolution-relaxation) as the residual decreases, so the
     // iteration recovers full Newton near the solution and the converged
     // R = 0 is unchanged.
-    bool use_ptc = true;            // PTC on/off (use_ptc=false -> pure Newton)
+    bool use_ptc = true;  // PTC on/off (use_ptc=false -> pure Newton)
     // Start with effectively no damping (1/tau ~ 1e-6); SER shrinks tau only
     // when the residual increases. This preserves full-Newton behavior on
     // well-behaved cases (the test reference) while still catching the

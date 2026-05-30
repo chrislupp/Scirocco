@@ -175,9 +175,9 @@ void SolveCoupled(FoilState& state) {
             double ratio = state.glob.R_norm_prev / rnorm;
             ratio = std::clamp(ratio, state.param.tau_shrink_clamp,
                                state.param.tau_grow_clamp);
-            state.glob.tau = std::clamp(state.glob.tau * ratio,
-                                        state.param.tau_min,
-                                        state.param.tau_max);
+            state.glob.tau =
+                std::clamp(state.glob.tau * ratio, state.param.tau_min,
+                           state.param.tau_max);
         }
         state.glob.R_norm_prev = rnorm;
 
