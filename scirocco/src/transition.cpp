@@ -32,6 +32,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <iostream>
 
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/properties/bl_properties.h"
@@ -72,7 +73,8 @@ int MarchAmplification(FoilState& state, int si) {
 
         // Newton iterations for amplification equation
         int nNewton = 20;
-        for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
+        int iNewton = 0;
+        for (; iNewton < nNewton; ++iNewton) {
             // Amplification rate, averaged
             StationParam(state, param, ip);
             auto [damp1, damp1_U1] = GetDamp(U1, param);
@@ -95,6 +97,12 @@ int MarchAmplification(FoilState& state, int si) {
                 omega = dmax / std::abs(dU);
             }
             U2(2) += omega * dU;
+        }
+        // Match mfoil.march_amplification (mfoil.py:2602): warn if the
+        // station Newton ran the full budget without converging.
+        if (iNewton >= nNewton && state.param.verb >= 1) {
+            std::cerr << "  march amp Newton unconverged at station " << i
+                      << " (surface " << si << ")\n";
         }
 
         // Check for transition

@@ -62,6 +62,12 @@ struct Param {
     double tau_grow_clamp = 4.0;    // cap per-iter tau growth ratio
     double tau_shrink_clamp = 0.1;  // cap per-iter tau shrink ratio
 
+    // Diagonal ridge added to R_V if SparseLU fails. R_V can be
+    // near-singular at converged states with a low-damping transition row
+    // (xt_U blows up through Rxt_xt → 0). A tiny ε on the diagonal makes
+    // the LU robust at the cost of biasing the adjoint solve by O(ε·||R_V||).
+    double adjoint_ridge = 1e-10;
+
     // Viscous parameters
     double ncrit = 9.0;  // Critical amplification factor
     double Cuq = 1.0;    // Scales the uq term in the shear lag equation

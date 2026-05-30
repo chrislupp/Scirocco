@@ -1062,15 +1062,43 @@ void StoreAdjointFactorization(FoilState& state) {
 
     state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
 
-    // Factor and store
+    // Factor and store. R_V can be near-singular at converged states where
+    // a transition row's xt_U chain has blown up through Rxt_xt → 0 (a
+    // genuine ill-conditioning of the implicit transition formulation that
+    // any faithful mfoil port inherits). Retry once with a diagonal ridge
+    // sized to ||R_V||_∞ — biases the adjoint by O(ε·||R_V||) but keeps
+    // SLSQP making progress instead of crashing on the LU.
     auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
     lu->compute(state.glob.R_V);
+    if (lu->info() != Eigen::Success) {
+        double rv_inf = 0.0;
+        for (int k = 0; k < state.glob.R_V.outerSize(); ++k) {
+            for (SparseMatrixd::InnerIterator it(state.glob.R_V, k); it; ++it) {
+                rv_inf = std::max(rv_inf, std::abs(it.value()));
+            }
+        }
+        const double scale = std::max(1.0, rv_inf);
+        SparseMatrixd R_V_reg = state.glob.R_V;
+        const double eps = state.param.adjoint_ridge * scale;
+        for (int i = 0; i < R_V_reg.rows(); ++i) {
+            R_V_reg.coeffRef(i, i) += eps;
+        }
+        lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
+        lu->compute(R_V_reg);
+        if (state.param.verb >= 1) {
+            std::cerr << "  StoreAdjointFactorization: bare R_V singular,"
+                         " retried with ε="
+                      << state.param.adjoint_ridge << "·max|R_V|=" << eps
+                      << " ridge\n";
+        }
+    }
     if (lu->info() == Eigen::Success) {
         state.glob.lu_factorization = lu;
     } else {
         state.glob.lu_factorization = nullptr;
         if (state.param.verb >= 1) {
-            std::cerr << "  Warning: adjoint LU factorization failed" << '\n';
+            std::cerr << "  Warning: adjoint LU factorization failed even with"
+                         " ridge\n";
         }
     }
 }
