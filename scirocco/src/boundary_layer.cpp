@@ -2485,7 +2485,10 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         }
 
         if (std::abs(Rxt) < 1e-14) break;
-        if (iNewton < nNewton - 1) xt += dxt;
+        // Match mfoil.residual_transition (mfoil.py:2662) — the update fires
+        // on every iter including the last; the loop terminates on the
+        // break-on-converge check above, never on this condition.
+        if (iNewton < nNewton) xt += dxt;
     }
 
     // Store transition location

@@ -102,22 +102,20 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 //   Lw = flen*hTE
 MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
-// d(wake.x)/d(foil.x) — wake node coordinates from predictor-corrector
-// streamline tracing. Returns [2*Nw x 2N], where row 2*j+d = wake.x(d, j).
+// d(wake.x)/d(foil.x) — wake node coordinates from BuildWake's predictor-
+// corrector streamline tracing. Returns [2*Nw x 2N], where row d*Nw + j =
+// d(wake.x(d, j))/d(foil.x).
 //
-// PHASE 1 STATUS: STUB (returns zeros).
-//
-// Implementation requires a forward sweep through BuildWake's predictor-
-// corrector loop. Each xyw[:,i+1] depends on:
-//   - xyw[:,i] (recursive)
-//   - inviscid_velocity at xyw[:,i] and at predictor point xyw[:,i] + ds*v1
-//   - foil.x, foil.gam, alpha
-//
-// This is the chain that historically failed at TE nodes (~0.216 error).
-// It must be implemented carefully with a per-iteration forward sensitivity
-// matrix dXw_i = d(wake.x[:,i])/d(foil.x) ∈ R^{2 x 2N}, then propagated.
-//
-// DEFERRED to follow-on work after the closed-form chains validate.
+// Implementation: linearized predictor-corrector sweep matching BuildWake.
+// The initial wake.x[:,0] = x_te + 1e-5·chord·t_te depends on foil.x[:,0]
+// and foil.x[:,N-1] via the TE midpoint and the (n_te-rotated) unit tangent.
+// Each subsequent xyw[:,i+1] depends on xyw[:,i] and on
+// InviscidVelocityWithDeriv at xyw[:,i] and at the predictor point, where
+// the velocity sensitivity has both a parametric piece (V_xfoil via dgamma)
+// and a spatial piece (V_xi chained through dxyw_i). Step size ds_i =
+// sv(i+1)−sv(i) is chained through SpaceGeomWithDeriv → ds1 → foil.s.
+// Validated against geom_chain_reference.h5::dwake_x_dx (CS at 1e-30 step)
+// to 1e-10 rel / 2e-11 abs across all 8484 entries in viscous_chain_test.cpp.
 MatrixXd DWakeXDFoilX(const FoilState& state);
 
 // d(wake.t)/d(foil.x) — wake unit-tangent vectors from BuildWake's predictor-

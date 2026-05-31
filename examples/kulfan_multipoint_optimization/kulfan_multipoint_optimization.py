@@ -54,7 +54,7 @@ DESIGN_POINTS = [
     # name        target_cl   Re      Ma   weight
     ("low_cl",       0.30,   1.0e6,  0.0,    1.0),
     ("mid_cl",       0.50,   1.0e6,  0.0,    1.5),
-    ("high_cl",      0.70,   1.0e6,  0.0,    1.0),
+    ("high_cl",      0.80,   1.0e6,  0.0,    1.0),
 ]
 N_POINTS = len(DESIGN_POINTS)
 

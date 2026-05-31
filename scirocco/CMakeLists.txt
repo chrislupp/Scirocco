@@ -153,6 +153,21 @@ if(SCIROCCO_BUILD_TESTS)
             PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/ping_reference.h5")
         gtest_discover_tests(scirocco_ping_tests)
 
+        # Geometric chain tests: closed-form forward chains
+        # (DFoilSDFoilXCumulative, DSstagDFoilX, DWakeSDFoilX, DXiDFoilX,
+        # DWgapDFoilX, DWakeXDFoilX) validated against complex-step references
+        # in geom_chain_reference.h5. Promoted into the default suite once all
+        # chains validated at 1e-10 rel / 2e-11 abs.
+        add_executable(scirocco_viscous_chain_tests
+            tests/viscous_chain_test.cpp
+        )
+        target_link_libraries(scirocco_viscous_chain_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_viscous_chain_tests PRIVATE
+            GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
+        )
+        gtest_discover_tests(scirocco_viscous_chain_tests)
+
         # --- Opt-in: chain-piece sensitivity debug tests ---
         # These isolate which link of the adjoint chain is broken when a
         # sensitivity regression appears. The end-to-end sensitivity_ref test
@@ -168,17 +183,6 @@ if(SCIROCCO_BUILD_TESTS)
             target_compile_definitions(scirocco_sensitivity_tests PRIVATE
                 SENSITIVITY_PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/sensitivity_ping_reference.h5")
             gtest_discover_tests(scirocco_sensitivity_tests)
-
-            # Phase 1 geometric chain tests
-            add_executable(scirocco_viscous_chain_tests
-                tests/viscous_chain_test.cpp
-            )
-            target_link_libraries(scirocco_viscous_chain_tests
-                scirocco GTest::gtest_main hdf5_cpp-shared)
-            target_compile_definitions(scirocco_viscous_chain_tests PRIVATE
-                GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
-            )
-            gtest_discover_tests(scirocco_viscous_chain_tests)
 
             # Phase 2 residual partial tests
             add_executable(scirocco_viscous_residual_tests

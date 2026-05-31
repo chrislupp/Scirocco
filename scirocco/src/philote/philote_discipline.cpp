@@ -180,13 +180,16 @@ void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
         cached_sens_ = sens;
         has_cached_sens_ = true;
     } catch (const std::exception& e) {
-        std::cerr << "SiroccoDiscipline: ComputeSensitivities failed ("
-                  << e.what() << "); ";
+        const bool noisy = solver_->GetState().param.verb >= 1;
+        if (noisy) {
+            std::cerr << "SiroccoDiscipline: ComputeSensitivities failed ("
+                      << e.what() << "); ";
+        }
         if (has_cached_sens_) {
-            std::cerr << "reusing last-good sensitivities.\n";
+            if (noisy) std::cerr << "reusing last-good sensitivities.\n";
             sens = cached_sens_;
         } else {
-            std::cerr << "returning zeros (no cache yet).\n";
+            if (noisy) std::cerr << "returning zeros (no cache yet).\n";
             sens.dcl_dx = MatrixXd::Zero(2, nnodes_);
             sens.dcd_dx = MatrixXd::Zero(2, nnodes_);
             sens.dcm_dx = MatrixXd::Zero(2, nnodes_);
