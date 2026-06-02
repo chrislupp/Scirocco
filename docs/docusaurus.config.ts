@@ -46,7 +46,7 @@ const config: Config = {
                     rehypePlugins: [rehypeKatex],
                     editUrl:
                         "https://github.com/chrislupp/Scirocco/tree/develop/docs/",
-                    lastVersion: "0.2.0",
+                    lastVersion: "current",
                     versions: {
                         current: {
                             label: "Next",

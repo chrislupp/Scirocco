@@ -37,9 +37,9 @@ CTestTestfile.cmake
 # Analysis output
 pa_output/
 
-# Plans and theory
-plans/
-theory/
+# Plans and theory (top-level only)
+/plans/
+/theory/
 
 # Python
 __pycache__/
