@@ -57,3 +57,12 @@ scirocco/tests/isolate_ue_partials.py
 # OpenMDAO per-problem report directories (auto-generated next to scripts and
 # in the repo root when examples or ad-hoc scripts run)
 *_out/
+
+# Optimization result artifacts from examples — regenerated on every run.
+# Scoped to examples/ so test reference data under scirocco/tests/ is unaffected.
+examples/**/*_history*.h5
+examples/**/optimization_history*.h5
+examples/**/*_result*.png
+
+# modopt per-run output directories
+*_outputs/
