@@ -43,6 +43,7 @@ from pathlib import Path
 import grpc
 import numpy as np
 import openmdao.api as om
+from modopt import IPOPT, OpenMDAOProblem
 from philote_mdo.openmdao import RemoteExplicitComponent
 
 
@@ -78,11 +79,9 @@ SMOOTHNESS_MAX = 0.05
 # gRPC addresses + binary paths
 # ---------------------------------------------------------------------------
 
-GEOMETRY_ADDR = "localhost:50052"
-# Analysis ports start at 50051 and skip 50052 (reserved for geometry).
+GEOMETRY_ADDR = "localhost:50060"
 def _analysis_addr(i):
-    base = 50051 if i == 0 else 50052 + i
-    return f"localhost:{base}"
+    return f"localhost:{50061 + i}"
 
 ANALYSIS_BINARY = "scirocco/build-philote/src/philote/scirocco_server"
 GEOMETRY_BINARY = "scirocco/build-philote/src/philote/scirocco_kulfan_server"
@@ -338,11 +337,13 @@ def example_optimization(geometry_channel, analysis_channels):
         geometry_channel, analysis_channels, hdf5_path=hdf5_path,
     )
 
+    # ScipyOptimizeDriver is used only as a metadata holder for the design
+    # variables / objective / constraints. modopt's IPOPT does the actual
+    # solving via the OpenMDAOProblem wrapper below; we never call
+    # prob.run_driver().
     prob.driver = om.ScipyOptimizeDriver()
     prob.driver.options["optimizer"] = "SLSQP"
-    prob.driver.options["tol"] = 1e-6
-    prob.driver.options["maxiter"] = 200
-    prob.driver.options["disp"] = True
+    prob.driver.options["disp"] = False
 
     prob.model.add_design_var(
         "cst_upper", lower=0.0, upper=0.40, ref=0.20,
@@ -391,7 +392,21 @@ def example_optimization(geometry_channel, analysis_channels):
           f"{SMOOTHNESS_MAX} per surface")
     print("=" * 72 + "\n")
 
-    prob.run_driver()
+    # Wrap the OpenMDAO problem for modopt and drive with IPOPT.
+    modopt_prob = OpenMDAOProblem(
+        problem_name="kulfan_multipoint", om_problem=prob,
+    )
+    optimizer = IPOPT(
+        modopt_prob,
+        solver_options={
+            "max_iter": 300,
+            "tol": 1e-6,
+            "print_level": 5,
+            "hessian_approximation": "limited-memory",
+        },
+    )
+    optimizer.solve()
+    optimizer.print_results()
 
     cst_u_opt = prob.get_val("cst_upper").copy()
     cst_l_opt = prob.get_val("cst_lower").copy()
