@@ -146,6 +146,39 @@ Reverse-mode accumulation walks backward from output adjoint seeds through these
 
 The canonical reference for all derivative correctness is **mfoil complex-step (CS)**. Never use finite differences (FD) as the reference — CS is exact to machine precision. If an adjoint test fails, verify the primal against mfoil first, then compare each phase against its CS reference before modifying Scirocco code.
 
+## Changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) format and **must be updated with every feature addition or bug fix** before committing.
+
+### Structure
+
+```
+## [Unreleased]        ← all in-progress work goes here
+### Added              ← new capabilities
+### Changed            ← behaviour changes to existing features
+### Fixed              ← bug fixes
+
+## [0.2.0] - 2026-05-29
+...
+```
+
+Only the `[Unreleased]` section is edited during development. On release, it is retitled with the version number and date, a new empty `[Unreleased]` block is opened, and the comparison links at the bottom of the file are updated.
+
+### Entry style
+
+- One bullet per logical change, wrapped at 80 columns.
+- Lead with the affected symbol or subsystem in backticks when helpful.
+- Be specific enough that a user can understand the impact without reading the diff.
+- Omit entries for pure documentation, formatting, or test-only changes unless they affect observable behaviour.
+
+### Sections to use
+
+| Section | Use for |
+|---------|---------|
+| `Added` | New public API, new CMake options, new binaries, new examples |
+| `Changed` | Modified behaviour, renamed symbols, tightened tolerances, default value changes |
+| `Fixed` | Incorrect results, crashes, stale documentation that misrepresented behaviour |
+
 ## Development Notes
 
 ### Compilers & dependencies
