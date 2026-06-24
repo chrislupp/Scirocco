@@ -1,7 +1,9 @@
-// Compare scirocco's computed adjoint vectors λ_cl, λ_cd to mfoil's
-// CS-derived ones (stored in comprehensive_reference.h5). If λ matches
-// at <1e-9 rel, the bug is in the VJP assembly. If λ differs at 1e-5,
-// the bug is in R_V (either the assembly or the LU solve precision).
+/**
+ * @brief Compare scirocco's computed adjoint vectors λ_cl, λ_cd to mfoil's
+ * CS-derived ones (stored in comprehensive_reference.h5). If λ matches
+ * at <1e-9 rel, the bug is in the VJP assembly. If λ differs at 1e-5,
+ * the bug is in R_V (either the assembly or the LU solve precision).
+ */
 
 #include <H5Cpp.h>
 
@@ -38,6 +40,11 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
     return Map<VectorXd>(b.data(), dims[0]);
 }
 
+/**
+ * @brief Entry point: loads reference adjoint vectors, solves for scirocco's
+ *        λ_cl and λ_cd, and reports max absolute and relative errors.
+ * @return 0 on success.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
@@ -65,13 +72,13 @@ int main() {
     CalcForce(s);
     CalcForceLin(s);
 
-    // Override U/wgap to match HDF5. ALSO load mfoil's sstag_ue from HDF5
-    // (not recomputed locally): mfoil's reference uses sstag_ue computed at
-    // spline foil.s during the initial Newton solve, NOT the
-    // post-recompute_geom cumulative foil.s. Recomputing locally with
-    // cumulative foil.s gives a value off by ~1e-5 rel, which propagates
-    // through the xi-stag-chain augmentation as a ~0.1 abs error in R_V[Istag
-    // rows, ue-Istag cols].
+    /* Override U/wgap to match HDF5. ALSO load mfoil's sstag_ue from HDF5
+     * (not recomputed locally): mfoil's reference uses sstag_ue computed at
+     * spline foil.s during the initial Newton solve, NOT the
+     * post-recompute_geom cumulative foil.s. Recomputing locally with
+     * cumulative foil.s gives a value off by ~1e-5 rel, which propagates
+     * through the xi-stag-chain augmentation as a ~0.1 abs error in R_V[Istag
+     * rows, ue-Istag cols]. */
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     {
@@ -82,9 +89,9 @@ int main() {
     BuildGlobSys(s);
     StoreAdjointFactorization(s);
 
-    // Re-populate the output partials at the over-ridden U (cl_V, cm_V, cd_V
-    // are functions of U). Note: CalcForce was already called above; we
-    // re-evaluate at U_ref to be consistent with the lambda solve.
+    /* Re-populate the output partials at the over-ridden U (cl_V, cm_V, cd_V
+     * are functions of U). Note: CalcForce was already called above; we
+     * re-evaluate at U_ref to be consistent with the lambda solve. */
     CalcForce(s);
     CalcForceLin(s);
 

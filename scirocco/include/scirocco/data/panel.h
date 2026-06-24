@@ -35,12 +35,12 @@
 
 namespace scirocco {
 
-// Panel data (used for both airfoil and wake)
+/** @brief Panel data (used for both airfoil and wake) */
 struct Panel {
-    int N = 0;   // Number of nodes
-    MatrixXd x;  // Node coordinates [2 x N]
-    VectorXd s;  // Arclength values at nodes
-    MatrixXd t;  // Tangent vectors dx/ds, dy/ds [2 x N]
+    int N = 0;   /**< Number of nodes */
+    MatrixXd x;  /**< Node coordinates [2 x N] */
+    VectorXd s;  /**< Arclength values at nodes */
+    MatrixXd t;  /**< Tangent vectors dx/ds, dy/ds [2 x N] */
 };
 
 }  // namespace scirocco

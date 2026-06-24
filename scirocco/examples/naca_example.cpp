@@ -34,26 +34,30 @@
 
 #include "scirocco/scirocco.h"
 
+/**
+ * @brief Entry point for the scirocco NACA airfoil analysis example.
+ * @return 0 on success.
+ */
 int main() {
     std::cout << "=== scirocco Example: NACA Airfoil Analysis ===" << std::endl;
     std::cout << std::endl;
 
-    // Create a NACA 0012 airfoil with 199 panels
+    /* Create a NACA 0012 airfoil with 199 panels */
     scirocco::Scirocco foil("0012", 199);
 
-    // Analyze at different angles of attack
+    /* Analyze at different angles of attack */
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "  Alpha      CL        CD        CM" << std::endl;
     std::cout << "  -----   -------   -------   -------" << std::endl;
 
     for (double alpha = -4.0; alpha <= 12.0; alpha += 2.0) {
-        // Set operating conditions (inviscid for now)
+        /* Set operating conditions (inviscid for now) */
         foil.SetOper(alpha, -1.0, 0.0, 0.0);
 
-        // Solve
+        /* Solve */
         foil.Solve();
 
-        // Print results
+        /* Print results */
         std::cout << std::setw(7) << alpha << "  " << std::setw(8)
                   << foil.GetCl() << "  " << std::setw(8) << foil.GetCd()
                   << "  " << std::setw(8) << foil.GetCm() << std::endl;

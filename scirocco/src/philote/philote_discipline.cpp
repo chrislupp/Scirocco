@@ -137,15 +137,15 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
         foil_x(1, i) = x_var(nnodes_ + i);
     }
 
-    // After overwriting panel node coordinates in place, refresh the
-    // derived geometric state (arc length, tangents) so it's consistent
-    // with the new foil.x. Without this the BL solver runs on the new
-    // nodes with stale tangents from the initial paneling, producing an
-    // inconsistent state and breaking the adjoint LU factorization on R_V.
+    /* After overwriting panel node coordinates in place, refresh the
+       derived geometric state (arc length, tangents) so it's consistent
+       with the new foil.x. Without this the BL solver runs on the new
+       nodes with stale tangents from the initial paneling, producing an
+       inconsistent state and breaking the adjoint LU factorization on R_V. */
     RefreshPanelGeometry(state.foil);
-    // Also wipe leftover BL solution state so the next Solve starts from a
-    // clean init rather than warm-starting from a different geometry's
-    // converged BL state.
+    /* Also wipe leftover BL solution state so the next Solve starts from a
+       clean init rather than warm-starting from a different geometry's
+       converged BL state. */
     ClearSolution(state);
 
     double alpha = inputs.at("alpha")(0);
@@ -168,12 +168,12 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
                                         philote::Partials& partials) {
-    // Try to compute fresh sensitivities. If the adjoint LU factorization
-    // throws (which can happen on intermediate iterates the optimizer
-    // explores, even when the primal converged via PTC), fall back to the
-    // last successful sensitivities so SLSQP doesn't crash mid-run. The
-    // first failure with no cached state returns zeros — a warning is
-    // printed to stderr in both cases.
+    /* Try to compute fresh sensitivities. If the adjoint LU factorization
+       throws (which can happen on intermediate iterates the optimizer
+       explores, even when the primal converged via PTC), fall back to the
+       last successful sensitivities so SLSQP doesn't crash mid-run. The
+       first failure with no cached state returns zeros — a warning is
+       printed to stderr in both cases. */
     Sensitivity sens;
     try {
         sens = solver_->ComputeSensitivities();
@@ -205,7 +205,7 @@ void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
         }
     }
 
-    // d(cl,cd,cm)/dx — flatten [2 x N] row-major into [2N]
+    /* d(cl,cd,cm)/dx — flatten [2 x N] row-major into [2N] */
     auto& dcl_dx = partials[{"cl", "x"}];
     auto& dcd_dx = partials[{"cd", "x"}];
     auto& dcm_dx = partials[{"cm", "x"}];
@@ -221,17 +221,17 @@ void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
         dcm_dx(nnodes_ + i) = sens.dcm_dx(1, i);
     }
 
-    // d(cl,cd,cm)/d(alpha)
+    /* d(cl,cd,cm)/d(alpha) */
     partials[{"cl", "alpha"}](0) = sens.dcl_dalpha;
     partials[{"cd", "alpha"}](0) = sens.dcd_dalpha;
     partials[{"cm", "alpha"}](0) = sens.dcm_dalpha;
 
-    // d(cl,cd,cm)/d(Re)
+    /* d(cl,cd,cm)/d(Re) */
     partials[{"cl", "Re"}](0) = sens.dcl_dRe;
     partials[{"cd", "Re"}](0) = sens.dcd_dRe;
     partials[{"cm", "Re"}](0) = sens.dcm_dRe;
 
-    // d(cl,cd,cm)/d(Ma)
+    /* d(cl,cd,cm)/d(Ma) */
     partials[{"cl", "Ma"}](0) = sens.dcl_dMa;
     partials[{"cd", "Ma"}](0) = sens.dcd_dMa;
     partials[{"cm", "Ma"}](0) = sens.dcm_dMa;

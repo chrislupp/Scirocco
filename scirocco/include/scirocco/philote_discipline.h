@@ -98,12 +98,12 @@ class SiroccoDiscipline : public philote::ExplicitDiscipline {
     int npanel_ = 199;
     int nnodes_ = 0;
 
-    // ComputeSensitivities can throw on rare intermediate geometries even
-    // with PTC stabilizing the primal (a singular adjoint Jacobian R_V is
-    // independent of primal convergence). To keep the optimizer making
-    // progress we cache the last successful Sensitivity here and reuse it
-    // on failure. The first failure with no cache returns zeros and
-    // prints a warning.
+    /* ComputeSensitivities can throw on rare intermediate geometries even
+     * with PTC stabilizing the primal (a singular adjoint Jacobian R_V is
+     * independent of primal convergence). To keep the optimizer making
+     * progress we cache the last successful Sensitivity here and reuse it
+     * on failure. The first failure with no cache returns zeros and
+     * prints a warning. */
     Sensitivity cached_sens_;
     bool has_cached_sens_ = false;
 

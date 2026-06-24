@@ -36,18 +36,18 @@
 
 namespace scirocco {
 
-// Calculate force and moment coefficients
-// INPUT:
-//   state : FoilState with solution (inviscid or viscous)
-// OUTPUT:
-//   state.post : Filled with cl, cd, cm, cp, etc.
+/**
+ * @brief Calculate force and moment coefficients
+ * @param state FoilState with solution (inviscid or viscous); state.post is
+ *              filled with cl, cd, cm, cp, etc. on return
+ */
 void CalcForce(FoilState& state);
 
-// Compute distributions (theta, delta*, cf, etc.)
-// INPUT:
-//   state : FoilState with viscous solution
-// OUTPUT:
-//   state.post : Distribution quantities calculated
+/**
+ * @brief Compute distributions (theta, delta*, cf, etc.)
+ * @param state FoilState with viscous solution; state.post distribution
+ *              quantities are calculated on return
+ */
 void GetDistributions(FoilState& state);
 
 }  // namespace scirocco

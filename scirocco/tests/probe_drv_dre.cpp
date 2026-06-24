@@ -1,6 +1,8 @@
-// Compare analytic DRVDRe (Ret-chain) against 4th-order central FD on Re
-// at fixed U. Diagnostic for the partial Re chain — finds which residual
-// rows the analytic chain misses.
+/**
+ * @brief Compare analytic DRVDRe (Ret-chain) against 4th-order central FD on Re
+ * at fixed U. Diagnostic for the partial Re chain — finds which residual
+ * rows the analytic chain misses.
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -15,6 +17,11 @@
 using namespace scirocco;
 using namespace Eigen;
 
+/**
+ * @brief Entry point: compares DRVDRe analytic chain against 4th-order central
+ *        FD on Re and reports per-station and global worst-case errors.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
@@ -27,7 +34,7 @@ int main() {
     int Nsys = s.glob.Nsys;
     VectorXd dR_analytic = DRVDRe(s);
 
-    // 4th-order central FD on Re at fixed U (rebuild thermo each time).
+    /* 4th-order central FD on Re at fixed U (rebuild thermo each time). */
     double Re0 = s.oper.Re;
     double h = std::abs(Re0) * 1e-2;
     auto eval_RBL = [&](double Re) {
@@ -38,7 +45,7 @@ int main() {
         BuildGlobSys(sp);
         VectorXd R(4 * Nsys);
         R.head(3 * Nsys) = sp.glob.R;
-        R.tail(Nsys).setZero();  // ue rows have no Re dep
+        R.tail(Nsys).setZero();  /* ue rows have no Re dep */
         return R;
     };
     VectorXd Rp2 = eval_RBL(Re0 + 2 * h);
@@ -48,8 +55,8 @@ int main() {
     VectorXd dR_fd = (-Rp2 + 8 * Rp1 - 8 * Rm1 + Rm2) / (12 * h);
 
     std::cout << "Analytic vs FD ∂R/∂Re comparison at Re=" << Re0 << "\n";
-    // Per-station summary: are SOME stations getting populated? Print first 10
-    // non-zero analytic stations and first 10 non-zero FD-but-zero-analytic.
+    /* Per-station summary: are SOME stations getting populated? Print first 10
+     * non-zero analytic stations and first 10 non-zero FD-but-zero-analytic. */
     std::cout << "\nStations where analytic > 1e-15:\n";
     int n_nonzero_analytic = 0;
     for (int j = 0; j < Nsys && n_nonzero_analytic < 15; ++j) {
@@ -101,7 +108,7 @@ int main() {
               << " rel=" << max_abs / std::max(std::abs(dR_fd(wi)), 1e-300)
               << "\n";
 
-    // Worst by equation type (mom, shape, lag)
+    /* Worst by equation type (mom, shape, lag) */
     const char* eq[3] = {"mom", "shape", "lag"};
     for (int k = 0; k < 3; ++k) {
         double m = 0;
@@ -119,11 +126,11 @@ int main() {
                   << " FD=" << dR_fd(3 * wjk + k) << " abs=" << m << "\n";
     }
 
-    // Surface info
+    /* Surface info */
     std::cout << "Istag=[" << s.isol.Istag[0] << ", " << s.isol.Istag[1]
               << "]\n";
     std::cout << "N_foil=" << s.foil.N << " N_wake=" << s.wake.N << "\n";
-    // Where is transition?
+    /* Where is transition? */
     int nturb_lo = 0, nturb_up = 0;
     for (auto i : s.vsol.Is[0])
         if (s.vsol.turb[i]) nturb_lo++;

@@ -27,40 +27,44 @@
 
 namespace scirocco {
 
-// ============================================================================
-// d(foil.s)/d(foil.x) for the cumulative-panel-norm definition of foil.s
-// (i.e. matches scirocco's RecomputeArcLength).
-//
-// foil.s(0) = 0
-// foil.s(i) = foil.s(i-1) + |x[:,i] - x[:,i-1]|   for i >= 1
-//
-// Let p(i) = |x[:,i] - x[:,i-1]| be the i-th panel length. Then
-//   d(p(i))/d(x[d,k]) = (x[d,i] - x[d,i-1])/p(i)  if k=i
-//                     = -(x[d,i] - x[d,i-1])/p(i) if k=i-1
-//                     = 0                          otherwise
-// and d(foil.s(i))/d(x[d,k]) = sum_{j<=i} d(p(j))/d(x[d,k]).
-// ============================================================================
+/**
+ * @brief d(foil.s)/d(foil.x) for the cumulative-panel-norm definition of foil.s
+ * (i.e. matches scirocco's RecomputeArcLength).
+ *
+ * foil.s(0) = 0
+ * foil.s(i) = foil.s(i-1) + |x[:,i] - x[:,i-1]|   for i >= 1
+ *
+ * Let p(i) = |x[:,i] - x[:,i-1]| be the i-th panel length. Then
+ *   d(p(i))/d(x[d,k]) = (x[d,i] - x[d,i-1])/p(i)  if k=i
+ *                     = -(x[d,i] - x[d,i-1])/p(i) if k=i-1
+ *                     = 0                          otherwise
+ * and d(foil.s(i))/d(x[d,k]) = sum_{j<=i} d(p(j))/d(x[d,k]).
+ *
+ * @param foil Panel object containing foil geometry.
+ * @return MatrixXd of shape [N x 2N].
+ */
 MatrixXd DFoilSDFoilXCumulative(const Panel& foil) {
     int N = foil.N;
     MatrixXd out = MatrixXd::Zero(N, 2 * N);
-    // Compute panel-length unit vectors
-    // dp_j/dx[d,j] = u[d,j],  dp_j/dx[d,j-1] = -u[d,j]
-    // where u[:,j] = (x[:,j] - x[:,j-1]) / |x[:,j] - x[:,j-1]|
-    // Then foil.s(i) = sum_{j=1..i} p(j), so
-    //   d(foil.s(i))/d(x[d,k])
-    //     = u[d,k]   if 1 <= k <= i        (k contributes via p(k) and p(k+1))
-    //     wait — let's be careful:
-    //   contribution to d(foil.s(i))/d(x[d,k]) from p(j):
-    //     = +u[d,j] if k==j and j<=i
-    //     = -u[d,j] if k==j-1 and j<=i, i.e. k<=i-1 and j=k+1
-    //
-    // So for foil.s(i):
-    //   if k==0: only p(1) contributes (-u[d,1])
-    //   if 1<=k<=i-1: p(k) contributes (+u[d,k]) and p(k+1) contributes
-    //   (-u[d,k+1]) if k==i: p(i) contributes (+u[d,i]) if k>i: zero
-    // ----------------------------------------------------------------------
-    // Compute u[:,j] (the unit tangent of panel j, j ∈ [1,N-1])
-    MatrixXd u(2, N);  // u(:,0) unused
+    /* Compute panel-length unit vectors
+     * dp_j/dx[d,j] = u[d,j],  dp_j/dx[d,j-1] = -u[d,j]
+     * where u[:,j] = (x[:,j] - x[:,j-1]) / |x[:,j] - x[:,j-1]|
+     * Then foil.s(i) = sum_{j=1..i} p(j), so
+     *   d(foil.s(i))/d(x[d,k])
+     *     = u[d,k]   if 1 <= k <= i        (k contributes via p(k) and p(k+1))
+     *     wait — let's be careful:
+     *   contribution to d(foil.s(i))/d(x[d,k]) from p(j):
+     *     = +u[d,j] if k==j and j<=i
+     *     = -u[d,j] if k==j-1 and j<=i, i.e. k<=i-1 and j=k+1
+     *
+     * So for foil.s(i):
+     *   if k==0: only p(1) contributes (-u[d,1])
+     *   if 1<=k<=i-1: p(k) contributes (+u[d,k]) and p(k+1) contributes
+     *   (-u[d,k+1]) if k==i: p(i) contributes (+u[d,i]) if k>i: zero
+     * ----------------------------------------------------------------------
+     * Compute u[:,j] (the unit tangent of panel j, j ∈ [1,N-1])
+     */
+    MatrixXd u(2, N);  /* u(:,0) unused */
     u.setZero();
     for (int j = 1; j < N; ++j) {
         Vector2d dxv = foil.x.col(j) - foil.x.col(j - 1);
@@ -71,34 +75,43 @@ MatrixXd DFoilSDFoilXCumulative(const Panel& foil) {
 
     for (int i = 1; i < N; ++i) {
         for (int j = 1; j <= i; ++j) {
-            // p(j) contributes +u[d,j] to d(foil.s(i))/d(x[d,j])
-            // and -u[d,j] to d(foil.s(i))/d(x[d,j-1])
+            /* p(j) contributes +u[d,j] to d(foil.s(i))/d(x[d,j])
+             * and -u[d,j] to d(foil.s(i))/d(x[d,j-1])
+             */
             for (int d = 0; d < 2; ++d) {
                 out(i, 2 * j + d) += u(d, j);
                 out(i, 2 * (j - 1) + d) -= u(d, j);
             }
         }
     }
-    // row 0 (foil.s(0)=0) is all zeros by construction
+    /* row 0 (foil.s(0)=0) is all zeros by construction */
     return out;
 }
 
-// ============================================================================
-// GetTEInfoDeriv — derivatives of TE-info quantities w.r.t. foil.x[k]_dim
-//
-// Returns nonzero only for k ∈ {0, 1, N-2, N-1}. Computes simultaneously:
-//   dtcp, dtdp, dhTE, ddtdx
-//
-// Definitions (matching geometry.cpp:170-210):
-//   t1 = normalize(x[:,0] - x[:,1])
-//   t2 = normalize(x[:,N-1] - x[:,N-2])
-//   tbar = 0.5*(t1+t2);   t = normalize(tbar)
-//   s = x[:,N-1] - x[:,0];   p = s/|s|
-//   hTE = -s(0)*t(1) + s(1)*t(0)
-//   dtdx = t1(0)*t2(1) - t2(0)*t1(1)
-//   tcp = |t(0)*p(1) - t(1)*p(0)|
-//   tdp = t(0)*p(0) + t(1)*p(1)
-// ============================================================================
+/**
+ * @brief GetTEInfoDeriv — derivatives of TE-info quantities w.r.t. foil.x[k]_dim
+ *
+ * Returns nonzero only for k ∈ {0, 1, N-2, N-1}. Computes simultaneously:
+ *   dtcp, dtdp, dhTE, ddtdx
+ *
+ * Definitions (matching geometry.cpp:170-210):
+ *   t1 = normalize(x[:,0] - x[:,1])
+ *   t2 = normalize(x[:,N-1] - x[:,N-2])
+ *   tbar = 0.5*(t1+t2);   t = normalize(tbar)
+ *   s = x[:,N-1] - x[:,0];   p = s/|s|
+ *   hTE = -s(0)*t(1) + s(1)*t(0)
+ *   dtdx = t1(0)*t2(1) - t2(0)*t1(1)
+ *   tcp = |t(0)*p(1) - t(1)*p(0)|
+ *   tdp = t(0)*p(0) + t(1)*p(1)
+ *
+ * @param x Foil node coordinate matrix [2 x N].
+ * @param k Node index (nonzero output only for k ∈ {0, 1, N-2, N-1}).
+ * @param dim Coordinate dimension: 0 for x, 1 for y.
+ * @param dtcp Output: d(tcp)/d(foil.x[k]_dim).
+ * @param dtdp Output: d(tdp)/d(foil.x[k]_dim).
+ * @param dhTE Output: d(hTE)/d(foil.x[k]_dim).
+ * @param ddtdx Output: d(dtdx)/d(foil.x[k]_dim).
+ */
 void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
                     double& dtdp, double& dhTE, double& ddtdx) {
     int N = static_cast<int>(x.cols());
@@ -126,7 +139,7 @@ void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
     if (sn < 1e-12) return;
     Vector2d p = s / sn;
 
-    // d(v1)/d(x[k]_dim), d(v2)/d(x[k]_dim), d(s)/d(x[k]_dim)
+    /* d(v1)/d(x[k]_dim), d(v2)/d(x[k]_dim), d(s)/d(x[k]_dim) */
     Vector2d dv1 = Vector2d::Zero();
     Vector2d dv2 = Vector2d::Zero();
     Vector2d ds = Vector2d::Zero();
@@ -153,41 +166,46 @@ void GetTEInfoDeriv(const MatrixXd& x, int k, int dim, double& dtcp,
     Vector2d dt = normalize_jac(t, tbn) * dtbar;
     Vector2d dp = normalize_jac(p, sn) * ds;
 
-    // dhTE = -ds(0)*t(1) - s(0)*dt(1) + ds(1)*t(0) + s(1)*dt(0)
+    /* dhTE = -ds(0)*t(1) - s(0)*dt(1) + ds(1)*t(0) + s(1)*dt(0) */
     dhTE = -ds(0) * t(1) - s(0) * dt(1) + ds(1) * t(0) + s(1) * dt(0);
 
-    // ddtdx = dt1(0)*t2(1) + t1(0)*dt2(1) - dt2(0)*t1(1) - t2(0)*dt1(1)
+    /* ddtdx = dt1(0)*t2(1) + t1(0)*dt2(1) - dt2(0)*t1(1) - t2(0)*dt1(1) */
     ddtdx = dt1(0) * t2(1) + t1(0) * dt2(1) - dt2(0) * t1(1) - t2(0) * dt1(1);
 
-    // tcp = |t(0)*p(1) - t(1)*p(0)|
+    /* tcp = |t(0)*p(1) - t(1)*p(0)| */
     double cross = t(0) * p(1) - t(1) * p(0);
     double sgn = (cross >= 0) ? 1.0 : -1.0;
     double dcross = dt(0) * p(1) + t(0) * dp(1) - dt(1) * p(0) - t(1) * dp(0);
     dtcp = sgn * dcross;
 
-    // tdp = t·p
+    /* tdp = t·p */
     dtdp = dt.dot(p) + t.dot(dp);
 }
 
-// (DGammaAtNodeDFoilX helper removed — was used by the old gamma-based
-// DSstagDFoilX chain. Production now uses ue-based xi which doesn't need
-// a per-node gamma derivative.)
+/* (DGammaAtNodeDFoilX helper removed — was used by the old gamma-based
+ * DSstagDFoilX chain. Production now uses ue-based xi which doesn't need
+ * a per-node gamma derivative.)
+ */
 
-// ============================================================================
-// DSstagDFoilX — ue-based xi convention (production state after commit
-// 4051c2d).
-//
-//   sstag = w1 * S[i0] + w2 * S[i1] where weights come from StagPointMove:
-//     w1 = ue[i1] / (ue[i0] + ue[i1])
-//     w2 = ue[i0] / (ue[i0] + ue[i1])
-//
-//   At fixed U (the adjoint's partial), ue at Istag is held fixed → only
-//   the foil.s chain contributes:
-//     ∂sstag/∂foil.x = w1 * ∂S[i0]/∂foil.x + w2 * ∂S[i1]/∂foil.x
-//
-//   The previous implementation used gamma-based weights and added a
-//   ∂sstag/∂gam·∂gam/∂foil.x chain — correct for gamma-based xi only.
-// ============================================================================
+/**
+ * @brief DSstagDFoilX — ue-based xi convention (production state after commit
+ * 4051c2d).
+ *
+ *   sstag = w1 * S[i0] + w2 * S[i1] where weights come from StagPointMove:
+ *     w1 = ue[i1] / (ue[i0] + ue[i1])
+ *     w2 = ue[i0] / (ue[i0] + ue[i1])
+ *
+ *   At fixed U (the adjoint's partial), ue at Istag is held fixed → only
+ *   the foil.s chain contributes:
+ *     ∂sstag/∂foil.x = w1 * ∂S[i0]/∂foil.x + w2 * ∂S[i1]/∂foil.x
+ *
+ *   The previous implementation used gamma-based weights and added a
+ *   ∂sstag/∂gam·∂gam/∂foil.x chain — correct for gamma-based xi only.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param dfoil_s_dx d(foil.s)/d(foil.x) matrix of shape [N x 2N].
+ * @return VectorXd of length 2N.
+ */
 VectorXd DSstagDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int twoN = 2 * N;
@@ -205,31 +223,35 @@ VectorXd DSstagDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     return dsstag;
 }
 
-// ============================================================================
-// DWakeSDFoilX
-//
-// wake.s[i] = foil.s[N-1] + sv[i]
-//   sv[0] = 0
-//   sv[i>0] from SpaceGeom(ds1, wakelen*chord, Nw) — depends on
-//     ds1 = 0.5 * ((foil.s[1] - foil.s[0]) + (foil.s[N-1] - foil.s[N-2]))
-//     and on chord (assumed constant in foil.x; if chord changes, add chain).
-//
-// Therefore d(wake.s[i])/d(foil.x) =
-//   d(foil.s[N-1])/d(foil.x) + (d(sv[i])/d(ds1)) * d(ds1)/d(foil.x)
-//
-// We obtain d(sv[i])/d(ds1) numerically via one extra SpaceGeom-style call
-// (analytic derivative through the Newton iteration is straightforward —
-// see below).
-//
-// Geometric spacing: sv[i] = sum_{j=1..i} ds_{j-1} * r^{j-1}, where r solves
-//   L = ds1 * (r^N - 1)/(r - 1),    N = Np - 1
-// Implicit differentiation:
-//   0 = (r^N - 1)/(r-1) * ddS + ds1 * [N*r^(N-1)/(r-1) - (r^N-1)/(r-1)^2] dr
-// => dr/dds1 = -((r^N-1)/(r-1)) / { ds1 * [N*r^(N-1)/(r-1) - (r^N-1)/(r-1)^2] }
-// Then dsv[i]/dds1 = sum_{j=0..i-1} (r^j + ds1 * j*r^(j-1) * dr/dds1).
-// ============================================================================
+/**
+ * @brief DWakeSDFoilX
+ *
+ * wake.s[i] = foil.s[N-1] + sv[i]
+ *   sv[0] = 0
+ *   sv[i>0] from SpaceGeom(ds1, wakelen*chord, Nw) — depends on
+ *     ds1 = 0.5 * ((foil.s[1] - foil.s[0]) + (foil.s[N-1] - foil.s[N-2]))
+ *     and on chord (assumed constant in foil.x; if chord changes, add chain).
+ *
+ * Therefore d(wake.s[i])/d(foil.x) =
+ *   d(foil.s[N-1])/d(foil.x) + (d(sv[i])/d(ds1)) * d(ds1)/d(foil.x)
+ *
+ * We obtain d(sv[i])/d(ds1) numerically via one extra SpaceGeom-style call
+ * (analytic derivative through the Newton iteration is straightforward —
+ * see below).
+ *
+ * Geometric spacing: sv[i] = sum_{j=1..i} ds_{j-1} * r^{j-1}, where r solves
+ *   L = ds1 * (r^N - 1)/(r - 1),    N = Np - 1
+ * Implicit differentiation:
+ *   0 = (r^N - 1)/(r-1) * ddS + ds1 * [N*r^(N-1)/(r-1) - (r^N-1)/(r-1)^2] dr
+ * => dr/dds1 = -((r^N-1)/(r-1)) / { ds1 * [N*r^(N-1)/(r-1) - (r^N-1)/(r-1)^2] }
+ * Then dsv[i]/dds1 = sum_{j=0..i-1} (r^j + ds1 * j*r^(j-1) * dr/dds1).
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param dfoil_s_dx d(foil.s)/d(foil.x) matrix of shape [N x 2N].
+ * @return MatrixXd of shape [Nw x 2N].
+ */
 namespace {
-// Compute (sv, dsv_dds1) given Np, ds1, L (matching wake.cpp SpaceGeom).
+/* Compute (sv, dsv_dds1) given Np, ds1, L (matching wake.cpp SpaceGeom). */
 void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
                         VectorXd& dsv_dds1) {
     if (Np <= 1) {
@@ -240,7 +262,7 @@ void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
     int N = Np - 1;
     double d = L / ds1;
 
-    // Initial guess for r (same as wake.cpp)
+    /* Initial guess for r (same as wake.cpp) */
     double a = N * (N - 1.0) * (N - 2.0) / 6.0;
     double b = N * (N - 1.0) / 2.0;
     double c = N - d;
@@ -255,11 +277,12 @@ void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
         r += dr;
     }
 
-    // dr/dds1: chord and L are constants → d/dds1 of  rN - 1 - (L/ds1)*(r-1) =
-    // 0
-    //   N r^{N-1} dr + L/ds1^2 * (r-1) - L/ds1 * dr = 0
-    //   dr * (N r^{N-1} - L/ds1) = -L * (r-1) / ds1^2
-    //   dr_dds1 = -L * (r-1) / (ds1^2 * (N r^{N-1} - L/ds1))
+    /* dr/dds1: chord and L are constants → d/dds1 of  rN - 1 - (L/ds1)*(r-1) =
+     * 0
+     *   N r^{N-1} dr + L/ds1^2 * (r-1) - L/ds1 * dr = 0
+     *   dr * (N r^{N-1} - L/ds1) = -L * (r-1) / ds1^2
+     *   dr_dds1 = -L * (r-1) / (ds1^2 * (N r^{N-1} - L/ds1))
+     */
     double dr_dds1 =
         -L * (r - 1.0) / (ds1 * ds1 * (N * std::pow(r, N - 1) - L / ds1));
 
@@ -270,12 +293,12 @@ void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
     for (int i = 1; i < Np; ++i) {
         sv(i) = sv(i - 1) + dx;
         dsv_dds1(i) = dsv_dds1(i - 1) + ddx_dds1;
-        // Next-interval update: dx <- dx * r
+        /* Next-interval update: dx <- dx * r */
         ddx_dds1 = ddx_dds1 * r + dx * dr_dds1;
         dx *= r;
     }
 }
-}  // namespace
+}  /* namespace */
 
 MatrixXd DWakeSDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
@@ -291,39 +314,44 @@ MatrixXd DWakeSDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    // d(ds1)/d(foil.x) = 0.5 * ( d(foil.s[1])/d(foil.x) -
-    // d(foil.s[0])/d(foil.x)
-    //                          + d(foil.s[N-1])/d(foil.x)
-    //                          - d(foil.s[N-2])/d(foil.x) )
+    /* d(ds1)/d(foil.x) = 0.5 * ( d(foil.s[1])/d(foil.x) -
+     * d(foil.s[0])/d(foil.x)
+     *                          + d(foil.s[N-1])/d(foil.x)
+     *                          - d(foil.s[N-2])/d(foil.x) )
+     */
     VectorXd dds1 =
         0.5 *
         (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
          dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
-    // d(foil.s[N-1])/d(foil.x)
+    /* d(foil.s[N-1])/d(foil.x) */
     VectorXd dSTE = dfoil_s_dx.row(N - 1).transpose();
 
     MatrixXd dwake_s = MatrixXd::Zero(Nw, twoN);
     for (int i = 0; i < Nw; ++i) {
-        // d(wake.s[i])/d(foil.x) = dSTE + dsv_dds1[i] * dds1
+        /* d(wake.s[i])/d(foil.x) = dSTE + dsv_dds1[i] * dds1 */
         dwake_s.row(i) = (dSTE + dsv_dds1(i) * dds1).transpose();
     }
     return dwake_s;
 }
 
-// ============================================================================
-// DXiDFoilX
-//   xi[i]    = |foil.s[i] - sstag|      for i ∈ [0, N)
-//   xi[N+j]  = wake.s[j] - sstag        for j ∈ [0, Nw)
-// ============================================================================
+/**
+ * @brief DXiDFoilX
+ *   xi[i]    = |foil.s[i] - sstag|      for i ∈ [0, N)
+ *   xi[N+j]  = wake.s[j] - sstag        for j ∈ [0, Nw)
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param dfoil_s_dx d(foil.s)/d(foil.x) matrix of shape [N x 2N].
+ * @return MatrixXd of shape [Nsys x 2N].
+ */
 MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
     int twoN = 2 * N;
 
-    VectorXd dsstag = DSstagDFoilX(state, dfoil_s_dx);   // [2N]
-    MatrixXd dwake_s = DWakeSDFoilX(state, dfoil_s_dx);  // [Nw x 2N]
+    VectorXd dsstag = DSstagDFoilX(state, dfoil_s_dx);   /* [2N] */
+    MatrixXd dwake_s = DWakeSDFoilX(state, dfoil_s_dx);  /* [Nw x 2N] */
 
     MatrixXd dxi = MatrixXd::Zero(Nsys, twoN);
     double sstag = state.isol.sstag;
@@ -331,8 +359,9 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     for (int i = 0; i < N; ++i) {
         double diff = state.foil.s(i) - sstag;
         double sgn = (diff >= 0.0) ? 1.0 : -1.0;
-        // d(xi[i])/d(foil.x) = sgn * (d(foil.s[i])/d(foil.x) -
-        // d(sstag)/d(foil.x))
+        /* d(xi[i])/d(foil.x) = sgn * (d(foil.s[i])/d(foil.x) -
+         * d(sstag)/d(foil.x))
+         */
         dxi.row(i) = sgn * (dfoil_s_dx.row(i) - dsstag.transpose());
     }
     for (int j = 0; j < Nw; ++j) {
@@ -341,32 +370,36 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     return dxi;
 }
 
-// ============================================================================
-// DWgapDFoilX
-//   wgap[j] depends on hTE, dtdx, xib = (xi[N+j] - xi[N])/Lw,  Lw = flen*hTE
-//
-//   ξib = (xi[N+j] - xi[N]) / Lw
-//       = ((wake.s[j] - sstag) - (foil.s[N-1] - sstag)) / Lw   if foil.s[N-1]
-//       >= sstag
-//
-//   But wait — xi[N]  = |foil.s[N-1] - sstag|. Assuming sstag < foil.s[N-1]
-//   on the upper-surface side, xi[N] = foil.s[N-1] - sstag, and
-//   xi[N+j] - xi[N] = wake.s[j] - foil.s[N-1] = sv[j]. So sstag drops out
-//   and the chain is purely through ds1 and chord.
-//
-//   wgap[j] = hTE * (1 + (2 + flen*dtdx)*xib) * (1-xib)^2   if xib<=1 else 0
-//
-//   Let A = 1 + (2 + flen*dtdx)*xib,  B = (1-xib)^2
-//   wgap = hTE * A * B
-//   d(wgap)/d(.) = dhTE * A*B
-//                + hTE * dA * B
-//                + hTE * A * dB
-//   dA = flen*ddtdx * xib + (2 + flen*dtdx) * dxib
-//   dB = -2*(1-xib) * dxib
-//   dxib = ( d(xi[N+j]-xi[N])/d(.) * Lw - (xi[N+j]-xi[N]) * dLw ) / Lw^2
-//        = d(sv[j])/d(.)/Lw - xib * dLw/Lw
-//   dLw = flen * dhTE
-// ============================================================================
+/**
+ * @brief DWgapDFoilX
+ *   wgap[j] depends on hTE, dtdx, xib = (xi[N+j] - xi[N])/Lw,  Lw = flen*hTE
+ *
+ *   ξib = (xi[N+j] - xi[N]) / Lw
+ *       = ((wake.s[j] - sstag) - (foil.s[N-1] - sstag)) / Lw   if foil.s[N-1]
+ *       >= sstag
+ *
+ *   But wait — xi[N]  = |foil.s[N-1] - sstag|. Assuming sstag < foil.s[N-1]
+ *   on the upper-surface side, xi[N] = foil.s[N-1] - sstag, and
+ *   xi[N+j] - xi[N] = wake.s[j] - foil.s[N-1] = sv[j]. So sstag drops out
+ *   and the chain is purely through ds1 and chord.
+ *
+ *   wgap[j] = hTE * (1 + (2 + flen*dtdx)*xib) * (1-xib)^2   if xib<=1 else 0
+ *
+ *   Let A = 1 + (2 + flen*dtdx)*xib,  B = (1-xib)^2
+ *   wgap = hTE * A * B
+ *   d(wgap)/d(.) = dhTE * A*B
+ *                + hTE * dA * B
+ *                + hTE * A * dB
+ *   dA = flen*ddtdx * xib + (2 + flen*dtdx) * dxib
+ *   dB = -2*(1-xib) * dxib
+ *   dxib = ( d(xi[N+j]-xi[N])/d(.) * Lw - (xi[N+j]-xi[N]) * dLw ) / Lw^2
+ *        = d(sv[j])/d(.)/Lw - xib * dLw/Lw
+ *   dLw = flen * dhTE
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param dfoil_s_dx d(foil.s)/d(foil.x) matrix of shape [N x 2N].
+ * @return MatrixXd of shape [Nw x 2N].
+ */
 MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int Nw = state.wake.N;
@@ -375,7 +408,7 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     double chord = state.geom.chord;
     const double flen = 2.5;
 
-    // Recompute TE info (matches SetWakeGap)
+    /* Recompute TE info (matches SetWakeGap) */
     TEInfo te = GetTEInfo(state.foil.x);
     double hTE = te.hTE;
     double dtdx_raw = te.dtdx;
@@ -385,8 +418,9 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     double dtdx = std::min(std::max(dtdx_raw, clip_lo), clip_hi);
     double Lw = std::max(flen * hTE, 1e-10);
 
-    // d(hTE), d(dtdx_raw) for each (k, dim) over TE-affecting nodes
-    // We'll need 4 nodes × 2 dims = 8 entries → store sparsely.
+    /* d(hTE), d(dtdx_raw) for each (k, dim) over TE-affecting nodes
+     * We'll need 4 nodes × 2 dims = 8 entries → store sparsely.
+     */
     auto te_deriv_col = [&](int k, int dim, double& dhTE, double& ddtdx) {
         double dtcp, dtdp, dhTE_loc, ddtdx_loc;
         GetTEInfoDeriv(state.foil.x, k, dim, dtcp, dtdp, dhTE_loc, ddtdx_loc);
@@ -394,7 +428,7 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
         ddtdx = clipped ? 0.0 : ddtdx_loc;
     };
 
-    // d(sv[j])/d(foil.x) via SpaceGeom analytical sensitivity
+    /* d(sv[j])/d(foil.x) via SpaceGeom analytical sensitivity */
     double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
                         (state.foil.s(N - 1) - state.foil.s(N - 2)));
     double L = wakelen * chord;
@@ -411,13 +445,13 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     for (int j = 0; j < Nw; ++j) {
         double xib = sv(j) / Lw;
         if (xib > 1.0) {
-            // wgap[j] = 0  outside the support; derivative is 0 too.
+            /* wgap[j] = 0  outside the support; derivative is 0 too. */
             continue;
         }
         double A = 1.0 + (2.0 + flen * dtdx) * xib;
         double B = (1.0 - xib) * (1.0 - xib);
 
-        // For each (k, dim), assemble d(wgap[j])/d(x[k]_dim)
+        /* For each (k, dim), assemble d(wgap[j])/d(x[k]_dim) */
         for (int k = 0; k < N; ++k) {
             for (int dim = 0; dim < 2; ++dim) {
                 int col = 2 * k + dim;
@@ -429,8 +463,9 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
                 }
                 double dLw = flen * dhTE;
                 double dsv = dsv_dds1(j) * dds1(col);
-                // xib = sv/Lw → dxib = dsv/Lw - sv/Lw^2 * dLw = dsv/Lw -
-                // xib*dLw/Lw
+                /* xib = sv/Lw → dxib = dsv/Lw - sv/Lw^2 * dLw = dsv/Lw -
+                 * xib*dLw/Lw
+                 */
                 double dxib = dsv / Lw - xib * dLw / Lw;
                 double dA = flen * ddtdx * xib + (2.0 + flen * dtdx) * dxib;
                 double dB = -2.0 * (1.0 - xib) * dxib;
@@ -442,16 +477,20 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     return dwgap;
 }
 
-// ============================================================================
-// Helper: full forward Jacobian d(gamma)/d(foil.x) [(N+1) x 2N].
-//
-// gamma satisfies A(foil.x) * gamma = rhs(alpha, foil.x), so
-//   d(gamma)/d(foil.x) = -A^{-1} * dR/d(foil.x) where R = A*gamma - rhs.
-// Each row i of d(gamma)/d(foil.x) equals
-//   -e_i^T * A^{-1} * dR/d(foil.x) = -(A^{-T} e_i)^T * dR/d(foil.x)
-// which is the existing reverse-mode AICResidualSensVJP. We call it once per
-// gamma index using a shared LU factorisation of A^T.
-// ============================================================================
+/**
+ * @brief Helper: full forward Jacobian d(gamma)/d(foil.x) [(N+1) x 2N].
+ *
+ * gamma satisfies A(foil.x) * gamma = rhs(alpha, foil.x), so
+ *   d(gamma)/d(foil.x) = -A^{-1} * dR/d(foil.x) where R = A*gamma - rhs.
+ * Each row i of d(gamma)/d(foil.x) equals
+ *   -e_i^T * A^{-1} * dR/d(foil.x) = -(A^{-T} e_i)^T * dR/d(foil.x)
+ * which is the existing reverse-mode AICResidualSensVJP. We call it once per
+ * gamma index using a shared LU factorisation of A^T.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param alpha Angle of attack in degrees.
+ * @return MatrixXd of shape [N+1 x 2N].
+ */
 MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
     const MatrixXd& AIC = state.isol.AIC;
     int dim = static_cast<int>(AIC.rows());
@@ -470,11 +509,13 @@ MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
     return dgam;
 }
 
-// Helper: InviscidVelocity at xi with full forward sensitivity matrix.
-// Returns V, ∂V/∂xi [2x2], and the combined Jacobian
-//   ∂V/∂(foil.x_panels) at fixed xi  +  V_G * d(gamma)/d(foil.x)
-// of shape [2 x 2N].
-// ============================================================================
+/**
+ * @brief Helper: InviscidVelocity at xi with full forward sensitivity matrix.
+ * Returns V, ∂V/∂xi [2x2], and the combined Jacobian
+ *   ∂V/∂(foil.x_panels) at fixed xi  +  V_G * d(gamma)/d(foil.x)
+ * of shape [2 x 2N].
+ */
+/* ============================================================================ */
 VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                                       const Vector2d& xi,
                                       const VectorXd& vortex,
@@ -505,9 +546,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
 
     bool has_gam_chain = (dgam_dx.cols() == twoN);
 
-    // Helper lambda: write a 2-vector contribution into V_xfoil columns
-    // [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3
-    // = x2=Xj[k1]).
+    /* Helper lambda: write a 2-vector contribution into V_xfoil columns
+     * [2*k + 0, 2*k + 1] from a 2x2 a_Xj block (cols 0,1 = x1=Xj[k0], cols 2,3
+     * = x2=Xj[k1]).
+     */
     auto add_Xj_block = [&](const Eigen::Matrix<double, 2, 4>& M_Xj, int k0,
                             int k1) {
         out.V_xfoil.col(2 * k0 + 0) += M_Xj.col(0);
@@ -516,7 +558,7 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
         out.V_xfoil.col(2 * k1 + 1) += M_Xj.col(3);
     };
 
-    // ---- Linear vortex panel contributions (j → j+1) ----
+    /* ---- Linear vortex panel contributions (j → j+1) ---- */
     for (int j = 0; j < N - 1; ++j) {
         Matrix2d Xj;
         Xj.col(0) = X.col(j);
@@ -525,21 +567,22 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
         LinVortexVelocityDeriv d = PanelLinVortexVelocityDeriv(Xj, xi);
         out.V += d.a * G(j) + d.b * G(j + 1);
         out.V_xi += d.a_xi * G(j) + d.b_xi * G(j + 1);
-        // Direct panel-geom contribution (G held fixed)
+        /* Direct panel-geom contribution (G held fixed) */
         add_Xj_block(G(j) * d.a_Xj + G(j + 1) * d.b_Xj, j, j + 1);
-        // Gamma chain: V_G contribution = a * dgam_dx.row(j) + b *
-        // dgam_dx.row(j+1)
+        /* Gamma chain: V_G contribution = a * dgam_dx.row(j) + b *
+         * dgam_dx.row(j+1)
+         */
         if (has_gam_chain) {
             out.V_xfoil += d.a * dgam_dx.row(j) + d.b * dgam_dx.row(j + 1);
         }
     }
 
-    // ---- TE info ----
+    /* ---- TE info ---- */
     TEInfo te = GetTEInfo(X);
     double tcp = te.tcp;
     double tdp = te.tdp;
 
-    // ---- TE constant source panel (Xj = [X[N-1], X[0]]) ----
+    /* ---- TE constant source panel (Xj = [X[N-1], X[0]]) ---- */
     Matrix2d XjTE;
     XjTE.col(0) = X.col(N - 1);
     XjTE.col(1) = X.col(0);
@@ -548,34 +591,36 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     double sigma_te = 0.5 * tcp * (G(N - 1) - G(0));
     out.V += v_src * sigma_te;
     out.V_xi += ds.val_xi * sigma_te;
-    // Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src *
-    // d(sigma_te)/dXj_te_nodes d(sigma_te)/dXj of this panel =
-    // 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo BUT tcp depends on the
-    // global TE info — handled below as a separate global-TE contribution.
+    /* Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src *
+     * d(sigma_te)/dXj_te_nodes d(sigma_te)/dXj of this panel =
+     * 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo BUT tcp depends on the
+     * global TE info — handled below as a separate global-TE contribution.
+     */
     add_Xj_block(sigma_te * ds.val_Xj, N - 1, 0);
-    // Gamma chain: v_src * 0.5*tcp * (dgam[N-1] - dgam[0])
+    /* Gamma chain: v_src * 0.5*tcp * (dgam[N-1] - dgam[0]) */
     if (has_gam_chain) {
         out.V_xfoil +=
             v_src * (0.5 * tcp * (dgam_dx.row(N - 1) - dgam_dx.row(0)));
     }
 
-    // ---- TE vortex panel ----
+    /* ---- TE vortex panel ---- */
     LinVortexVelocityDeriv dv = PanelLinVortexVelocityDeriv(XjTE, xi);
     Vector2d f_vor = dv.a + dv.b;
     double tdp_factor = 0.5 * tdp * (G(0) - G(N - 1));
     out.V += f_vor * tdp_factor;
     out.V_xi += (dv.a_xi + dv.b_xi) * tdp_factor;
-    // Direct geom on Xj of this panel (G held fixed)
+    /* Direct geom on Xj of this panel (G held fixed) */
     add_Xj_block(tdp_factor * (dv.a_Xj + dv.b_Xj), N - 1, 0);
-    // Gamma chain: f_vor * 0.5*tdp * (dgam[0] - dgam[N-1])
+    /* Gamma chain: f_vor * 0.5*tdp * (dgam[0] - dgam[N-1]) */
     if (has_gam_chain) {
         out.V_xfoil +=
             f_vor * (0.5 * tdp * (dgam_dx.row(0) - dgam_dx.row(N - 1)));
     }
 
-    // ---- Global TE info dependence on foil.x[{0,1,N-2,N-1}] ----
-    // v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈
-    // {0,1,N-2,N-1} f_vor * 0.5*tdp*(G(0)-G(N-1)) uses tdp similarly.
+    /* ---- Global TE info dependence on foil.x[{0,1,N-2,N-1}] ----
+     * v_src * sigma_te uses tcp → d(tcp)/d(foil.x[k]_dim) feeds in for k ∈
+     * {0,1,N-2,N-1} f_vor * 0.5*tdp*(G(0)-G(N-1)) uses tdp similarly.
+     */
     {
         std::vector<int> te_nodes = {0, 1, N - 2, N - 1};
         for (int k : te_nodes) {
@@ -583,30 +628,33 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                 double dtcp, dtdp, dhTE, ddtdx;
                 GetTEInfoDeriv(X, k, dim, dtcp, dtdp, dhTE, ddtdx);
                 int col = 2 * k + dim;
-                // d(sigma_te)/d(tcp) * dtcp = 0.5*(G(N-1)-G(0))*dtcp
+                /* d(sigma_te)/d(tcp) * dtcp = 0.5*(G(N-1)-G(0))*dtcp */
                 double dsig = 0.5 * (G(N - 1) - G(0)) * dtcp;
                 out.V_xfoil.col(col) += v_src * dsig;
-                // d(tdp_factor)/d(tdp) * dtdp = 0.5*(G(0)-G(N-1))*dtdp
+                /* d(tdp_factor)/d(tdp) * dtdp = 0.5*(G(0)-G(N-1))*dtdp */
                 double dtdp_factor = 0.5 * (G(0) - G(N - 1)) * dtdp;
                 out.V_xfoil.col(col) += f_vor * dtdp_factor;
             }
         }
     }
 
-    // ---- Freestream ----
+    /* ---- Freestream ---- */
     out.V(0) += Vinf * Cosd(alpha);
     out.V(1) += Vinf * Sind(alpha);
-    // No foil.x or xi dependence.
+    /* No foil.x or xi dependence. */
 
     return out;
 }
 
-// ============================================================================
-// DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via
-// linearised predictor-corrector sweep.
-//
-// Returns [2*Nw x 2N], row 2*j+d = d(wake.x(d, j))/d(foil.x).
-// ============================================================================
+/**
+ * @brief DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via
+ * linearised predictor-corrector sweep.
+ *
+ * Returns [2*Nw x 2N], row 2*j+d = d(wake.x(d, j))/d(foil.x).
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return MatrixXd of shape [2*Nw x 2N].
+ */
 MatrixXd DWakeXDFoilX(const FoilState& state) {
     int N = state.foil.N;
     int Nw = state.wake.N;
@@ -615,11 +663,11 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     double chord = state.geom.chord;
     double wakelen = state.geom.wakelen;
 
-    // Pre-compute d(gamma)/d(foil.x) and d(foil.s)/d(foil.x).
+    /* Pre-compute d(gamma)/d(foil.x) and d(foil.s)/d(foil.x). */
     MatrixXd dgam_dx = DGammaDFoilX(state, alpha);
     MatrixXd dfoil_s_dx = DFoilSDFoilXCumulative(state.foil);
 
-    // SpaceGeom sensitivities matching scirocco's wake.cpp.
+    /* SpaceGeom sensitivities matching scirocco's wake.cpp. */
     double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
                         (state.foil.s(N - 1) - state.foil.s(N - 2)));
     double L = wakelen * chord;
@@ -631,11 +679,12 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
         (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
          dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
-    // ---- Initial wake.x[:, 0] ----
-    // x_te = 0.5*(foil.x[:,0] + foil.x[:,N-1])
-    // n_te = foil.x[:,N-1] - foil.x[:,0]
-    // t_te_raw = (n_te(1), -n_te(0)), then sign-flipped so t_te[0] > 0
-    // wake.x[:, 0] = x_te + 1e-5 * chord * t_te
+    /* ---- Initial wake.x[:, 0] ----
+     * x_te = 0.5*(foil.x[:,0] + foil.x[:,N-1])
+     * n_te = foil.x[:,N-1] - foil.x[:,0]
+     * t_te_raw = (n_te(1), -n_te(0)), then sign-flipped so t_te[0] > 0
+     * wake.x[:, 0] = x_te + 1e-5 * chord * t_te
+     */
     Vector2d xy1 = state.foil.x.col(0);
     Vector2d xyN = state.foil.x.col(N - 1);
     Vector2d n_te = xyN - xy1;
@@ -643,54 +692,56 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     double sign = (t_te_raw(0) < 0) ? -1.0 : 1.0;
 
     MatrixXd dxyw_i = MatrixXd::Zero(2, twoN);
-    // Average term 0.5*(foil.x[:,0] + foil.x[:,N-1])
+    /* Average term 0.5*(foil.x[:,0] + foil.x[:,N-1]) */
     for (int dim = 0; dim < 2; ++dim) {
         dxyw_i(dim, 2 * 0 + dim) += 0.5;
         dxyw_i(dim, 2 * (N - 1) + dim) += 0.5;
     }
-    // Tangent term: 1e-5 * chord * sign * (n_te[1], -n_te[0])
-    // d(n_te[0])/d(foil.x[d',k]) = δ(d',0) * (δ(k,N-1) - δ(k,0))
-    // d(n_te[1])/d(foil.x[d',k]) = δ(d',1) * (δ(k,N-1) - δ(k,0))
-    // So d(t_te[0])/d(foil.x[1, N-1]) = +sign*1, d(t_te[0])/d(foil.x[1, 0]) =
-    // -sign*1
-    //    d(t_te[1])/d(foil.x[0, N-1]) = -sign*1, d(t_te[1])/d(foil.x[0, 0]) =
-    //    +sign*1
+    /* Tangent term: 1e-5 * chord * sign * (n_te[1], -n_te[0])
+     * d(n_te[0])/d(foil.x[d',k]) = δ(d',0) * (δ(k,N-1) - δ(k,0))
+     * d(n_te[1])/d(foil.x[d',k]) = δ(d',1) * (δ(k,N-1) - δ(k,0))
+     * So d(t_te[0])/d(foil.x[1, N-1]) = +sign*1, d(t_te[0])/d(foil.x[1, 0]) =
+     * -sign*1
+     *    d(t_te[1])/d(foil.x[0, N-1]) = -sign*1, d(t_te[1])/d(foil.x[0, 0]) =
+     *    +sign*1
+     */
     double factor = 1e-5 * chord * sign;
     dxyw_i(0, 2 * (N - 1) + 1) += factor;
     dxyw_i(0, 2 * 0 + 1) -= factor;
     dxyw_i(1, 2 * (N - 1) + 0) -= factor;
     dxyw_i(1, 2 * 0 + 0) += factor;
 
-    // Layout: row d*Nw + j = d(wake.x(d, j))/d(foil.x) (matches the
-    // Python extractor's np.reshape(dwake_x[2, Nw, 2N], (2*Nw, 2N)) in C
-    // order).
+    /* Layout: row d*Nw + j = d(wake.x(d, j))/d(foil.x) (matches the
+     * Python extractor's np.reshape(dwake_x[2, Nw, 2N], (2*Nw, 2N)) in C
+     * order).
+     */
     MatrixXd dwake_x = MatrixXd::Zero(2 * Nw, twoN);
     dwake_x.row(0 * Nw + 0) = dxyw_i.row(0);
     dwake_x.row(1 * Nw + 0) = dxyw_i.row(1);
 
     Vector2d xyw_i = state.wake.x.col(0);
 
-    // ---- Predictor-corrector sweep, linearised ----
+    /* ---- Predictor-corrector sweep, linearised ---- */
     for (int i = 0; i < Nw - 1; ++i) {
         double ds_i = sv(i + 1) - sv(i);
-        VectorXd dds_i_dx = (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;  // [2N]
+        VectorXd dds_i_dx = (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;  /* [2N] */
 
-        // V0 at xyw_i
+        /* V0 at xyw_i */
         VelDeriv vd0 = InviscidVelocityWithDeriv(state, xyw_i, dgam_dx, alpha);
         Vector2d V0 = vd0.V;
         double V0n = V0.norm();
         if (V0n < 1e-12) V0n = 1e-12;
         Vector2d v1 = V0 / V0n;
         Matrix2d norm_jac1 = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
-        MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;  // [2 x 2N]
+        MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;  /* [2 x 2N] */
         MatrixXd dv1_dx = norm_jac1 * dV0_dx;
 
-        // Predictor step
+        /* Predictor step */
         Vector2d x_pred = xyw_i + ds_i * v1;
         MatrixXd dx_pred =
-            dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;  // [2 x 2N]
+            dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;  /* [2 x 2N] */
 
-        // V1 at x_pred
+        /* V1 at x_pred */
         VelDeriv vd1 = InviscidVelocityWithDeriv(state, x_pred, dgam_dx, alpha);
         Vector2d V1 = vd1.V;
         double V1n = V1.norm();
@@ -700,7 +751,7 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
         MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
         MatrixXd dv2_dx = norm_jac2 * dV1_dx;
 
-        // Corrector
+        /* Corrector */
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
         MatrixXd dxyw_next = dxyw_i + (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
                              ds_i * 0.5 * (dv1_dx + dv2_dx);
@@ -715,19 +766,22 @@ MatrixXd DWakeXDFoilX(const FoilState& state) {
     return dwake_x;
 }
 
-// ============================================================================
-// DWakeTDFoilX — derivative of wake.t (unit tangents) w.r.t. foil.x.
-//
-// Mirrors DWakeXDFoilX's iterative sweep. wake.t[j] is set during BuildWake
-// by:
-//   for i = 0..Nw-2:
-//     v1 = V(wake.x[i]) / |V|;    wake.t[i] = v1   (overwrites prior v2)
-//     v2 = V(x_pred) / |V|;       wake.t[i+1] = v2 (overwritten next iter
-//                                                   except for i = Nw-2)
-// So:
-//   wake.t[j]  (j < Nw-1) = v1 in iteration i=j → derivative = dv1_dx_at_i=j
-//   wake.t[Nw-1]          = v2 in iteration i=Nw-2 → derivative = dv2_dx
-// ============================================================================
+/**
+ * @brief DWakeTDFoilX — derivative of wake.t (unit tangents) w.r.t. foil.x.
+ *
+ * Mirrors DWakeXDFoilX's iterative sweep. wake.t[j] is set during BuildWake
+ * by:
+ *   for i = 0..Nw-2:
+ *     v1 = V(wake.x[i]) / |V|;    wake.t[i] = v1   (overwrites prior v2)
+ *     v2 = V(x_pred) / |V|;       wake.t[i+1] = v2 (overwritten next iter
+ *                                                   except for i = Nw-2)
+ * So:
+ *   wake.t[j]  (j < Nw-1) = v1 in iteration i=j → derivative = dv1_dx_at_i=j
+ *   wake.t[Nw-1]          = v2 in iteration i=Nw-2 → derivative = dv2_dx
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return MatrixXd of shape [2*Nw x 2N].
+ */
 MatrixXd DWakeTDFoilX(const FoilState& state) {
     int N = state.foil.N;
     int Nw = state.wake.N;
@@ -750,7 +804,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
          dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
 
-    // Initial wake.x[:, 0] sensitivities (same as DWakeXDFoilX)
+    /* Initial wake.x[:, 0] sensitivities (same as DWakeXDFoilX) */
     Vector2d xy1 = state.foil.x.col(0);
     Vector2d xyN = state.foil.x.col(N - 1);
     Vector2d n_te = xyN - xy1;
@@ -775,7 +829,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         double ds_i = sv(i + 1) - sv(i);
         VectorXd dds_i_dx = (dsv_dds1(i + 1) - dsv_dds1(i)) * dds1_dx;
 
-        // v1 at xyw_i  → wake.t[i]
+        /* v1 at xyw_i  → wake.t[i] */
         VelDeriv vd0 = InviscidVelocityWithDeriv(state, xyw_i, dgam_dx, alpha);
         Vector2d V0 = vd0.V;
         double V0n = V0.norm();
@@ -785,15 +839,15 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         MatrixXd dV0_dx = vd0.V_xfoil + vd0.V_xi * dxyw_i;
         MatrixXd dv1_dx = norm_jac1 * dV0_dx;
 
-        // Store wake.t[i] = v1
+        /* Store wake.t[i] = v1 */
         dwake_t.row(0 * Nw + i) = dv1_dx.row(0);
         dwake_t.row(1 * Nw + i) = dv1_dx.row(1);
 
-        // Predictor step
+        /* Predictor step */
         Vector2d x_pred = xyw_i + ds_i * v1;
         MatrixXd dx_pred = dxyw_i + v1 * dds_i_dx.transpose() + ds_i * dv1_dx;
 
-        // v2 at x_pred → wake.t[i+1] (overwritten except for last iter)
+        /* v2 at x_pred → wake.t[i+1] (overwritten except for last iter) */
         VelDeriv vd1 = InviscidVelocityWithDeriv(state, x_pred, dgam_dx, alpha);
         Vector2d V1 = vd1.V;
         double V1n = V1.norm();
@@ -803,11 +857,11 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
         MatrixXd dV1_dx = vd1.V_xfoil + vd1.V_xi * dx_pred;
         MatrixXd dv2_dx = norm_jac2 * dV1_dx;
 
-        // Tentatively store wake.t[i+1] = v2 (overwritten unless last)
+        /* Tentatively store wake.t[i+1] = v2 (overwritten unless last) */
         dwake_t.row(0 * Nw + (i + 1)) = dv2_dx.row(0);
         dwake_t.row(1 * Nw + (i + 1)) = dv2_dx.row(1);
 
-        // Update for next iter (corrector → xyw_{i+1})
+        /* Update for next iter (corrector → xyw_{i+1}) */
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
         MatrixXd dxyw_next = dxyw_i + (0.5 * (v1 + v2)) * dds_i_dx.transpose() +
                              ds_i * 0.5 * (dv1_dx + dv2_dx);
@@ -818,56 +872,85 @@ MatrixXd DWakeTDFoilX(const FoilState& state) {
     return dwake_t;
 }
 
-// ============================================================================
-// Alpha-direction analytic chains. These mirror the foil.x chains but with
-// scalar derivatives (one column instead of 2N). Used by the analytic
-// DRVDAlpha to satisfy the "no FD" mandate.
-// ============================================================================
+/* ============================================================================
+ * Alpha-direction analytic chains. These mirror the foil.x chains but with
+ * scalar derivatives (one column instead of 2N). Used by the analytic
+ * DRVDAlpha to satisfy the "no FD" mandate.
+ * ============================================================================
+ */
 
+/**
+ * @brief d(gamma)/d(alpha) [N+1] — closed-form from gamref[:,0]·cos α +
+ * gamref[:,1]·sin α.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return VectorXd of length N+1.
+ */
 VectorXd DGammaDAlpha(const FoilState& state) {
     int N = state.foil.N;
     double alpha = state.oper.alpha;
     double ca = Cosd(alpha);
     double sa = Sind(alpha);
-    // gam[i] = gamref[i,0]·cos α + gamref[i,1]·sin α
-    // dgam[i]/dα = (-gamref[i,0]·sin α + gamref[i,1]·cos α)·deg2rad
+    /* gam[i] = gamref[i,0]·cos α + gamref[i,1]·sin α
+     * dgam[i]/dα = (-gamref[i,0]·sin α + gamref[i,1]·cos α)·deg2rad
+     */
     VectorXd dgam(N + 1);
     for (int i = 0; i < N; ++i) {
         dgam(i) =
             (-state.isol.gamref(i, 0) * sa + state.isol.gamref(i, 1) * ca) *
             kDegToRad;
     }
-    dgam(N) = 0.0;  // streamfunction component
+    dgam(N) = 0.0;  /* streamfunction component */
     return dgam;
 }
 
+/**
+ * @brief InviscidVelocity α-derivative: ∂V/∂α [2] at xi, with the chain through
+ * V_G · dgam/dα (gamma part) plus freestream V_∞ ·(-sin α, cos α)·deg2rad.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @param xi Evaluation point in 2D space.
+ * @param dgam_dalpha d(gamma)/d(alpha) vector of length N+1.
+ * @return Vector2d of ∂V/∂α.
+ */
 Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
                                 const VectorXd& dgam_dalpha) {
-    // ∂V/∂α = V_G · dgam/dα + V_∞ · (-sin α, cos α) · deg2rad.
-    // V_G is the per-gamma sensitivity returned by InviscidVelocity with
-    // gradient=true. Use the existing InviscidVelocityWithDerivExt with
-    // vortex strengths = dgam_dalpha and freestream contribution added.
+    /* ∂V/∂α = V_G · dgam/dα + V_∞ · (-sin α, cos α) · deg2rad.
+     * V_G is the per-gamma sensitivity returned by InviscidVelocity with
+     * gradient=true. Use the existing InviscidVelocityWithDerivExt with
+     * vortex strengths = dgam_dalpha and freestream contribution added.
+     */
     int N = state.foil.N;
     double alpha = state.oper.alpha;
     double Vinf = state.oper.Vinf;
-    // Use InviscidVelocityWithDerivExt with vortex strengths = dgam_dalpha.
-    // It returns V including freestream. Subtract Vinf and add the
-    // explicit α-derivative of the freestream.
-    MatrixXd dgam_dummy = MatrixXd::Zero(N + 1, 1);  // we use the vortex slot
+    /* Use InviscidVelocityWithDerivExt with vortex strengths = dgam_dalpha.
+     * It returns V including freestream. Subtract Vinf and add the
+     * explicit α-derivative of the freestream.
+     */
+    MatrixXd dgam_dummy = MatrixXd::Zero(N + 1, 1);  /* we use the vortex slot */
     VelDeriv vd =
         InviscidVelocityWithDerivExt(state, xi, dgam_dalpha, dgam_dummy, alpha);
     Vector2d Vinf_vec(Vinf * Cosd(alpha), Vinf * Sind(alpha));
-    Vector2d V_G_dgam = vd.V - Vinf_vec;  // gamma-induced part only
-    // Freestream α-derivative
+    Vector2d V_G_dgam = vd.V - Vinf_vec;  /* gamma-induced part only */
+    /* Freestream α-derivative */
     Vector2d dVinf_dalpha(-Vinf * Sind(alpha) * kDegToRad,
                           Vinf * Cosd(alpha) * kDegToRad);
     return V_G_dgam + dVinf_dalpha;
 }
 
+/**
+ * @brief d(wake.x)/d(alpha) [2 x Nw] — mirrors DWakeXDFoilX's predictor-corrector
+ * sweep with dgam_dα (length N+1) and direct freestream alpha contribution
+ * in the velocity.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return MatrixXd of shape [2 x Nw].
+ */
 MatrixXd DWakeXDAlpha(const FoilState& state) {
-    // Predictor-corrector chain in scalar α direction. Mirrors DWakeXDFoilX
-    // but with dgam_dα (length N+1) instead of dgam_dx (matrix), and with
-    // direct α-dependence in freestream V handled via InviscidVelocityDAlpha.
+    /* Predictor-corrector chain in scalar α direction. Mirrors DWakeXDFoilX
+     * but with dgam_dα (length N+1) instead of dgam_dx (matrix), and with
+     * direct α-dependence in freestream V handled via InviscidVelocityDAlpha.
+     */
     int N = state.foil.N;
     int Nw = state.wake.N;
     double alpha = state.oper.alpha;
@@ -876,14 +959,14 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
 
     VectorXd dgam_dalpha = DGammaDAlpha(state);
 
-    // foil.s doesn't depend on α, so ds1 has no α-derivative, hence sv too.
+    /* foil.s doesn't depend on α, so ds1 has no α-derivative, hence sv too. */
     double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
                         (state.foil.s(N - 1) - state.foil.s(N - 2)));
     double L = wakelen * chord;
     VectorXd sv, dsv_dds1;
     SpaceGeomWithDeriv(ds1, L, Nw, sv, dsv_dds1);
 
-    // Initial wake.x[:, 0] = x_te + 1e-5·chord·t_te. No α dependence.
+    /* Initial wake.x[:, 0] = x_te + 1e-5·chord·t_te. No α dependence. */
     Vector2d dxyw_i = Vector2d::Zero();
 
     MatrixXd dwake_x = MatrixXd::Zero(2, Nw);
@@ -891,12 +974,13 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
 
     for (int i = 0; i < Nw - 1; ++i) {
         double ds_i = sv(i + 1) - sv(i);
-        // dsv/dα = 0 (ds1 doesn't depend on α)
+        /* dsv/dα = 0 (ds1 doesn't depend on α) */
 
-        // V0 at xyw_i. ∂V/∂α = V_G · dgam_dalpha + freestream_α.
-        // Also need ∂V/∂xi for the chain through dxyw_i.
-        // Get V_xi from InviscidVelocityWithDeriv (any direction gives same
-        // V_xi).
+        /* V0 at xyw_i. ∂V/∂α = V_G · dgam_dalpha + freestream_α.
+         * Also need ∂V/∂xi for the chain through dxyw_i.
+         * Get V_xi from InviscidVelocityWithDeriv (any direction gives same
+         * V_xi).
+         */
         VelDeriv vd_for_xi = InviscidVelocityWithDeriv(
             state, xyw_i, MatrixXd::Zero(N + 1, 1), alpha);
         Vector2d V0 = vd_for_xi.V;
@@ -910,11 +994,11 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
         Vector2d dV0 = V0_alpha + V0_xi * dxyw_i;
         Vector2d dv1 = norm_jac1 * dV0;
 
-        // Predictor step
+        /* Predictor step */
         Vector2d x_pred = xyw_i + ds_i * v1;
-        Vector2d dx_pred = dxyw_i + ds_i * dv1;  // ds_i not α-dependent
+        Vector2d dx_pred = dxyw_i + ds_i * dv1;  /* ds_i not α-dependent */
 
-        // V1 at x_pred
+        /* V1 at x_pred */
         VelDeriv vd1_xi = InviscidVelocityWithDeriv(
             state, x_pred, MatrixXd::Zero(N + 1, 1), alpha);
         Vector2d V1 = vd1_xi.V;
@@ -928,7 +1012,7 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
         Vector2d dV1 = V1_alpha + V1_xi * dx_pred;
         Vector2d dv2 = norm_jac2 * dV1;
 
-        // Corrector
+        /* Corrector */
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
         Vector2d dxyw_next = dxyw_i + ds_i * 0.5 * (dv1 + dv2);
 
@@ -941,9 +1025,17 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
     return dwake_x;
 }
 
+/**
+ * @brief d(wake.t)/d(alpha) [2 x Nw] — same iterative sweep as DWakeXDAlpha but
+ * stores dv1 (for j<Nw-1) and dv2 (for j=Nw-1) as the wake.t α-derivative.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return MatrixXd of shape [2 x Nw].
+ */
 MatrixXd DWakeTDAlpha(const FoilState& state) {
-    // Same iterative sweep as DWakeXDAlpha but stores dv1 (for j<Nw-1)
-    // and dv2 (for j=Nw-1) as the wake.t α-derivative.
+    /* Same iterative sweep as DWakeXDAlpha but stores dv1 (for j<Nw-1)
+     * and dv2 (for j=Nw-1) as the wake.t α-derivative.
+     */
     int N = state.foil.N;
     int Nw = state.wake.N;
     double alpha = state.oper.alpha;
@@ -990,7 +1082,7 @@ MatrixXd DWakeTDAlpha(const FoilState& state) {
         Matrix2d norm_jac2 = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
         Vector2d dV1 = V1_alpha + vd1_xi.V_xi * dx_pred;
         Vector2d dv2 = norm_jac2 * dV1;
-        dwake_t.col(i + 1) = dv2;  // overwritten on next iter unless last
+        dwake_t.col(i + 1) = dv2;  /* overwritten on next iter unless last */
 
         Vector2d xyw_next = xyw_i + ds_i * 0.5 * (v1 + v2);
         Vector2d dxyw_next = dxyw_i + ds_i * 0.5 * (dv1 + dv2);
@@ -1000,61 +1092,114 @@ MatrixXd DWakeTDAlpha(const FoilState& state) {
     return dwake_t;
 }
 
+/**
+ * @brief d(wake.s)/d(alpha) [Nw] — cumulative panel norms along wake.x perturbation.
+ *
+ * wake.s[i] depends on α via:
+ *   wake.s[i] = foil.s[N-1] + sv[i] where sv depends on ds1 (no α).
+ * BUT BuildWake actually re-uses foil.s as a base; wake.s itself is set
+ * from sv. Per BuildWake the cumulative panel norms aren't used — wake.s
+ * is sw = foil.s[N-1] + sv. So dwake.s/dα = 0!
+ *
+ * (The cumulative-norm reinterpretation is done by recompute_geom in the
+ * CS extract script for the FOIL only. wake.s is taken directly from sv.)
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return VectorXd of zeros, length Nw.
+ */
 VectorXd DWakeSDAlpha(const FoilState& state) {
-    // wake.s[i] depends on α via:
-    //   wake.s[i] = foil.s[N-1] + sv[i] where sv depends on ds1 (no α).
-    // BUT BuildWake actually re-uses foil.s as a base; wake.s itself is set
-    // from sv. Per BuildWake the cumulative panel norms aren't used — wake.s
-    // is sw = foil.s[N-1] + sv. So dwake.s/dα = 0!
-    //
-    // (The cumulative-norm reinterpretation is done by recompute_geom in the
-    // CS extract script for the FOIL only. wake.s is taken directly from sv.)
+    /* wake.s[i] depends on α via:
+     *   wake.s[i] = foil.s[N-1] + sv[i] where sv depends on ds1 (no α).
+     * BUT BuildWake actually re-uses foil.s as a base; wake.s itself is set
+     * from sv. Per BuildWake the cumulative panel norms aren't used — wake.s
+     * is sw = foil.s[N-1] + sv. So dwake.s/dα = 0!
+     *
+     * (The cumulative-norm reinterpretation is done by recompute_geom in the
+     * CS extract script for the FOIL only. wake.s is taken directly from sv.)
+     */
     int Nw = state.wake.N;
     return VectorXd::Zero(Nw);
 }
 
+/**
+ * @brief d(sstag)/d(alpha) — scalar. Chain through dgamma at the stagnation panel.
+ *
+ * Production state is ue-based xi (after the post-Newton-swap removal in
+ * commit 4051c2d). sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]]
+ * with weights depending on ue[Istag[0]] and ue[Istag[1]] (via
+ * StagPointMove). At fixed U (which is what ∂R/∂α partial requires),
+ * ue at Istag is fixed → sstag is fixed → ∂sstag/∂α = 0.
+ *
+ * The previous implementation used sstag_g·dgam/dα (gamma-based chain),
+ * valid only when production xi was gamma-based.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return 0.0 (sstag is α-independent at fixed U).
+ */
 double DSstagDAlpha(const FoilState& state) {
-    // Production state is ue-based xi (after the post-Newton-swap removal in
-    // commit 4051c2d). sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]]
-    // with weights depending on ue[Istag[0]] and ue[Istag[1]] (via
-    // StagPointMove). At fixed U (which is what ∂R/∂α partial requires),
-    // ue at Istag is fixed → sstag is fixed → ∂sstag/∂α = 0.
-    //
-    // The previous implementation used sstag_g·dgam/dα (gamma-based chain),
-    // valid only when production xi was gamma-based.
+    /* Production state is ue-based xi (after the post-Newton-swap removal in
+     * commit 4051c2d). sstag = w1·foil.s[Istag[0]] + w2·foil.s[Istag[1]]
+     * with weights depending on ue[Istag[0]] and ue[Istag[1]] (via
+     * StagPointMove). At fixed U (which is what ∂R/∂α partial requires),
+     * ue at Istag is fixed → sstag is fixed → ∂sstag/∂α = 0.
+     *
+     * The previous implementation used sstag_g·dgam/dα (gamma-based chain),
+     * valid only when production xi was gamma-based.
+     */
     (void)state;
     return 0.0;
 }
 
+/**
+ * @brief d(xi)/d(alpha) [Nsys] — chain through sstag (foil-side) and wake.s
+ * (wake-side).
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return VectorXd of length Nsys.
+ */
 VectorXd DXiDAlpha(const FoilState& state) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
     double dsstag = DSstagDAlpha(state);
-    VectorXd dwake_s = DWakeSDAlpha(state);  // all zero, but keep for clarity
+    VectorXd dwake_s = DWakeSDAlpha(state);  /* all zero, but keep for clarity */
     VectorXd dxi(Nsys);
-    // foil-side: xi[i] = |foil.s[i] - sstag| → sign(foil.s[i]-sstag) ·
-    //   (d(foil.s)/dα - dsstag/dα) = -sign · dsstag/dα (foil.s α-indep)
+    /* foil-side: xi[i] = |foil.s[i] - sstag| → sign(foil.s[i]-sstag) ·
+     *   (d(foil.s)/dα - dsstag/dα) = -sign · dsstag/dα (foil.s α-indep)
+     */
     for (int i = 0; i < N; ++i) {
         double diff = state.foil.s(i) - state.isol.sstag;
         double sgn = (diff >= 0) ? 1.0 : -1.0;
         dxi(i) = sgn * (0.0 - dsstag);
     }
-    // wake-side: xi[N+j] = wake.s[j] - sstag → dwake.s[j]/dα - dsstag/dα
+    /* wake-side: xi[N+j] = wake.s[j] - sstag → dwake.s[j]/dα - dsstag/dα */
     for (int j = 0; j < Nw; ++j) {
         dxi(N + j) = dwake_s(j) - dsstag;
     }
     return dxi;
 }
 
+/**
+ * @brief d(wgap)/d(alpha) [Nw] — chain through wake.s and xi (wgap's xib).
+ *
+ * wgap depends on hTE (no α), dtdx (no α), foil-TE coords (no α),
+ * and xi[N+i] - xi[N] (wake-only arc-length from TE).
+ * wake.s is α-independent (DWakeSDAlpha returns 0), and the wake-portion
+ * of xi simplifies to wake.s - sstag (with sstag α-dep canceling out
+ * between consecutive wake stations) → dwgap/dα = 0.
+ *
+ * @param state FoilState containing the current solution and geometry.
+ * @return VectorXd of zeros, length Nw.
+ */
 VectorXd DWgapDAlpha(const FoilState& state) {
-    // wgap depends on hTE (no α), dtdx (no α), foil-TE coords (no α),
-    // and xi[N+i] - xi[N] (wake-only arc-length from TE).
-    // wake.s is α-independent (DWakeSDAlpha returns 0), and the wake-portion
-    // of xi simplifies to wake.s - sstag (with sstag α-dep canceling out
-    // between consecutive wake stations) → dwgap/dα = 0.
+    /* wgap depends on hTE (no α), dtdx (no α), foil-TE coords (no α),
+     * and xi[N+i] - xi[N] (wake-only arc-length from TE).
+     * wake.s is α-independent (DWakeSDAlpha returns 0), and the wake-portion
+     * of xi simplifies to wake.s - sstag (with sstag α-dep canceling out
+     * between consecutive wake stations) → dwgap/dα = 0.
+     */
     int Nw = state.wake.N;
     return VectorXd::Zero(Nw);
 }
 
-}  // namespace scirocco
+}  /* namespace scirocco */

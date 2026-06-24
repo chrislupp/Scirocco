@@ -36,14 +36,26 @@
 
 namespace scirocco {
 
-// March amplification factor along a surface
-// Returns: index of last laminar station in Is array (before transition)
+/**
+ * @brief March amplification factor along a surface
+ * @param state FoilState with current solution
+ * @param si Surface index
+ * @return Index of last laminar station in Is array (before transition)
+ */
 int MarchAmplification(FoilState& state, int si);
 
-// Update transition locations based on current solution
+/**
+ * @brief Update transition locations based on current solution
+ * @param state FoilState with current solution
+ */
 void UpdateTransition(FoilState& state);
 
-// Store transition location for a surface
+/**
+ * @brief Store transition location for a surface
+ * @param state FoilState with current solution
+ * @param si Surface index (0=lower, 1=upper)
+ * @param i Station index in Is array (transition is between i-1 and i)
+ */
 void StoreTransition(FoilState& state, int si, int i);
 
 }  // namespace scirocco

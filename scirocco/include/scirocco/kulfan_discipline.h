@@ -83,7 +83,7 @@ class KulfanDiscipline : public philote::ExplicitDiscipline {
     void ComputePartials(const philote::Variables& inputs,
                          philote::Partials& partials) override;
 
-    // Test-friendly accessors
+    /* Test-friendly accessors */
     [[nodiscard]] int npoint() const { return npoint_; }
     [[nodiscard]] int npanel() const { return npanel_; }
     [[nodiscard]] int n_cst_upper() const { return n_cst_upper_; }
@@ -100,18 +100,18 @@ class KulfanDiscipline : public philote::ExplicitDiscipline {
     double te_upper_ = 0.0;
     double te_lower_ = 0.0;
 
-    int N_per_side_ = 0;  // npanel_ / 2
-    int npoint_ = 0;      // npanel_ + 1
+    int N_per_side_ = 0;  /**< npanel_ / 2 */
+    int npoint_ = 0;      /**< npanel_ + 1 */
 
-    static constexpr double kN1 = 0.5;  // class function LE exponent
-    static constexpr double kN2 = 1.0;  // class function TE exponent
+    static constexpr double kN1 = 0.5;  /**< class function LE exponent */
+    static constexpr double kN2 = 1.0;  /**< class function TE exponent */
 
-    VectorXd psi_eval_;  // [N_per_side + 1] cosine-clustered ψ on [0, 1]
+    VectorXd psi_eval_;  /**< [N_per_side + 1] cosine-clustered ψ on [0, 1] */
 
-    // Φ_u[q, i] = C(ψ_q) · K^(n_u-1)_i · ψ_q^i · (1−ψ_q)^(n_u-1−i)
-    // so that y_u(ψ_q) = (Φ_u · cst_upper)_q + ψ_q · te_upper
-    MatrixXd Phi_u_;  // [N_per_side + 1, n_cst_upper_]
-    MatrixXd Phi_l_;  // [N_per_side + 1, n_cst_lower_]
+    /* Φ_u[q, i] = C(ψ_q) · K^(n_u-1)_i · ψ_q^i · (1−ψ_q)^(n_u-1−i)
+     * so that y_u(ψ_q) = (Φ_u · cst_upper)_q + ψ_q · te_upper */
+    MatrixXd Phi_u_;  /**< [N_per_side + 1, n_cst_upper_] */
+    MatrixXd Phi_l_;  /**< [N_per_side + 1, n_cst_lower_] */
 };
 
 }  // namespace scirocco

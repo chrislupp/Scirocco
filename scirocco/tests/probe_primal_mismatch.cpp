@@ -1,6 +1,8 @@
-// Probe: compare scirocco's Newton-converged viscous state to mfoil's CS
-// reference state. Diagnoses why end-to-end shape sensitivities are stuck
-// at 1e-5 rel even though all chain partials match at 1e-12.
+/**
+ * @brief Probe: compare scirocco's Newton-converged viscous state to mfoil's CS
+ * reference state. Diagnoses why end-to-end shape sensitivities are stuck
+ * at 1e-5 rel even though all chain partials match at 1e-12.
+ */
 
 #include <H5Cpp.h>
 
@@ -42,6 +44,12 @@ static double readScalar(H5::H5File& f, const std::string& p) {
     return v;
 }
 
+/**
+ * @brief Entry point: loads mfoil CS reference, runs scirocco solve, and
+ *        compares primal state (forces, gamma, xi, wgap, U) and residual at
+ *        U_ref.
+ * @return 0 on success, 1 on dimension mismatch.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
@@ -61,7 +69,7 @@ int main() {
     auto& s = foil.GetState();
     s.foil.x = foil_x;
     s.foil.N = N;
-    // NB: skipping RecomputeArcLength — comparing with mfoil's spline foil.s
+    /* NB: skipping RecomputeArcLength — comparing with mfoil's spline foil.s */
     s.oper.viscous = true;
     s.oper.initbl = true;
     s.param.verb = 0;
@@ -132,7 +140,7 @@ int main() {
         if (t) ++n_turb;
     std::cout << "cpp num turbulent stations = " << n_turb << "/"
               << s.vsol.turb.size() << "\n";
-    // Print first turbulent station index per surface
+    /* Print first turbulent station index per surface */
     std::cout << "Xt (transition xi, [lower, upper]): " << s.vsol.Xt(0, 0)
               << ", " << s.vsol.Xt(1, 0) << "\n";
     std::cout << "Xt (transition x , [lower, upper]): " << s.vsol.Xt(0, 1)
@@ -188,7 +196,7 @@ int main() {
                   << " |Rmass|=" << std::abs(s.glob.R(3 * j))
                   << " |Rmom|=" << std::abs(s.glob.R(3 * j + 1))
                   << " |Rlag|=" << std::abs(s.glob.R(3 * j + 2));
-        // Find which surface
+        /* Find which surface */
         int sur = -1, idx = -1;
         for (int si = 0; si < 3; ++si) {
             const auto& Is = s.vsol.Is[si];

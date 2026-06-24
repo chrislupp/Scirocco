@@ -1,5 +1,7 @@
-// Compare scirocco's analytic _dMa helpers against mfoil_cs complex-step
-// reference (closure_dma_cs_reference.h5). No FD anywhere.
+/**
+ * @brief Compare scirocco's analytic _dMa helpers against mfoil_cs complex-step
+ * reference (closure_dma_cs_reference.h5). No FD anywhere.
+ */
 
 #include <H5Cpp.h>
 
@@ -46,6 +48,11 @@ static MatrixXd readMat(H5::H5File& f, const std::string& p) {
     return m;
 }
 
+/**
+ * @brief Entry point: loads reference data, runs analytic _dMa helpers, and
+ *        reports max absolute and relative errors per closure.
+ * @return 0 on success.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/closure_dma_cs_reference.h5";
@@ -82,8 +89,8 @@ int main() {
     s.param.verb = 0;
     SolveViscous(s);
 
-    // Use the scirocco-side U values (they should match mfoil's U_ref at
-    // converged state for the same setup).
+    /* Use the scirocco-side U values (they should match mfoil's U_ref at
+     * converged state for the same setup). */
     Param base_p = s.param;
     ThermoMaDeriv d = ComputeThermoMaDeriv(base_p, base_p.Vinf, 0.0);
 

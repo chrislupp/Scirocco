@@ -39,28 +39,42 @@
 
 namespace scirocco {
 
-// Main Scirocco solver class
+/**
+ * @brief Main Scirocco solver class
+ */
 class Scirocco {
    public:
-    // Construct from NACA digits
+    /**
+     * @brief Construct from NACA digits
+     * @param naca NACA digit string
+     * @param npanel Number of panels
+     */
     explicit Scirocco(const std::string& naca = "0012", int npanel = 199);
 
-    // Construct from coordinates
+    /**
+     * @brief Construct from coordinates
+     * @param coords Airfoil coordinates
+     * @param npanel Number of panels
+     */
     explicit Scirocco(const MatrixXd& coords, int npanel = 199);
 
-    // Set operating conditions
-    // alpha : Angle of attack [degrees]
-    // cl : Target lift coefficient (if set, alpha is computed)
-    // Re : Reynolds number (enables viscous analysis)
-    // Ma : Mach number
+    /**
+     * @brief Set operating conditions
+     * @param alpha Angle of attack [degrees]
+     * @param cl Target lift coefficient (if set, alpha is computed)
+     * @param Re Reynolds number (enables viscous analysis)
+     * @param Ma Mach number
+     */
     void SetOper(double alpha = 0.0, double cl = -1.0, double Re = 0.0,
                  double Ma = 0.0);
 
-    // Solve the current operating point
-    // Returns true if converged (always true for inviscid)
+    /**
+     * @brief Solve the current operating point
+     * @return True if converged (always true for inviscid)
+     */
     bool Solve();
 
-    // Get results
+    /* Get results */
     [[nodiscard]] double GetCl() const { return state_.post.cl; }
     [[nodiscard]] double GetCd() const { return state_.post.cd; }
     [[nodiscard]] double GetCdf() const { return state_.post.cdf; }
@@ -69,7 +83,7 @@ class Scirocco {
     [[nodiscard]] double GetAlpha() const { return state_.oper.alpha; }
     [[nodiscard]] bool IsConverged() const { return state_.glob.conv; }
 
-    // Get distributions
+    /* Get distributions */
     [[nodiscard]] const VectorXd& GetCp() const { return state_.post.cp; }
     [[nodiscard]] const VectorXd& GetCf() const { return state_.post.cf; }
     [[nodiscard]] const VectorXd& GetTheta() const { return state_.post.th; }
@@ -77,7 +91,7 @@ class Scirocco {
         return state_.post.ds;
     }
 
-    // Get panel coordinates
+    /* Get panel coordinates */
     [[nodiscard]] const MatrixXd& GetFoilCoords() const {
         return state_.foil.x;
     }
@@ -85,25 +99,33 @@ class Scirocco {
         return state_.wake.x;
     }
 
-    // Geometry modification functions
-    // Deploy a flap at hinge location with given deflection angle
-    // xzhinge : Hinge location [x, z]
-    // eta : Flap deflection angle in degrees (positive = down)
+    /**
+     * @brief Deploy a flap at hinge location with given deflection angle
+     * @param xzhinge Hinge location [x, z]
+     * @param eta Flap deflection angle in degrees (positive = down)
+     */
     void GeomFlap(const Vector2d& xzhinge, double eta);
 
-    // Add camber to airfoil from given camber line increment
-    // xzcamb : Camber increment points [2 x Nc] (x, z coords)
+    /**
+     * @brief Add camber to airfoil from given camber line increment
+     * @param xzcamb Camber increment points [2 x Nc] (x, z coords)
+     */
     void GeomAddCamber(const MatrixXd& xzcamb);
 
-    // Derotate airfoil to make chord line horizontal
+    /**
+     * @brief Derotate airfoil to make chord line horizontal
+     */
     void GeomDerotate();
 
-    // Compute sensitivities of cl, cd, cm w.r.t. panel node coordinates
-    // Must be called after Solve(). Uses adjoint method.
-    // Returns Sensitivity struct with dcl_dx, dcd_dx, dcm_dx [2 x N] matrices
+    /**
+     * @brief Compute sensitivities of cl, cd, cm w.r.t. panel node coordinates
+     *
+     * Must be called after Solve(). Uses adjoint method.
+     * @return Sensitivity struct with dcl_dx, dcd_dx, dcm_dx [2 x N] matrices
+     */
     Sensitivity ComputeSensitivities();
 
-    // Accessors for sensitivity results (call ComputeSensitivities first)
+    /* Accessors for sensitivity results (call ComputeSensitivities first) */
     [[nodiscard]] const MatrixXd& GetDclDx() const {
         return sensitivity_.dcl_dx;
     }
@@ -114,7 +136,7 @@ class Scirocco {
         return sensitivity_.dcm_dx;
     }
 
-    // Scalar operating-condition sensitivities
+    /* Scalar operating-condition sensitivities */
     [[nodiscard]] double GetDclDalpha() const {
         return sensitivity_.dcl_dalpha;
     }
@@ -133,7 +155,7 @@ class Scirocco {
     [[nodiscard]] double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
     [[nodiscard]] double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
 
-    // Access internal state (for advanced use)
+    /* Access internal state (for advanced use) */
     FoilState& GetState() { return state_; }
     [[nodiscard]] const FoilState& GetState() const { return state_; }
 

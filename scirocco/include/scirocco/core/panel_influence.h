@@ -35,81 +35,86 @@
 
 namespace scirocco {
 
-// Panel geometry information
+/** @brief Panel geometry information */
 struct PanelInfo {
-    double r1, r2;          // Distances from xi to panel endpoints
-    double theta1, theta2;  // Angles from xi to panel endpoints
-    double x1, x2;          // Local x coordinates (along panel)
-    double y;               // Local y coordinate (perpendicular to panel)
-    double len;             // Panel length
+    double r1, r2;          /* Distances from xi to panel endpoints */
+    double theta1, theta2;  /* Angles from xi to panel endpoints */
+    double x1, x2;          /* Local x coordinates (along panel) */
+    double y;               /* Local y coordinate (perpendicular to panel) */
+    double len;             /* Panel length */
 };
 
-// Compute panel geometry information
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2] (j, j+1)
-//   xi : Point at which to evaluate
-// OUTPUT:
-//   PanelInfo structure with geometric quantities
+/**
+ * @brief Compute panel geometry information
+ * @param Xj Panel endpoint coordinates [2 x 2] (j, j+1)
+ * @param xi Point at which to evaluate
+ * @return PanelInfo structure with geometric quantities
+ */
 PanelInfo GetPanelInfo(const Matrix2d& Xj, const Vector2d& xi);
 
-// Linear vortex panel velocity influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-//   vdir : Optional velocity direction for projection (nullptr for both
-//   components) onmid : True if xi is at panel midpoint (use limit values)
-// OUTPUT:
-//   a, b : Influence coefficients for left and right vortex strengths
+/**
+ * @brief Linear vortex panel velocity influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @param vdir Optional velocity direction for projection (nullptr for both
+ *   components)
+ * @param onmid True if xi is at panel midpoint (use limit values)
+ * @param a Influence coefficient for left vortex strength
+ * @param b Influence coefficient for right vortex strength
+ */
 void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
                             const Vector2d* vdir, bool onmid, Vector2d& a,
                             Vector2d& b);
 
-// Linear vortex panel streamfunction influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-// OUTPUT:
-//   a, b : Influence coefficients for left and right vortex strengths
+/**
+ * @brief Linear vortex panel streamfunction influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @param a Influence coefficient for left vortex strength
+ * @param b Influence coefficient for right vortex strength
+ */
 void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
                           double& b);
 
-// Constant source panel velocity influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-//   vdir : Optional velocity direction for projection (nullptr for both
-//   components)
-// OUTPUT:
-//   Velocity influence (or scalar if vdir provided)
+/**
+ * @brief Constant source panel velocity influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @param vdir Optional velocity direction for projection (nullptr for both
+ *   components)
+ * @return Velocity influence (or scalar if vdir provided)
+ */
 Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
                                   const Vector2d* vdir);
 
-// Constant source panel streamfunction influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-// OUTPUT:
-//   Streamfunction influence coefficient
+/**
+ * @brief Constant source panel streamfunction influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return Streamfunction influence coefficient
+ */
 double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi);
 
-// Linear source panel streamfunction influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-// OUTPUT:
-//   a, b : Influence coefficients for left and right source strengths
+/**
+ * @brief Linear source panel streamfunction influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @param a Influence coefficient for left source strength
+ * @param b Influence coefficient for right source strength
+ */
 void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
                           double& b);
 
-// Linear source panel velocity influence
-// INPUT:
-//   Xj : Panel endpoint coordinates [2 x 2]
-//   xi : Evaluation point
-// OUTPUT:
-//   a, b : Velocity influence vectors for left and right source strengths
+/**
+ * @brief Linear source panel velocity influence
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @param a Velocity influence vector for left source strength
+ * @param b Velocity influence vector for right source strength
+ */
 void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi, Vector2d& a,
                             Vector2d& b);
 
-}  // namespace scirocco
+}  /* namespace scirocco */
 
-#endif  // SCIROCCO_CORE_PANEL_INFLUENCE_H
+#endif  /* SCIROCCO_CORE_PANEL_INFLUENCE_H */

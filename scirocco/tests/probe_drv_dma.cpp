@@ -1,4 +1,6 @@
-// Diagnostic: analytic ∂R/∂Ma vs 4th-order FD on Ma at fixed U.
+/**
+ * @brief Diagnostic: analytic ∂R/∂Ma vs 4th-order FD on Ma at fixed U.
+ */
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
@@ -9,6 +11,11 @@
 #include "scirocco/scirocco.h"
 using namespace scirocco;
 using namespace Eigen;
+/**
+ * @brief Entry point: compares analytic dR/dMa against 4th-order FD and
+ *        reports worst-case entries.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -18,7 +25,7 @@ int main() {
     s.param.verb = 0;
     SolveViscous(s);
     int Nsys = s.glob.Nsys;
-    // Force analytic (not the FD-fallback DRVDMa)
+    /* Force analytic (not the FD-fallback DRVDMa) */
     BuildGlobSys(s);
     VectorXd dR_an = VectorXd::Zero(4 * Nsys);
     dR_an.head(3 * Nsys) = s.glob.dR_dMa_times_Ma / s.oper.Ma;

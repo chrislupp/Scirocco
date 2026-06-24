@@ -37,54 +37,101 @@
 
 namespace scirocco {
 
-// Initialize boundary layer from inviscid edge velocity
+/**
+ * @brief Initialize boundary layer from inviscid edge velocity
+ * @param state Foil state to initialize
+ */
 void InitBoundaryLayer(FoilState& state);
 
-// Compute residual at a station (non-transition)
+/**
+ * @brief Compute residual at a station (non-transition)
+ * @param param Parameter structure for the surface
+ * @param x Station arc-length coordinates
+ * @param U State matrix at the station
+ * @param Aux Auxiliary variables at the station
+ * @return Residual and linearization at the station
+ */
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                             const Matrix42d& U, const Vector2d& Aux);
 
-// Compute residual at a transition station (combined laminar + turbulent)
-// U1 should be laminar, U2 should be turbulent
-// Returns combined residual and Jacobian
+/**
+ * @brief Compute residual at a transition station (combined laminar + turbulent)
+ * U1 should be laminar, U2 should be turbulent
+ * Returns combined residual and Jacobian
+ * @param state Foil state
+ * @param param_base Base parameter structure for the surface
+ * @param x Station arc-length coordinates
+ * @param U State matrix at the station
+ * @param Aux Auxiliary variables at the station
+ * @return Combined residual and Jacobian at the transition station
+ */
 ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                                const Vector2d& x, const Matrix42d& U,
                                const Vector2d& Aux);
 
-// Thwaites correlation for stagnation initialization
-// Returns (theta, delta*) at stagnation point
+/**
+ * @brief Thwaites correlation for stagnation initialization
+ * Returns (theta, delta*) at stagnation point
+ * @param K Thwaites parameter at stagnation
+ * @param nu Kinematic viscosity
+ * @return Pair of (momentum thickness theta, displacement thickness delta*) at stagnation point
+ */
 std::pair<double, double> ThwaitesInit(double K, double nu);
 
-// Build parameter structure for a surface
+/**
+ * @brief Build parameter structure for a surface
+ * @param state Foil state
+ * @param si Surface index
+ * @return Parameter structure for the specified surface
+ */
 Param BuildParam(const FoilState& state, int si);
 
-// Update parameter for a specific station
+/**
+ * @brief Update parameter for a specific station
+ * @param state Foil state
+ * @param param Parameter structure to update
+ * @param i Station index
+ */
 void StationParam(const FoilState& state, Param& param, int i);
 
-// Result for stagnation state extrapolation
+/**
+ * @brief Result for stagnation state extrapolation
+ */
 struct StagnationResult {
-    Vector4d Ust;     // Stagnation state [th, ds, sa, ue]
-    Matrix48d Ust_U;  // Linearization w.r.t. U1 and U2 (4x8)
-    Matrix42d Ust_x;  // Linearization w.r.t. x1 and x2 (4x2)
-    double xst;       // Stagnation point location (small)
+    Vector4d Ust;     /* Stagnation state [th, ds, sa, ue] */
+    Matrix48d Ust_U;  /* Linearization w.r.t. U1 and U2 (4x8) */
+    Matrix42d Ust_x;  /* Linearization w.r.t. x1 and x2 (4x2) */
+    double xst;       /* Stagnation point location (small) */
 };
 
-// Extrapolate two states to stagnation point
+/**
+ * @brief Extrapolate two states to stagnation point
+ * @param U State matrix containing the two bracketing states
+ * @param x Arc-length coordinates of the two bracketing stations
+ * @return Stagnation state and its linearizations
+ */
 StagnationResult StagnationState(const Matrix42d& U, const Vector2d& x);
 
-// Result for wake system
+/**
+ * @brief Result for wake system
+ */
 struct WakeResult {
-    Vector3d R;      // Residual [th, ds, sa]
-    Matrix312d R_U;  // Linearization w.r.t. lower, upper, wake states (3x12)
-    std::array<int, 3> J;  // Indices: lower TE, upper TE, first wake
-    // ∂R/∂Ma · Ma, non-zero only when at least one TE side is laminar
-    // (because ctw is then built from GetCttr which is Ma-dependent).
+    Vector3d R;      /* Residual [th, ds, sa] */
+    Matrix312d R_U;  /* Linearization w.r.t. lower, upper, wake states (3x12) */
+    std::array<int, 3> J;  /* Indices: lower TE, upper TE, first wake */
+    /* ∂R/∂Ma · Ma, non-zero only when at least one TE side is laminar
+     * (because ctw is then built from GetCttr which is Ma-dependent). */
     Vector3d lin_Ma_times_Ma{Vector3d::Zero()};
 };
 
-// Construct residual system for wake initialization
+/**
+ * @brief Construct residual system for wake initialization
+ * @param state Foil state
+ * @param param Parameter structure for the wake surface
+ * @return Wake residual, linearization, and station indices
+ */
 WakeResult WakeSys(const FoilState& state, Param& param);
 
-}  // namespace scirocco
+}  /* namespace scirocco */
 
-#endif  // SCIROCCO_CORE_BOUNDARY_LAYER_H
+#endif  /* SCIROCCO_CORE_BOUNDARY_LAYER_H */

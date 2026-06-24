@@ -65,8 +65,8 @@ void WriteVector(H5::Group& grp, const std::string& name, const VectorXd& vec) {
 
 void WriteMatrix(H5::Group& grp, const std::string& name, const MatrixXd& mat) {
     if (mat.size() == 0) return;
-    // Eigen is column-major; write as (rows x cols) and transpose to row-major
-    // for HDF5 compatibility with h5py/numpy (which expect row-major C order).
+    /* Eigen is column-major; write as (rows x cols) and transpose to row-major
+       for HDF5 compatibility with h5py/numpy (which expect row-major C order). */
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
         row_major = mat;
     hsize_t dims[2] = {static_cast<hsize_t>(mat.rows()),
@@ -116,7 +116,7 @@ struct Hdf5Writer::Impl {
         WriteScalar(grp, "hTE", state.geom.hTE);
         WriteMatrix(grp, "xpoint", state.geom.xpoint);
 
-        // xref as a small vector
+        /* xref as a small vector */
         VectorXd xref(2);
         xref(0) = state.geom.xref(0);
         xref(1) = state.geom.xref(1);
@@ -128,14 +128,14 @@ struct Hdf5Writer::Impl {
     void WritePanels(H5::Group& iter_grp, const FoilState& state) {
         auto grp = iter_grp.createGroup("panels");
 
-        // Foil panels
+        /* Foil panels */
         auto foil_grp = grp.createGroup("foil");
         WriteInt(foil_grp, "N", state.foil.N);
         WriteMatrix(foil_grp, "x", state.foil.x);
         WriteVector(foil_grp, "s", state.foil.s);
         WriteMatrix(foil_grp, "t", state.foil.t);
 
-        // Wake panels
+        /* Wake panels */
         auto wake_grp = grp.createGroup("wake");
         WriteInt(wake_grp, "N", state.wake.N);
         WriteMatrix(wake_grp, "x", state.wake.x);
@@ -171,14 +171,14 @@ struct Hdf5Writer::Impl {
     void WriteSensitivities(H5::Group& iter_grp, const Sensitivity& sens) {
         auto grp = iter_grp.createGroup("sensitivities");
 
-        // Shape sensitivities
+        /* Shape sensitivities */
         auto shape_grp = grp.createGroup("shape");
         WriteMatrix(shape_grp, "dcl_dx", sens.dcl_dx);
         WriteMatrix(shape_grp, "dcd_dx", sens.dcd_dx);
         WriteMatrix(shape_grp, "dcm_dx", sens.dcm_dx);
         WriteMatrix(shape_grp, "dcdpi_dx", sens.dcdpi_dx);
 
-        // Scalar sensitivities
+        /* Scalar sensitivities */
         auto scalar_grp = grp.createGroup("scalar");
         WriteScalar(scalar_grp, "dcl_dalpha", sens.dcl_dalpha);
         WriteScalar(scalar_grp, "dcd_dalpha", sens.dcd_dalpha);
@@ -210,7 +210,7 @@ Hdf5Writer::Hdf5Writer(const std::string& filepath) : pimpl_(new Impl) {
     pimpl_->is_open = true;
     pimpl_->iteration_count = 0;
 
-    // Write root metadata
+    /* Write root metadata */
     H5::DataSpace space(H5S_SCALAR);
     H5::StrType str_type(H5::PredType::C_S1, H5T_VARIABLE);
 

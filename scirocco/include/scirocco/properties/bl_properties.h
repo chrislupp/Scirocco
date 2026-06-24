@@ -37,89 +37,218 @@
 
 namespace scirocco {
 
-// Shape parameter H = delta*/theta
+/** @brief Shape parameter H = delta* /theta
+ *  @param U State vector [theta, ds, sa, ue]
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetH(const Vector4d& U);
 
-// Kinematic shape parameter Hk (with compressibility correction)
+/** @brief Kinematic shape parameter Hk (with compressibility correction)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetHk(const Vector4d& U, const Param& param);
 
-// Wake shape parameter with gap correction
+/** @brief Wake shape parameter with gap correction
+ *  @param U    State vector [theta, ds, sa, ue]
+ *  @param wgap Wake gap height
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetHw(const Vector4d& U, double wgap);
 
-// Kinetic energy shape parameter H*
+/** @brief Kinetic energy shape parameter H*
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetHs(const Vector4d& U, const Param& param);
 
-// Density shape parameter H**
+/** @brief Density shape parameter H**
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetHss(const Vector4d& U, const Param& param);
 
-// Reynolds number based on momentum thickness
+/** @brief Reynolds number based on momentum thickness
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetRet(const Vector4d& U, const Param& param);
 
-// Skin friction coefficient
+/** @brief Skin friction coefficient
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCf(const Vector4d& U, const Param& param);
 
-// Dissipation coefficient (combined turbulent / laminar with floor switch)
+/** @brief Dissipation coefficient (combined turbulent / laminar with floor switch)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi(const Vector4d& U, const Param& param);
 
-// Sub-components of GetCDi (exposed for the analytic Re chain)
+/** @brief Sub-components of GetCDi (exposed for the analytic Re chain)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param);
+
+/** @brief Turbulent wall contribution to dissipation coefficient
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param);
+
+/** @brief Outer layer contribution to dissipation coefficient (turbulent)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi_Outer(const Vector4d& U, const Param& param);
+
+/** @brief Laminar stress contribution to dissipation coefficient (turbulent)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param);
+
+/** @brief Laminar wake dissipation contribution
+ *  @param U      State vector [theta, ds, sa, ue]
+ *  @param paramin Flow parameter struct (turb flag overridden to false internally)
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin);
 
-// Pressure coefficient from edge velocity
+/** @brief Pressure coefficient from edge velocity
+ *  @param ue    Edge velocity
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCpFromUe(double ue, const Param& param);
 
-// Compressible velocity correction
+/** @brief Compressible velocity correction
+ *  @param ue    Edge velocity
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetUk(double ue, const Param& param);
 
-// Squared Mach number
+/** @brief Squared Mach number
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetMach2(const Vector4d& U, const Param& param);
 
-// Density from state
+/** @brief Density from state
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetRho(const Vector4d& U, const Param& param);
 
-// Amplification factor rate
+/** @brief Amplification factor rate
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetDamp(const Vector4d& U, const Param& param);
 
-// Initial ctau at transition
+/** @brief Initial ctau at transition
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCttr(const Vector4d& U, const Param& param);
 
-// Equilibrium ctau
+/** @brief Equilibrium ctau
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetCteq(const Vector4d& U, const Param& param);
 
-// Upwind factor for stability
+/** @brief Upwind factor for stability
+ *  @param U1    Upstream state vector [theta, ds, sa, ue]
+ *  @param U2    Downstream state vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin8 value and linearization w.r.t. [U1; U2]
+ */
 ScalarLin8 GetUpw(const Vector4d& U1, const Vector4d& U2, const Param& param);
 
-// Upwind average of a quantity
+/** @brief Upwind average of a quantity
+ *  @param upw   Upwind factor
+ *  @param upw_U Linearization of upwind factor w.r.t. [U1; U2]
+ *  @param f1    Quantity at upstream station
+ *  @param f1_U1 Linearization of f1 w.r.t. U1
+ *  @param f2    Quantity at downstream station
+ *  @param f2_U2 Linearization of f2 w.r.t. U2
+ *  @return ScalarLin8 blended value and linearization w.r.t. [U1; U2]
+ */
 ScalarLin8 Upwind(double upw, const Vector8d& upw_U, double f1,
                   const Vector4d& f1_U1, double f2, const Vector4d& f2_U2);
 
-// BL thickness measure delta (delta* + weighted theta)
+/** @brief BL thickness measure delta (delta* + weighted theta)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetDe(const Vector4d& U, const Param& param);
 
-// Normalized wall slip velocity
+/** @brief Normalized wall slip velocity
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
 ScalarLin4 GetUs(const Vector4d& U, const Param& param);
 
-// Result type for functions with x-derivative
+/** @brief Result type for functions with x-derivative */
 struct ScalarLinX {
     double value;
     Vector4d lin_U;
     double lin_x;
 };
 
-// cf * x / theta
+/** @brief cf * x / theta
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param x     Streamwise coordinate
+ *  @param param Flow parameter struct
+ *  @return ScalarLinX value, linearization w.r.t. U, and d/dx
+ */
 ScalarLinX GetCfxt(const Vector4d& U, double x, const Param& param);
 
-// cDi * x / theta (dissipation * x / theta)
+/** @brief cDi * x / theta (dissipation * x / theta)
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param x     Streamwise coordinate
+ *  @param param Flow parameter struct
+ *  @return ScalarLinX value, linearization w.r.t. U, and d/dx
+ */
 ScalarLinX GetCDixt(const Vector4d& U, double x, const Param& param);
 
-// Equilibrium pressure gradient 1/ue * due/dx
+/** @brief Equilibrium pressure gradient 1/ue * due/dx
+ *  @param ds    Displacement thickness
+ *  @param ds_U  Linearization of ds w.r.t. [U1; U2]
+ *  @param cf    Skin friction coefficient
+ *  @param cf_U  Linearization of cf w.r.t. [U1; U2]
+ *  @param Hk    Kinematic shape parameter
+ *  @param Hk_U  Linearization of Hk w.r.t. [U1; U2]
+ *  @param Ret   Reynolds number based on momentum thickness
+ *  @param Ret_U Linearization of Ret w.r.t. [U1; U2]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin8 value and linearization w.r.t. [U1; U2]
+ */
 ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
                  const Vector8d& cf_U, double Hk, const Vector8d& Hk_U,
                  double Ret, const Vector8d& Ret_U, const Param& param);
 
-}  // namespace scirocco
+}  /* namespace scirocco */
 
-#endif  // SCIROCCO_PROPERTIES_BL_PROPERTIES_H
+#endif  /* SCIROCCO_PROPERTIES_BL_PROPERTIES_H */

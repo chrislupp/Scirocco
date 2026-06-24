@@ -1,6 +1,8 @@
-// Internal access to the per-closure _dRet/_dMa helpers and ThermoMaDeriv
-// for diagnostic probes (probe_per_closure_dma etc.). NOT a public API —
-// these change with the residual chain.
+/**
+ * @brief Internal access to the per-closure _dRet/_dMa helpers and ThermoMaDeriv
+ * for diagnostic probes (probe_per_closure_dma etc.). NOT a public API —
+ * these change with the residual chain.
+ */
 
 #ifndef SCIROCCO_CORE_BL_CHAIN_INTERNALS_H
 #define SCIROCCO_CORE_BL_CHAIN_INTERNALS_H

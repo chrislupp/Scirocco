@@ -34,9 +34,9 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// Hybrid tolerance: rel + abs. mfoil-CS is machine-precision; scirocco's
-// analytic should match to ~1e-11 rel except for very small entries where
-// cancellation noise dominates.
+/* Hybrid tolerance: rel + abs. mfoil-CS is machine-precision; scirocco's
+ * analytic should match to ~1e-11 rel except for very small entries where
+ * cancellation noise dominates. */
 static constexpr double TOL_REL = 1e-9;
 static constexpr double TOL_ABS = 1e-11;
 
@@ -44,9 +44,9 @@ static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
 }
 
-// ---------------------------------------------------------------------------
-// HDF5 helpers
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * HDF5 helpers
+ * --------------------------------------------------------------------------- */
 namespace {
 VectorXd readVector(H5::H5File& file, const std::string& path) {
     H5::DataSet ds = file.openDataSet(path);
@@ -85,10 +85,15 @@ std::vector<int64_t> readIntVec(H5::H5File& file, const std::string& path) {
 }
 }  // namespace
 
-// ---------------------------------------------------------------------------
-// Helper: make a Param matching the test's MakeParam (NACA 0012, 130 panels,
-// alpha=3, Ma=0.4, plus turb/wake flags)
-// ---------------------------------------------------------------------------
+/**
+ * @brief Helper: make a Param matching the test's MakeParam (NACA 0012, 130 panels,
+ * alpha=3, Ma=0.4, plus turb/wake flags)
+ * @param Re Reynolds number
+ * @param Ma Mach number
+ * @param turb turbulent flag
+ * @param wake wake flag
+ * @return Param
+ */
 static Param MakeParam(double Re, double Ma, bool turb, bool wake) {
     Scirocco foil("0012", 130);
     foil.SetOper(3.0, -1.0, Re, Ma);
@@ -101,9 +106,9 @@ static Param MakeParam(double Re, double Ma, bool turb, bool wake) {
     return p;
 }
 
-// ---------------------------------------------------------------------------
-// Test fixture: shared converged state for the higher-level tests.
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * Test fixture: shared converged state for the higher-level tests.
+ * --------------------------------------------------------------------------- */
 class PingTest : public ::testing::Test {
    protected:
     static std::unique_ptr<Scirocco> foil_;
@@ -133,9 +138,9 @@ class PingTest : public ::testing::Test {
 std::unique_ptr<Scirocco> PingTest::foil_;
 std::unique_ptr<H5::H5File> PingTest::file_;
 
-// ===========================================================================
-// A. BL Property Function Derivatives — analytic vs mfoil-CS Jacobian
-// ===========================================================================
+/**
+ * @brief BL Property Function Derivatives — analytic vs mfoil-CS Jacobian
+ */
 TEST_F(PingTest, BLPropertyDerivatives) {
     using BLFunc = std::function<ScalarLin4(const Vector4d&, const Param&)>;
     struct FuncEntry {
@@ -204,9 +209,9 @@ TEST_F(PingTest, BLPropertyDerivatives) {
     std::cout << "BLPropertyDerivatives: " << nfail << " failures" << std::endl;
 }
 
-// ===========================================================================
-// A2. ResidualStation derivatives (non-stagnation)
-// ===========================================================================
+/**
+ * @brief ResidualStation derivatives (non-stagnation)
+ */
 TEST_F(PingTest, ResidualStationDerivatives) {
     struct Regime {
         const char* name;
@@ -267,9 +272,9 @@ TEST_F(PingTest, ResidualStationDerivatives) {
               << std::endl;
 }
 
-// ===========================================================================
-// B. ResidualTransition derivatives (Re=2e6, Ma=0)
-// ===========================================================================
+/**
+ * @brief ResidualTransition derivatives (Re=2e6, Ma=0)
+ */
 TEST_F(PingTest, ResidualTransitionDerivatives) {
     FoilState state = CopyState();
     state.oper.Re = 2e6;
@@ -312,9 +317,9 @@ TEST_F(PingTest, ResidualTransitionDerivatives) {
     std::cout << "ResidualTransition: " << nfail << " failures" << std::endl;
 }
 
-// ===========================================================================
-// C. ResidualStation at stagnation (simi=true, alpha=1)
-// ===========================================================================
+/**
+ * @brief ResidualStation at stagnation (simi=true, alpha=1)
+ */
 TEST_F(PingTest, ResidualStation_Stagnation) {
     Scirocco foil_stag("0012", 130);
     foil_stag.SetOper(1.0, -1.0, 1e6, 0.0);
@@ -366,16 +371,16 @@ TEST_F(PingTest, ResidualStation_Stagnation) {
               << std::endl;
 }
 
-// ===========================================================================
-// D. BuildGlobSys Jacobians — full R_U and R_x at converged state
-// ===========================================================================
+/**
+ * @brief BuildGlobSys Jacobians — full R_U and R_x at converged state
+ */
 TEST_F(PingTest, BuildGlobSys_Jacobians) {
     FoilState state = CopyState();
     int Nsys = state.glob.Nsys;
-    // Both scirocco and mfoil only converge to rtol=1e-6, so their U's
-    // differ at the ~1e-6 level — enough to make R_U comparison fail at
-    // machine precision. Sync to mfoil's converged U so we evaluate the
-    // Jacobian at the exact same point.
+    /* Both scirocco and mfoil only converge to rtol=1e-6, so their U's
+     * differ at the ~1e-6 level — enough to make R_U comparison fail at
+     * machine precision. Sync to mfoil's converged U so we evaluate the
+     * Jacobian at the exact same point. */
     MatrixXd U_ref = readMatrix(*file_, "build_glob_sys/U");
     VectorXd xi_ref = readVector(*file_, "build_glob_sys/xi");
     ASSERT_EQ(U_ref.rows(), 4);
@@ -396,10 +401,10 @@ TEST_F(PingTest, BuildGlobSys_Jacobians) {
     ASSERT_EQ(R_x_dense.rows(), cs_R_x.rows());
     ASSERT_EQ(R_x_dense.cols(), cs_R_x.cols());
 
-    // BuildGlobSys assembles many per-station closure-of-closure
-    // derivatives; the per-entry rel precision floor is ~5e-9 vs mfoil
-    // (different summation order). The structural Jacobian agreement is
-    // what matters here; downstream sensitivity tests pin machine-precision.
+    /* BuildGlobSys assembles many per-station closure-of-closure
+     * derivatives; the per-entry rel precision floor is ~5e-9 vs mfoil
+     * (different summation order). The structural Jacobian agreement is
+     * what matters here; downstream sensitivity tests pin machine-precision. */
     auto wtol = [](double got, double ref) {
         return std::abs(got - ref) <= 5e-9 * std::abs(ref) + 1e-9;
     };
@@ -434,9 +439,9 @@ TEST_F(PingTest, BuildGlobSys_Jacobians) {
               << " max|R_x|=" << max_err_x << std::endl;
 }
 
-// ===========================================================================
-// E. WakeSys derivatives at converged state
-// ===========================================================================
+/**
+ * @brief WakeSys derivatives at converged state
+ */
 TEST_F(PingTest, WakeSys_Derivatives) {
     FoilState state = CopyState();
     Param param = BuildParam(state, 1);
@@ -457,9 +462,9 @@ TEST_F(PingTest, WakeSys_Derivatives) {
     std::cout << "WakeSys: " << nfail << " failures" << std::endl;
 }
 
-// ===========================================================================
-// F. StagnationState derivatives at hardcoded U, x
-// ===========================================================================
+/**
+ * @brief StagnationState derivatives at hardcoded U, x
+ */
 TEST_F(PingTest, StagnationState_Derivatives) {
     Matrix42d U;
     U.col(0) << 5e-5, 1.1e-4, 0.0, 0.0348;
@@ -495,9 +500,9 @@ TEST_F(PingTest, StagnationState_Derivatives) {
     std::cout << "StagnationState: " << nfail << " failures" << std::endl;
 }
 
-// ===========================================================================
-// G. CalcForce derivatives (cl_ue and cl_alpha)
-// ===========================================================================
+/**
+ * @brief CalcForce derivatives (cl_ue and cl_alpha)
+ */
 TEST_F(PingTest, CalcForce_Derivatives) {
     FoilState state = CopyState();
     int N = state.foil.N;

@@ -1,7 +1,9 @@
-// Decompose R_V[144, 195] (R_mom@node48 wrt U[ue, node48]) into:
-//   (a) the simi-station R1_U(0, 3) contribution from StagnationState chain
-//   (b) the xi-stag augmentation R_st[144] * sstag_ue[1]
-// Compare each piece against mfoil's totals to localize the 0.11 abs error.
+/**
+ * @brief Decompose R_V[144, 195] (R_mom@node48 wrt U[ue, node48]) into:
+ *   (a) the simi-station R1_U(0, 3) contribution from StagnationState chain
+ *   (b) the xi-stag augmentation R_st[144] * sstag_ue[1]
+ * Compare each piece against mfoil's totals to localize the 0.11 abs error.
+ */
 
 #include <H5Cpp.h>
 
@@ -40,6 +42,11 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
     return Map<VectorXd>(b.data(), dims[0]);
 }
 
+/**
+ * @brief Entry point: decomposes R_V[144,195] into simi-station and xi-stag
+ *        augmentation contributions and compares against mfoil reference.
+ * @return 0 on success.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
@@ -63,7 +70,7 @@ int main() {
     s.isol.gamref.resize(0, 0);
     s.isol.gam.resize(0);
     SolveViscous(s);
-    // Override to the reference state and refresh sstag_ue
+    /* Override to the reference state and refresh sstag_ue */
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     {
@@ -79,16 +86,16 @@ int main() {
     BuildGlobSys(s);
     StoreAdjointFactorization(s);
 
-    // Now: decompose R_V[144, 195].
-    int Istag0 = s.isol.Istag[0];  // node 47
-    int Istag1 = s.isol.Istag[1];  // node 48
+    /* Now: decompose R_V[144, 195]. */
+    int Istag0 = s.isol.Istag[0];  /* node 47 */
+    int Istag1 = s.isol.Istag[1];  /* node 48 */
     std::cout << "Istag = [" << Istag0 << ", " << Istag1 << "]\n";
     std::cout << "sstag_ue = [" << s.isol.sstag_ue(0) << ", "
               << s.isol.sstag_ue(1) << "]\n";
 
-    // (1) Compute the simi-station R1_U at node Istag1=48 manually.
-    // Replicate the BuildGlobSys simi-station path (coupled_solver.cpp 240+).
-    int si = 1;  // upper surface
+    /* (1) Compute the simi-station R1_U at node Istag1=48 manually.
+     * Replicate the BuildGlobSys simi-station path (coupled_solver.cpp 240+). */
+    int si = 1;  /* upper surface */
     const auto& Is = s.vsol.Is[si];
     Param param = BuildParam(s, si);
     VectorXd xi(Is.size());
@@ -121,30 +128,30 @@ int main() {
     std::cout << "R1_U_node48[0, 3] (R_mom wrt U[ue, node48]) = "
               << R1_U_node48(0, 3) << "\n";
 
-    // Print res.lin_U in detail for the simi station
+    /* Print res.lin_U in detail for the simi station */
     std::cout.precision(15);
     std::cout << "\n== res.lin_U at simi station (3x8) ==\n";
     std::cout << res.lin_U << "\n";
 
-    // ∂Rmom/∂Ust[3] from both U1 and U2 contributions
+    /* ∂Rmom/∂Ust[3] from both U1 and U2 contributions */
     std::cout << "R1_Ust(0, 3) = res.lin_U(0,3) + res.lin_U(0,7) = "
               << res.lin_U(0, 3) + res.lin_U(0, 7) << "\n";
     std::cout << "  res.lin_U(0,3) = " << res.lin_U(0, 3) << "\n";
     std::cout << "  res.lin_U(0,7) = " << res.lin_U(0, 7) << "\n";
 
-    // For comparison: probe what mfoil would have computed.
-    // Trace: ∂Rmom/∂Ust[3] = (H_U[3] + Hw_U[3] - Ms_U[3]) * uelog
-    //                       + (2+H+Hw-Ms)*uelog_U[3] - 0.5*xlog*cfxt_U[3]
-    // At simi: thlog_U=0, uelog=1, uelog_U=0, xlog=1.
-    // → ∂Rmom/∂Ust[3] = (H_U[3] + Hw_U[3] - Ms_U[3]) - 0.5 * cfxt_U[3]
-    // H = ds/th, ∂H/∂ue = 0. H_U[3]=0.
-    // Hw_U[3] = 0 (no ue dep).
-    // Ms = M2, depends on uk and H0. For Ma=0: M2 = 0 → Ms_U[3] = 0.
-    // So ∂Rmom/∂Ust[3] = -0.5 * cfxt_U[3].
-    // cfxt = 0.25*cfxt1 + 0.5*cfxtm + 0.25*cfxt2.
-    // For U1=U2=Ust, all three are GetCfxt(Ust, xst, param_simi_lam).
-    // cfxt_U[3] (U1 part) = 0.25*cfxt1_U1[3] + 0.25*cfxtm_Um[3]*0.5*2  ...
-    // Actually let me just print intermediate cf, cfxt values.
+    /* For comparison: probe what mfoil would have computed.
+     * Trace: ∂Rmom/∂Ust[3] = (H_U[3] + Hw_U[3] - Ms_U[3]) * uelog
+     *                       + (2+H+Hw-Ms)*uelog_U[3] - 0.5*xlog*cfxt_U[3]
+     * At simi: thlog_U=0, uelog=1, uelog_U=0, xlog=1.
+     * → ∂Rmom/∂Ust[3] = (H_U[3] + Hw_U[3] - Ms_U[3]) - 0.5 * cfxt_U[3]
+     * H = ds/th, ∂H/∂ue = 0. H_U[3]=0.
+     * Hw_U[3] = 0 (no ue dep).
+     * Ms = M2, depends on uk and H0. For Ma=0: M2 = 0 → Ms_U[3] = 0.
+     * So ∂Rmom/∂Ust[3] = -0.5 * cfxt_U[3].
+     * cfxt = 0.25*cfxt1 + 0.5*cfxtm + 0.25*cfxt2.
+     * For U1=U2=Ust, all three are GetCfxt(Ust, xst, param_simi_lam).
+     * cfxt_U[3] (U1 part) = 0.25*cfxt1_U1[3] + 0.25*cfxtm_Um[3]*0.5*2  ...
+     * Actually let me just print intermediate cf, cfxt values. */
     {
         Param p = param;
         p.turb = false;
@@ -165,8 +172,8 @@ int main() {
                   << " (cfxt_U=" << cfxt_U_at_Ust.transpose() << ")\n";
     }
 
-    // (2) xi-stag augmentation R_st * sstag_ue.
-    // R_st[144] = (R_x * x_st)[144].
+    /* (2) xi-stag augmentation R_st * sstag_ue.
+     * R_st[144] = (R_x * x_st)[144]. */
     int Nsys = s.glob.Nsys;
     int Nfoil = s.foil.N;
     VectorXd x_st(Nsys);
@@ -180,7 +187,7 @@ int main() {
     double aug = R_st(144) * s.isol.sstag_ue(1);
     std::cout << "augmentation = R_st[144] * sstag_ue[1] = " << aug << "\n";
 
-    // (3) Total scirocco R_V[144, 195].
+    /* (3) Total scirocco R_V[144, 195]. */
     MatrixXd R_V_cpp = MatrixXd(s.glob.R_V);
     std::cout << "\n== Totals ==\n";
     std::cout << "scirocco  R_V[144, 195] = " << R_V_cpp(144, 195) << "\n";
@@ -193,8 +200,8 @@ int main() {
     std::cout << "diff vs scirocco R_V       = "
               << std::abs(R1_U_node48(0, 3) + aug - R_V_cpp(144, 195)) << "\n";
 
-    // (4) Inferred mfoil R1_U(0, 3) = mfoil R_V[144, 195] - scirocco_aug.
-    // (mfoil's aug should be same as scirocco's if sstag_ue and R_st agree)
+    /* (4) Inferred mfoil R1_U(0, 3) = mfoil R_V[144, 195] - scirocco_aug.
+     * (mfoil's aug should be same as scirocco's if sstag_ue and R_st agree) */
     double mfoil_R1U_inferred = R_V_ref(144, 195) - aug;
     std::cout
         << "\nInferred mfoil R1_U[0,3] = R_V_ref[144,195] - scirocco_aug = "

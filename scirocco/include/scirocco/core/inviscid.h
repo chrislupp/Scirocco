@@ -36,58 +36,58 @@
 
 namespace scirocco {
 
-// Build and solve the inviscid linear system for gamma
-// INPUT:
-//   state : FoilState with panels set up
-//   alpha : Angle of attack [degrees]
-// OUTPUT:
-//   state.isol : Filled with AIC matrix and vorticity solutions
+/**
+ * @brief Build and solve the inviscid linear system for gamma
+ * @param state FoilState with panels set up; filled with AIC matrix and vorticity solutions
+ * @param alpha Angle of attack [degrees]
+ */
 void BuildGamma(FoilState& state, double alpha);
 
-// Compute inviscid tangential velocity at every node
-// INPUT:
-//   state : FoilState with inviscid solution
-// OUTPUT:
-//   Inviscid edge velocity at airfoil and wake points
+/**
+ * @brief Compute inviscid tangential velocity at every node
+ * @param state FoilState with inviscid solution
+ * @return Inviscid edge velocity at airfoil and wake points
+ */
 VectorXd GetUeInv(const FoilState& state);
 
-// Compute 0,90-deg reference inviscid tangential velocities
-// INPUT:
-//   state : FoilState with inviscid solution
-// OUTPUT:
-//   0,90-deg inviscid tangential velocity at all points [N+Nw x 2]
+/**
+ * @brief Compute 0,90-deg reference inviscid tangential velocities
+ * @param state FoilState with inviscid solution
+ * @return 0,90-deg inviscid tangential velocity at all points [N+Nw x 2]
+ */
 MatrixXd GetUeInvRef(const FoilState& state);
 
-// Compute inviscid velocity at an arbitrary point
-// INPUT:
-//   X : Panel node coordinates [2 x N]
-//   G : Vortex strengths at each node [N]
-//   Vinf : Freestream speed magnitude
-//   alpha : Angle of attack [degrees]
-//   xi : Point at which velocity is desired
-//   compute_lin : True to also compute linearization
-// OUTPUT:
-//   V : Velocity vector [2]
-//   V_G : (optional) Linearization d(V)/d(G) [2 x N]
+/**
+ * @brief Compute inviscid velocity at an arbitrary point
+ * @param X Panel node coordinates [2 x N]
+ * @param G Vortex strengths at each node [N]
+ * @param Vinf Freestream speed magnitude
+ * @param alpha Angle of attack [degrees]
+ * @param xi Point at which velocity is desired
+ * @param compute_lin True to also compute linearization
+ * @param V_G (optional) Linearization d(V)/d(G) [2 x N]
+ * @return Velocity vector [2]
+ */
 Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G, double Vinf,
                           double alpha, const Vector2d& xi,
                           bool compute_lin = false, MatrixXd* V_G = nullptr);
 
-// Solve inviscid problem (top-level)
-// INPUT:
-//   state : FoilState with geometry and operating conditions
-// OUTPUT:
-//   state : Updated with inviscid solution
+/**
+ * @brief Solve inviscid problem (top-level)
+ * @param state FoilState with geometry and operating conditions; updated with inviscid solution
+ */
 void SolveInviscid(FoilState& state);
 
-// Initialize thermodynamic parameters
-// INPUT/OUTPUT:
-//   state : FoilState to initialize
+/**
+ * @brief Initialize thermodynamic parameters
+ * @param state FoilState to initialize
+ */
 void InitThermo(FoilState& state);
 
-// Clear all solution data
-// INPUT/OUTPUT:
-//   state : FoilState to clear
+/**
+ * @brief Clear all solution data
+ * @param state FoilState to clear
+ */
 void ClearSolution(FoilState& state);
 
 }  // namespace scirocco

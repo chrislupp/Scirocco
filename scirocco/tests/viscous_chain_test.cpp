@@ -34,29 +34,29 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// Phase 1 tolerance: complex-step gives machine-precision per-operation, but
-// the inviscid-solve + wake-build chain accumulates ~N*eps absolute roundoff
-// (~1e-13 to 1e-12 for an N=100-panel problem). We accept either an absolute
-// or relative threshold, whichever is tighter — i.e.
-//   |got - ref|  <=  REL * |ref|  +  ABS
-//
-// Pure algorithmic bugs would produce errors orders of magnitude larger than
-// this floor; numerical-precision noise saturates near these values.
+/* Phase 1 tolerance: complex-step gives machine-precision per-operation, but
+   the inviscid-solve + wake-build chain accumulates ~N*eps absolute roundoff
+   (~1e-13 to 1e-12 for an N=100-panel problem). We accept either an absolute
+   or relative threshold, whichever is tighter — i.e.
+     |got - ref|  <=  REL * |ref|  +  ABS
+
+   Pure algorithmic bugs would produce errors orders of magnitude larger than
+   this floor; numerical-precision noise saturates near these values. */
 constexpr double TOL_REL = 1e-10;
-// Absolute floor reflects the measured noise of the chains:
-//   - closed-form chains  : ~5e-12  (cond(AIC) * eps_machine for the panel
-//   solve)
-//   - iterative wake chain: ~1.5e-11 (above floor grows ~linearly with wake
-//                                     station index over Nw=21 steps)
-// 2e-11 covers both with a small margin and is still 50x below the 1e-9
-// Phase 7 end-to-end target.
+/* Absolute floor reflects the measured noise of the chains:
+     - closed-form chains  : ~5e-12  (cond(AIC) * eps_machine for the panel
+     solve)
+     - iterative wake chain: ~1.5e-11 (above floor grows ~linearly with wake
+                                       station index over Nw=21 steps)
+   2e-11 covers both with a small margin and is still 50x below the 1e-9
+   Phase 7 end-to-end target. */
 constexpr double TOL_ABS = 2e-11;
 
 static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
 }
 
-// -------------------- HDF5 helpers (same as sensitivity test) ---------------
+/* -------------------- HDF5 helpers (same as sensitivity test) --------------- */
 namespace {
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
@@ -100,9 +100,9 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
     for (size_t i = 0; i < dims[0]; ++i) out[i] = static_cast<int>(buf[i]);
     return out;
 }
-}  // namespace
+}  /* namespace */
 
-// -------------------- Fixture: rebuild state matching mfoil_cs --------------
+/* -------------------- Fixture: rebuild state matching mfoil_cs -------------- */
 class GeomChainTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -131,7 +131,7 @@ class GeomChainTest : public ::testing::Test {
     }
     H5::H5File& f() { return *file_; }
 
-    // Persistent across all tests in the fixture
+    /* Persistent across all tests in the fixture */
     Scirocco foil_{"0012", 100};
     MatrixXd dfoil_s_dx_;
     int N_{0};
@@ -149,21 +149,21 @@ class GeomChainTest : public ::testing::Test {
         s.foil.x = foil_x;
         s.foil.N = N_;
         s.foil.s =
-            foil_s;  // Match mfoil's foil.s exactly (no RecomputeArcLength)
-        // Clear cached inviscid quantities so SolveInviscid rebuilds
+            foil_s;  /* Match mfoil's foil.s exactly (no RecomputeArcLength) */
+        /* Clear cached inviscid quantities so SolveInviscid rebuilds */
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        SolveInviscid(s);  // builds AIC, gamref, gam (does NOT touch foil.s)
+        SolveInviscid(s);  /* builds AIC, gamref, gam (does NOT touch foil.s) */
         StagPointFind(s);
         BuildWake(s);
         ExtendXiToWake(s);
         IdentifySurfaces(s);
         SetWakeGap(s);
         Nw_ = s.wake.N;
-        // Populate glob.U(3, :) with inviscid ue so DSstagDFoilX (which
-        // reads ue-based weights from glob.U) can run. At the inviscid
-        // state ue = sgnue*gam, which matches the gamma-based stagpoint.
+        /* Populate glob.U(3, :) with inviscid ue so DSstagDFoilX (which
+           reads ue-based weights from glob.U) can run. At the inviscid
+           state ue = sgnue*gam, which matches the gamma-based stagpoint. */
         int Nsys = N_ + Nw_;
         s.glob.U = MatrixXd::Zero(4, Nsys);
         VectorXd ueinv = GetUeInv(s);
@@ -188,7 +188,7 @@ class GeomChainTest : public ::testing::Test {
             << "wgap mismatch";
     }
 
-    // Compare element-wise with hybrid abs+rel tolerance, return #failures.
+    /* Compare element-wise with hybrid abs+rel tolerance, return #failures. */
     template <typename A, typename B>
     int compareHybrid(const A& got, const B& ref, const std::string& label,
                       int max_print = 10) {
@@ -212,7 +212,7 @@ class GeomChainTest : public ::testing::Test {
         return nfail;
     }
 
-    // 2D version for matrices.
+    /* 2D version for matrices. */
     int compareHybrid2D(const MatrixXd& got, const MatrixXd& ref,
                         const std::string& label, int max_print = 10) {
         int nfail = 0;
@@ -241,14 +241,14 @@ class GeomChainTest : public ::testing::Test {
 H5::H5File* GeomChainTest::file_ = nullptr;
 bool GeomChainTest::loaded_ = false;
 
-// ============================================================================
-// Sanity: base scirocco state matches the HDF5 reference
-// ============================================================================
+/* ============================================================================
+   Sanity: base scirocco state matches the HDF5 reference
+   ============================================================================ */
 TEST_F(GeomChainTest, BaseStateMatchesReference) { verifyBase(); }
 
-// ============================================================================
-// DFoilSDFoilXCumulative — pure analytical, validate vs CS reference
-// ============================================================================
+/* ============================================================================
+   DFoilSDFoilXCumulative — pure analytical, validate vs CS reference
+   ============================================================================ */
 TEST_F(GeomChainTest, DFoilSDFoilXCumulative) {
     auto& s = foil_.GetState();
     MatrixXd a = DFoilSDFoilXCumulative(s.foil);
@@ -258,9 +258,9 @@ TEST_F(GeomChainTest, DFoilSDFoilXCumulative) {
               << " failures" << std::endl;
 }
 
-// ============================================================================
-// DSstagDFoilX
-// ============================================================================
+/* ============================================================================
+   DSstagDFoilX
+   ============================================================================ */
 TEST_F(GeomChainTest, DSstagDFoilX) {
     auto& s = foil_.GetState();
     VectorXd a = scirocco::DSstagDFoilX(s, dfoil_s_dx_);
@@ -270,9 +270,9 @@ TEST_F(GeomChainTest, DSstagDFoilX) {
               << std::endl;
 }
 
-// ============================================================================
-// DWakeSDFoilX
-// ============================================================================
+/* ============================================================================
+   DWakeSDFoilX
+   ============================================================================ */
 TEST_F(GeomChainTest, DWakeSDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DWakeSDFoilX(s, dfoil_s_dx_);
@@ -284,9 +284,9 @@ TEST_F(GeomChainTest, DWakeSDFoilX) {
               << std::endl;
 }
 
-// ============================================================================
-// DXiDFoilX (foil + wake combined)
-// ============================================================================
+/* ============================================================================
+   DXiDFoilX (foil + wake combined)
+   ============================================================================ */
 TEST_F(GeomChainTest, DXiDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DXiDFoilX(s, dfoil_s_dx_);
@@ -298,9 +298,9 @@ TEST_F(GeomChainTest, DXiDFoilX) {
               << std::endl;
 }
 
-// ============================================================================
-// DWgapDFoilX
-// ============================================================================
+/* ============================================================================
+   DWgapDFoilX
+   ============================================================================ */
 TEST_F(GeomChainTest, DWgapDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DWgapDFoilX(s, dfoil_s_dx_);
@@ -312,10 +312,10 @@ TEST_F(GeomChainTest, DWgapDFoilX) {
               << std::endl;
 }
 
-// ============================================================================
-// DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via the
-// linearized BuildWake predictor-corrector sweep.
-// ============================================================================
+/**
+ * @brief DWakeXDFoilX — full forward Jacobian of wake.x w.r.t. foil.x via the
+ * linearized BuildWake predictor-corrector sweep.
+ */
 TEST_F(GeomChainTest, DWakeXDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DWakeXDFoilX(s);

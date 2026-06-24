@@ -50,34 +50,34 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// Tolerance: complex-step reference is machine-precision accurate.
-// Any error beyond this indicates a bug in the C++ adjoint.
-constexpr double TOL_INVISCID = 1e-10;  // inviscid: machine precision
-// Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
-//   Shape adjoint:    ~5e-5 rel — Phase-2 chain through wake.x/ue_sigma.
-//   Alpha adjoint:    ~1e-5 cl/cd, ~1e-4 cm — DRVDAlpha now rebuilds gam,
-//                       wake.x, wake.t, ue_sigma at perturbed alpha at FIXED
-//                       U via 4th-order central FD. Captures every chain
-//                       analytically (no Newton re-solve).
-//   Mach adjoint:     ~3e-6 to 8e-5 rel — DRVDMa uses InitThermo to rebuild
-//                       KTb, KTl, H0, cps, mu0, rho0 at perturbed Ma.
-//   Re adjoint:       ~1e-3 rel — DRVDRe perturbs mu0 (since Ret = X/mu0).
-//                       Remaining gap is scirocco's Newton 3e-12 floor
-//                       amplified through |λ| for the tiny |dJ/dRe| ~ 1e-8.
-// Tolerance covers all scalar sensitivities at the current scirocco precision;
-// pushing below 1e-3 requires fixing the Newton plateau (separate primal work).
-// Adjoint vs CS shape sensitivity at non-LE probe nodes (20, 80). Now that
-// the wake VJP chain is validated against CS at 1e-10 rel in
-// viscous_chain_test::DWakeXDFoilX, the end-to-end dcl/dcd/dcm partials
-// agree to ~3e-11 rel. 1e-8 tolerance keeps a 300x safety margin while
-// catching any future regression that pushes the wake-row chain back to
-// the historical 1e-4 floor.
+/* Tolerance: complex-step reference is machine-precision accurate.
+ * Any error beyond this indicates a bug in the C++ adjoint.
+ * Achieved (2026-05-17) on NACA 0012, 100 panels, alpha=3, Re=1e6:
+ *   Shape adjoint:    ~5e-5 rel — Phase-2 chain through wake.x/ue_sigma.
+ *   Alpha adjoint:    ~1e-5 cl/cd, ~1e-4 cm — DRVDAlpha now rebuilds gam,
+ *                       wake.x, wake.t, ue_sigma at perturbed alpha at FIXED
+ *                       U via 4th-order central FD. Captures every chain
+ *                       analytically (no Newton re-solve).
+ *   Mach adjoint:     ~3e-6 to 8e-5 rel — DRVDMa uses InitThermo to rebuild
+ *                       KTb, KTl, H0, cps, mu0, rho0 at perturbed Ma.
+ *   Re adjoint:       ~1e-3 rel — DRVDRe perturbs mu0 (since Ret = X/mu0).
+ *                       Remaining gap is scirocco's Newton 3e-12 floor
+ *                       amplified through |λ| for the tiny |dJ/dRe| ~ 1e-8.
+ * Tolerance covers all scalar sensitivities at the current scirocco precision;
+ * pushing below 1e-3 requires fixing the Newton plateau (separate primal work).
+ * Adjoint vs CS shape sensitivity at non-LE probe nodes (20, 80). Now that
+ * the wake VJP chain is validated against CS at 1e-10 rel in
+ * viscous_chain_test::DWakeXDFoilX, the end-to-end dcl/dcd/dcm partials
+ * agree to ~3e-11 rel. 1e-8 tolerance keeps a 300x safety margin while
+ * catching any future regression that pushes the wake-row chain back to
+ * the historical 1e-4 floor. */
+constexpr double TOL_INVISCID = 1e-10;  /* inviscid: machine precision */
 constexpr double TOL_VISC_SHAPE = 1e-8;
 constexpr double TOL_VISC_SCALAR_ALPHA = 1e-9;
 
-// ---------------------------------------------------------------------------
-// HDF5 helpers (same pattern as mfoil_reference_test.cpp)
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * HDF5 helpers (same pattern as mfoil_reference_test.cpp)
+ * --------------------------------------------------------------------------- */
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -126,9 +126,9 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// Test fixture: loads HDF5 once for all tests
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * Test fixture: loads HDF5 once for all tests
+ * --------------------------------------------------------------------------- */
 class SensitivityReferenceTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -167,21 +167,21 @@ class SensitivityReferenceTest : public ::testing::Test {
 H5::H5File* SensitivityReferenceTest::file_ = nullptr;
 bool SensitivityReferenceTest::file_loaded_ = false;
 
-// ===========================================================================
-// Inviscid Shape Sensitivity
-//   NACA 2412, 80 panels, alpha=5
-//   Replaces: InviscidSensitivity_cl (16 inviscid solves -> 1 + HDF5 read)
-// ===========================================================================
+/**
+ * @brief Inviscid Shape Sensitivity
+ *   NACA 2412, 80 panels, alpha=5
+ *   Replaces: InviscidSensitivity_cl (16 inviscid solves -> 1 + HDF5 read)
+ */
 TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
-    // Read reference data
+    /* Read reference data */
     auto test_nodes = readIntVector(getFile(), "inviscid_shape/test_nodes");
     MatrixXd dcl_dx_ref = readMatrix(getFile(), "inviscid_shape/dcl_dx");
     MatrixXd dcm_dx_ref = readMatrix(getFile(), "inviscid_shape/dcm_dx");
     MatrixXd x_base = readMatrix(getFile(), "inviscid_shape/x_base");
     double cl_ref = readScalar<double>(getFile(), "inviscid_shape/cl_base");
 
-    // Set panel coordinates from reference — these are the exact coordinates
-    // the complex-step derivatives were computed on
+    /* Set panel coordinates from reference — these are the exact coordinates
+     * the complex-step derivatives were computed on */
     int N_ref = x_base.cols();
     Scirocco foil("2412", N_ref - 1);
     foil.SetOper(5.0);
@@ -189,7 +189,7 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
     state.foil.x = x_base;
     state.foil.N = N_ref;
     RecomputeArcLength(state);
-    // Clear cached inviscid solution so it resolves on new geometry
+    /* Clear cached inviscid solution so it resolves on new geometry */
     state.isol.AIC.resize(0, 0);
     state.isol.gamref.resize(0, 0);
     state.isol.gam.resize(0);
@@ -197,13 +197,13 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
     CalcForce(state);
     auto sens = InviscidSensitivities(state);
 
-    // Verify base solution consistency
+    /* Verify base solution consistency */
     double cl_err =
         std::abs(state.post.cl - cl_ref) / std::max(std::abs(cl_ref), 1e-10);
     EXPECT_LT(cl_err, 1e-4)
         << "Base cl mismatch: scirocco=" << state.post.cl << " ref=" << cl_ref;
 
-    // Compare adjoint vs complex-step reference at each test node
+    /* Compare adjoint vs complex-step reference at each test node */
     int nfail = 0;
     for (int node : test_nodes) {
         if (node >= state.foil.N) continue;
@@ -222,7 +222,7 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
                               << " ref=" << dcl_ref_val << " rel=" << rel;
             }
 
-            // Also check cm
+            /* Also check cm */
             double dcm_adj = sens.dcm_dx(dim, node);
             double dcm_ref_val = dcm_dx_ref(dim, node);
             double err_cm = std::abs(dcm_adj - dcm_ref_val);
@@ -241,11 +241,11 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
               << test_nodes.size() * 4 << " failures" << std::endl;
 }
 
-// ===========================================================================
-// Inviscid Alpha Sensitivity
-//   NACA 2412, 80 panels, alpha=5
-//   Replaces: InviscidAlphaSensitivity (4 inviscid solves -> 1 + HDF5 read)
-// ===========================================================================
+/**
+ * @brief Inviscid Alpha Sensitivity
+ *   NACA 2412, 80 panels, alpha=5
+ *   Replaces: InviscidAlphaSensitivity (4 inviscid solves -> 1 + HDF5 read)
+ */
 TEST_F(SensitivityReferenceTest, InviscidAlphaSensitivity) {
     double dcl_ref = readScalar<double>(getFile(), "inviscid_alpha/dcl_dalpha");
     double dcm_ref = readScalar<double>(getFile(), "inviscid_alpha/dcm_dalpha");
@@ -270,11 +270,11 @@ TEST_F(SensitivityReferenceTest, InviscidAlphaSensitivity) {
     EXPECT_LT(rel_cm, TOL_INVISCID) << "dcm/dalpha inviscid";
 }
 
-// ===========================================================================
-// Inviscid Mach Sensitivity
-//   NACA 0012, 100 panels, alpha=3, Ma=0.3
-//   Replaces: InviscidMachSensitivity (4 inviscid solves -> 1 + HDF5 read)
-// ===========================================================================
+/**
+ * @brief Inviscid Mach Sensitivity
+ *   NACA 0012, 100 panels, alpha=3, Ma=0.3
+ *   Replaces: InviscidMachSensitivity (4 inviscid solves -> 1 + HDF5 read)
+ */
 TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
     double dcl_ref = readScalar<double>(getFile(), "inviscid_mach/dcl_dMa");
     double dcm_ref = readScalar<double>(getFile(), "inviscid_mach/dcm_dMa");
@@ -300,11 +300,11 @@ TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
     EXPECT_LT(rel_cm, TOL_INVISCID) << "dcm/dMa inviscid";
 }
 
-// ===========================================================================
-// Viscous Shape Sensitivity
-//   NACA 0012, 100 panels, alpha=3, Re=1e6
-//   Reference: complex-step from mfoil_cs (extract_sensitivity_reference.py)
-// ===========================================================================
+/**
+ * @brief Viscous Shape Sensitivity
+ *   NACA 0012, 100 panels, alpha=3, Re=1e6
+ *   Reference: complex-step from mfoil_cs (extract_sensitivity_reference.py)
+ */
 TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     auto test_nodes = readIntVector(getFile(), "viscous_shape/test_nodes");
     MatrixXd dcl_ref = readMatrix(getFile(), "viscous_shape/dcl_dx");
@@ -347,15 +347,15 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     std::cout << "                     cm=" << s.post.cm << " ref=" << cm_ref
               << " rel=" << rel_cm << std::endl;
 
-    // Strict CS comparison at test_nodes.
+    /* Strict CS comparison at test_nodes. */
     int N_half_chk = N_ref / 2;
     auto check = [&](const char* name, const MatrixXd& got,
                      const MatrixXd& ref) -> int {
         int nfail = 0;
         for (int n : test_nodes) {
-            // Skip LE node — stagnation singularity makes CS gradient
-            // extremely sensitive at that one node. Phase 2 chain tests
-            // already validate the stagnation chain.
+            /* Skip LE node — stagnation singularity makes CS gradient
+             * extremely sensitive at that one node. Phase 2 chain tests
+             * already validate the stagnation chain. */
             if (n == N_half_chk) continue;
             for (int d = 0; d < 2; ++d) {
                 double g = got(d, n);
@@ -384,15 +384,15 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
               << " dcm=" << fail_cm << " (TOL_VISC_SHAPE=" << TOL_VISC_SHAPE
               << ")" << std::endl;
 
-    // Test compares scirocco's analytic adjoint output against the mfoil_cs
-    // CS reference loaded from HDF5. No internal FD probe.
+    /* Test compares scirocco's analytic adjoint output against the mfoil_cs
+     * CS reference loaded from HDF5. No internal FD probe. */
 }
 
-// ===========================================================================
-// Viscous Scalar Sensitivity (alpha, Mach, Re)
-//   NACA 0012, 100 panels, alpha=3, Re=1e6 (Ma=0 for alpha/Re tests,
-//   Ma=0.3 for mach test). Reference: CS via mfoil_cs.
-// ===========================================================================
+/**
+ * @brief Viscous Scalar Sensitivity (alpha, Mach, Re)
+ *   NACA 0012, 100 panels, alpha=3, Re=1e6 (Ma=0 for alpha/Re tests,
+ *   Ma=0.3 for mach test). Reference: CS via mfoil_cs.
+ */
 TEST_F(SensitivityReferenceTest, ViscousAlphaSensitivity) {
     double dcl_ref = readScalar<double>(getFile(), "viscous_alpha/dcl_dalpha");
     double dcd_ref = readScalar<double>(getFile(), "viscous_alpha/dcd_dalpha");

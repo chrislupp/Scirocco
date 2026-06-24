@@ -1,6 +1,8 @@
-// Compare scirocco's R_V matrix entry-by-entry to mfoil's R_V at the
-// same converged state (from comprehensive_reference.h5). Localizes which
-// rows/columns of R_V differ, narrowing down where the 1e-5 lambda bug is.
+/**
+ * @brief Compare scirocco's R_V matrix entry-by-entry to mfoil's R_V at the
+ * same converged state (from comprehensive_reference.h5). Localizes which
+ * rows/columns of R_V differ, narrowing down where the 1e-5 lambda bug is.
+ */
 
 #include <H5Cpp.h>
 
@@ -40,6 +42,12 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
     return Map<VectorXd>(b.data(), dims[0]);
 }
 
+/**
+ * @brief Entry point: loads R_V from mfoil HDF5 reference, builds scirocco's
+ *        R_V at the same state, and reports per-row and per-column-variable
+ *        error statistics.
+ * @return 0 on success, 1 on dimension mismatch or missing dataset.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
@@ -90,7 +98,7 @@ int main() {
 
     if (R_V_cpp.rows() != R_V_ref.rows()) return 1;
 
-    // Per-row max abs error
+    /* Per-row max abs error */
     std::cout << "\nPer-row max abs error (top 20 rows by error):\n";
     std::vector<std::pair<double, int>> row_errs;
     for (int i = 0; i < NN; ++i) {
@@ -111,7 +119,7 @@ int main() {
                   << "\n";
     }
 
-    // Find worst single entry
+    /* Find worst single entry */
     double max_abs = 0;
     int wi = 0, wj = 0;
     for (int i = 0; i < NN; ++i) {
@@ -128,8 +136,8 @@ int main() {
               << "] cpp=" << R_V_cpp(wi, wj) << " mfoil=" << R_V_ref(wi, wj)
               << " abs=" << max_abs << "\n";
 
-    // Stratify by column block (which variable of U[k,j] the column is)
-    // col = 4*j + k where k in {0=th, 1=ds, 2=sa, 3=ue}
+    /* Stratify by column block (which variable of U[k,j] the column is)
+     * col = 4*j + k where k in {0=th, 1=ds, 2=sa, 3=ue} */
     std::cout << "\nMax abs error by column variable type:\n";
     const char* var[4] = {"th", "ds", "sa", "ue"};
     for (int k = 0; k < 4; ++k) {
@@ -148,7 +156,7 @@ int main() {
                   << wj_in_block << "\n";
     }
 
-    // Count nonzero entries that differ significantly
+    /* Count nonzero entries that differ significantly */
     int n_diff = 0;
     int n_diff_bl = 0, n_diff_ue = 0;
     for (int i = 0; i < NN; ++i) {

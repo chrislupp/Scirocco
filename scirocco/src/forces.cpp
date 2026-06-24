@@ -41,11 +41,11 @@ namespace scirocco {
 
 namespace {
 
-// Get pressure coefficient from edge velocity
+/* Get pressure coefficient from edge velocity */
 double GetCp(double ue, double Vinf, double KTb, double KTl) {
     double cp_inc = 1.0 - (ue / Vinf) * (ue / Vinf);
 
-    // Karman-Tsien compressibility correction
+    /* Karman-Tsien compressibility correction */
     if (KTl > 0) {
         double denom = KTb + KTl * (1.0 + KTb) * 0.5 * cp_inc;
         if (std::abs(denom) > 1e-10) {
@@ -64,7 +64,7 @@ void CalcForce(FoilState& state) {
     double alpha = state.oper.alpha;
     int N = state.foil.N;
 
-    // Get edge velocity
+    /* Get edge velocity */
     VectorXd ue;
     if (state.oper.viscous && state.glob.U.cols() > 0) {
         ue = state.glob.U.row(3).transpose();
@@ -72,7 +72,7 @@ void CalcForce(FoilState& state) {
         ue = GetUeInv(state);
     }
 
-    // Calculate pressure coefficient at each node
+    /* Calculate pressure coefficient at each node */
     state.post.cp.resize(N);
     state.post.cpi.resize(N);
 
@@ -84,7 +84,7 @@ void CalcForce(FoilState& state) {
             GetCp(ueinv(i), Vinf, state.param.KTb, state.param.KTl);
     }
 
-    // Integrate forces by panel integration
+    /* Integrate forces by panel integration */
     double cl = 0.0, cm = 0.0, cdpi = 0.0;
     state.post.cl_ue.resize(N);
     state.post.cl_ue.setZero();
@@ -101,7 +101,7 @@ void CalcForce(FoilState& state) {
         Vector2d dx1 = x1 - xref;
         Vector2d dx2 = x2 - xref;
 
-        // Panel contributions (minus from CW node ordering)
+        /* Panel contributions (minus from CW node ordering) */
         double dx = -dxv(0) * Cosd(alpha) - dxv(1) * Sind(alpha);
         double dz = dxv(1) * Cosd(alpha) - dxv(0) * Sind(alpha);
 
@@ -111,29 +111,29 @@ void CalcForce(FoilState& state) {
 
         cl += dx * cpbar;
 
-        // Linearization w.r.t. ue (through cp, with KT correction)
+        /* Linearization w.r.t. ue (through cp, with KT correction) */
         auto [cp_ip_val, cp_ip_U] = GetCpFromUe(ue(ip), state.param);
         state.post.cl_ue(ip) += dx * 0.5 * cp_ip_U(3);
         auto [cp_i_val, cp_i_U] = GetCpFromUe(ue(i), state.param);
         state.post.cl_ue(i) += dx * 0.5 * cp_i_U(3);
 
-        // Linearization w.r.t. alpha
+        /* Linearization w.r.t. alpha */
         cl_alpha +=
             cpbar * (Sind(alpha) * dxv(0) - Cosd(alpha) * dxv(1)) * kDegToRad;
 
-        // cdpi_alpha: d(dz)/dalpha = (-dxv(1)*sina - dxv(0)*cosa) * deg2rad ...
-        // wait dz = dxv(1)*cos(a) - dxv(0)*sin(a) d(dz)/da = (-dxv(1)*sin(a) -
-        // dxv(0)*cos(a)) * deg2rad
+        /* cdpi_alpha: d(dz)/dalpha = (-dxv(1)*sina - dxv(0)*cosa) * deg2rad ...
+         * wait dz = dxv(1)*cos(a) - dxv(0)*sin(a) d(dz)/da = (-dxv(1)*sin(a) -
+         * dxv(0)*cos(a)) * deg2rad */
         cdpi_alpha +=
             cpbar * (-dxv(1) * Sind(alpha) - dxv(0) * Cosd(alpha)) * kDegToRad;
 
-        // Moment (about xref)
+        /* Moment (about xref) */
         double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
         double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
         cm += cp1 * dx1nds / 3.0 + cp1 * dx2nds / 6.0 + cp2 * dx1nds / 6.0 +
               cp2 * dx2nds / 3.0;
 
-        // Near-field pressure drag
+        /* Near-field pressure drag */
         cdpi += dz * cpbar;
     }
 
@@ -150,16 +150,16 @@ void CalcForce(FoilState& state) {
     state.post.cdpi = cdpi;
     state.post.cdpi_alpha = cdpi_alpha;
 
-    // Viscous drag (if viscous solution exists)
+    /* Viscous drag (if viscous solution exists) */
     state.post.cd = 0.0;
     state.post.cdf = 0.0;
     state.post.cdp = 0.0;
 
     if (state.oper.viscous && state.glob.U.cols() > 0 &&
         !state.vsol.Is.empty()) {
-        // Squire-Young relation for total drag (from wake trailing edge)
+        /* Squire-Young relation for total drag (from wake trailing edge) */
         if (state.vsol.Is.size() > 2 && !state.vsol.Is[2].empty()) {
-            int iw = state.vsol.Is[2].back();  // End of wake
+            int iw = state.vsol.Is[2].back();  /* End of wake */
             if (iw < state.glob.U.cols()) {
                 Vector4d Uw = state.glob.U.col(iw);
                 auto [H, H_U] = GetH(Uw);
@@ -171,12 +171,12 @@ void CalcForce(FoilState& state) {
             }
         }
 
-        // Skin friction drag integration
+        /* Skin friction drag integration */
         double Df = 0.0;
         double rho = state.oper.rho;
         double qinf = 0.5 * rho * Vinf * Vinf;
 
-        for (int si = 0; si < 2; ++si) {  // Lower and upper surfaces
+        for (int si = 0; si < 2; ++si) {  /* Lower and upper surfaces */
             if (si >= static_cast<int>(state.vsol.Is.size())) continue;
             const auto& Is = state.vsol.Is[si];
             if (Is.empty()) continue;
@@ -192,7 +192,7 @@ void CalcForce(FoilState& state) {
             for (int i : Is) {
                 if (i >= state.glob.U.cols()) continue;
 
-                // Update turbulence flag
+                /* Update turbulence flag */
                 if (i < static_cast<int>(state.vsol.turb.size())) {
                     param.turb = state.vsol.turb[i];
                 }
@@ -232,17 +232,17 @@ void GetDistributions(FoilState& state) {
     state.post.ds = state.glob.U.row(1).transpose();
     state.post.sa = state.glob.U.row(2).transpose();
 
-    // Edge velocity (compressible, Karman-Tsien correction)
+    /* Edge velocity (compressible, Karman-Tsien correction) */
     state.post.ue.resize(N);
     for (int i = 0; i < N; ++i) {
         auto [uk, uk_U] = GetUk(state.glob.U(3, i), state.param);
         state.post.ue(i) = uk;
     }
 
-    // Inviscid edge velocity
+    /* Inviscid edge velocity */
     state.post.uei = GetUeInv(state);
 
-    // Compute cf, Ret, Hk distributions
+    /* Compute cf, Ret, Hk distributions */
     state.post.cf.resize(N);
     state.post.cf.setZero();
     state.post.Ret.resize(N);

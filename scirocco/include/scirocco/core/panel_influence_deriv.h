@@ -36,85 +36,142 @@
 
 namespace scirocco {
 
-// Derivative information for PanelInfo quantities
-// Derivatives are w.r.t. Xj = [x1_x, x1_z, x2_x, x2_z] and xi = [xi_x, xi_z]
+/**
+ * @brief Derivative information for PanelInfo quantities
+ *
+ * Derivatives are w.r.t. Xj = [x1_x, x1_z, x2_x, x2_z] and xi = [xi_x, xi_z]
+ */
 struct PanelInfoDeriv {
     PanelInfo info;
 
-    // Derivatives of local coordinates w.r.t. Xj [4] and xi [2]
+    /* Derivatives of local coordinates w.r.t. Xj [4] and xi [2] */
     Vector4d x1_Xj, x2_Xj, y_Xj;
     Vector2d x1_xi, x2_xi, y_xi;
 
-    // Derivatives of distances
+    /* Derivatives of distances */
     Vector4d r1_Xj, r2_Xj;
     Vector2d r1_xi, r2_xi;
 
-    // Derivatives of angles
+    /* Derivatives of angles */
     Vector4d theta1_Xj, theta2_Xj;
     Vector2d theta1_xi, theta2_xi;
 
-    // Derivatives of panel length
+    /* Derivatives of panel length */
     Vector4d len_Xj;
 };
 
-// Compute PanelInfo with derivatives w.r.t. Xj and xi
+/**
+ * @brief Compute PanelInfo with derivatives w.r.t. Xj and xi
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return PanelInfoDeriv containing primal PanelInfo and all derivatives
+ */
 PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi);
 
-// Linear vortex streamfunction with coordinate derivatives
-// Returns a, b and their derivatives w.r.t. Xj [4] and xi [2]
+/**
+ * @brief Linear vortex streamfunction with coordinate derivatives
+ *
+ * Returns a, b and their derivatives w.r.t. Xj [4] and xi [2]
+ */
 struct LinVortexStreamDeriv {
     double a, b;
     Vector4d a_Xj, b_Xj;
     Vector2d a_xi, b_xi;
 };
+/**
+ * @brief Compute linear vortex streamfunction influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return LinVortexStreamDeriv with influence coefficients and their derivatives
+ */
 LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi);
 
-// Constant source streamfunction with coordinate derivatives
+/**
+ * @brief Constant source streamfunction with coordinate derivatives
+ */
 struct ConstSourceStreamDeriv {
     double val;
     Vector4d val_Xj;
     Vector2d val_xi;
 };
+/**
+ * @brief Compute constant source streamfunction influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return ConstSourceStreamDeriv with influence value and its derivatives
+ */
 ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi);
 
-// Linear vortex velocity with coordinate derivatives
+/**
+ * @brief Linear vortex velocity with coordinate derivatives
+ */
 struct LinVortexVelocityDeriv {
     Vector2d a, b;
     Eigen::Matrix<double, 2, 4> a_Xj, b_Xj;
     Matrix2d a_xi, b_xi;
 };
+/**
+ * @brief Compute linear vortex velocity influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return LinVortexVelocityDeriv with influence vectors and their derivatives
+ */
 LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi);
 
-// Constant source velocity with coordinate derivatives
+/**
+ * @brief Constant source velocity with coordinate derivatives
+ */
 struct ConstSourceVelocityDeriv {
     Vector2d val;
     Eigen::Matrix<double, 2, 4> val_Xj;
     Matrix2d val_xi;
 };
+/**
+ * @brief Compute constant source velocity influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return ConstSourceVelocityDeriv with influence vector and its derivatives
+ */
 ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
                                                        const Vector2d& xi);
 
-// Linear source streamfunction with coordinate derivatives
+/**
+ * @brief Linear source streamfunction with coordinate derivatives
+ */
 struct LinSourceStreamDeriv {
     double a, b;
     Vector4d a_Xj, b_Xj;
     Vector2d a_xi, b_xi;
 };
+/**
+ * @brief Compute linear source streamfunction influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return LinSourceStreamDeriv with influence coefficients and their derivatives
+ */
 LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi);
 
-// Linear source velocity with coordinate derivatives
+/**
+ * @brief Linear source velocity with coordinate derivatives
+ */
 struct LinSourceVelocityDeriv {
     Vector2d a, b;
     Eigen::Matrix<double, 2, 4> a_Xj, b_Xj;
     Matrix2d a_xi, b_xi;
 };
+/**
+ * @brief Compute linear source velocity influence with coordinate derivatives
+ * @param Xj Panel endpoint coordinates [2 x 2]
+ * @param xi Evaluation point
+ * @return LinSourceVelocityDeriv with influence vectors and their derivatives
+ */
 LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi);
 
-}  // namespace scirocco
+}  /* namespace scirocco */
 
-#endif  // SCIROCCO_CORE_PANEL_INFLUENCE_DERIV_H
+#endif  /* SCIROCCO_CORE_PANEL_INFLUENCE_DERIV_H */

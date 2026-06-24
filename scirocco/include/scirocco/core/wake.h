@@ -36,46 +36,53 @@
 
 namespace scirocco {
 
-// Recompute foil.s (arc-length parametrization) from foil.x as cumulative
-// panel lengths. Call after perturbing foil.x so that foil.s is consistent.
+/** @brief Recompute foil.s (arc-length parametrization) from foil.x as cumulative
+ *         panel lengths. Call after perturbing foil.x so that foil.s is consistent.
+ *  @param state FoilState whose foil.x coordinates have been updated
+ */
 void RecomputeArcLength(FoilState& state);
 
-// Build wake grid from inviscid solution
-// INPUT:
-//   state : FoilState with inviscid solution
-// OUTPUT:
-//   state.wake : Filled with wake panel data
-//   state.isol.uewi, uewiref : Wake edge velocities
+/** @brief Build wake grid from inviscid solution
+ *  @param state FoilState with inviscid solution
+ *
+ *  On output:
+ *  - state.wake is filled with wake panel data
+ *  - state.isol.uewi, uewiref contain wake edge velocities
+ */
 void BuildWake(FoilState& state);
 
-// Find stagnation point on airfoil surface
-// INPUT:
-//   state : FoilState with inviscid solution
-// OUTPUT:
-//   state.isol.sstag, Istag, xstag : Stagnation point information
-//   state.isol.sgnue : Sign of edge velocity
-//   state.isol.xi : Distance from stagnation point (foil only)
+/** @brief Find stagnation point on airfoil surface
+ *  @param state FoilState with inviscid solution
+ *
+ *  On output:
+ *  - state.isol.sstag, Istag, xstag contain stagnation point information
+ *  - state.isol.sgnue contains the sign of edge velocity
+ *  - state.isol.xi contains the distance from stagnation point (foil only)
+ */
 void StagPointFind(FoilState& state);
 
-// Extend xi array to include wake points
-// Must be called after BuildWake
+/** @brief Extend xi array to include wake points
+ *
+ *  Must be called after BuildWake.
+ *  @param state FoilState with wake already built
+ */
 void ExtendXiToWake(FoilState& state);
 
-// Move stagnation point during viscous iterations
-// INPUT/OUTPUT:
-//   state : FoilState with viscous solution
+/** @brief Move stagnation point during viscous iterations
+ *  @param state FoilState with viscous solution (modified in place)
+ */
 void StagPointMove(FoilState& state);
 
-// Identify surfaces (lower, upper, wake)
-// INPUT/OUTPUT:
-//   state : FoilState to update with surface indices
+/** @brief Identify surfaces (lower, upper, wake)
+ *  @param state FoilState to update with surface indices
+ */
 void IdentifySurfaces(FoilState& state);
 
-// Set wake gap for blunt trailing edge
-// INPUT/OUTPUT:
-//   state : FoilState to update
+/** @brief Set wake gap for blunt trailing edge
+ *  @param state FoilState to update
+ */
 void SetWakeGap(FoilState& state);
 
-}  // namespace scirocco
+}  /* namespace scirocco */
 
-#endif  // SCIROCCO_CORE_WAKE_H
+#endif  /* SCIROCCO_CORE_WAKE_H */

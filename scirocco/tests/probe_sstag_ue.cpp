@@ -1,5 +1,7 @@
-// Print scirocco's sstag_ue, sgnue, Istag, and the augmentation R_st values
-// at the comprehensive_reference linearization point.
+/**
+ * @brief Print scirocco's sstag_ue, sgnue, Istag, and the augmentation R_st values
+ * at the comprehensive_reference linearization point.
+ */
 
 #include <H5Cpp.h>
 
@@ -36,6 +38,11 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
     return Map<VectorXd>(b.data(), dims[0]);
 }
 
+/**
+ * @brief Entry point: prints sstag_ue and stagnation quantities before and after
+ *        overriding U with the mfoil reference state.
+ * @return 0 on success.
+ */
 int main() {
     const std::string path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/comprehensive_reference.h5";
@@ -72,7 +79,7 @@ int main() {
     std::cout << "  gam at Istag = [" << s.isol.gam(s.isol.Istag[0]) << ", "
               << s.isol.gam(s.isol.Istag[1]) << "]\n";
 
-    // Compute sstag_ue manually from the formula using ue values
+    /* Compute sstag_ue manually from the formula using ue values */
     int I0 = s.isol.Istag[0];
     int I1 = s.isol.Istag[1];
     double ue0 = s.glob.U(3, I0);
@@ -86,7 +93,7 @@ int main() {
     std::cout << "  (ue=-ue0*(S1-S0)/(den^2)):   "
               << -ue0 * (S1 - S0) / (den * den) << "\n";
 
-    // sstag_g for comparison: it's the gamma-based equivalent
+    /* sstag_g for comparison: it's the gamma-based equivalent */
     double g0 = s.isol.gam(I0);
     double g1 = s.isol.gam(I1);
     double gden = g1 - g0;
@@ -96,8 +103,8 @@ int main() {
     std::cout << "  -g0*(S0-S1)/(gden^2):  " << -g0 * (S0 - S1) / (gden * gden)
               << "\n";
 
-    // Now override U with mfoil's U_ref and recompute (mimicking the
-    // residual_deriv_test pattern). Does sstag_ue stay the same?
+    /* Now override U with mfoil's U_ref and recompute (mimicking the
+     * residual_deriv_test pattern). Does sstag_ue stay the same? */
     s.glob.U = U_ref;
     s.vsol.wgap = wgap_ref;
     s.glob.realloc = true;
@@ -109,7 +116,7 @@ int main() {
     std::cout << "  sstag_ue = [" << s.isol.sstag_ue(0) << ", "
               << s.isol.sstag_ue(1) << "]\n";
 
-    // Manual recompute from U_ref
+    /* Manual recompute from U_ref */
     ue0 = s.glob.U(3, I0);
     ue1 = s.glob.U(3, I1);
     den = ue0 + ue1;

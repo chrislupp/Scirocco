@@ -38,39 +38,44 @@
 
 namespace scirocco {
 
-// Result from curvature-based spacing
+/**
+ * @brief Result from curvature-based spacing
+ */
 struct SpacingResult {
-    MatrixXd X;   // New point coordinates [2 x N]
-    VectorXd S;   // Arc-length values at points
-    MatrixXd XS;  // Tangent vectors [2 x N]
+    MatrixXd X;   /* New point coordinates [2 x N] */
+    VectorXd S;   /* Arc-length values at points */
+    MatrixXd XS;  /* Tangent vectors [2 x N] */
 };
 
-// Create panels from geometry using curvature-based spacing
-// INPUT:
-//   geom : Geometry data with point coordinates
-//   npanel : Number of panels (N-1 panels means N nodes)
-//   stgt : Optional target s-values (empty for automatic spacing)
-// OUTPUT:
-//   panel : Panel structure with nodes, arc-lengths, and tangents
+/**
+ * @brief Create panels from geometry using curvature-based spacing
+ * @param geom Geometry data with point coordinates
+ * @param npanel Number of panels (N-1 panels means N nodes)
+ * @param panel Panel structure with nodes, arc-lengths, and tangents
+ * @param stgt Optional target s-values (empty for automatic spacing)
+ */
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt = VectorXd());
 
-// Refresh panel.s (arc length) and panel.t (tangent) from panel.x, leaving
-// panel.x untouched. Use after directly setting panel.x to new node
-// coordinates (e.g. from an upstream geometry discipline) so derived
-// geometric state stays consistent with panel.x — without re-spacing,
-// which would break upstream gradient chains.
+/**
+ * @brief Refresh panel.s (arc length) and panel.t (tangent) from panel.x, leaving
+ * panel.x untouched. Use after directly setting panel.x to new node
+ * coordinates (e.g. from an upstream geometry discipline) so derived
+ * geometric state stays consistent with panel.x — without re-spacing,
+ * which would break upstream gradient chains.
+ * @param panel Panel structure to refresh
+ */
 void RefreshPanelGeometry(Panel& panel);
 
-// Spline points with curvature-based spacing
-// INPUT:
-//   points : Input points to spline [2 x N]
-//   N : Number of output points
-//   Ufac : Uniformity factor (1 = normal; >1 = more uniform)
-//   TEfac : TE resolution factor (1 = normal; >1 = higher resolution at TE)
-//   stgt : Optional target s-values (empty for automatic)
-// OUTPUT:
-//   SpacingResult with new points, arc-lengths, and tangents
+/**
+ * @brief Spline points with curvature-based spacing
+ * @param points Input points to spline [2 x N]
+ * @param N Number of output points
+ * @param Ufac Uniformity factor (1 = normal; >1 = more uniform)
+ * @param TEfac TE resolution factor (1 = normal; >1 = higher resolution at TE)
+ * @param stgt Optional target s-values (empty for automatic)
+ * @return SpacingResult with new points, arc-lengths, and tangents
+ */
 SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
                               double TEfac, const VectorXd& stgt = VectorXd());
 

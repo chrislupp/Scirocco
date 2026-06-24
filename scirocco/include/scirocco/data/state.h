@@ -44,18 +44,18 @@
 
 namespace scirocco {
 
-// Main state container for scirocco solver
+/** @brief Main state container for scirocco solver */
 struct FoilState {
     std::string version = "1.0.0";
-    Geom geom;    // Geometry
-    Panel foil;   // Airfoil panels
-    Panel wake;   // Wake panels
-    Oper oper;    // Operating conditions
-    Isol isol;    // Inviscid solution variables
-    Vsol vsol;    // Viscous solution variables
-    Glob glob;    // Global system variables
-    Post post;    // Post-processing quantities
-    Param param;  // Parameters
+    Geom geom;    /**< Geometry */
+    Panel foil;   /**< Airfoil panels */
+    Panel wake;   /**< Wake panels */
+    Oper oper;    /**< Operating conditions */
+    Isol isol;    /**< Inviscid solution variables */
+    Vsol vsol;    /**< Viscous solution variables */
+    Glob glob;    /**< Global system variables */
+    Post post;    /**< Post-processing quantities */
+    Param param;  /**< Parameters */
 };
 
 }  // namespace scirocco

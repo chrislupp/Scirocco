@@ -53,22 +53,22 @@
 
 using namespace Eigen;
 
-// Tolerances matching sensitivity_reference_test.cpp
+/* Tolerances matching sensitivity_reference_test.cpp */
 constexpr double TOL_INVISCID = 1e-10;
 constexpr double TOL_VISC_SHAPE = 1e-4;
 constexpr double TOL_VISC_SCALAR = 1e-9;
-// The discipline now refreshes panel.s/panel.t from the input coords (via
-// Spline2DCreate) so derived state stays consistent with foil.x for any
-// upstream geometry. Standalone Scirocco builds the same state via the
-// constructor's two-pass SplineCurvature pipeline. The two paths give
-// engineering-accurate but not bit-identical viscous partials — relax the
-// viscous-partial tolerances to reflect that path difference.
+/* The discipline now refreshes panel.s/panel.t from the input coords (via
+   Spline2DCreate) so derived state stays consistent with foil.x for any
+   upstream geometry. Standalone Scirocco builds the same state via the
+   constructor's two-pass SplineCurvature pipeline. The two paths give
+   engineering-accurate but not bit-identical viscous partials — relax the
+   viscous-partial tolerances to reflect that path difference. */
 constexpr double TOL_VISC_SCALAR_DISC = 1e-3;
 constexpr double TOL_VISC_SHAPE_DISC = 5e-3;
 
-// ---------------------------------------------------------------------------
-// HDF5 helpers (same as sensitivity_reference_test.cpp)
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   HDF5 helpers (same as sensitivity_reference_test.cpp)
+   --------------------------------------------------------------------------- */
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -104,9 +104,9 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// Protobuf helpers
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Protobuf helpers
+   --------------------------------------------------------------------------- */
 namespace {
 
 google::protobuf::Struct BuildNacaOptions(const std::string& naca, int npanel) {
@@ -176,11 +176,11 @@ void SetCoordinateInputs(philote::Variables& inputs,
     inputs.at("Ma")(0) = Ma;
 }
 
-}  // namespace
+}  /* namespace */
 
-// ===========================================================================
-// Primal output tests: discipline vs. standalone Scirocco
-// ===========================================================================
+/* ===========================================================================
+   Primal output tests: discipline vs. standalone Scirocco
+   =========================================================================== */
 
 TEST(PhilotePrimalTest, InviscidMatchesStandalone) {
     scirocco::SiroccoDiscipline disc;
@@ -215,19 +215,19 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
     SetCoordinateInputs(inputs, ref.GetFoilCoords(), 3.0, 1e6, 0.0);
     disc.Compute(inputs, outputs);
 
-    // The discipline now refreshes panel.s/panel.t from the input coords
-    // (via a single Spline2DCreate pass) while the reference Scirocco's
-    // panel derived state came from the constructor's two-pass
-    // SplineCurvature pipeline. Both are internally consistent but differ
-    // at the spline-numerical level: cl/cd agree to ~1e-9, cm to ~1e-8.
+    /* The discipline now refreshes panel.s/panel.t from the input coords
+       (via a single Spline2DCreate pass) while the reference Scirocco's
+       panel derived state came from the constructor's two-pass
+       SplineCurvature pipeline. Both are internally consistent but differ
+       at the spline-numerical level: cl/cd agree to ~1e-9, cm to ~1e-8. */
     EXPECT_NEAR(outputs.at("cl")(0), ref.GetCl(), 1e-8);
     EXPECT_NEAR(outputs.at("cd")(0), ref.GetCd(), 1e-8);
     EXPECT_NEAR(outputs.at("cm")(0), ref.GetCm(), 1e-8);
 }
 
-// ===========================================================================
-// Coordinate-input options path
-// ===========================================================================
+/* ===========================================================================
+   Coordinate-input options path
+   =========================================================================== */
 
 TEST(PhilotePrimalTest, CoordinateOptionsMatchNaca) {
     scirocco::Scirocco naca_src("0012", 99);
@@ -251,9 +251,9 @@ TEST(PhilotePrimalTest, CoordinateOptionsMatchNaca) {
     EXPECT_NEAR(outputs.at("cm")(0), ref.GetCm(), 1e-12);
 }
 
-// ===========================================================================
-// SetOptions error handling
-// ===========================================================================
+/* ===========================================================================
+   SetOptions error handling
+   =========================================================================== */
 
 TEST(PhiloteOptionsTest, BothNacaAndCoordinatesThrows) {
     scirocco::SiroccoDiscipline disc;
@@ -279,9 +279,9 @@ TEST(PhiloteOptionsTest, NeitherNacaNorCoordinatesThrows) {
     EXPECT_THROW(disc.SetOptions(opts), std::invalid_argument);
 }
 
-// ===========================================================================
-// Partial derivative tests: discipline partials vs. CS reference (HDF5)
-// ===========================================================================
+/* ===========================================================================
+   Partial derivative tests: discipline partials vs. CS reference (HDF5)
+   =========================================================================== */
 
 class PhilotePartialsTest : public ::testing::Test {
    protected:
@@ -493,9 +493,9 @@ TEST_F(PhilotePartialsTest, ViscousRe) {
 }
 
 TEST_F(PhilotePartialsTest, ViscousShape) {
-    // Validate that discipline partials match standalone Scirocco exactly.
-    // CS reference accuracy is already validated by sensitivity_reference_test;
-    // this test verifies the Philote interface wiring doesn't corrupt partials.
+    /* Validate that discipline partials match standalone Scirocco exactly.
+       CS reference accuracy is already validated by sensitivity_reference_test;
+       this test verifies the Philote interface wiring doesn't corrupt partials. */
     scirocco::SiroccoDiscipline disc;
     philote::Variables inputs, outputs;
     philote::Partials partials;

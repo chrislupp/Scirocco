@@ -1,5 +1,7 @@
-// Compute scirocco's analytic dJ_dMa partial (at fixed U) and compare to
-// mfoil-CS reference printed by extract_dJ_dMa_cs.py.
+/**
+ * @brief Compute scirocco's analytic dJ_dMa partial (at fixed U) and compare to
+ * mfoil-CS reference printed by extract_dJ_dMa_cs.py.
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -15,7 +17,7 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// Mirror of ComputeCpDerivsMa from adjoint.cpp (anonymous static there).
+/* Mirror of ComputeCpDerivsMa from adjoint.cpp (anonymous static there). */
 static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
                               double& dcp_dMa, double& d2cp_duedMa) {
     double Vinf = std::max(param.Vinf, 1e-10);
@@ -44,6 +46,11 @@ static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
     d2cp_duedMa = dcp_due_inc * dfac_dMa;
 }
 
+/**
+ * @brief Entry point: computes analytic dJ/dMa partials and prints results for
+ *        comparison against the mfoil-CS reference.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -56,7 +63,7 @@ int main() {
     std::cout << "Base: cl=" << s.post.cl << " cd=" << s.post.cd
               << " cm=" << s.post.cm << "\n";
 
-    // Replicate the dJ_dMa(0) = dcl/dMa code from ViscousSensitivities Ma block
+    /* Replicate the dJ_dMa(0) = dcl/dMa code from ViscousSensitivities Ma block */
     int N = s.foil.N;
     double Ma = s.oper.Ma;
     double chord = s.geom.chord;
@@ -93,7 +100,7 @@ int main() {
     std::cout << "  dcm/dMa     = " << dcm / (chord * chord) << "\n";
     std::cout << "  dcdpi/dMa   = " << dcdpi / chord << "\n";
 
-    // cd via Squire-Young
+    /* cd via Squire-Young */
     if (!s.vsol.Is[2].empty()) {
         int iw = s.vsol.Is[2].back();
         Vector4d Uw = s.glob.U.col(iw);

@@ -40,22 +40,51 @@ class Scirocco;
 struct FoilState;
 struct Sensitivity;
 
+/**
+ * @brief Writes Scirocco solver state and sensitivities to an HDF5 file.
+ *
+ * Each call to WriteIteration appends one iteration group to the file.
+ * The file is finalized on Close() or destruction.
+ */
 class Hdf5Writer {
    public:
+    /**
+     * @brief Opens (or creates) an HDF5 file for writing.
+     * @param filepath Path to the HDF5 output file.
+     */
     explicit Hdf5Writer(const std::string& filepath);
     ~Hdf5Writer();
 
     Hdf5Writer(const Hdf5Writer&) = delete;
     Hdf5Writer& operator=(const Hdf5Writer&) = delete;
 
+    /**
+     * @brief Writes the current solver state (and optional sensitivities) as
+     *        one iteration group.
+     * @param solver     Solver whose state is extracted and written.
+     * @param sensitivity Optional pointer to sensitivity data; omitted if null.
+     */
     void WriteIteration(const Scirocco& solver,
                         const Sensitivity* sensitivity = nullptr);
 
+    /**
+     * @brief Writes a FoilState (and optional sensitivities) as one iteration
+     *        group.
+     * @param state       Foil state to write.
+     * @param sensitivity Optional pointer to sensitivity data; omitted if null.
+     */
     void WriteIteration(const FoilState& state,
                         const Sensitivity* sensitivity = nullptr);
 
+    /**
+     * @brief Flushes and closes the HDF5 file.
+     */
     void Close();
 
+    /**
+     * @brief Returns the number of iterations written so far.
+     * @return Iteration count.
+     */
     [[nodiscard]] int NumIterations() const;
 
    private:
