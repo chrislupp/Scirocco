@@ -1,17 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-# Multi-stage build for the Scirocco and Kulfan gRPC discipline servers.
+# Scirocco discipline gRPC server (port 50051).
 #
-# Build either runtime image by selecting the target:
-#   docker build --target scirocco-server -t scirocco-server:dev .
-#   docker build --target kulfan-server   -t kulfan-server:dev   .
+#   docker build --target scirocco-server -t scirocco-server:dev \
+#     -f docker/scirocco-server/Dockerfile .
 
 ARG DEBIAN_BASE=debian:stable-slim
 ARG PHILOTE_REPO=https://github.com/chrislupp/Philote-Cpp.git
 ARG PHILOTE_REF=v0.5.0
 
 # ---------------------------------------------------------------------------
-# builder: compile PhiloteCpp + Scirocco, install binaries to /out
+# builder: compile PhiloteCpp + Scirocco, install binary to /out
 # ---------------------------------------------------------------------------
 FROM ${DEBIAN_BASE} AS builder
 
@@ -53,15 +52,14 @@ RUN cmake -S /src/scirocco -B /src/scirocco/build \
         -DSCIROCCO_BUILD_EXAMPLES=OFF \
         -DSCIROCCO_NATIVE_ARCH=OFF \
     && cmake --build /src/scirocco/build -j"$(nproc)" \
-        --target scirocco_server scirocco_kulfan_server \
+        --target scirocco_server \
     && mkdir -p /out/bin \
-    && cp /src/scirocco/build/src/philote/scirocco_server /out/bin/ \
-    && cp /src/scirocco/build/src/philote/scirocco_kulfan_server /out/bin/
+    && cp /src/scirocco/build/src/philote/scirocco_server /out/bin/
 
 # ---------------------------------------------------------------------------
-# runtime-base: shared runtime image with only the .so deps the servers need
+# runtime
 # ---------------------------------------------------------------------------
-FROM ${DEBIAN_BASE} AS runtime-base
+FROM ${DEBIAN_BASE} AS scirocco-server
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -72,27 +70,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --shell /usr/sbin/nologin app
 
+COPY --from=builder /out/bin/scirocco_server /usr/local/bin/scirocco_server
+
 USER app
 WORKDIR /home/app
-
-# ---------------------------------------------------------------------------
-# scirocco-server: Scirocco discipline gRPC server on :50051
-# ---------------------------------------------------------------------------
-FROM runtime-base AS scirocco-server
-
-COPY --from=builder /out/bin/scirocco_server /usr/local/bin/scirocco_server
 
 EXPOSE 50051
 ENTRYPOINT ["/usr/local/bin/scirocco_server"]
 CMD ["0.0.0.0:50051"]
-
-# ---------------------------------------------------------------------------
-# kulfan-server: Kulfan geometry discipline gRPC server on :50052
-# ---------------------------------------------------------------------------
-FROM runtime-base AS kulfan-server
-
-COPY --from=builder /out/bin/scirocco_kulfan_server /usr/local/bin/scirocco_kulfan_server
-
-EXPOSE 50052
-ENTRYPOINT ["/usr/local/bin/scirocco_kulfan_server"]
-CMD ["0.0.0.0:50052"]
