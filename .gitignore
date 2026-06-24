@@ -66,3 +66,6 @@ examples/**/*_result*.png
 
 # modopt per-run output directories
 *_outputs/
+
+# Local Claude Code configuration (machine-specific, not shared)
+CLAUDE.local.md
