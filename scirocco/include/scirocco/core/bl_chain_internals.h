@@ -4,8 +4,7 @@
  * these change with the residual chain.
  */
 
-#ifndef SCIROCCO_CORE_BL_CHAIN_INTERNALS_H
-#define SCIROCCO_CORE_BL_CHAIN_INTERNALS_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/param.h"
@@ -44,5 +43,3 @@ double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
 
 }  // namespace detail
 }  // namespace scirocco
-
-#endif

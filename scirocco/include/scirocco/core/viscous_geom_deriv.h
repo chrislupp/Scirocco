@@ -15,8 +15,7 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 */
-#ifndef SCIROCCO_CORE_VISCOUS_GEOM_DERIV_H
-#define SCIROCCO_CORE_VISCOUS_GEOM_DERIV_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
@@ -318,5 +317,3 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                                       const MatrixXd& dvortex_dx, double alpha);
 
 }  /* namespace scirocco */
-
-#endif  /* SCIROCCO_CORE_VISCOUS_GEOM_DERIV_H */

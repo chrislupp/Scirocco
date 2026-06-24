@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CONFIG_H
-#define SCIROCCO_CONFIG_H
+#pragma once
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -65,5 +64,3 @@ constexpr double kDegToRad = kPi / 180.0;
 constexpr double kRadToDeg = 180.0 / kPi;
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CONFIG_H

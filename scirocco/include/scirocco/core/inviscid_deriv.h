@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_INVISCID_DERIV_H
-#define SCIROCCO_CORE_INVISCID_DERIV_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
@@ -66,5 +65,3 @@ VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
                       const VectorXd& v);
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_INVISCID_DERIV_H

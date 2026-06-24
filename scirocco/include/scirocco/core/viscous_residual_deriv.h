@@ -5,8 +5,7 @@
 
     Licensed under the Apache License, Version 2.0 (the "License").
 */
-#ifndef SCIROCCO_CORE_VISCOUS_RESIDUAL_DERIV_H
-#define SCIROCCO_CORE_VISCOUS_RESIDUAL_DERIV_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
@@ -83,5 +82,3 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
 MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 }  /* namespace scirocco */
-
-#endif  /* SCIROCCO_CORE_VISCOUS_RESIDUAL_DERIV_H */

@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_SPLINE_H
-#define SCIROCCO_CORE_SPLINE_H
+#pragma once
 
 #include "scirocco/config.h"
 
@@ -117,5 +116,3 @@ CubicSpline1D Spline1DCreate(const VectorXd& x, const VectorXd& y);
 void QuadSeg(VectorXd& xq, VectorXd& wq);
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_SPLINE_H

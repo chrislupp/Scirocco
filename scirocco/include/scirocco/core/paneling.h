@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_PANELING_H
-#define SCIROCCO_CORE_PANELING_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/core/spline.h"
@@ -80,5 +79,3 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
                               double TEfac, const VectorXd& stgt = VectorXd());
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_PANELING_H

@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_DATA_STATE_H
-#define SCIROCCO_DATA_STATE_H
+#pragma once
 
 #include <string>
 
@@ -59,5 +58,3 @@ struct FoilState {
 };
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_DATA_STATE_H

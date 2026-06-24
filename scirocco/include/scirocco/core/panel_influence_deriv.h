@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_PANEL_INFLUENCE_DERIV_H
-#define SCIROCCO_CORE_PANEL_INFLUENCE_DERIV_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/core/panel_influence.h"
@@ -173,5 +172,3 @@ LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi);
 
 }  /* namespace scirocco */
-
-#endif  /* SCIROCCO_CORE_PANEL_INFLUENCE_DERIV_H */
