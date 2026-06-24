@@ -57,6 +57,12 @@ const sidebars: SidebarsConfig = {
             collapsed: true,
             items: ["theory/index"],
         },
+        {
+            type: "category",
+            label: "Contributing",
+            collapsed: true,
+            items: ["contributing/claude-code"],
+        },
     ],
     apiSidebar: [
         "api/index",
