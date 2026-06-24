@@ -793,20 +793,6 @@ double GetDamp_dRet(const Vector4d& U, const Param& param) {
     return rf_dRet * af * da / th;
 }
 
-/**
- * @brief ∂(thermo params)/∂Ma — closed-form derivatives of param.{KTb,KTl,H0,mu0,rho0}
- * w.r.t. Ma, used by the analytic Ma chain. Mirrors InitThermo's formulas
- * (scirocco/src/inviscid.cpp:42-95).
- *
- * Returns zero struct for Ma <= 0 (incompressible case).
- */
-struct ThermoMaDeriv {
-    double KTb_dMa = 0;
-    double KTl_dMa = 0;
-    double H0_dMa = 0;
-    double mu0_dMa = 0;
-    double rho0_dMa = 0;
-};
 
 ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
                                    double rhoinf) {

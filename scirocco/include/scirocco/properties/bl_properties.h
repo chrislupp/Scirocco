@@ -248,4 +248,124 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
                  const Vector8d& cf_U, double Hk, const Vector8d& Hk_U,
                  double Ret, const Vector8d& Ret_U, const Param& param);
 
+namespace detail {
+
+/** @brief Derivatives of thermodynamic reference quantities w.r.t. Mach number.
+ *  Used to propagate dMa through BL closure functions.
+ */
+struct ThermoMaDeriv {
+    double KTb_dMa = 0;  /**< d(KTb)/dMa */
+    double KTl_dMa = 0;  /**< d(KTl)/dMa */
+    double H0_dMa = 0;   /**< d(H0)/dMa */
+    double mu0_dMa = 0;  /**< d(mu0)/dMa */
+    double rho0_dMa = 0; /**< d(rho0)/dMa */
+};
+
+/** @brief Compute derivatives of all thermodynamic reference quantities w.r.t. Ma.
+ *  @param param  Flow parameter struct
+ *  @param Vinf   Freestream velocity
+ *  @param rhoinf Freestream density
+ *  @return ThermoMaDeriv struct populated with all reference quantity derivatives
+ */
+ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
+                                   double rhoinf);
+
+/** @brief d(Uk)/dMa — Karman-Tsien corrected edge velocity.
+ *  @param ue    Edge velocity
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Uk)/dMa
+ */
+double GetUk_dMa(double ue, const Param& param, const ThermoMaDeriv& d);
+
+/** @brief d(Mach2)/dMa — squared local Mach number.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Mach2)/dMa
+ */
+double GetMach2_dMa(const Vector4d& U, const Param& param,
+                    const ThermoMaDeriv& d);
+
+/** @brief d(Hk)/dMa — kinematic shape parameter.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Hk)/dMa
+ */
+double GetHk_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
+
+/** @brief d(Hss)/dMa — density shape parameter.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Hss)/dMa
+ */
+double GetHss_dMa(const Vector4d& U, const Param& param,
+                  const ThermoMaDeriv& d);
+
+/** @brief d(Ret)/dMa — momentum-thickness Reynolds number.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Ret)/dMa
+ */
+double GetRet_dMa(const Vector4d& U, const Param& param,
+                  const ThermoMaDeriv& d);
+
+/** @brief d(Hs)/dMa — kinetic energy shape parameter.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Hs)/dMa
+ */
+double GetHs_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
+
+/** @brief d(Us)/dMa — normalized wall slip velocity.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Us)/dMa
+ */
+double GetUs_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
+
+/** @brief d(Cf)/dMa — skin friction coefficient.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Cf)/dMa
+ */
+double GetCf_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
+
+/** @brief d(CDi)/dMa — dissipation coefficient.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(CDi)/dMa
+ */
+double GetCDi_dMa(const Vector4d& U, const Param& param,
+                  const ThermoMaDeriv& d);
+
+/** @brief d(Cf*xt)/dMa — Mach sensitivity of the cf·x/theta product.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param x     Streamwise coordinate
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(Cf*xt)/dMa
+ */
+double GetCfxt_dMa(const Vector4d& U, double x, const Param& param,
+                   const ThermoMaDeriv& d);
+
+/** @brief d(CDi*xt)/dMa — Mach sensitivity of the cDi·x/theta product.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param x     Streamwise coordinate
+ *  @param param Flow parameter struct
+ *  @param d     Precomputed thermodynamic Ma-derivatives
+ *  @return scalar d(CDi*xt)/dMa
+ */
+double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
+                    const ThermoMaDeriv& d);
+
+}  /* namespace detail */
+
 }  /* namespace scirocco */
