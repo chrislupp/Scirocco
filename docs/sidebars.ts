@@ -24,6 +24,18 @@ const sidebars: SidebarsConfig = {
                 "tutorials/geometry-mods",
                 "tutorials/hdf5-output",
                 "tutorials/sensitivities",
+                {
+                    type: "category",
+                    label: "Optimization",
+                    collapsed: false,
+                    items: [
+                        "optimization/server",
+                        "optimization/openmdao-setup",
+                        "optimization/naca-design",
+                        "optimization/cst-design",
+                        "optimization/multipoint",
+                    ],
+                },
             ],
         },
         // {
@@ -40,18 +52,6 @@ const sidebars: SidebarsConfig = {
         //         "concepts/solver-params",
         //     ],
         // },
-        {
-            type: "category",
-            label: "Optimization",
-            collapsed: false,
-            items: [
-                "optimization/server",
-                "optimization/openmdao-setup",
-                "optimization/naca-design",
-                "optimization/cst-design",
-                "optimization/multipoint",
-            ],
-        },
         // {
         //     type: "category",
         //     label: "Theory",
