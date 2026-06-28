@@ -123,6 +123,33 @@ foil.SetOper(0.0, -1.0, 1.0e6, 0.0);
 foil.Solve();
 ```
 
+## Panel geometry refresh
+
+```cpp
+void RefreshPanelGeometry(Panel& panel);
+```
+
+Header:
+[`scirocco/core/paneling.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/paneling.h).
+
+Rebuilds `panel.s` (arc-length array) and `panel.t` (unit tangent vectors)
+from the current `panel.x` node coordinates without re-spacing the
+panels. Use this after directly overwriting `foil.x` from an upstream
+geometry discipline — for example, after `SiroccoDiscipline::Compute`
+receives new coordinates from a `KulfanDiscipline` — so the boundary-layer
+solver sees consistent geometric state without breaking upstream gradient
+chains.
+
+```cpp
+// After overwriting panel.x with new CST coordinates:
+scirocco::RefreshPanelGeometry(state.panel);
+// Now panel.s and panel.t match panel.x — safe to call the BL solver.
+```
+
+`RefreshPanelGeometry` is called automatically by `SiroccoDiscipline::Compute`
+when chained downstream of a geometry discipline; you only need to call
+it directly when manipulating `panel.x` outside the discipline interface.
+
 ## See also
 
 - Tutorial: [Custom airfoil coordinates](../tutorials/custom-airfoil)

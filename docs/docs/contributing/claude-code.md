@@ -2,56 +2,45 @@
 sidebar_position: 1
 ---
 
-# Claude Code Configuration
+# Contributing
 
-Scirocco ships a `CLAUDE.md` at the repository root that Claude Code reads
-automatically when you open the project. It covers the build system, test
-suite, code architecture, adjoint structure, and the pre-commit style
-requirements.
+Contributions are welcome — bug reports, documentation improvements, new test
+cases, and code changes alike.
 
-## Adding machine-specific configuration
+## Where to start
 
-`CLAUDE.md` is committed and shared. For anything that is specific to your
-machine or personal workflow — local tool paths, preferred build directories,
-platform-specific commands — create a `CLAUDE.local.md` file at the repository
-root alongside `CLAUDE.md`:
+- **[CONTRIBUTING.md](https://github.com/chrislupp/Scirocco/blob/develop/CONTRIBUTING.md)**
+  — the full contributor guide: branching workflow, commit message conventions,
+  code style requirements, changelog format, and how to add tests.
+- **[Issue tracker](https://github.com/chrislupp/Scirocco/issues)** — report
+  bugs, request features, or discuss ideas before writing code.
+- **[Pull requests](https://github.com/chrislupp/Scirocco/pulls)** — all PRs
+  target the `develop` branch.
 
-```
-ProjectTrysil/
-├── CLAUDE.md          ← committed, shared
-└── CLAUDE.local.md    ← gitignored, yours only
-```
+## Quick reference
 
-`CLAUDE.local.md` is listed in `.gitignore` and will never be committed.
-Claude Code imports it automatically via the `@CLAUDE.local.md` directive at
-the bottom of `CLAUDE.md`; if the file does not exist the import is silently
-skipped, so there is nothing to set up if you have no local overrides.
+| Branch prefix | Use for |
+| --- | --- |
+| `feature/<name>` | New features |
+| `fix/<name>` | Bug fixes |
+| `docs/<name>` | Documentation-only changes |
 
-## What belongs in CLAUDE.local.md
+Before marking a PR ready:
+- All CI checks pass (build + full test suite).
+- `clang-format` and `clang-tidy` produce no new warnings.
+- `CHANGELOG.md` is updated for any feature addition or bug fix.
 
-Anything that is true on your machine but not everyone else's:
+Squash-merge is preferred for feature branches.
 
-- Platform-specific tool invocations (e.g. `xcrun` on macOS for `llvm-cov`)
-- Non-default build directory paths
-- Personal adjoint debugging notes or probe workflows
-- Environment variables or shell aliases needed locally
+## Adding tests
 
-## Example
+New solver features must include at least one test that would fail without the
+change. Derivative correctness must be validated against mfoil complex-step
+(CS) — never finite differences. See the
+[CONTRIBUTING guide](https://github.com/chrislupp/Scirocco/blob/develop/CONTRIBUTING.md#adding-tests)
+for details.
 
-```markdown
-## Coverage (macOS)
+## License
 
-​```bash
-cmake -S scirocco -B scirocco/build-cov -DCMAKE_BUILD_TYPE=Release \
-      -DSCIROCCO_COVERAGE=ON
-cmake --build scirocco/build-cov -j
-cd scirocco/build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
-xcrun llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
-xcrun llvm-cov report scirocco_tests \
-    -object scirocco_forward_ref_tests \
-    -object scirocco_sensitivity_ref_tests \
-    -object scirocco_ping_tests \
-    -instr-profile=cov.profdata \
-    $(ls ../src/*.cpp)
-​```
-```
+By contributing you agree that your changes will be licensed under the
+[Apache 2.0 License](https://github.com/chrislupp/Scirocco/blob/develop/LICENSE).

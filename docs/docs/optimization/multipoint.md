@@ -31,12 +31,12 @@ analysis servers**, one per design point.
 ## Architecture
 
 ```
-                       ┌──→ [Analysis @ 50051] ──cl_0, cd_0──→
-[Kulfan geometry] ──x──┼──→ [Analysis @ 50053] ──cl_1, cd_1──→  [SLSQP]
-   (50052)             └──→ [Analysis @ 50054] ──cl_2, cd_2──→
+                       ┌──→ [Analysis @ 50061] ──cl_0, cd_0──→
+[Kulfan geometry] ──x──┼──→ [Analysis @ 50062] ──cl_1, cd_1──→  [IPOPT]
+   (50060)             └──→ [Analysis @ 50063] ──cl_2, cd_2──→
 ```
 
-One geometry server (50052), N analysis servers (50051, 50053, 50054 by
+One geometry server (50060), N analysis servers (50061 … 50060+N by
 default — N is whatever `len(DESIGN_POINTS)` evaluates to). The script
 starts all of them, runs the optimization, and tears them down.
 
@@ -60,9 +60,9 @@ constraint, and an extra term in the weighted drag objective.
 ## OpenMDAO wiring (sketch)
 
 ```python
-geometry_channel = grpc.insecure_channel("localhost:50052")
+geometry_channel = grpc.insecure_channel("localhost:50060")
 analysis_channels = [
-    grpc.insecure_channel(f"localhost:{50051 + 2*i}")
+    grpc.insecure_channel(f"localhost:{50061 + i}")
     for i in range(len(DESIGN_POINTS))
 ]
 
@@ -120,7 +120,7 @@ for name in ("low_cl", "mid_cl", "high_cl"):
     with h5py.File(f"...history_{name}.h5") as f:
         cd = [f[f"iterations/{k}/post/cd"][()] for k in sorted(f["iterations"])]
     plt.plot(cd, label=name)
-plt.xlabel("SLSQP iteration"); plt.ylabel("Cd"); plt.legend(); plt.show()
+plt.xlabel("IPOPT iteration"); plt.ylabel("Cd"); plt.legend(); plt.show()
 ```
 
 The classical multipoint trade is visible here: the optimizer can't pull
@@ -130,14 +130,24 @@ worse drag than a single-point design.
 
 ## Running it
 
+This example requires [`modopt`](https://github.com/LSDOlab/modopt) in
+addition to OpenMDAO and Philote-MDO:
+
+```bash
+pip install modopt
+```
+
+Then launch the optimization:
+
 ```bash
 python examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py
 ```
 
-Larger than the single-point examples — expect ~5–15 minutes depending on
-how SLSQP polishes. The total cost grows linearly in `N_POINTS` since each
-adds one independent viscous primal + adjoint per iteration. The shared
-adjoint trick from the single-point case still applies within each point.
+Larger than the single-point examples — expect ~5–15 minutes. IPOPT
+typically converges in ~200 iterations; the verified result is
+`Solve_Succeeded` at iter 201 with Σw·Cd = 4.309e-3. The total cost
+grows linearly in `N_POINTS` since each adds one independent viscous
+primal + adjoint per iteration.
 
 ## Sensitivity to the weight vector
 

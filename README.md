@@ -1,5 +1,6 @@
 # Scirocco
 
+[![Build](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml/badge.svg)](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
 A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.

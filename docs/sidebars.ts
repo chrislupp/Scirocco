@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
             items: [
                 "intro",
                 "getting-started/installation",
+                "getting-started/docker",
                 "getting-started/quickstart",
             ],
         },
