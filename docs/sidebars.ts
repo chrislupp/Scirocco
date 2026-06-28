@@ -52,12 +52,12 @@ const sidebars: SidebarsConfig = {
                 "optimization/multipoint",
             ],
         },
-        {
-            type: "category",
-            label: "Theory",
-            collapsed: true,
-            items: ["theory/index"],
-        },
+        // {
+        //     type: "category",
+        //     label: "Theory",
+        //     collapsed: true,
+        //     items: ["theory/index"],
+        // },
         {
             type: "category",
             label: "Contributing",
