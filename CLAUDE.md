@@ -179,6 +179,49 @@ Only the `[Unreleased]` section is edited during development. On release, it is 
 | `Changed` | Modified behaviour, renamed symbols, tightened tolerances, default value changes |
 | `Fixed` | Incorrect results, crashes, stale documentation that misrepresented behaviour |
 
+## Contributing
+
+### Branching and PR workflow
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, tagged releases only |
+| `develop` | Integration branch — all PRs target this |
+| `feature/<name>` | New features |
+| `fix/<name>` | Bug fixes |
+| `docs/<name>` | Documentation-only changes |
+
+Keep branches focused — one logical change per PR. If a fix requires a
+refactor, split them into separate PRs.
+
+Before marking a PR ready for review:
+- All CI checks pass (build + full test suite).
+- `clang-format` and `clang-tidy` produce no new warnings.
+- `CHANGELOG.md` is updated for any feature addition or bug fix.
+
+Squash-merge is preferred for feature branches; merge commits are used for
+release integrations (`develop` → `main`).
+
+### Commit messages
+
+```
+Category: short imperative summary (≤72 chars)
+
+Optional body explaining why, not what. Wrap at 72 columns.
+```
+
+Common categories: `Fix`, `Add`, `Refactor`, `Docs`, `CI`, `Test`.
+Put issue references in the body, not the subject line.
+
+### Adding tests
+
+New solver features must include at least one test that would fail without the
+change. Derivative correctness must be validated against mfoil complex-step
+(CS) — never finite differences. See [Reference data and CS validation](#reference-data-and-cs-validation).
+
+Do not suppress clang-tidy warnings with `NOLINT` without a comment on the
+same line explaining why.
+
 ## Development Notes
 
 ### Compilers & dependencies
