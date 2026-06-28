@@ -2,7 +2,13 @@
 sidebar_position: 1
 ---
 
-# Philote gRPC server
+# Philote gRPC server reference
+
+Reference page for the two gRPC servers that wrap Scirocco as MDO
+disciplines. The optimization tutorials —
+[NACA 4-digit](./naca-design), [CST design](./cst-design), and
+[multipoint](./multipoint) — drive these servers; this page documents the
+build, launch, and discipline I/O in one place.
 
 Scirocco ships **two** Philote-Cpp gRPC servers that wrap the library as
 disciplines for use inside an MDO framework like OpenMDAO:
@@ -17,8 +23,8 @@ For a NACA-parameterized design, you only need the analysis server (the
 geometry comes from your own OpenMDAO component). For CST-parameterized
 designs, you start both.
 
-This page covers how to build and launch them; the actual OpenMDAO wiring
-is in [OpenMDAO setup](./openmdao-setup).
+This page covers how to build and launch them; the OpenMDAO wiring is in
+the [NACA 4-digit tutorial](./naca-design).
 
 ## Build
 
@@ -119,4 +125,4 @@ Full details on the [`KulfanDiscipline` API page](../api/kulfan-discipline).
 | `RuntimeError: server failed to start` in driver script | Server binary path wrong, or Philote-Cpp not installed. Try running the binary by hand to see the error. |
 | Optimizer iterates produce NaN `cl` | A bad CST iterate produced self-intersecting coordinates. Confirm CST coefficient bounds are correct (see [CST design](./cst-design)). |
 
-## Next: [OpenMDAO setup](./openmdao-setup)
+## Next: [NACA 4-digit optimization](./naca-design)

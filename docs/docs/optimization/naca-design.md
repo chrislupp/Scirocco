@@ -2,14 +2,51 @@
 sidebar_position: 3
 ---
 
-# NACA-4-digit design
+# NACA 4-digit optimization
 
 The simplest end-to-end optimization in the example set: minimize $C_d$ at
 a target $C_l$ with a section-area floor, with the airfoil parameterized as
-a NACA 4-digit (3 design variables) plus $\alpha$.
+a NACA 4-digit (3 design variables) plus $\alpha$. This is the place to
+start — it introduces the full MDO stack (Philote gRPC server + OpenMDAO)
+that the [CST](./cst-design) and [multipoint](./multipoint) tutorials
+build on.
 
 This mirrors
 [`examples/naca_optimization/naca_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/naca_optimization/naca_optimization.py).
+
+## How the pieces fit together
+
+Scirocco plugs into [OpenMDAO](https://openmdao.org/) as a discipline over
+gRPC. The library is wrapped in a Philote-Cpp server (`scirocco_server`);
+OpenMDAO talks to it through `philote_mdo.openmdao.RemoteExplicitComponent`,
+which presents the discipline as a standard `ExplicitComponent` with
+analytic partials. For a NACA-parameterized design you only need this one
+analysis server — the geometry is a small local Python component. (The
+CST tutorials add a second server for the geometry.)
+
+The full server build and discipline interface are documented on the
+[Philote gRPC server reference](./server) page; the essentials are below.
+
+## Prerequisites
+
+**Build Scirocco with Philote on** (the default). This needs Protobuf,
+gRPC, and an installed [Philote-Cpp](https://github.com/chrislupp/Philote-Cpp)
+— see the [server reference](./server#build) for the one-time Philote-Cpp
+install:
+
+```bash
+cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build-philote -j
+```
+
+**Install the Python dependencies:**
+
+```bash
+pip install openmdao philote-mdo grpcio numpy matplotlib h5py
+```
+
+You do not need to launch the server by hand — every example script starts
+`scirocco_server` in the background and tears it down on exit.
 
 ## Problem
 
@@ -114,6 +151,29 @@ A handful of things worth understanding:
 | `RemoteExplicitComponent(..., naca="0012", npanel=npanel)` | The `naca` option seeds the analysis with a 0012 baseline at start-up. Once the optimizer is running, `x` is overridden every iteration, so the seed never matters for results — but `npanel` does, because it sets the discipline's expected input shape. |
 | `hdf5_file=hdf5_path` | Records every primal + sensitivity call to disk for post-analysis. |
 | `ref=...` scaling | SLSQP works better in $O(1)$ — these scale the internal representation to roughly unit magnitude without changing the math. |
+
+## Verifying derivatives
+
+Before kicking off a long optimization, sanity-check the gradients that
+flow through the discipline. OpenMDAO's `check_totals` runs
+finite-difference perturbations on the inputs and compares them to the
+chained analytic Jacobian:
+
+```python
+prob.run_model()
+prob.check_totals(
+    of=["analysis.cl", "analysis.cd", "analysis.cm"],
+    wrt=["geometry.camber", "geometry.camber_loc",
+         "geometry.thickness", "analysis.alpha"],
+    compact_print=True,
+)
+```
+
+Expect relative errors around $10^{-5}$–$10^{-7}$ for a smooth converged
+primal. Larger errors usually mean either the primal isn't converged at
+the linearization point, or the design is sitting on a discontinuity
+(transition jumping panels, near-stall). The `naca_optimization.py` script
+runs this check automatically before the optimization pass.
 
 ## What's actually being differentiated
 

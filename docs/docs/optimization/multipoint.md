@@ -9,6 +9,11 @@ A single CST geometry optimized against three operating points
 showcase example for "real" airfoil design: the same wing has to perform
 across a flight envelope, not just at one point.
 
+This builds on the [CST design tutorial](./cst-design) — the geometry
+discipline and constraints are identical. What's new is running **N
+analysis servers**, one per operating point, against a single shared
+geometry server, and aggregating their drag into one weighted objective.
+
 Mirrors
 [`examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py).
 

@@ -24,8 +24,6 @@ const sidebars: SidebarsConfig = {
                 "tutorials/geometry-mods",
                 "tutorials/hdf5-output",
                 "tutorials/sensitivities",
-                "optimization/server",
-                "optimization/openmdao-setup",
                 "optimization/naca-design",
                 "optimization/cst-design",
                 "optimization/multipoint",

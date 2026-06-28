@@ -9,6 +9,13 @@ NACA's 3 design variables with 16 (8 upper + 8 lower Bernstein coefficients
 by default) — enough freedom to do real design, while still cheap enough
 that the adjoint is the only sensible way to compute gradients.
 
+This builds directly on the [NACA 4-digit tutorial](./naca-design) — read
+that first for the server build, Python dependencies, OpenMDAO wiring, and
+derivative-check basics. The new ingredient here is a **second** Philote
+server: instead of a local Python geometry component, the CST geometry is
+its own remote discipline (`scirocco_kulfan_server`), so the optimizer
+chains gradients through two analytic Jacobians.
+
 This page covers both the **inviscid** ($Re = 0$) and **viscous** ($Re > 0$)
 variants. They share architecture; the viscous one adds a smoothness
 constraint to keep the BL solver happy on intermediate iterates.
