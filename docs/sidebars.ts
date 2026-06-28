@@ -24,18 +24,11 @@ const sidebars: SidebarsConfig = {
                 "tutorials/geometry-mods",
                 "tutorials/hdf5-output",
                 "tutorials/sensitivities",
-                {
-                    type: "category",
-                    label: "Optimization",
-                    collapsed: false,
-                    items: [
-                        "optimization/server",
-                        "optimization/openmdao-setup",
-                        "optimization/naca-design",
-                        "optimization/cst-design",
-                        "optimization/multipoint",
-                    ],
-                },
+                "optimization/server",
+                "optimization/openmdao-setup",
+                "optimization/naca-design",
+                "optimization/cst-design",
+                "optimization/multipoint",
             ],
         },
         // {
