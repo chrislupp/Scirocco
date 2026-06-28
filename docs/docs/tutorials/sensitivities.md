@@ -139,9 +139,6 @@ reference test in
 
 You now have the full primal + adjoint workflow. Continue to:
 
-- [Concepts → Panel method](../concepts/panel-method) — what the inviscid solve
-  actually does
-- [Concepts → Viscous coupling](../concepts/viscous-coupling) — what the
-  boundary-layer Newton system looks like
+
 - [Optimization → Server](../optimization/server) — using these gradients
   inside OpenMDAO via Philote

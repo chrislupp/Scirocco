@@ -154,4 +154,4 @@ it directly when manipulating `panel.x` outside the discipline interface.
 
 - Tutorial: [Custom airfoil coordinates](../tutorials/custom-airfoil)
 - Tutorial: [Geometry modifications](../tutorials/geometry-mods)
-- Concepts: [Geometry](../concepts/geometry)
+

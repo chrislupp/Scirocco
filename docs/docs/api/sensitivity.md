@@ -96,6 +96,5 @@ If you suspect a ridge fired, set `state.param.verb = 1` before
 
 - Tutorial: [Adjoint sensitivities](../tutorials/sensitivities) — including the
   finite-difference verification recipe
-- Concepts: [Viscous coupling](../concepts/viscous-coupling) — the Newton system
-  whose adjoint is computed
+
 - Theory: [adjoint.md](https://github.com/chrislupp/Scirocco/blob/develop/theory/adjoint.md) — full derivation

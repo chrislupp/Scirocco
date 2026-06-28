@@ -42,7 +42,7 @@ $$
 The Bernstein coefficients $A_i$ are the design variables. With the sign
 convention above, $A_i \ge 0$ on both surfaces gives a non-self-
 intersecting airfoil **everywhere** on $[0, 1]$, not just at sample
-points — see [Concepts → Geometry](../concepts/geometry).
+points.
 
 ## Options
 
@@ -136,5 +136,3 @@ geometry = RemoteExplicitComponent(
 
 - Tutorial: not yet — the canonical CST tutorial is the inviscid + viscous
   optimization walkthrough in [CST design](../optimization/cst-design)
-- Concepts: [Geometry](../concepts/geometry) — why Bernstein non-negativity
-  bounds the surface

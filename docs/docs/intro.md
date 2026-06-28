@@ -29,8 +29,8 @@ inside MDO frameworks.
 ## Who this is for
 
 - Aerodynamicists who want a fast, scriptable 2D analysis tool with derivatives
-- MDO practitioners who need a discipline with analytic gradients
-- Researchers extending or validating integral boundary-layer methods
+- MDO practitioners who need an airfoil discipline with analytic gradients
+- Researchers working on airfoil optimization
 
 ## Where to next
 
@@ -38,8 +38,7 @@ inside MDO frameworks.
 - Run the 5-minute [Quickstart](./getting-started/quickstart) — a NACA 0012
   alpha sweep
 - Browse the [API Reference](./api) for the public surface
-- Read the [Concepts](./concepts/panel-method) section to understand what the
-  solver is doing under the hood
+
 
 ## License & attribution
 

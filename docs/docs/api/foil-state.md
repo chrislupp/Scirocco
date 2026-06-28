@@ -95,8 +95,7 @@ sensitivity machinery, not intended for direct user reading.
 
 ### `Param`
 
-Solver parameters — covered in detail in
-[Concepts → Solver parameters](../concepts/solver-params).
+Solver parameters.
 [`scirocco/data/param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h).
 
 ### `Geom`, `Isol`, `Vsol`, `Glob`

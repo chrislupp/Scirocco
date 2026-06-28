@@ -67,7 +67,6 @@ airfoil is non-self-intersecting at every intermediate optimizer
 iterate — no per-evaluation thickness constraint needed. This is what
 the `lower=0.0` design-variable bounds are doing.
 
-See [Concepts → Geometry](../concepts/geometry) for the underlying math.
 
 ## Viscous variant
 

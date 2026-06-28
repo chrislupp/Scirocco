@@ -58,15 +58,13 @@ solution is built, Scirocco:
    each surface (and along the wake), using Thwaites for laminar starts.
 2. Tracks the amplification factor $\tilde n(s)$ along each laminar segment
    and triggers transition when $\tilde n$ crosses $n_\text{crit}$ (default
-   9 — see [Concepts → Transition](../concepts/transition)).
+   9).
 3. Couples the BL displacement effect back into the inviscid system through
    the edge velocity $u_e$ and runs a **Newton iteration** over the joint
    state.
 
 The full nonlinear solve is the reason `Solve()` now actually returns
-`true`/`false`: it can fail to converge. See
-[Concepts → Pseudo-transient continuation](../concepts/ptc) for what to turn
-on when it does.
+`true`/`false`: it can fail to converge. Enable pseudo-transient continuation (PTC) when it does.
 
 ## Reading the output
 
@@ -109,7 +107,7 @@ reducing the residual under `state.param.rtol` (default `1e-11`). When that
 happens, three knobs help in order of preference:
 
 1. Turn on PTC: `foil.GetState().param.use_ptc = true;` (see
-   [PTC](../concepts/ptc)).
+   PTC: `foil.GetState().param.use_ptc = true`).
 2. Refine panels — try 199 instead of 129, especially near the leading edge.
 3. Raise `n_crit` toward 11–13 if the airfoil is at a high $Re$ in a clean
    wind tunnel; lower toward 5–7 for a noisy free flight.

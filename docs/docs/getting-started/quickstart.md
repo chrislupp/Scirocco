@@ -101,5 +101,3 @@ That's the friction + pressure drag from the coupled boundary-layer solve.
   annotation, with `GetCp` and `GetCf` distributions plotted.
 - [Viscous analysis tutorial](../tutorials/viscous-analysis) — the viscous
   swap above, with a $Re$ sweep and drag breakdown ($C_{d,f}$ vs $C_{d,p}$).
-- [Concepts → Panel method](../concepts/panel-method) — what `Solve()` is
-  actually doing.

@@ -13,7 +13,7 @@ build from source.
 | --- | --- |
 | CMake | 3.18+ |
 | C++ compiler | C++17 capable; GCC 14 and Clang 18 are tested in CI |
-| Eigen | 3.4+ (or 5.x) |
+| Eigen | 3.4+ |
 
 Optional, depending on the features you want:
 

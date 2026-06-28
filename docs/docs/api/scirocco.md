@@ -50,7 +50,7 @@ bool Solve();
 
 Performs the inviscid linear solve, plus (if `Re > 0`) the coupled BL
 Newton iteration. Returns `true` on convergence. Always `true` for pure
-inviscid. See [Concepts → Viscous coupling](../concepts/viscous-coupling).
+inviscid.
 
 ## Result accessors — scalars
 
