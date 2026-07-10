@@ -148,14 +148,15 @@ $C_m^2$ or $C_d$ often takes more iterations than you expect.
 ## Reading the output
 
 Each run writes an HDF5 history file and a PNG plot. The HDF5 contains
-the per-iteration state and sensitivities you can post-process; the PNG
+the per-iteration primal state you can post-process; the PNG
 overlays the initial and optimized airfoils plus the converged CST
 coefficient values.
 
 ```python
 import h5py
 with h5py.File("kulfan_viscous_optimization_history.h5") as f:
-    cds = [f[f"iterations/{k}/post/cd"][()] for k in sorted(f["iterations"])]
+    keys = sorted(k for k in f if k.startswith("iteration_"))
+    cds = [f[f"{k}/coefficients/cd"][()] for k in keys]
 import matplotlib.pyplot as plt
 plt.semilogy(cds); plt.xlabel("iter"); plt.ylabel("Cd"); plt.show()
 ```

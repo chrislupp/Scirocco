@@ -123,7 +123,8 @@ import h5py, matplotlib.pyplot as plt
 
 for name in ("low_cl", "mid_cl", "high_cl"):
     with h5py.File(f"...history_{name}.h5") as f:
-        cd = [f[f"iterations/{k}/post/cd"][()] for k in sorted(f["iterations"])]
+        keys = sorted(k for k in f if k.startswith("iteration_"))
+        cd = [f[f"{k}/coefficients/cd"][()] for k in keys]
     plt.plot(cd, label=name)
 plt.xlabel("IPOPT iteration"); plt.ylabel("Cd"); plt.legend(); plt.show()
 ```

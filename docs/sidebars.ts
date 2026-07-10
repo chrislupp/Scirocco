@@ -9,8 +9,8 @@ const sidebars: SidebarsConfig = {
             items: [
                 "intro",
                 "getting-started/installation",
-                "getting-started/docker",
                 "getting-started/quickstart",
+                "getting-started/docker",
             ],
         },
         {
@@ -20,10 +20,10 @@ const sidebars: SidebarsConfig = {
             items: [
                 "tutorials/inviscid-naca",
                 "tutorials/viscous-analysis",
-                "tutorials/custom-airfoil",
                 "tutorials/geometry-mods",
-                "tutorials/hdf5-output",
+                "tutorials/custom-airfoil",
                 "tutorials/sensitivities",
+                "tutorials/hdf5-output",
                 "optimization/naca-design",
                 "optimization/cst-design",
                 "optimization/multipoint",

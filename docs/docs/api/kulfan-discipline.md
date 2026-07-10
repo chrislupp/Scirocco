@@ -134,5 +134,8 @@ geometry = RemoteExplicitComponent(
 
 ## See also
 
-- Tutorial: not yet — the canonical CST tutorial is the inviscid + viscous
-  optimization walkthrough in [CST design](../optimization/cst-design)
+- [Python quickstart](../getting-started/quickstart) — connect the Kulfan and
+  analysis disciplines for the first time
+- [Parameterized geometry tutorial](../tutorials/geometry-mods) — change CST
+  coefficients and inspect coordinates from Python
+- [CST design](../optimization/cst-design) — inviscid and viscous optimization

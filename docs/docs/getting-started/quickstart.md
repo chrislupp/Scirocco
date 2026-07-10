@@ -1,103 +1,105 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
-# Quickstart
+# Python quickstart
 
-A 5-minute end-to-end run: build the library, build the bundled NACA example,
-and inspect its alpha-sweep output.
+This is the shortest path from a build to an aerodynamic result. Scirocco runs
+in two Philote-Cpp gRPC servers and Python uses the Philote-MDO bindings to
+present them as OpenMDAO components:
 
-## Prerequisite: a configured build
+```text
+Python/OpenMDAO -> KulfanDiscipline -> panel coordinates -> SiroccoDiscipline
+```
 
-If you haven't already, follow the [Installation](./installation) page through
-`cmake --build`. You should have an executable at
-`scirocco/build-default/naca_example`.
+Scirocco does not currently install an in-process `import scirocco` module.
+In these tutorials, **Python bindings** means
+`philote_mdo.openmdao.RemoteExplicitComponent`, the Python binding for a
+remote Philote discipline.
 
-## Run the example
+## Start the servers
+
+Build the Philote targets as described in [Installation](./installation), then
+run these in two terminals from the repository root:
 
 ```bash
-./scirocco/build-default/naca_example
+scirocco/build-philote/src/philote/scirocco_kulfan_server localhost:50052
 ```
 
-You should see a NACA 0012 alpha sweep from $-4°$ to $12°$ in $2°$ steps:
-
-```text
-=== scirocco Example: NACA Airfoil Analysis ===
-
-  Alpha      CL        CD        CM
-  -----   -------   -------   -------
--4.0000   -0.4823    0.0000   -0.0000
--2.0000   -0.2407    0.0000    0.0000
- 0.0000    0.0000    0.0000    0.0000
- 2.0000    0.2407    0.0000   -0.0000
- 4.0000    0.4823    0.0000   -0.0000
- ...
-=== Analysis Complete ===
+```bash
+scirocco/build-philote/src/philote/scirocco_server localhost:50051
 ```
 
-$C_d$ is zero because the example runs **inviscid** ($Re = 0$) — D'Alembert's
-paradox in action. To see non-zero drag, you turn on viscosity, which is the
-subject of the next tutorial.
+The first server creates a Kulfan/CST airfoil. The second analyzes the panel
+coordinates it receives.
 
-## What the example is doing
+## Run one analysis
 
-The whole source is 35 lines; here is the load-bearing part:
+Save this as `quickstart.py`:
 
-```cpp
-#include <scirocco/scirocco.h>
+```python
+import grpc
+import numpy as np
+import openmdao.api as om
+from philote_mdo.openmdao import RemoteExplicitComponent
 
-int main() {
-    // NACA 0012 with 199 panels (curvature-graded by default)
-    scirocco::Scirocco foil("0012", 199);
+npanel = 100
 
-    for (double alpha = -4.0; alpha <= 12.0; alpha += 2.0) {
-        // alpha [deg], target Cl (-1 means "use alpha"), Re, Mach
-        foil.SetOper(alpha, -1.0, 0.0, 0.0);
-        foil.Solve();
+problem = om.Problem()
+problem.model.add_subsystem(
+    "geometry",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50052"),
+        n_cst_upper=6,
+        n_cst_lower=6,
+        npanel=npanel,
+    ),
+    promotes_inputs=["cst_upper", "cst_lower"],
+    promotes_outputs=["x"],
+)
+problem.model.add_subsystem(
+    "analysis",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50051"),
+        naca="0012",       # initializes the remote solver
+        npanel=npanel,
+    ),
+    promotes_inputs=["x"],
+)
 
-        std::cout << alpha << "  " << foil.GetCl() << "  "
-                  << foil.GetCd() << "  " << foil.GetCm() << "\n";
-    }
-}
+problem.setup()
+
+# Symmetric, NACA-0012-like CST coefficients. Positive coefficients produce
+# positive thickness; use the same values on the upper and lower surfaces.
+cst_0012 = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+problem.set_val("cst_upper", cst_0012)
+problem.set_val("cst_lower", cst_0012)
+problem.set_val("analysis.alpha", 4.0, units="deg")
+problem.set_val("analysis.Re", 0.0)  # zero selects inviscid analysis
+problem.set_val("analysis.Ma", 0.0)
+
+problem.run_model()
+
+print("Cl =", problem.get_val("analysis.cl")[0])
+print("Cd =", problem.get_val("analysis.cd")[0])
+print("Cm =", problem.get_val("analysis.cm")[0])
 ```
 
-Three calls do all the work:
+Run it:
 
-| Call | What happens |
-| --- | --- |
-| `Scirocco("0012", 199)` | Builds NACA 0012 coordinates, runs cubic-spline curvature-graded paneling to 199 nodes. |
-| `SetOper(α, Cl_target, Re, Ma)` | Stores operating conditions. `Cl_target = -1.0` is the sentinel for "use the supplied α directly"; passing a positive value instead triggers an α-search loop to hit that lift coefficient. |
-| `Solve()` | Builds the AIC matrix, applies the Kutta condition, solves for the vortex strengths. With `Re > 0` it also Newton-couples the viscous boundary-layer system to the inviscid solve. Returns `true` on convergence. |
-
-Result accessors (`GetCl`, `GetCd`, `GetCm`, `GetCdf`, `GetCdp`, plus the
-distribution getters `GetCp`, `GetCf`, `GetTheta`, `GetDeltaStar`) read out of
-the post-processing struct that `Solve()` populates.
-
-## Try a viscous run
-
-Edit `naca_example.cpp` (or write your own program against the library), and
-swap the `SetOper` call:
-
-```cpp
-foil.SetOper(alpha, -1.0, 1.0e6, 0.0);   // Re = 1e6, incompressible
+```bash
+python quickstart.py
 ```
 
-Rebuild and re-run. Drag is no longer zero:
+You should get positive lift and essentially zero drag. Inviscid 2-D potential
+flow has no profile drag; the [first tutorial](../tutorials/inviscid-naca)
+turns this one-off model into an angle-of-attack sweep, and the tutorial after
+that enables the viscous solver.
 
-```text
-  Alpha      CL        CD        CM
-  -----   -------   -------   -------
- 0.0000    0.0000    0.0055    0.0000
- 2.0000    0.2410    0.0058   -0.0001
- 4.0000    0.4839    0.0066   -0.0005
- ...
-```
+## Why both disciplines?
 
-That's the friction + pressure drag from the coupled boundary-layer solve.
-
-## Where to next
-
-- [Inviscid NACA tutorial](../tutorials/inviscid-naca) — same example, more
-  annotation, with `GetCp` and `GetCf` distributions plotted.
-- [Viscous analysis tutorial](../tutorials/viscous-analysis) — the viscous
-  swap above, with a $Re$ sweep and drag breakdown ($C_{d,f}$ vs $C_{d,p}$).
+`SiroccoDiscipline` takes panel coordinates as its `x` input. Its `naca`
+option establishes the solver and expected panel count, but an upstream
+component still supplies the coordinates on every evaluation. Starting with
+`KulfanDiscipline` makes that data flow explicit and gives us a parameterized
+geometry with analytic derivatives that later tutorials can optimize.

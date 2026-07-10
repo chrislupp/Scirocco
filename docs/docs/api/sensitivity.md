@@ -94,7 +94,7 @@ If you suspect a ridge fired, set `state.param.verb = 1` before
 
 ## See also
 
-- Tutorial: [Adjoint sensitivities](../tutorials/sensitivities) — including the
-  finite-difference verification recipe
+- Tutorial: [Check analytic sensitivities](../tutorials/sensitivities) — use
+  the Philote Python binding and verify component and total derivatives
 
 - Theory: [adjoint.md](https://github.com/chrislupp/Scirocco/blob/develop/theory/adjoint.md) — full derivation

@@ -1,140 +1,89 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 ---
 
-# HDF5 output
+# 6. Record an HDF5 history
 
-Scirocco can persist every solved operating point — state, distributions,
-and optionally sensitivities — to a single HDF5 file. The
-[`Hdf5Writer`](../api/hdf5-writer) is provided by an opt-in extension
-library that's not built by default. This tutorial mirrors
-[`scirocco/examples/hdf5_output_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/hdf5_output_example.cpp).
+The final analysis tutorial adds persistent output to the same
+Python/Philote model. HDF5 is configured when the remote analysis component is
+created; every call to that component then appends an iteration.
 
-## Build with HDF5 enabled
+## Rebuild with HDF5 support
 
-The output writer is gated behind a CMake option that pulls in HDF5 and an
-extra `scirocco_hdf5` library:
+The server must link the optional writer:
 
 ```bash
-cmake -S scirocco -B scirocco/build-hdf5 -DCMAKE_BUILD_TYPE=Release \
+cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release \
+      -DSCIROCCO_BUILD_PHILOTE=ON \
       -DSCIROCCO_HDF5_OUTPUT=ON
-cmake --build scirocco/build-hdf5 -j
+cmake --build scirocco/build-philote -j
 ```
 
-This also builds the `hdf5_output_example` executable.
+Restart `scirocco_server` after rebuilding it.
 
-## The program
+## Add the component option
 
-```cpp
-#include <cstdio>
+In the model from the previous tutorials, change only the analysis component
+construction:
 
-#include "scirocco/io/hdf5_writer.h"
-#include "scirocco/scirocco.h"
-
-int main() {
-    scirocco::Scirocco  foil("2412", 199);
-    scirocco::Hdf5Writer writer("alpha_sweep.h5");
-
-    const double Re = 1.0e6;
-    const double Ma = 0.0;
-
-    for (double alpha = -2.0; alpha <= 10.0; alpha += 1.0) {
-        foil.SetOper(alpha, -1.0, Re, Ma);
-        bool converged = foil.Solve();
-
-        auto sens = foil.ComputeSensitivities();
-        writer.WriteIteration(foil, &sens);
-
-        std::printf("alpha=%5.1f  cl=%7.4f  cd=%8.5f  cm=%7.4f  %s\n",
-                    alpha, foil.GetCl(), foil.GetCd(), foil.GetCm(),
-                    converged ? "OK" : "NOT CONVERGED");
-    }
-
-    std::printf("Wrote %d iterations to alpha_sweep.h5\n",
-                writer.NumIterations());
-}
+```python
+problem.model.add_subsystem(
+    "analysis",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50051"),
+        naca="0012",
+        npanel=npanel,
+        hdf5_file="analysis_history.h5",
+    ),
+    promotes_inputs=["x"],
+)
 ```
 
-## The API
+The file is opened by the C++ server process, so the path is relative to the
+server's working directory—not necessarily the Python client's directory when
+the server runs on another machine or in a container.
 
-```cpp
-class Hdf5Writer {
-public:
-    explicit Hdf5Writer(const std::string& filepath);
-    ~Hdf5Writer();                              // closes the file
+Now run a sweep exactly as in tutorial 1:
 
-    void WriteIteration(const Scirocco& solver,
-                        const Sensitivity* sensitivity = nullptr);
-
-    void WriteIteration(const FoilState& state,
-                        const Sensitivity* sensitivity = nullptr);
-
-    void Close();
-    int  NumIterations() const;
-};
+```python
+for alpha in np.linspace(-2.0, 8.0, 11):
+    problem.set_val("analysis.alpha", alpha, units="deg")
+    problem.set_val("analysis.Re", 1.0e6)
+    problem.set_val("analysis.Ma", 0.0)
+    problem.run_model()
 ```
 
-| Method | Use it when |
-| --- | --- |
-| `Hdf5Writer(path)` | Opening / creating the output file. Truncates if it exists. |
-| `WriteIteration(solver, sens?)` | Most common — pass the `Scirocco` object after a `Solve()`. |
-| `WriteIteration(state, sens?)` | Lower-level — pass a raw `FoilState`. Use when you've been driving the solver below the wrapper. |
-| `Close()` | Optional; the destructor closes too. Call it if you need the file flushed before the writer goes out of scope. |
-| `NumIterations()` | How many `WriteIteration` calls have been made so far. |
+Stop the analysis server (or otherwise close its writer) before opening the
+file in another process, so all buffers are flushed.
 
-The writer is move-only (`= delete`'d copy semantics) — pass it by reference
-or by `std::move`.
-
-## File layout
-
-Each call to `WriteIteration` appends a new group under `/iterations/`:
-
-```
-alpha_sweep.h5
-├── /iterations/
-│   ├── 000/
-│   │   ├── oper           # alpha, cl_target, Re, Ma
-│   │   ├── post           # cl, cd, cdf, cdp, cm, cp[…], cf[…], theta[…], ds[…]
-│   │   ├── foil           # x[2,N]
-│   │   ├── wake           # x[2,Nw]
-│   │   └── sensitivity    # (optional) dcl_dx[2,N], dcd_dx[2,N], …
-│   ├── 001/
-│   └── …
-└── /metadata               # solver version, panel count
-```
-
-In Python:
+## Read the history in Python
 
 ```python
 import h5py
 
-with h5py.File("alpha_sweep.h5", "r") as f:
-    for key in sorted(f["iterations"]):
-        g = f[f"iterations/{key}"]
-        alpha = g["oper/alpha"][()]
-        cl    = g["post/cl"][()]
-        cd    = g["post/cd"][()]
-        print(f"{alpha:5.1f}  {cl:7.4f}  {cd:8.5f}")
+with h5py.File("analysis_history.h5", "r") as history:
+    for key in sorted(k for k in history if k.startswith("iteration_")):
+        iteration = history[key]
+        alpha = iteration["operating_conditions/alpha"][()]
+        cl = iteration["coefficients/cl"][()]
+        cd = iteration["coefficients/cd"][()]
+        print(f"{alpha:6.2f}  {cl:9.5f}  {cd:9.6f}")
 ```
 
-## Passing sensitivities
+Each evaluation records operating conditions, force coefficients,
+distributions, foil coordinates, and wake coordinates under a numbered group.
+Through the Philote option, the server currently records the primal state. The
+native C++ `Hdf5Writer` API can additionally receive a `Sensitivity` object;
+see the [writer reference](../api/hdf5-writer) for that lower-level path.
 
-The `sensitivity` argument is optional. Pass it when you want the gradient
-information persisted alongside the primal — useful for offline gradient
-postprocessing, finite-difference verification, or feeding into an
-optimization audit trail:
+## Avoid accidental truncation
 
-```cpp
-auto sens = foil.ComputeSensitivities();
-writer.WriteIteration(foil, &sens);
-```
+Creating a new analysis component with the same `hdf5_file` constructs a new
+writer and truncates the existing file. Use a unique path for each run. For an
+optimization, construct one component once and let all driver evaluations
+append to it.
 
-Pass `nullptr` (the default) to skip the sensitivity group entirely. See
-the [Sensitivities tutorial](./sensitivities) for what
-`ComputeSensitivities` populates.
+You now have the pieces used by the optimization tutorials: parameterized
+geometry, remote analysis, analytic total derivatives, and iteration history.
 
-## Full source
-
-[`scirocco/examples/hdf5_output_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/hdf5_output_example.cpp).
-
-## Next: [Adjoint sensitivities](./sensitivities) — the gradients you just persisted, explained.
+## Next: [NACA 4-digit optimization](../optimization/naca-design)

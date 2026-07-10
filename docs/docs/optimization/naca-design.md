@@ -4,12 +4,13 @@ sidebar_position: 3
 
 # NACA 4-digit optimization
 
-The simplest end-to-end optimization in the example set: minimize $C_d$ at
-a target $C_l$ with a section-area floor, with the airfoil parameterized as
-a NACA 4-digit (3 design variables) plus $\alpha$. This is the place to
-start — it introduces the full MDO stack (Philote gRPC server + OpenMDAO)
-that the [CST](./cst-design) and [multipoint](./multipoint) tutorials
-build on.
+This tutorial turns the analysis model from the
+[six-part Python/Philote sequence](../tutorials/inviscid-naca) into an
+optimization: minimize $C_d$ at a target $C_l$ with a section-area floor,
+using a NACA 4-digit parameterization (3 design variables) plus $\alpha$.
+The model reuses the remote analysis, total-derivative, and HDF5 patterns from
+those tutorials. The [CST](./cst-design) and [multipoint](./multipoint)
+tutorials then build on this optimization.
 
 This mirrors
 [`examples/naca_optimization/naca_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/naca_optimization/naca_optimization.py).

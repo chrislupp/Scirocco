@@ -152,6 +152,5 @@ it directly when manipulating `panel.x` outside the discipline interface.
 
 ## See also
 
-- Tutorial: [Custom airfoil coordinates](../tutorials/custom-airfoil)
-- Tutorial: [Geometry modifications](../tutorials/geometry-mods)
-
+- Tutorial: [Supply coordinates from Python](../tutorials/custom-airfoil)
+- Tutorial: [Modify parameterized geometry](../tutorials/geometry-mods)

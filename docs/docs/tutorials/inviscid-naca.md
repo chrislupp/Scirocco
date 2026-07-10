@@ -2,136 +2,66 @@
 sidebar_position: 1
 ---
 
-# Inviscid NACA analysis
+# 1. Sweep an inviscid airfoil
 
-A guided walk through the simplest possible Scirocco program: a NACA 0012
-alpha sweep with no viscous coupling. This mirrors
-[`scirocco/examples/naca_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/naca_example.cpp).
+This tutorial extends the [Python quickstart](../getting-started/quickstart).
+Keep both Philote servers running and reuse its `quickstart.py` model. The
+geometry is a symmetric CST approximation to NACA 0012; the analysis is
+inviscid because `Re` is zero.
 
-By the end you will:
+By the end you will know how Philote variables map into OpenMDAO, how to reuse
+one remote model for several operating points, and why inviscid drag is zero.
 
-- Instantiate a NACA airfoil and pick a panel count
-- Sweep angle of attack and read out $C_l$, $C_d$, $C_m$
-- Understand why inviscid drag is always zero
+## Replace the single evaluation with a sweep
 
-## The program
+Everything through `problem.setup()` stays the same. Replace the input and
+output section with:
 
-```cpp
-#include <iomanip>
-#include <iostream>
+```python
+cst_0012 = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+problem.set_val("cst_upper", cst_0012)
+problem.set_val("cst_lower", cst_0012)
+problem.set_val("analysis.Re", 0.0)
+problem.set_val("analysis.Ma", 0.0)
 
-#include "scirocco/scirocco.h"
-
-int main() {
-    scirocco::Scirocco foil("0012", 199);
-
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "  Alpha      CL        CD        CM\n";
-
-    for (double alpha = -4.0; alpha <= 12.0; alpha += 2.0) {
-        foil.SetOper(alpha, -1.0, 0.0, 0.0);   // alpha, cl_target, Re, Ma
-        foil.Solve();
-
-        std::cout << std::setw(7) << alpha << "  "
-                  << std::setw(8) << foil.GetCl() << "  "
-                  << std::setw(8) << foil.GetCd() << "  "
-                  << std::setw(8) << foil.GetCm() << "\n";
-    }
-}
+print(" alpha       Cl          Cd          Cm")
+for alpha in np.arange(-4.0, 12.1, 2.0):
+    problem.set_val("analysis.alpha", alpha, units="deg")
+    problem.run_model()
+    cl = problem.get_val("analysis.cl")[0]
+    cd = problem.get_val("analysis.cd")[0]
+    cm = problem.get_val("analysis.cm")[0]
+    print(f"{alpha:6.1f}  {cl:9.5f}  {cd:10.3e}  {cm:9.5f}")
 ```
 
-## Walkthrough
+`problem.run_model()` sends the current inputs to both remote components. The
+Kulfan server evaluates the same CST geometry, then the analysis server solves
+it at the new angle of attack. Reusing the channels and `Problem` avoids
+repeating component discovery and setup.
 
-### Construction
+## The interface you are driving
 
-```cpp
-scirocco::Scirocco foil("0012", 199);
-```
+`RemoteExplicitComponent` discovers the variables declared by each C++
+discipline:
 
-The first argument is a NACA digit string. Both 4- and 5-digit families work
-(`"23012"` is a valid 5-digit). Internally this calls `NacaPoints` to generate
-the analytical airfoil, then runs curvature-graded paneling with cubic-spline
-arc-length parameterization to produce 199 panel nodes.
-
-Why 199? An odd panel count gives a single node at the leading edge, which the
-stagnation tracker prefers. You can pick any positive integer; 99 is typical
-for cheap inviscid sweeps, 199 is comfortable for viscous work, and going much
-above ≈ 400 starts hitting diminishing returns versus runtime.
-
-### Operating point
-
-```cpp
-foil.SetOper(alpha, -1.0, 0.0, 0.0);
-```
-
-`SetOper(α, Cl_target, Re, Ma)`:
-
-| Slot | Value | Meaning |
+| Component | Inputs | Outputs |
 | --- | --- | --- |
-| `alpha` | `-4 … 12` | Angle of attack in degrees |
-| `cl_target` | `-1.0` | Sentinel: "drive at the supplied α; do not search for a target lift". A non-negative value here switches to **Cl-mode**, where Scirocco runs an outer secant loop to find the α that yields that $C_l$ — useful for fixed-lift drag polars. |
-| `Re` | `0.0` | Zero disables viscous coupling. Any positive value turns it on. |
-| `Ma` | `0.0` | Zero is incompressible. Up to ≈ 0.7 the Kármán–Tsien correction applies. |
+| `KulfanDiscipline` | `cst_upper`, `cst_lower` | `x`, `smoothness_upper`, `smoothness_lower` |
+| `SiroccoDiscipline` | `x`, `alpha`, `Re`, `Ma` | `cl`, `cd`, `cm` |
 
-### Solve
+The promoted `x` variable connects them. It is a flat array containing all
+node x-coordinates followed by all node z-coordinates. The nodes run from the
+lower trailing edge, around the leading edge, to the upper trailing edge.
 
-```cpp
-foil.Solve();
-```
+The `naca="0012"` analysis option initializes the remote solver, while the
+connected `x` input supplies the evaluated geometry. `npanel` must agree on
+both components (`npanel + 1` nodes).
 
-For an inviscid run this builds the aerodynamic influence-coefficient (AIC)
-matrix, applies the Kutta condition at the trailing edge, solves the linear
-system for the vortex strengths, and integrates pressure to get force
-coefficients. `Solve()` returns `true` on convergence; for pure inviscid it is
-always `true` because the system is linear.
+## Interpret the result
 
-### Read results
+Lift should be nearly linear with angle of attack. Drag should be zero to
+solver precision: a two-dimensional body in inviscid, irrotational flow has no
+profile drag (D'Alembert's paradox). The next tutorial changes only one input
+to activate boundary-layer coupling.
 
-```cpp
-foil.GetCl();   // lift coefficient
-foil.GetCd();   // total drag (always zero for inviscid — see below)
-foil.GetCm();   // pitching moment about c/4
-```
-
-For richer output, also grab the distributions:
-
-```cpp
-const auto& cp = foil.GetCp();           // 2 × N — pressure coefficient
-const auto& x  = foil.GetFoilCoords();   // 2 × N — node x,z
-```
-
-You can pipe `(x, cp)` straight into Matplotlib / Tecplot / PGFPlots to draw
-the classic chord-wise $C_p$ plot.
-
-## Sample output
-
-```text
-=== scirocco Example: NACA Airfoil Analysis ===
-
-  Alpha      CL        CD        CM
-  -----   -------   -------   -------
--4.0000   -0.4823    0.0000   -0.0000
--2.0000   -0.2407    0.0000    0.0000
- 0.0000    0.0000    0.0000    0.0000
- 2.0000    0.2407    0.0000   -0.0000
- 4.0000    0.4823    0.0000   -0.0000
- ...
-=== Analysis Complete ===
-```
-
-Two things to notice:
-
-1. **$C_l$ is linear in $\alpha$ with slope $\approx 0.121$/deg.** This is the
-   thin-airfoil prediction $C_{l,\alpha} = 2\pi$ /rad
-   $\approx 0.110$ /deg, plus a thickness correction the panel method picks
-   up.
-2. **$C_d$ is identically zero.** D'Alembert's paradox: a 2D body in inviscid,
-   incompressible, irrotational flow produces no drag. To see real drag,
-   continue to the [Viscous analysis tutorial](./viscous-analysis).
-
-## Full source
-
-Canonical copy: [`scirocco/examples/naca_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/naca_example.cpp)
-in the repo, built as the `naca_example` CMake target.
-
-## Next: [Viscous analysis](./viscous-analysis) — turning on the boundary-layer solver.
+## Next: [2. Enable viscous analysis](./viscous-analysis)

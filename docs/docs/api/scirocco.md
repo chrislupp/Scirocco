@@ -88,9 +88,10 @@ portion comes first.
 | `GeomAddCamber(const MatrixXd& xzcamb)` | Add a $(x, z)$ camber increment, preserving thickness |
 | `GeomDerotate()` | Re-align LE–TE with the $x$-axis |
 
-All three re-panel automatically. See the
-[Geometry modifications tutorial](../tutorials/geometry-mods) for
-walkthroughs.
+All three re-panel automatically. The
+[parameterized geometry tutorial](../tutorials/geometry-mods) demonstrates
+the corresponding Python/Philote workflow; the methods above are the direct
+C++ path.
 
 ## Sensitivities
 
@@ -108,8 +109,9 @@ and caches it internally so the per-output getters work:
 | `GetDclDMa()`, `GetDcdDMa()`, `GetDcmDMa()` | derivatives w.r.t. Mach |
 | `GetDclDRe()`, `GetDcdDRe()`, `GetDcmDRe()` | derivatives w.r.t. Reynolds |
 
-See the [Sensitivities tutorial](../tutorials/sensitivities) for a
-worked example and FD verification recipe.
+See the [sensitivities tutorial](../tutorials/sensitivities) for the
+Python/Philote derivative interface and a finite-difference verification
+recipe.
 
 ## Reaching the internal state
 

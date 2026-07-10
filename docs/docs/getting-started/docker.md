@@ -49,14 +49,20 @@ docker run --rm -p 50052:50052 kulfan-server
 ## Connecting from Python
 
 Once a container is running, connect to it the same way as a locally-launched
-server — just target the mapped host port:
+server—just target the mapped host port. This fragment creates the analysis
+component; connect its `x` input to a local Python geometry component or to the
+Kulfan component shown in the [Python quickstart](./quickstart):
 
 ```python
 import grpc
 from philote_mdo.openmdao import RemoteExplicitComponent
 
 channel = grpc.insecure_channel("localhost:50051")
-# ... use channel with RemoteExplicitComponent as normal
+analysis = RemoteExplicitComponent(
+    channel=channel,
+    naca="0012",
+    npanel=100,
+)
 ```
 
 See [Server setup](../optimization/server) for the full discipline interface

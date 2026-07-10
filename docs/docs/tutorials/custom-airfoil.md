@@ -1,122 +1,98 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 ---
 
-# Custom airfoil coordinates
+# 4. Supply coordinates from Python
 
-Skip the NACA generator and hand Scirocco an arbitrary point cloud. Useful
-for analyzing measured geometry, CST-fit airfoils, or shapes coming out of an
-external CAD tool.
+So far the remote Kulfan discipline produced `x`. Any Python or OpenMDAO
+component can replace it, provided it emits the same flattened panel-node
+layout. This tutorial generates NACA 0012 coordinates locally (the same pattern
+works for measured or CAD data) and keeps Scirocco behind the Philote analysis
+server.
 
-## The constructor
+## Build panel coordinates
 
-```cpp
-scirocco::Scirocco(const Eigen::MatrixXd& coords, int npanel = 199);
+The analysis discipline expects `npanel + 1` nodes ordered lower trailing edge
+→ leading edge → upper trailing edge, with all x-values followed by all
+z-values:
+
+```python
+def naca0012_coordinates(npanel=100, thickness=0.12):
+    if npanel % 2:
+        raise ValueError("use an even panel count for this constructor")
+
+    nhalf = npanel // 2
+    beta = np.linspace(0.0, np.pi, nhalf + 1)
+    x_lower = 0.5 * (1.0 + np.cos(beta))      # 1 -> 0
+    x_upper = x_lower[-2::-1]                 # omit duplicate LE; 0 -> 1
+
+    def half_thickness(x):
+        return (thickness / 0.2) * (
+            0.2969 * np.sqrt(x)
+            - 0.1260 * x
+            - 0.3516 * x**2
+            + 0.2843 * x**3
+            - 0.1015 * x**4
+        )
+
+    z_lower = -half_thickness(x_lower)
+    z_upper = +half_thickness(x_upper)
+    return np.concatenate([x_lower, x_upper, z_lower, z_upper])
 ```
 
-`coords` is a `2 × N` matrix (row 0 is $x$, row 1 is $z$) ordered **TE-lower
-→ LE → TE-upper** (the standard counter-clockwise loop). Internally
-Scirocco calls `SetCoords` (see [API → Geometry](../api/geometry)) to load
-the points, then runs the same cubic-spline curvature-graded paneler that
-the NACA constructor uses, producing `npanel` evenly-resolved panel nodes.
+The result has `2 * (npanel + 1)` entries. A finite trailing-edge gap is also
+valid; the upper and lower trailing-edge z-values need not coincide.
 
-## Example: round-trip a NACA 0012
+## Replace the geometry subsystem
 
-To check that the constructor is doing the right thing, generate NACA 0012
-points yourself and feed them back in. The two paths should produce the same
-$C_l$ on the same operating point.
+Create a new problem with only the remote analysis discipline:
 
-```cpp
-#include <Eigen/Dense>
+```python
+import grpc
+import openmdao.api as om
+from philote_mdo.openmdao import RemoteExplicitComponent
 
-#include "scirocco/scirocco.h"
+npanel = 100
+coordinates = naca0012_coordinates(npanel=npanel)
 
-Eigen::MatrixXd MakeCircle(int n_per_side) {
-    // Trivial example: a 12% thick parabolic-arc airfoil.
-    int n = 2 * n_per_side - 1;
-    Eigen::MatrixXd coords(2, n);
+problem = om.Problem()
+ivc = problem.model.add_subsystem(
+    "inputs", om.IndepVarComp(), promotes_outputs=["x"]
+)
+ivc.add_output("x", val=coordinates, units="m")
 
-    for (int i = 0; i < n_per_side; ++i) {
-        double s = static_cast<double>(i) / (n_per_side - 1);
-        double x = 1.0 - s;
-        double z = -0.06 * 4.0 * x * (1.0 - x);   // lower surface
-        coords(0, i) = x;
-        coords(1, i) = z;
-    }
-    for (int i = 1; i < n_per_side; ++i) {
-        double s = static_cast<double>(i) / (n_per_side - 1);
-        double x = s;
-        double z = +0.06 * 4.0 * x * (1.0 - x);   // upper surface
-        coords(0, n_per_side - 1 + i) = x;
-        coords(1, n_per_side - 1 + i) = z;
-    }
-    return coords;
-}
+problem.model.add_subsystem(
+    "analysis",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50051"),
+        naca="0012",
+        npanel=npanel,
+    ),
+    promotes_inputs=["x"],
+)
 
-int main() {
-    auto coords = MakeCircle(80);
-    scirocco::Scirocco foil(coords, 199);
+problem.setup()
+problem.set_val("analysis.alpha", 4.0, units="deg")
+problem.set_val("analysis.Re", 1.0e6)
+problem.set_val("analysis.Ma", 0.0)
+problem.run_model()
 
-    foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
-    foil.Solve();
-
-    std::cout << "Cl = " << foil.GetCl()
-              << "  Cd = " << foil.GetCd() << "\n";
-}
+print("Cl =", problem.get_val("analysis.cl")[0])
+print("Cd =", problem.get_val("analysis.cd")[0])
 ```
 
-## Point ordering — the gotcha
+`naca="0012"` is still required to initialize `SiroccoDiscipline`, but the
+connected `x` array replaces that seed geometry before every solve.
 
-The single most common mistake is the **ordering convention**. Scirocco
-expects:
+## Coordinate checklist
 
-```
-index 0   : trailing edge, lower surface
-index ... : along the lower surface forward to the leading edge
-index k   : leading edge (or somewhere near it — the exact LE is found
-            automatically; you do not need to put a node there)
-index ... : along the upper surface aft to the trailing edge
-index N-1 : trailing edge, upper surface
-```
+- Supply exactly `npanel + 1` nodes.
+- Order nodes lower TE → LE → upper TE.
+- Flatten as `[x_0 ... x_N, z_0 ... z_N]`, not interleaved pairs.
+- Do not repeat the leading-edge node.
+- Plot the loop with equal axes before diagnosing aerodynamic surprises.
 
-This is the same convention used by XFOIL `.dat` files and Selig's UIUC
-database. If your CAD tool exports clockwise, reverse the matrix before
-passing it in:
+The next tutorial uses the exact same Python model and asks Philote for the
+analytic derivatives of its outputs.
 
-```cpp
-Eigen::MatrixXd reordered = coords.rowwise().reverse();
-```
-
-If you get an obviously wrong $C_l$ (negative at $\alpha = 0$ on a symmetric
-shape, for instance), reversed coordinates are the first thing to check.
-
-## Closed vs. open trailing edges
-
-Scirocco does not require the upper and lower TE points to coincide. A small
-finite TE gap is handled by `GetTEInfo` automatically and contributes the
-expected base-pressure terms. If your shape has a deliberately blunt TE,
-just keep both points and Scirocco will treat the gap as a real geometric
-feature.
-
-## Recovering the paneled geometry
-
-After construction you may want to see what Scirocco actually paneled (the
-input points may not appear as nodes — the paneler chooses its own
-distribution):
-
-```cpp
-const Eigen::MatrixXd& paneled = foil.GetFoilCoords();   // 2 × npanel
-```
-
-Plotting the input cloud and `paneled` together on the same axes is a quick
-sanity check.
-
-## Full source
-
-There is no canonical example file for this workflow; the snippet above is
-self-contained. The constructor lives in
-[`scirocco/scirocco.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/scirocco.h),
-and the underlying coordinate intake is `SetCoords` in
-[`scirocco/core/geometry.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/geometry.h).
-
-## Next: [Geometry modifications](./geometry-mods) — flaps, camber, derotation.
+## Next: [5. Check analytic sensitivities](./sensitivities)

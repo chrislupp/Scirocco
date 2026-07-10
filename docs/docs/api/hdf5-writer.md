@@ -48,25 +48,25 @@ or `std::move`.
 
 ## File layout
 
-Every call to `WriteIteration` appends a new group `/iterations/<NNN>/`:
+Every call to `WriteIteration` appends a new top-level group
+`/iteration_<NNN>/`:
 
 ```
 file.h5
-├── /metadata/
-│   ├── version              # Scirocco library version string
-│   └── n_panels             # Panel count
-└── /iterations/
-    ├── 000/
-    │   ├── oper             # alpha, cl_target, Re, Ma
-    │   ├── post             # cl, cd, cdf, cdp, cm, cp[…], cf[…], theta[…], ds[…]
-    │   ├── foil             # x[2, N]
-    │   ├── wake             # x[2, Nw]
-    │   └── sensitivity      # (optional) dcl_dx[2, N], dcd_dx[2, N], …
-    └── 001/ …
+├── attributes: scirocco_version, created, num_iterations
+├── /iteration_000/
+│   ├── operating_conditions # alpha, Re, Ma, Vinf, rho, viscous
+│   ├── geometry             # chord, hTE, source points
+│   ├── panels/foil          # x[2, N], s[N], t[2, N]
+│   ├── panels/wake          # x[2, Nw], s[Nw], t[2, Nw]
+│   ├── coefficients         # cl, cd, cdf, cdp, cdpi, cm, converged
+│   ├── distributions        # cp, cf, ue, th, ds, ...
+│   └── sensitivities        # optional shape and scalar derivatives
+└── /iteration_001/ …
 ```
 
 Iteration indices are 0-padded and monotonically increasing. The
-optional `sensitivity` group is written only when you pass a non-null
+optional `sensitivities` group is written only when you pass a non-null
 `Sensitivity*`.
 
 ## Reading the file
@@ -76,12 +76,12 @@ Python:
 ```python
 import h5py
 with h5py.File("alpha_sweep.h5", "r") as f:
-    for key in sorted(f["iterations"]):
-        g     = f[f"iterations/{key}"]
-        alpha = g["oper/alpha"][()]
-        cl    = g["post/cl"][()]
-        cp    = g["post/cp"][:]
-        x     = g["foil/x"][:]   # shape (2, N)
+    for key in sorted(k for k in f if k.startswith("iteration_")):
+        g     = f[key]
+        alpha = g["operating_conditions/alpha"][()]
+        cl    = g["coefficients/cl"][()]
+        cp    = g["distributions/cp"][:]
+        x     = g["panels/foil/x"][:]   # shape (2, N)
         print(f"α={alpha:5.1f}  Cl={cl:7.4f}")
 ```
 

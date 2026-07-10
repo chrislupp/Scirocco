@@ -4,8 +4,9 @@ sidebar_position: 1
 
 # Installation
 
-Scirocco is a CMake-based C++17 library. There is no binary distribution — you
-build from source.
+Scirocco is a CMake-based C++17 library. The tutorials use its Philote-Cpp
+servers through the Philote-MDO Python bindings, so install both the native
+server dependencies and the Python client environment.
 
 ## Prerequisites
 
@@ -31,14 +32,49 @@ git clone https://github.com/chrislupp/Scirocco.git
 cd Scirocco
 ```
 
-## Configure and build
+## Install Philote-Cpp
+
+Philote-Cpp provides the discipline and gRPC server infrastructure:
+
+```bash
+git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git
+cmake -S Philote-Cpp -B Philote-Cpp/build -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+cmake --build Philote-Cpp/build -j
+sudo cmake --install Philote-Cpp/build
+```
+
+## Configure and build the servers
 
 A lean Release build that produces the library and the example programs:
 
 ```bash
-cmake -S scirocco -B scirocco/build-default -DCMAKE_BUILD_TYPE=Release
-cmake --build scirocco/build-default -j
+cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release \
+      -DSCIROCCO_BUILD_PHILOTE=ON
+cmake --build scirocco/build-philote -j
 ```
+
+This produces the two binaries used throughout the tutorials:
+
+```text
+scirocco/build-philote/src/philote/scirocco_server
+scirocco/build-philote/src/philote/scirocco_kulfan_server
+```
+
+## Install the Python bindings
+
+Use a virtual environment so OpenMDAO and the Philote client do not affect
+your system Python:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install philote-mdo openmdao grpcio numpy matplotlib h5py
+```
+
+There is no separate `scirocco` Python wheel. Python communicates with the
+compiled Scirocco servers through `philote-mdo` and gRPC.
 
 Local build directories are git-ignored and disposable; if CMake or test
 discovery state ever gets stale, delete the build dir and re-configure.
@@ -68,7 +104,7 @@ cmake --build scirocco/build-hdf5 -j
 The default suite is fast (≈ 10 s for 90 tests) and covers ≈ 93% of lines:
 
 ```bash
-ctest --test-dir scirocco/build-default --output-on-failure
+ctest --test-dir scirocco/build-philote --output-on-failure
 ```
 
 If you don't have HDF5 installed, the reference test executables (which load
@@ -101,4 +137,4 @@ Every push and PR runs against the following on Ubuntu 24.04:
 
 If your environment matches one of these, you have a known-good configuration.
 
-## Next: [Quickstart](./quickstart) — run your first analysis.
+## Next: [Python quickstart](./quickstart) — run your first analysis through Philote.
