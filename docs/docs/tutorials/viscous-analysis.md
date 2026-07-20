@@ -8,12 +8,18 @@ Continue with the model from [the inviscid sweep](./inviscid-naca). A positive
 Reynolds number activates Scirocco's coupled integral boundary-layer solver;
 the Python and Philote wiring does not change.
 
+Run the complete example:
+
+```bash
+python examples/tutorials/02_viscous_analysis.py
+```
+
 ## Change the operating point
 
 Replace the inviscid sweep with:
 
 ```python
-problem.set_val("analysis.alpha", 4.0, units="deg")
+problem.set_val("analysis.alpha", 2.0, units="deg")
 problem.set_val("analysis.Ma", 0.0)
 
 print("       Re       Cl        Cd        Cm")
@@ -33,9 +39,21 @@ the first tutorial. The value of `Re` selects the solve path:
 - `Re > 0`: inviscid solve coupled to laminar/turbulent boundary-layer and
   wake equations.
 
-Expect non-zero drag, generally decreasing as Reynolds number rises. Lift and
-moment also move slightly because displacement thickness feeds back into the
-outer-flow solution.
+The tested result is:
+
+```text
+       Re       Cl        Cd        Cm
+ 2.50e+05   0.21382   0.01123   0.00728
+ 5.00e+05   0.15099   0.00795   0.01536
+ 1.00e+06   0.13889   0.00554   0.02043
+ 2.00e+06   0.07474   0.00484   0.03382
+```
+
+Expect non-zero drag; for this case it decreases as Reynolds number rises.
+Lift and moment also move because the boundary-layer displacement thickness
+feeds back into the outer-flow solution. Use the table as a smoke-test, not as
+validation data: small numerical changes can result from compiler and solver
+differences.
 
 ## Add compressibility
 

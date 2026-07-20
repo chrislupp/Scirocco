@@ -8,12 +8,18 @@ The final analysis tutorial adds persistent output to the same
 Python/Philote model. HDF5 is configured when the remote analysis component is
 created; every call to that component then appends an iteration.
 
+The complete writer and reader examples are:
+
+- `examples/tutorials/06_hdf5_history.py`
+- `examples/tutorials/read_hdf5_history.py`
+
 ## Rebuild with HDF5 support
 
 The server must link the optional writer:
 
 ```bash
 cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release \
+      -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build" \
       -DSCIROCCO_BUILD_PHILOTE=ON \
       -DSCIROCCO_HDF5_OUTPUT=ON
 cmake --build scirocco/build-philote -j
@@ -56,13 +62,25 @@ for alpha in np.linspace(-2.0, 8.0, 11):
 Stop the analysis server (or otherwise close its writer) before opening the
 file in another process, so all buffers are flushed.
 
+From the repository root, the complete sequence is:
+
+```bash
+python examples/tutorials/06_hdf5_history.py
+# Stop scirocco_server with Ctrl-C, then:
+python examples/tutorials/read_hdf5_history.py analysis_history.h5
+```
+
 ## Read the history in Python
 
 ```python
 import h5py
 
 with h5py.File("analysis_history.h5", "r") as history:
-    for key in sorted(k for k in history if k.startswith("iteration_")):
+    keys = sorted(
+        (key for key in history if key.startswith("iteration_")),
+        key=lambda key: int(key.rsplit("_", 1)[1]),
+    )
+    for key in keys:
         iteration = history[key]
         alpha = iteration["operating_conditions/alpha"][()]
         cl = iteration["coefficients/cl"][()]

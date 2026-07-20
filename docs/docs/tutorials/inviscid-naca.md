@@ -5,9 +5,14 @@ sidebar_position: 1
 # 1. Sweep an inviscid airfoil
 
 This tutorial extends the [Python quickstart](../getting-started/quickstart).
-Keep both Philote servers running and reuse its `quickstart.py` model. The
-geometry is a symmetric CST approximation to NACA 0012; the analysis is
-inviscid because `Re` is zero.
+Keep both Philote servers running. The geometry is a symmetric CST
+approximation to NACA 0012; the analysis is inviscid because `Re` is zero.
+
+Run the complete example from the repository root:
+
+```bash
+python examples/tutorials/01_inviscid_sweep.py
+```
 
 By the end you will know how Philote variables map into OpenMDAO, how to reuse
 one remote model for several operating points, and why inviscid drag is zero.
@@ -59,9 +64,24 @@ both components (`npanel + 1` nodes).
 
 ## Interpret the result
 
-Lift should be nearly linear with angle of attack. Drag should be zero to
-solver precision: a two-dimensional body in inviscid, irrotational flow has no
-profile drag (D'Alembert's paradox). The next tutorial changes only one input
-to activate boundary-layer coupling.
+The tested 100-panel result is:
+
+```text
+ alpha       Cl          Cd          Cm
+  -4.0   -0.48319   0.000e+00    0.00613
+  -2.0   -0.24174   0.000e+00    0.00307
+   0.0   -0.00000   0.000e+00    0.00000
+   2.0    0.24174   0.000e+00   -0.00307
+   4.0    0.48320   0.000e+00   -0.00613
+   6.0    0.72408   0.000e+00   -0.00915
+   8.0    0.96409   0.000e+00   -0.01213
+  10.0    1.20295   0.000e+00   -0.01506
+  12.0    1.44037   0.000e+00   -0.01791
+```
+
+Small last-digit differences are normal. Lift should remain nearly linear
+with angle of attack and `Cd` should remain below `1e-12`: a two-dimensional
+body in inviscid, irrotational flow has no profile drag (D'Alembert's
+paradox).
 
 ## Next: [2. Enable viscous analysis](./viscous-analysis)

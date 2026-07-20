@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
             label: "Tutorials",
             collapsed: false,
             items: [
+                "tutorials/index",
                 "tutorials/inviscid-naca",
                 "tutorials/viscous-analysis",
                 "tutorials/geometry-mods",

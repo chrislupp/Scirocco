@@ -4,8 +4,9 @@ sidebar_position: 3
 
 # Docker
 
-Pre-built Docker images are published to Docker Hub on every tagged release.
-You can also build the images yourself from the repository.
+Versioned Docker images are published to Docker Hub on tagged releases. Until
+the first public image is available, use the source-build instructions below.
+Do not rely on an unversioned `latest` tag for a reproducible tutorial.
 
 ## Published images
 
@@ -14,18 +15,19 @@ You can also build the images yourself from the repository.
 | [`chrislupp/scirocco`](https://hub.docker.com/r/chrislupp/scirocco) | 50051 | `SiroccoDiscipline` (aerodynamic analysis) |
 | [`chrislupp/scirocco-kulfan`](https://hub.docker.com/r/chrislupp/scirocco-kulfan) | 50052 | `KulfanDiscipline` (CST geometry) |
 
-Pull and run the analysis server:
+For a published release, replace `<version>` with its release number and run
+the analysis server:
 
 ```bash
-docker pull chrislupp/scirocco
-docker run --rm -p 50051:50051 chrislupp/scirocco
+docker pull chrislupp/scirocco:<version>
+docker run --rm -p 50051:50051 chrislupp/scirocco:<version>
 ```
 
 Pull and run the Kulfan geometry server:
 
 ```bash
-docker pull chrislupp/scirocco-kulfan
-docker run --rm -p 50052:50052 chrislupp/scirocco-kulfan
+docker pull chrislupp/scirocco-kulfan:<version>
+docker run --rm -p 50052:50052 chrislupp/scirocco-kulfan:<version>
 ```
 
 Both images run as a non-root user on `debian:stable-slim`.
@@ -44,6 +46,16 @@ Run the locally-built images:
 ```bash
 docker run --rm -p 50051:50051 scirocco-server
 docker run --rm -p 50052:50052 kulfan-server
+```
+
+With both containers running, install the tested Python environment and run
+the same smoke-test used by the source build:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r examples/tutorials/requirements.txt
+python examples/tutorials/quickstart.py
 ```
 
 ## Connecting from Python

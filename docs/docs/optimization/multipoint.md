@@ -52,15 +52,24 @@ The example declares three points as a list of tuples
 
 ```python
 DESIGN_POINTS = [
-    ("low_cl",  0.30, 1.0e6, 0.0, 0.30),
-    ("mid_cl",  0.50, 1.0e6, 0.0, 0.40),
-    ("high_cl", 0.80, 1.0e6, 0.0, 0.30),
+    ("low_cl",  0.30, 1.0e6, 0.0, 1.0),
+    ("mid_cl",  0.50, 1.0e6, 0.0, 1.5),
+    ("high_cl", 0.80, 1.0e6, 0.0, 1.0),
 ]
 ```
+
+The script normalizes the raw weights, giving
+`[0.285714, 0.428571, 0.285714]` for this configuration.
 
 Editing this list changes the entire optimization shape — add a point and
 you get another analysis server, another $\alpha$ DV, another lift-equality
 constraint, and an extra term in the weighted drag objective.
+
+Before constructing the ModOpt wrapper, the script uses the analytic
+$dC_l/d\alpha$ from each analysis discipline to Newton-match the initial
+angles of attack to their lift targets. For the default shape this gives
+approximately `[2.8988°, 4.5334°, 6.7619°]`. This changes only the starting
+point, not the optimization problem.
 
 ## OpenMDAO wiring (sketch)
 
@@ -77,28 +86,30 @@ model.add_subsystem("geometry",
     promotes_inputs=["cst_upper", "cst_lower"])
 
 for i, (name, _cl, Re, Ma, _w) in enumerate(DESIGN_POINTS):
-    model.add_subsystem(f"analysis_{name}",
+    model.add_subsystem(f"analysis_{i}",
         RemoteExplicitComponent(channel=analysis_channels[i],
                                 naca="0012", npanel=NPANEL,
                                 hdf5_file=str(hdf5_for(name))),
         promotes_inputs=["x"])
 
 # Per-point alpha and Cl-equality constraint
-model.add_design_var("alpha", lower=-5, upper=15, shape=N_POINTS, ref=10)
 for i, (name, tgt_cl, *_) in enumerate(DESIGN_POINTS):
-    model.connect(f"alpha[{i}]", f"analysis_{name}.alpha")
-    model.add_constraint(f"analysis_{name}.cl", equals=tgt_cl, ref=tgt_cl)
+    model.add_design_var(f"analysis_{i}.alpha",
+                         lower=-2, upper=10, ref=5)
+    model.add_constraint(f"analysis_{i}.cl", equals=tgt_cl, ref=tgt_cl)
 
 # Weighted-drag aggregator
 weights = np.array([w for *_, w in DESIGN_POINTS])
-cd_agg = om.ExecComp("cd_avg = " + " + ".join(
-    f"{w}*cd_{i}" for i, w in enumerate(weights)),
+weights = weights / weights.sum()
+cd_agg = om.ExecComp("cd_total = " + " + ".join(
+    f"w_{i}*cd_{i}" for i in range(N_POINTS)),
+    **{f"w_{i}": weights[i] for i in range(N_POINTS)},
     **{f"cd_{i}": 0.0 for i in range(N_POINTS)})
 model.add_subsystem("cd_aggregator", cd_agg)
-for i, (name, *_) in enumerate(DESIGN_POINTS):
-    model.connect(f"analysis_{name}.cd", f"cd_aggregator.cd_{i}")
+for i in range(N_POINTS):
+    model.connect(f"analysis_{i}.cd", f"cd_aggregator.cd_{i}")
 
-model.add_objective("cd_aggregator.cd_avg", ref=1e-2)
+model.add_objective("cd_aggregator.cd_total", ref=1e-2)
 ```
 
 (The actual script is somewhat tidier — see the source — but this is the
@@ -114,33 +125,50 @@ kulfan_multipoint_optimization_history_mid_cl.h5
 kulfan_multipoint_optimization_history_high_cl.h5
 ```
 
-Each file contains the iteration history seen by **that point's** analysis
-server. They're indexed by the same iteration count, so you can stack them
-to plot per-point drag vs. SLSQP iteration:
+Each file contains the evaluation history seen by **that point's** analysis
+server. The records include primal and derivative evaluations, so they do
+not correspond one-to-one with IPOPT's displayed iteration number. The
+three files receive calls in the same order and can be stacked to compare
+per-point drag across model evaluations:
 
 ```python
 import h5py, matplotlib.pyplot as plt
 
 for name in ("low_cl", "mid_cl", "high_cl"):
     with h5py.File(f"...history_{name}.h5") as f:
-        keys = sorted(k for k in f if k.startswith("iteration_"))
+        keys = sorted(
+            (k for k in f if k.startswith("iteration_")),
+            key=lambda k: int(k.rsplit("_", 1)[1]),
+        )
         cd = [f[f"{k}/coefficients/cd"][()] for k in keys]
     plt.plot(cd, label=name)
-plt.xlabel("IPOPT iteration"); plt.ylabel("Cd"); plt.legend(); plt.show()
+plt.xlabel("model evaluation"); plt.ylabel("Cd"); plt.legend(); plt.show()
 ```
 
 The classical multipoint trade is visible here: the optimizer can't pull
-$C_d$ down at every point simultaneously. With $w = [0.3, 0.4, 0.3]$, the
-mid-Cl point benefits the most; the low-Cl point might even see slightly
-worse drag than a single-point design.
+$C_d$ down at every point simultaneously. With normalized weights of about
+$[0.286, 0.429, 0.286]$, the mid-Cl point has the largest influence; the
+low-Cl point might even see slightly worse drag than a single-point design.
 
 ## Running it
 
-This example requires [`modopt`](https://github.com/LSDOlab/modopt) in
-addition to OpenMDAO and Philote-MDO:
+This example adds IPOPT through the exact ModOpt revision used for release
+validation. Install the system IPOPT library first:
 
 ```bash
-pip install modopt
+# macOS (Homebrew)
+brew install ipopt pkg-config
+
+# Ubuntu
+sudo apt install coinor-libipopt-dev pkg-config
+```
+
+Then install its separate pinned environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r examples/kulfan_multipoint_optimization/requirements.txt
 ```
 
 Then launch the optimization:
@@ -149,11 +177,27 @@ Then launch the optimization:
 python examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py
 ```
 
-Larger than the single-point examples — expect ~5–15 minutes. IPOPT
-typically converges in ~200 iterations; the verified result is
-`Solve_Succeeded` at iter 201 with Σw·Cd = 4.309e-3. The total cost
-grows linearly in `N_POINTS` since each adds one independent viscous
-primal + adjoint per iteration.
+This is intentionally much larger than the single-point examples. The cost
+grows approximately linearly in `N_POINTS` because each point adds an
+independent viscous primal and adjoint evaluation.
+
+The Philote 0.8 release-validation run completed in 222 IPOPT iterations
+(about 13.5 minutes on the validation machine):
+
+```text
+Return status: Solve_Succeeded
+low_cl:   alpha=-0.988°  Cl=0.3000  Cd=0.00432
+mid_cl:   alpha=+0.363°  Cl=0.5000  Cd=0.00447
+high_cl:  alpha=+3.098°  Cl=0.8000  Cd=0.00508
+Σ w·Cd = 0.004601
+constraint violation = 2.2e-11
+```
+
+This differs from results produced through Philote-Cpp v0.5.0. That release
+silently truncated streamed arrays after each complete 1,000-value chunk; a
+`202 × 8` Kulfan geometry Jacobian therefore lost its final 616 values.
+Philote-Cpp 0.8 includes the chunking fix and sends the complete Jacobian, so
+the old objective is not a valid regression reference.
 
 ## Sensitivity to the weight vector
 

@@ -31,19 +31,20 @@ The full server build and discipline interface are documented on the
 ## Prerequisites
 
 **Build Scirocco with Philote on** (the default). This needs Protobuf,
-gRPC, and an installed [Philote-Cpp](https://github.com/chrislupp/Philote-Cpp)
-— see the [server reference](./server#build) for the one-time Philote-Cpp
-install:
+gRPC, and the tested Philote-Cpp 0.8 build tree — see the
+[server reference](./server#build) for the one-time Philote-Cpp build:
 
 ```bash
-cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release
+cmake -S scirocco -B scirocco/build-philote \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build
 cmake --build scirocco/build-philote -j
 ```
 
 **Install the Python dependencies:**
 
 ```bash
-pip install openmdao philote-mdo grpcio numpy matplotlib h5py
+python -m pip install -r examples/tutorials/requirements.txt
 ```
 
 You do not need to launch the server by hand — every example script starts
@@ -80,7 +81,9 @@ needed because geometry is built in Python.
 
 ```bash
 # Build with Philote on (default), if you haven't already
-cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release
+cmake -S scirocco -B scirocco/build-philote \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
 cmake --build scirocco/build-philote -j
 
 # Run — the script starts and stops the server itself
@@ -93,14 +96,14 @@ You should see roughly:
 Optimization: minimize Cd, target Cl = 0.5
   ...
 Optimization Results
-  camber     = 5.1234   (m = 0.0512)
-  camber_loc = 4.1832   (p = 0.4183)
-  thickness  = 8.0421   (t = 0.0804)
-  alpha      = -0.0211 deg
+  camber     = 2.5659   (m = 0.0257)
+  camber_loc = 5.4208   (p = 0.5421)
+  thickness  = 9.5881   (t = 0.0959)
+  alpha      = 1.3204 deg
   Cl = 0.500000
-  Cd = 0.005821
-  Cm = -0.121432
-  Area = 0.0651  (min = 0.0651)
+  Cd = 0.004446
+  Cm = -0.085310
+  Area = 0.065725  (min = 0.065725)
 ```
 
 The driver prefers thin, well-cambered airfoils at small $\alpha$ — exactly

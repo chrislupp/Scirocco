@@ -8,6 +8,12 @@ The first two tutorials held the CST coefficients fixed. Now use the Python
 bindings to drive `KulfanDiscipline` as a parameterized geometry generator and
 send each new shape directly into `SiroccoDiscipline`.
 
+Run the complete example:
+
+```bash
+python examples/tutorials/03_geometry_modifications.py
+```
+
 ## Thickness and camber
 
 Start from the same symmetric coefficient vector:
@@ -35,6 +41,14 @@ for name, (upper, lower) in cases.items():
         f"Cl={problem.get_val('analysis.cl')[0]:.5f}",
         f"Cd={problem.get_val('analysis.cd')[0]:.5f}",
     )
+```
+
+The tested result is:
+
+```text
+thin      Cl=0.17310 Cd=0.00534
+baseline  Cl=0.13889 Cd=0.00554
+cambered  Cl=0.20838 Cd=0.00579
 ```
 
 Each `run_model()` follows the same chain:
@@ -65,6 +79,9 @@ plt.xlabel("x/c")
 plt.ylabel("z/c")
 plt.show()
 ```
+
+Install the tutorial requirements before using this optional plot; they
+include Matplotlib.
 
 This flattened `[x; z]` layout is the contract between the two Philote
 disciplines. It is also the layout to use when a local Python geometry model

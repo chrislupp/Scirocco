@@ -66,6 +66,10 @@ The script:
 3. Runs SLSQP with the design variables and constraints above.
 4. Saves `kulfan_inviscid_optimization_history.h5` and a result plot.
 
+With the pinned Philote 0.8 tutorial environment, a representative run
+converges in 4 SLSQP iterations to approximately `alpha = 4.3204°`,
+`Cl = 0.500000`, `Cm = -1e-6`, and `area = 0.082185`.
+
 ### Bernstein non-negativity
 
 A nice property of the CST basis: setting `cst_upper[i] >= 0` and
@@ -88,6 +92,10 @@ the `lower=0.0` design-variable bounds are doing.
 ```bash
 python examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py
 ```
+
+A representative pinned-environment run converges in 86 SLSQP iterations
+to approximately `alpha = 0.9910°`, `Cl = 0.500000`, `Cd = 0.004025`,
+`Cm = -0.097065`, and `area = 0.065720`.
 
 ### The smoothness constraint
 
@@ -155,13 +163,17 @@ coefficient values.
 ```python
 import h5py
 with h5py.File("kulfan_viscous_optimization_history.h5") as f:
-    keys = sorted(k for k in f if k.startswith("iteration_"))
+    keys = sorted(
+        (k for k in f if k.startswith("iteration_")),
+        key=lambda k: int(k.rsplit("_", 1)[1]),
+    )
     cds = [f[f"{k}/coefficients/cd"][()] for k in keys]
 import matplotlib.pyplot as plt
 plt.semilogy(cds); plt.xlabel("iter"); plt.ylabel("Cd"); plt.show()
 ```
 
-A textbook convergence curve drops 2–3 orders of magnitude in the first 10
-iterations and grinds out the last decade over 100+.
+The history records remote model evaluations, including evaluations used for
+derivatives, rather than mapping one-to-one to the optimizer's displayed
+iteration number.
 
 ## Next: [Multipoint design](./multipoint) — minimize a weighted-average drag over multiple operating points.

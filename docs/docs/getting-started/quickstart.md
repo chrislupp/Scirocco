@@ -35,7 +35,15 @@ coordinates it receives.
 
 ## Run one analysis
 
-Save this as `quickstart.py`:
+The complete, tested file is
+[`examples/tutorials/quickstart.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/tutorials/quickstart.py).
+Run it from the repository root:
+
+```bash
+python examples/tutorials/quickstart.py
+```
+
+Its full model is shown below so the wiring is visible:
 
 ```python
 import grpc
@@ -85,16 +93,19 @@ print("Cd =", problem.get_val("analysis.cd")[0])
 print("Cm =", problem.get_val("analysis.cm")[0])
 ```
 
-Run it:
+With `philote-mdo==0.8.0` and the Philote-Cpp build pinned in the installation
+guide, the output is:
 
-```bash
-python quickstart.py
+```text
+Cl = 0.48319963
+Cd = 0.000e+00
+Cm = -0.00612678
 ```
 
-You should get positive lift and essentially zero drag. Inviscid 2-D potential
+The last digits can vary slightly by compiler and platform. You should still
+get `Cl` between 0.47 and 0.50 and drag below `1e-12`. Inviscid 2-D potential
 flow has no profile drag; the [first tutorial](../tutorials/inviscid-naca)
-turns this one-off model into an angle-of-attack sweep, and the tutorial after
-that enables the viscous solver.
+turns this one-off model into an angle-of-attack sweep.
 
 ## Why both disciplines?
 
@@ -103,3 +114,12 @@ option establishes the solver and expected panel count, but an upstream
 component still supplies the coordinates on every evaluation. Starting with
 `KulfanDiscipline` makes that data flow explicit and gives us a parameterized
 geometry with analytic derivatives that later tutorials can optimize.
+
+## If the quickstart fails
+
+| Error | Check |
+| --- | --- |
+| `Option 'n_cst_upper' ... has not been declared` | The server is linked to an older Philote-Cpp. Install the pinned 0.8 implementation, which initializes disciplines during service registration, then rebuild Scirocco. |
+| `Exception deserializing response` or invalid UTF-8 | The C++ server is using the Philote 0.7 wire schema. Reinstall the pinned Philote-Cpp 0.8 implementation, then rebuild Scirocco. |
+| `UNAVAILABLE` or connection refused | Confirm both server processes are running on ports 50051 and 50052. |
+| Results differ substantially from the reference | Confirm `philote-mdo==0.8.0`, `npanel=100`, and `Re=0`. |

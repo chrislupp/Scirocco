@@ -29,18 +29,13 @@ the [NACA 4-digit tutorial](./naca-design).
 ## Build
 
 The Philote interface is on by default (`SCIROCCO_BUILD_PHILOTE=ON`), but
-it needs Protobuf, gRPC, and an installed [Philote-Cpp](https://github.com/chrislupp/Philote-Cpp):
+it needs Protobuf, gRPC, and the Philote-Cpp/Philote-MDO 0.8 pairing pinned in
+the [installation guide](../getting-started/installation):
 
 ```bash
-# Once: install Philote-Cpp system-wide
-git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git
-cmake -B Philote-Cpp/build -S Philote-Cpp \
-      -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
-cmake --build Philote-Cpp/build -j
-sudo cmake --install Philote-Cpp/build
-
-# Then: configure Scirocco with Philote on (default)
-cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release
+# After building Philote-Cpp as described in Installation:
+cmake -S scirocco -B scirocco/build-philote -DCMAKE_BUILD_TYPE=Release \
+      -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
 cmake --build scirocco/build-philote -j
 ```
 

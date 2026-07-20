@@ -6,9 +6,14 @@ sidebar_position: 4
 
 So far the remote Kulfan discipline produced `x`. Any Python or OpenMDAO
 component can replace it, provided it emits the same flattened panel-node
-layout. This tutorial generates NACA 0012 coordinates locally (the same pattern
-works for measured or CAD data) and keeps Scirocco behind the Philote analysis
-server.
+layout. This tutorial generates normalized NACA 0012 coordinates locally and
+keeps Scirocco behind the Philote analysis server.
+
+Only the analysis server on port 50051 is needed. Run the complete example:
+
+```bash
+python examples/tutorials/04_custom_airfoil.py
+```
 
 ## Build panel coordinates
 
@@ -79,6 +84,15 @@ problem.run_model()
 
 print("Cl =", problem.get_val("analysis.cl")[0])
 print("Cd =", problem.get_val("analysis.cd")[0])
+print("Cm =", problem.get_val("analysis.cm")[0])
+```
+
+The tested result is:
+
+```text
+Cl = 0.42840697
+Cd = 0.00723560
+Cm = 0.00581315
 ```
 
 `naca="0012"` is still required to initialize `SiroccoDiscipline`, but the
@@ -90,6 +104,14 @@ connected `x` array replaces that seed geometry before every solve.
 - Order nodes lower TE → LE → upper TE.
 - Flatten as `[x_0 ... x_N, z_0 ... z_N]`, not interleaved pairs.
 - Do not repeat the leading-edge node.
+- Normalize the chord so the leading edge is near `x=0` and the trailing edge
+  is near `x=1`; Scirocco treats these values as nondimensional chord
+  coordinates even though the Philote variable carries length units.
+- Resample measured or CAD curves to the requested node count with adequate
+  leading- and trailing-edge clustering. The server replaces its panel nodes;
+  it does not repanel an arbitrary point cloud.
+- Reject duplicate consecutive nodes, self-intersections, and a reversed loop
+  before sending the array.
 - Plot the loop with equal axes before diagnosing aerodynamic surprises.
 
 The next tutorial uses the exact same Python model and asks Philote for the

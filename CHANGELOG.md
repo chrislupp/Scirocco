@@ -51,12 +51,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     analysis server per point.
 - `scirocco_kulfan_server` binary hosting `KulfanDiscipline` for use
   with `RemoteExplicitComponent` clients.
+- Runnable Philote 0.8 Python tutorial suite under `examples/tutorials/`,
+  covering inviscid and viscous analysis, geometry changes, custom
+  coordinates, analytic sensitivities, and HDF5 histories.
 
 ### Changed
 - Multipoint Kulfan optimization example switched from OpenMDAO's
   `ScipyOptimizeDriver`/SLSQP to IPOPT via `modopt.OpenMDAOProblem`.
-  gRPC server ports shifted to 50060–50063 to avoid collisions.
-  Verified: `Solve_Succeeded` at iter 201, Σw·Cd = 4.309e-3.
+  gRPC server ports shifted to 50060–50063 to avoid collisions. With
+  Philote 0.8, the example initializes each angle of attack at its lift
+  target and rejects unsuccessful solves. Verified: `Solve_Succeeded`
+  at iter 222, Σw·Cd = 4.601e-3.
+- Philote tutorial, Docker, and CI builds now pin the protocol-0.8 C++
+  implementation and `philote-mdo==0.8.0`; CI executes the complete
+  Python tutorial sequence against a Release build.
 - All C++ headers converted to Doxygen `/** */` style with
   `@brief`/`@param`/`@return` tags; `#include` guards replaced with
   `#pragma once` across all 32 headers. Internal `_dMa` closure
