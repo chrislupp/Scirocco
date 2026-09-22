@@ -13,6 +13,43 @@ the reviewed implementation. Temporary reproductions and logs are in
 `/tmp/scirocco-review-artifacts/`; the independent Release build is in
 `/tmp/scirocco-review-build/`.
 
+## Upstream provenance correction
+
+A subsequent check against [Fidkowski's published Python source](https://websites.umich.edu/~kfid/codes/mfoil/mfoil.py)
+(version 2023-06-28) found that the bundled file already contained changes
+before this review. Earlier references here to an "unmodified" or "original"
+Python primal mean the bundled module without the complex-step monkey patches;
+they must not be read as a claim that the bundle was pristine upstream.
+
+The website source was retrieved through the browser because direct downloads
+encountered a Cloudflare challenge. The complete source was compared after
+normalizing blank lines and trailing whitespace, with an additional Python AST
+comparison. This is a source-content comparison, not a byte-for-byte checksum.
+The first import, `4ff9e63` (2026-01-13), matches that normalized website source.
+All current differences are accounted for by these later commits:
+
+| Change in bundled Python | Commit | Assessment |
+|---|---|---|
+| `stagpoint_find`: second stagnation-coordinate derivative uses `-G[0]` instead of `-G[1]` | `637233a`, March 21 | Correct derivative of the quotient defining `sstag`; independent of C++. |
+| `space_geom`: 10 to 20 iterations, tolerance 1e-6 to 1e-14 | `0aea716`, May 16 | Tighter numerical solve; can change returned wake geometry. |
+| `build_glob_sys`: compare `R_x.shape` with the dimensions | `0aea716`, May 16 | Sparse-matrix compatibility fix. |
+| `get_cteq`: fix `HK_U` typo to `Hk_U` on the clamp | `0aea716`, May 16 | Correctly zero the derivative of the clamped value. |
+| `get_damp`: exponential derivative coefficient -1 to -2 | `0aea716`, May 16 | Correct: derivative of `0.1*exp(-20*h)` is `-2*exp(-20*h)`. |
+| `Param.doplot`: True to False | `0aea716`, May 16 | Plotting default only. |
+| `residual_transition`: 20 to 30 Newton iterations, tolerance 1e-10 to 1e-14 | `6a56ebb`, May 16 | Changes iteration/stopping behavior, including the iteration-dependent step limit. |
+| `Param.rtol`: 1e-10 to 1e-12 | `ff1cb4f`, May 17 | Tighter global Newton convergence criterion. |
+
+The derivative edits follow directly from the Python primal expressions;
+the numerical-setting changes must still be distinguished from upstream
+behavior. The complete AST comparison found changes only in `Param`,
+`stagpoint_find`, `space_geom`, `build_glob_sys`, `residual_transition`,
+`get_cteq`, and `get_damp`. In particular, `calc_force`, `spline2d`,
+`spline_curvature`, and `TE_info` are identical to the published source.
+Thus the force/chord convention and spline construction were not introduced
+by historical local edits. The 145 C++ / four Python passing tests reported
+below validate the locally corrected/tightened reference, not the untouched
+website version. No solver code was changed during this provenance audit.
+
 ## Fix branch
 
 `fix/mfoil-gradient-correctness` differentiates the original Python spline
