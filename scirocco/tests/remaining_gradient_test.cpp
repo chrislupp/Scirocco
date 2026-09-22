@@ -33,6 +33,8 @@
 
 #include <array>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -103,6 +105,25 @@ TEST_P(RemainingGradientTest, PythonOutputsAndAllExposedDerivatives) {
                  Attribute(group, "Re"), Attribute(group, "Ma"));
     ASSERT_TRUE(foil.Solve());
     const Sensitivity sens = foil.ComputeSensitivities();
+    if (std::string(GetParam()) == "nonunit_chord") {
+        // Independent full Python solve at 80 digits using the original panel
+        // closed forms, with central-step and precision convergence checks.
+        std::ifstream input(HIGH_PRECISION_GRADIENT_REFERENCE_FILE);
+        ASSERT_TRUE(input.good());
+        std::string line;
+        while (std::getline(input, line) && (line.empty() || line[0] == '#')) {
+        }
+        std::istringstream fields(line);
+        const std::array<double, 4> got{sens.dcl_dx(0, 50), sens.dcd_dx(0, 50),
+                                        sens.dcm_dx(0, 50),
+                                        sens.dcdpi_dx(0, 50)};
+        for (int j = 0; j < 4; ++j) {
+            SCOPED_TRACE(j);
+            double expected;
+            ASSERT_TRUE(static_cast<bool>(fields >> expected));
+            EXPECT_NEAR(got[j], expected, 2e-13);
+        }
+    }
     std::array<double, 5> primal;
     group.openDataSet("outputs").read(primal.data(),
                                       H5::PredType::NATIVE_DOUBLE);

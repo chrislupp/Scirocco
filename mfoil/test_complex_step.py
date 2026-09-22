@@ -20,6 +20,28 @@ spec.loader.exec_module(original)
 
 
 class ComplexStepTest(unittest.TestCase):
+    def test_full_gradient_against_high_precision_python(self):
+        reference = Path(__file__).resolve().parents[1]/'scirocco/tests/high_precision_gradient_reference.txt'
+        model = mfoil.mfoil(naca='0012', npanel=100)
+        model.param.verb = 0
+        model.param.doplot = False
+        model.geom.chord = 2.0
+        model.foil.x = (2*model.foil.x).astype(complex)
+        model.foil.x[0,50] += 1j*1e-20
+        with mfoil_cs.complex_step_mode():
+            pp = mfoil.spline2d(model.foil.x)
+            model.foil.s = pp['X'].x.copy()
+            model.foil.t = mfoil.splinetan(pp, model.foil.s)
+            model.setoper(alpha=3.0, Re=1e6, Ma=0.3)
+            model.solve()
+            self.assertTrue(model.glob.conv)
+            # Normalize the pressure integral once (see the provenance audit).
+            model.geom.chord = 1.0
+            mfoil.calc_force(model)
+            values = np.array([model.post.cl/2, model.post.cd,
+                               model.post.cm/4, model.post.cdpi/2])
+        assert_allclose(values.imag/1e-20, np.loadtxt(reference), rtol=0, atol=2e-13)
+
     def test_vortex_stream_against_high_precision_integrals(self):
         reference = Path(__file__).resolve().parents[1]/'scirocco/tests/vortex_stream_reference.txt'
         for row in np.loadtxt(reference):
@@ -40,6 +62,27 @@ class ComplexStepTest(unittest.TestCase):
                         perturbed[:4].reshape(2, 2).T, perturbed[4:])
                 derivative = np.imag(got)/1e-20
                 assert_allclose(derivative, row[[8+k, 14+k]], rtol=2e-13, atol=5e-14)
+
+    def test_source_stream_against_high_precision_integrals(self):
+        reference = Path(__file__).resolve().parents[1]/'scirocco/tests/source_stream_reference.txt'
+        def values(module, coords):
+            xj = coords[:4].reshape(2, 2).T
+            xi = coords[4:]
+            return np.array([module.panel_constsource_stream(xj, xi),
+                             *module.panel_linsource_stream(xj, xi)])
+        for row in np.loadtxt(reference):
+            coords = row[:6]
+            length = np.linalg.norm(coords[2:4]-coords[:2])
+            for module in (original, mfoil):
+                assert_allclose(values(module, coords), row[6:9],
+                                rtol=2e-13, atol=5e-16*length)
+            for k in range(6):
+                perturbed = coords.astype(complex)
+                perturbed[k] += 1j*1e-20
+                with mfoil_cs.complex_step_mode():
+                    derivative = values(mfoil, perturbed).imag/1e-20
+                assert_allclose(derivative, row[[9+k,15+k,21+k]],
+                                rtol=2e-13, atol=5e-14)
 
     def test_spline_real_values_match_scipy(self):
         for n in (2, 3, 8):

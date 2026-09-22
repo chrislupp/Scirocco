@@ -116,6 +116,8 @@ def _patched_panel_constsource_velocity(Xj, xi, vdir=None):
 
 
 def _patched_panel_constsource_stream(Xj, xi):
+    far = _mfoil_module.panel_source_stream_far(Xj, xi, False)
+    if far is not None: return sum(far)
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     ep = 1e-9
     logr1, theta1, theta2 = (0, np.pi, np.pi) if (np.real(r1) < ep) else (np.log(r1), theta1, theta2)
@@ -128,6 +130,8 @@ def _patched_panel_constsource_stream(Xj, xi):
 
 
 def _patched_panel_linsource_stream(Xj, xi):
+    far = _mfoil_module.panel_source_stream_far(Xj, xi, True)
+    if far is not None: return far
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     if np.real(theta1) < 0:
         theta1 = theta1 + 2 * np.pi

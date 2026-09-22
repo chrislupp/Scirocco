@@ -121,6 +121,7 @@ if(SCIROCCO_BUILD_TESTS)
         )
         target_link_libraries(scirocco_tests scirocco GTest::gtest_main hdf5_cpp-shared)
         target_compile_definitions(scirocco_tests PRIVATE
+            SOURCE_STREAM_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/source_stream_reference.txt"
             VORTEX_STREAM_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/vortex_stream_reference.txt"
             MFOIL_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/mfoil_reference.h5"
         )
@@ -159,7 +160,8 @@ if(SCIROCCO_BUILD_TESTS)
         target_link_libraries(scirocco_remaining_gradient_tests
             scirocco GTest::gtest_main hdf5_cpp-shared)
         target_compile_definitions(scirocco_remaining_gradient_tests PRIVATE
-            REMAINING_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/remaining_gradient_reference.h5")
+            REMAINING_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/remaining_gradient_reference.h5"
+            HIGH_PRECISION_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/high_precision_gradient_reference.txt")
         gtest_discover_tests(scirocco_remaining_gradient_tests)
 
         # Ping tests: scirocco analytic vs mfoil-CS Jacobian references.

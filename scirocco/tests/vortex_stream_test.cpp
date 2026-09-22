@@ -72,3 +72,45 @@ TEST(VortexStreamTest, HighPrecisionIntegralAndCoordinateDerivatives) {
     }
     EXPECT_EQ(cases, 7);
 }
+
+TEST(SourceStreamTest, HighPrecisionIntegralAndCoordinateDerivatives) {
+    std::ifstream input(SOURCE_STREAM_REFERENCE_FILE);
+    ASSERT_TRUE(input.good());
+    std::string line;
+    int cases = 0;
+    while (std::getline(input, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream fields(line);
+        std::array<double, 27> ref{};
+        for (double& value : ref)
+            ASSERT_TRUE(static_cast<bool>(fields >> value));
+        SCOPED_TRACE(cases++);
+        Matrix2d panel;
+        panel << ref[0], ref[2], ref[1], ref[3];
+        Vector2d xi(ref[4], ref[5]);
+        double a, b;
+        PanelLinSourceStream(panel, xi, a, b);
+        const auto lin = PanelLinSourceStreamDeriv(panel, xi);
+        const auto con = PanelConstSourceStreamDeriv(panel, xi);
+        const std::array<double, 3> values{PanelConstSourceStream(panel, xi), a,
+                                           b};
+        const double length = (panel.col(1) - panel.col(0)).norm();
+        const std::array<Vector4d, 3> endpoint{con.val_Xj, lin.a_Xj, lin.b_Xj};
+        const std::array<Vector2d, 3> point{con.val_xi, lin.a_xi, lin.b_xi};
+        EXPECT_DOUBLE_EQ(values[0], con.val);
+        EXPECT_DOUBLE_EQ(a, lin.a);
+        EXPECT_DOUBLE_EQ(b, lin.b);
+        for (int j = 0; j < 3; ++j) {
+            SCOPED_TRACE(j);
+            EXPECT_NEAR(values[j], ref[6 + j],
+                        5e-16 * length + 2e-13 * std::abs(ref[6 + j]));
+            for (int k = 0; k < 6; ++k) {
+                SCOPED_TRACE(k);
+                const double got = k < 4 ? endpoint[j](k) : point[j](k - 4);
+                const double expected = ref[9 + 6 * j + k];
+                EXPECT_NEAR(got, expected, 5e-14 + 2e-13 * std::abs(expected));
+            }
+        }
+    }
+    EXPECT_EQ(cases, 11);
+}

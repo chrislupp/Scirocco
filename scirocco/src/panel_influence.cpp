@@ -33,7 +33,7 @@
 #include <cmath>
 
 #include "scirocco/util/math_utils.h"
-#include "vortex_stream_quadrature.h"
+#include "stream_quadrature.h"
 
 namespace scirocco {
 
@@ -150,7 +150,7 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
 
 void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
                           double& b) {
-    if (detail::FarVortexPanel(Xj, xi)) {
+    if (detail::FarStreamPanel(Xj, xi)) {
         const auto result = detail::FarVortexStream(Xj, xi, false);
         a = result.a;
         b = result.b;
@@ -228,6 +228,11 @@ Vector2d PanelConstSourceVelocity(const Matrix2d& Xj, const Vector2d& xi,
 }
 
 double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi) {
+    if (detail::FarConstantSourcePanel(Xj, xi)) {
+        const auto q = detail::FarSourceStream(Xj, xi, false, false);
+        return q.a + q.b;
+    }
+
     /* Streamfunction from constant source panel
      * Matches Python implementation */
 
@@ -281,6 +286,13 @@ double PanelConstSourceStream(const Matrix2d& Xj, const Vector2d& xi) {
 
 void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
                           double& b) {
+    if (detail::FarStreamPanel(Xj, xi)) {
+        const auto q = detail::FarSourceStream(Xj, xi, true, false);
+        a = q.a;
+        b = q.b;
+        return;
+    }
+
     /* Streamfunction from linear source panel
      * Matches mfoil panel_linsource_stream */
 

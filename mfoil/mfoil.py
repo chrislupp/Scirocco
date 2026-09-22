@@ -1046,6 +1046,29 @@ def panel_constsource_velocity(Xj, xi, vdir):
     return a
 
 
+def panel_source_stream_far(Xj, xi, linear):
+    dx = Xj[:,1]-Xj[:,0]
+    rmid = xi-0.5*(Xj[:,0]+Xj[:,1])
+    if np.sum(dx.real**2) <= 1e-24 or np.sum(rmid.real**2) <= 16*np.sum(dx.real**2):
+        return None
+    length = norm2(dx)
+    t = dx/length
+    n = np.array([-t[1], t[0]])
+    r = xi-Xj[:,0]
+    x, z = np.dot(r,t), np.dot(r,n)
+    theta1, theta2 = atan2(z,x), atan2(z,x-length)
+    if not linear and abs(np.real(theta1+theta2)-np.pi) <= 1e-12:
+        return None  # retain the original convention on its branch cut
+    theta = atan2(z,x-_vortex_quad_t*length)
+    if linear:
+        theta = np.where(theta.real < 0, theta+2*np.pi, theta)
+        shift = 0
+    else:
+        shift = -0.25 if np.real(theta1+theta2) > np.pi else 0.75
+    values = length*_vortex_quad_w*(theta/(2*np.pi)+shift)
+    return np.sum((1-_vortex_quad_t)*values), np.sum(_vortex_quad_t*values)
+
+
 #-------------------------------------------------------------------------------
 def panel_constsource_stream(Xj, xi):
     # calculates the streamfunction coefficient for a constant source panel
@@ -1058,6 +1081,9 @@ def panel_constsource_stream(Xj, xi):
     #   The streamfunction due to the panel is then a*s
     #   where s is the panel source strength
   
+    far = panel_source_stream_far(Xj, xi, False)
+    if far is not None: return sum(far)
+
     # panel info
     t, n, x, z, d, r1, r2, theta1, theta2 = panel_info(Xj, xi)
     
@@ -1124,6 +1150,9 @@ def panel_linsource_stream(Xj, xi):
     # DETAILS
     #   The streamfunction due to the panel is then a*s1 + b*s2
     #   where s1 and s2 are the source strengths at the panel endpoints
+
+    far = panel_source_stream_far(Xj, xi, True)
+    if far is not None: return far
 
     # panel info
     t, n, x, z, d, r1, r2, theta1, theta2 = panel_info(Xj, xi)

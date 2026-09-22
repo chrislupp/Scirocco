@@ -33,7 +33,7 @@
 #include <cmath>
 
 #include "scirocco/util/math_utils.h"
-#include "vortex_stream_quadrature.h"
+#include "stream_quadrature.h"
 
 namespace scirocco {
 
@@ -227,7 +227,7 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
  */
 LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi) {
-    if (detail::FarVortexPanel(Xj, xi)) return detail::FarVortexStream(Xj, xi);
+    if (detail::FarStreamPanel(Xj, xi)) return detail::FarVortexStream(Xj, xi);
 
     LinVortexStreamDeriv result;
 
@@ -348,6 +348,11 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
  */
 ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi) {
+    if (detail::FarConstantSourcePanel(Xj, xi)) {
+        const auto q = detail::FarSourceStream(Xj, xi, false);
+        return {q.a + q.b, q.a_Xj + q.b_Xj, q.a_xi + q.b_xi};
+    }
+
     ConstSourceStreamDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
@@ -666,6 +671,9 @@ ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
  */
 LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi) {
+    if (detail::FarStreamPanel(Xj, xi))
+        return detail::FarSourceStream(Xj, xi, true);
+
     LinSourceStreamDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
