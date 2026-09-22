@@ -54,6 +54,10 @@ struct Glob {
     int trust_accepted = 0;
     int trust_rejected = 0;
     double trust_last_ratio = 0.0;
+    int coupled_iterations = 0;
+    int continuation_attempts = 0;
+    int continuation_steps = 0;
+    int continuation_iterations = 0;
     /* ∂R_BL/∂Re·Re for the analytic Re chain (accumulated in BuildGlobSys
        from each station's ResidualLin.lin_Ret). Re enters R only through
        Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re /

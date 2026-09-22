@@ -62,6 +62,10 @@ void SolveGlob(FoilState& state);
 /** Try a scaled dogleg step, leaving the iterate unchanged on rejection. */
 bool TakeTrustRegionStep(FoilState& state);
 
+/** Retry on the target's frozen wake using adaptive angle/Cl continuation.
+ * On failure, result's physical state is unchanged. */
+bool SolveContinuation(const FoilState& target, FoilState& result);
+
 /**
  * @brief Update state with under-relaxation
  * @param state Foil state updated in place.

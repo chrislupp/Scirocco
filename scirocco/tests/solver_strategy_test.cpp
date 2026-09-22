@@ -93,3 +93,58 @@ TEST(SolverStrategy, AcceptedTrialHasConsistentStagnationCoordinates) {
     BuildGlobSys(state);
     EXPECT_LT((state.glob.R - accepted_r).norm(), 1e-14);
 }
+
+TEST(SolverStrategy, ContinuationPreservesTargetAndFrozenWake) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(4.0, -1.0, 1e6, 0.2);
+    ASSERT_TRUE(foil.Solve());
+    const auto target = foil.GetState();
+    auto result = target;
+    result.glob.conv = false;
+    ASSERT_TRUE(SolveContinuation(target, result));
+    EXPECT_TRUE(result.glob.conv);
+    EXPECT_EQ(result.oper.alpha, target.oper.alpha);
+    EXPECT_EQ(result.oper.Re, target.oper.Re);
+    EXPECT_EQ(result.oper.Ma, target.oper.Ma);
+    EXPECT_EQ(result.wake.x, target.wake.x);
+    EXPECT_NEAR(result.post.cl, target.post.cl, 1e-10);
+    EXPECT_NEAR(result.post.cd, target.post.cd, 1e-11);
+    EXPECT_NEAR(result.post.cm, target.post.cm, 1e-10);
+    EXPECT_GT(result.glob.continuation_steps, 0);
+    EXPECT_LE(result.glob.continuation_iterations,
+              target.param.continuation_max_iterations);
+}
+
+TEST(SolverStrategy, FailedContinuationRestoresRequestedPoint) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(4.0, -1.0, 1e6, 0.2);
+    ASSERT_TRUE(foil.Solve());
+    auto target = foil.GetState();
+    target.param.continuation_max_iterations = 1;
+    auto result = target;
+    result.glob.conv = false;
+    EXPECT_FALSE(SolveContinuation(target, result));
+    EXPECT_FALSE(result.glob.conv);
+    EXPECT_EQ(result.oper.alpha, target.oper.alpha);
+    EXPECT_EQ(result.glob.U, target.glob.U);
+    EXPECT_EQ(result.isol.xi, target.isol.xi);
+    EXPECT_EQ(result.vsol.turb, target.vsol.turb);
+    EXPECT_EQ(result.wake.x, target.wake.x);
+    EXPECT_EQ(result.post.cl, target.post.cl);
+    EXPECT_EQ(result.glob.continuation_iterations, 1);
+}
+
+TEST(SolverStrategy, ContinuationReachesExactLiftTarget) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(2.0, 0.6, 1e6, 0.2);
+    ASSERT_TRUE(foil.Solve());
+    const auto target = foil.GetState();
+    auto result = target;
+    result.glob.conv = false;
+    ASSERT_TRUE(SolveContinuation(target, result));
+    EXPECT_TRUE(result.oper.givencl);
+    EXPECT_EQ(result.oper.cltgt, 0.6);
+    EXPECT_NEAR(result.post.cl, 0.6, target.param.rtol);
+    EXPECT_EQ(result.wake.x, target.wake.x);
+    EXPECT_NEAR(result.oper.alpha, target.oper.alpha, 1e-9);
+}

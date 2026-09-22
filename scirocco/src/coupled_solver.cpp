@@ -136,8 +136,16 @@ void SolveViscous(FoilState& state) {
         }
     }
 
+    /* Retain the original initial state for a clean continuation restart. */
+    state.glob.continuation_attempts = 0;
+    state.glob.continuation_steps = 0;
+    state.glob.continuation_iterations = 0;
+    std::unique_ptr<FoilState> initial;
+    if (state.param.use_continuation) initial = std::make_unique<FoilState>(state);
+
     /* Solve coupled system */
     SolveCoupled(state);
+    if (!state.glob.conv && initial) SolveContinuation(*initial, state);
 
     if (state.glob.conv) {
         /* Stay at the ue-based xi from Newton convergence — DO NOT swap to
@@ -185,8 +193,10 @@ void SolveCoupled(FoilState& state) {
     state.glob.trust_radius = state.param.trust_radius_initial;
     state.glob.trust_accepted = 0;
     state.glob.trust_rejected = 0;
+    state.glob.coupled_iterations = 0;
 
     for (int iter = 0; iter < niglob; ++iter) {
+        ++state.glob.coupled_iterations;
         /* Build global system */
         BuildGlobSys(state);
 
@@ -254,6 +264,90 @@ void SolveCoupled(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "  Warning: viscous solver did not converge" << '\n';
     }
+}
+
+bool SolveContinuation(const FoilState& target, FoilState& result) {
+    // The target wake is deliberately retained throughout the homotopy.
+    // Rebuilding it at intermediate angles would change the final model
+    // relative to a cold solve at the requested operating conditions.
+    if (target.oper.redowake || target.param.continuation_max_attempts <= 0 ||
+        target.param.continuation_max_iterations <= 0) return false;
+    int attempts = 0, steps = 0, iterations = 0;
+    auto solve = [&](FoilState& trial) {
+        const int remaining = target.param.continuation_max_iterations - iterations;
+        if (attempts >= target.param.continuation_max_attempts || remaining <= 0)
+            return false;
+        trial.param.niglob = std::min(target.param.niglob, remaining);
+        ++attempts;
+        SolveCoupled(trial);
+        iterations += trial.glob.coupled_iterations;
+        trial.param.niglob = target.param.niglob;
+        return trial.glob.conv;
+    };
+    auto record = [&]() {
+        result.glob.continuation_attempts = attempts;
+        result.glob.continuation_steps = steps;
+        result.glob.continuation_iterations = iterations;
+    };
+    try {
+        FoilState seed = target;
+        seed.glob.lu_factorization.reset();
+        seed.oper.givencl = false;
+        seed.oper.alpha = std::abs(target.oper.alpha) < 0.5 ? 2.0 : 0.0;
+        RebuildIsol(seed);
+        StagPointFind(seed);
+        ExtendXiToWake(seed);
+        IdentifySurfaces(seed);
+        SetWakeGap(seed);
+        CalcUeM(seed);
+        seed.vsol.turb.clear();
+        InitBoundaryLayer(seed);
+        const FoilState seed_initial = seed;
+        if (!solve(seed)) {
+            seed = seed_initial;
+            seed.param.use_ptc = !seed.param.use_ptc;
+            if (!solve(seed)) { record(); return false; }
+        }
+        const double start = target.oper.givencl ? seed.post.cl : seed.oper.alpha;
+        const double finish = target.oper.givencl ? target.oper.cltgt : target.oper.alpha;
+        const double span = finish - start;
+        const double increment = target.oper.givencl ? 0.2 : 2.0;
+        double progress = 0.0;
+        double step = std::min(1.0, increment / std::max(std::abs(span), increment));
+        while (attempts < target.param.continuation_max_attempts &&
+               iterations < target.param.continuation_max_iterations) {
+            const double next = std::min(1.0, progress + step);
+            FoilState trial = seed;
+            trial.oper.givencl = target.oper.givencl;
+            const double value = next == 1.0 ? finish : start + next * span;
+            if (target.oper.givencl) trial.oper.cltgt = value;
+            else trial.oper.alpha = value;
+            RebuildIsol(trial);
+            if (target.param.verb >= 1)
+                std::cout << "  Continuation: fraction=" << next << ", target=" << value << '\n';
+            if (solve(trial)) {
+                ++steps;
+                if (next == 1.0) {
+                    trial.param = target.param;
+                    trial.oper.cltgt = target.oper.cltgt;
+                    result = std::move(trial);
+                    record();
+                    return true;
+                }
+                seed = std::move(trial);
+                progress = next;
+                step = std::min(1.0 - progress, 1.5 * step);
+            } else {
+                step *= 0.5;
+                if (step < 1e-4) break;
+            }
+        }
+    } catch (const std::exception&) {
+        // The caller retains the failed direct solve at the requested point,
+        // never an intermediate solution at a different operating condition.
+    }
+    record();
+    return false;
 }
 
 /**

@@ -1,0 +1,41 @@
+{
+  "driver_sha256": "795aa31fbbe3cf249dd569d2ad104919780a03215336c6408253ba6e48252f15",
+  "strategy": 4,
+  "ptc": 1,
+  "cases": 62,
+  "converged": 62,
+  "seconds": 73.96211683491128,
+  "iterations": 3613,
+  "failures": [],
+  "original": {
+    "cases": 30,
+    "converged": 30
+  },
+  "extended": {
+    "cases": 32,
+    "converged": 32
+  },
+  "recovered": [
+    "paper_alpha_1.9975",
+    "extended_0012_a12_r200000_m0.4",
+    "extended_0012_a15_r200000_m0.4",
+    "extended_0012_a12_r1e+06_m0.4",
+    "extended_0012_a15_r1e+06_m0.4",
+    "extended_2412_a8_r200000_m0.4",
+    "extended_2412_a12_r200000_m0.4",
+    "extended_2412_a15_r200000_m0.4",
+    "extended_2412_a8_r1e+06_m0",
+    "extended_2412_a8_r1e+06_m0.4",
+    "extended_2412_a12_r1e+06_m0.4",
+    "extended_2412_a15_r1e+06_m0.4"
+  ],
+  "regressed": [],
+  "max_coefficient_differences": {
+    "cl": 6.150635556423367e-14,
+    "cd": 3.1086244689504383e-15,
+    "cm": 6.6682770416548465e-15
+  },
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "decision": "Enable scaling and bounded continuation by default. Keep trust regions opt-in. All 62 cases converged without changing the target equations.",
+  "tests": "162 C++ tests passed with final defaults, including seven strategy tests and existing gradient/reference tests."
+}

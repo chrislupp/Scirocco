@@ -42,6 +42,9 @@ struct Param {
     bool trust_update_topology = true; /**< Evaluate the complete trial state */
     double trust_radius_initial = 10.0;
     int trust_max_trials = 16;
+    bool use_continuation = true; /**< Retry failed cold starts along an angle/Cl path */
+    int continuation_max_attempts = 24;
+    int continuation_max_iterations = 800; /**< Total extra coupled iterations */
     int niglob = 200;    /**< Maximum number of global iterations (raised from
                               50 to give PTC headroom on rough intermediate
                               iterates that need extra Newton steps to ramp

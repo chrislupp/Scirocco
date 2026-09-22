@@ -9,6 +9,7 @@
 
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/forces.h"
+#include "scirocco/core/inviscid.h"
 #include "scirocco/scirocco.h"
 
 int main(int argc, char** argv) {
@@ -32,8 +33,11 @@ int main(int argc, char** argv) {
     state.param.niglob = 200;
     if (argc >= 8) state.param.use_ptc = std::stoi(argv[7]) != 0;
     if (argc >= 9) state.param.scale_coupled_system = std::stoi(argv[8]) >= 1;
-    if (argc >= 9) state.param.use_trust_region = std::stoi(argv[8]) >= 2;
+    if (argc >= 9)
+        state.param.use_trust_region =
+            std::stoi(argv[8]) == 2 || std::stoi(argv[8]) == 3;
     if (argc >= 9) state.param.trust_update_topology = std::stoi(argv[8]) >= 3;
+    if (argc >= 9) state.param.use_continuation = std::stoi(argv[8]) >= 4;
     foil.SetOper(std::stod(argv[2]), -1, std::stod(argv[3]),
                  std::stod(argv[4]));
     const std::string prefix(argv[5]);
@@ -55,10 +59,26 @@ int main(int argc, char** argv) {
         number("cdf", foil.GetCdf());
         number("cdpi", state.post.cdpi);
         number("rtol", state.param.rtol);
-        number("ptc_enabled", state.param.use_ptc ? 1 : 0);
+        number("ptc_enabled",
+               state.param.use_ptc && !state.param.use_trust_region ? 1 : 0);
         number("trust_accepted", state.glob.trust_accepted);
         number("trust_rejected", state.glob.trust_rejected);
+        number("continuation_attempts", state.glob.continuation_attempts);
+        number("continuation_steps", state.glob.continuation_steps);
+        number("continuation_iterations", state.glob.continuation_iterations);
         number("residual", state.oper.viscous ? state.glob.R.norm() : 0.0);
+        if (state.oper.viscous) {
+            const VectorXd ue = state.glob.U.row(3).transpose();
+            const VectorXd coupling =
+                ue - GetUeInv(state) -
+                state.vsol.ue_m *
+                    state.glob.U.row(1).transpose().cwiseProduct(ue);
+            const double lift =
+                state.oper.givencl ? state.post.cl - state.oper.cltgt : 0.0;
+            number("full_residual",
+                   std::sqrt(state.glob.R.squaredNorm() +
+                             coupling.squaredNorm() + lift * lift));
+        }
         if (state.oper.viscous) {
             number("stored_xtr_upper", state.vsol.Xt(1, 1));
             number("stored_xtr_lower", state.vsol.Xt(0, 1));
