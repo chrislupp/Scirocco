@@ -59,6 +59,9 @@ void BuildGlobSys(FoilState& state);
  */
 void SolveGlob(FoilState& state);
 
+/** Try a scaled dogleg step, leaving the iterate unchanged on rejection. */
+bool TakeTrustRegionStep(FoilState& state);
+
 /**
  * @brief Update state with under-relaxation
  * @param state Foil state updated in place.

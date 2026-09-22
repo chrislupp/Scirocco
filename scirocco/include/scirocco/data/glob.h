@@ -50,6 +50,10 @@ struct Glob {
     VectorXd coupled_residual; /**< Full physical residual, including ue/Cl */
     VectorXd variable_scale;   /**< U = diag(variable_scale) * scaled_U */
     VectorXd residual_scale;   /**< Multipliers for coupled residual rows */
+    double trust_radius = 0.0;
+    int trust_accepted = 0;
+    int trust_rejected = 0;
+    double trust_last_ratio = 0.0;
     /* ∂R_BL/∂Re·Re for the analytic Re chain (accumulated in BuildGlobSys
        from each station's ResidualLin.lin_Ret). Re enters R only through
        Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re /

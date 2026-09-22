@@ -38,6 +38,9 @@ struct Param {
     int verb = 0; /**< Printing verbosity level (higher = more verbose) */
     double rtol = 1e-11; /**< Residual tolerance for Newton */
     bool scale_coupled_system = true; /**< Equilibrate equations and variables */
+    bool use_trust_region = false; /**< Experimental scaled dogleg step control */
+    double trust_radius_initial = 10.0;
+    int trust_max_trials = 16;
     int niglob = 200;    /**< Maximum number of global iterations (raised from
                               50 to give PTC headroom on rough intermediate
                               iterates that need extra Newton steps to ramp

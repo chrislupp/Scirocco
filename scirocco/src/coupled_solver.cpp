@@ -45,6 +45,28 @@
 
 namespace scirocco {
 
+namespace {
+VectorXd CoupledResidual(const FoilState& state) {
+    const int n = state.glob.Nsys;
+    VectorXd residual(4 * n + (state.oper.givencl ? 1 : 0));
+    residual.head(3 * n) = state.glob.R;
+    const VectorXd ue = state.glob.U.row(3).transpose();
+    residual.segment(3 * n, n) =
+        ue - GetUeInv(state) -
+        state.vsol.ue_m * state.glob.U.row(1).transpose().cwiseProduct(ue);
+    if (state.oper.givencl) residual(4 * n) = state.post.cl - state.oper.cltgt;
+    return residual;
+}
+
+VectorXd PackedState(const FoilState& state) {
+    const int n = state.glob.Nsys;
+    VectorXd value(4 * n + (state.oper.givencl ? 1 : 0));
+    value.head(4 * n) = Eigen::Map<const VectorXd>(state.glob.U.data(), 4 * n);
+    if (state.oper.givencl) value(4 * n) = state.oper.alpha;
+    return value;
+}
+}  // namespace
+
 /**
  * @brief Top-level viscous solution
  * @param state Foil state
@@ -147,6 +169,9 @@ void SolveCoupled(FoilState& state) {
 
     state.glob.tau = state.param.tau_init;
     state.glob.R_norm_prev = 0.0;
+    state.glob.trust_radius = state.param.trust_radius_initial;
+    state.glob.trust_accepted = 0;
+    state.glob.trust_rejected = 0;
 
     for (int iter = 0; iter < niglob; ++iter) {
         /* Build global system */
@@ -155,13 +180,7 @@ void SolveCoupled(FoilState& state) {
         // Python mfoil updates force values and the lift constraint each
         // iteration.
         CalcForce(state);
-        const VectorXd ue = state.glob.U.row(3).transpose();
-        const VectorXd mass = state.glob.U.row(1).transpose().cwiseProduct(ue);
-        const VectorXd rue = ue - GetUeInv(state) - state.vsol.ue_m * mass;
-        const double rcl =
-            state.oper.givencl ? state.post.cl - state.oper.cltgt : 0.0;
-        double rnorm = std::sqrt(state.glob.R.squaredNorm() +
-                                 rue.squaredNorm() + rcl * rcl);
+        double rnorm = CoupledResidual(state).norm();
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm
                       << ", tau = " << state.glob.tau << '\n';
@@ -202,7 +221,11 @@ void SolveCoupled(FoilState& state) {
             state.glob.conv = false;
             return;
         }
-        UpdateState(state);
+        if (state.param.use_trust_region) {
+            if (!TakeTrustRegionStep(state)) return;
+        } else {
+            UpdateState(state);
+        }
 
         // xi and its Jacobian must describe the current U even near
         // convergence. Freezing stagnation data below a residual threshold
@@ -619,7 +642,7 @@ void SolveGlob(FoilState& state) {
      * (1/tau)(U_{n+1} - U_n) term vanishes (U_{n+1} = U_n), so the
      * converged R = 0 root is unchanged and the adjoint's StoreAdjoint-
      * Factorization (which uses state.glob.R_U, not R_V) is untouched. */
-    if (state.param.use_ptc && state.glob.tau > 0.0) {
+    if (state.param.use_ptc && !state.param.use_trust_region && state.glob.tau > 0.0) {
         const double lambda = 1.0 / state.glob.tau;
         for (int i = 0; i < 4 * Nsys; ++i) {
             triplets.emplace_back(i, i, lambda);
@@ -686,6 +709,70 @@ void SolveGlob(FoilState& state) {
     } else {
         state.glob.dalpha = 0.0;
     }
+}
+
+bool TakeTrustRegionStep(FoilState& state) {
+    const VectorXd x = PackedState(state);
+    const VectorXd uscale = state.glob.variable_scale;
+    const VectorXd rscale = state.glob.residual_scale;
+    const VectorXd f = rscale.cwiseProduct(CoupledResidual(state));
+    SparseMatrixd a = state.glob.R_V;
+    for (int col = 0; col < a.outerSize(); ++col)
+        for (SparseMatrixd::InnerIterator it(a, col); it; ++it)
+            it.valueRef() *= rscale(it.row()) * uscale(it.col());
+    VectorXd newton(x.size());
+    newton.head(state.glob.dU.size()) =
+        Eigen::Map<const VectorXd>(state.glob.dU.data(), state.glob.dU.size());
+    if (state.oper.givencl) newton(newton.size() - 1) = state.glob.dalpha;
+    newton = newton.cwiseQuotient(uscale);
+    const VectorXd gradient = a.transpose() * f;
+    const double curvature = (a * gradient).squaredNorm();
+    const double phi = 0.5 * f.squaredNorm();
+    if (!std::isfinite(phi) || !(curvature > 0.0)) return false;
+    const VectorXd cauchy = -(gradient.squaredNorm() / curvature) * gradient;
+    double radius = state.glob.trust_radius;
+    for (int attempt = 0; attempt < state.param.trust_max_trials; ++attempt) {
+        VectorXd step;
+        if (newton.norm() <= radius) {
+            step = newton;
+        } else if (cauchy.norm() >= radius) {
+            step = (radius / cauchy.norm()) * cauchy;
+        } else {
+            const VectorXd edge = newton - cauchy;
+            const double b = cauchy.dot(edge);
+            const double t = (-b + std::sqrt(b * b + edge.squaredNorm() *
+                                                    (radius * radius - cauchy.squaredNorm()))) /
+                             edge.squaredNorm();
+            step = cauchy + t * edge;
+        }
+        FoilState trial = state;
+        const VectorXd physical_step = uscale.cwiseProduct(step);
+        trial.glob.dU = Eigen::Map<const MatrixXd>(physical_step.data(), 4, state.glob.Nsys);
+        trial.glob.dalpha = state.oper.givencl ? physical_step(physical_step.size() - 1) : 0.0;
+        UpdateState(trial);
+        // This first version guards the continuous update; transition and
+        // stagnation updates still happen in SolveCoupled after acceptance.
+        BuildGlobSys(trial);
+        CalcForce(trial);
+        const VectorXd actual_step = (PackedState(trial) - x).cwiseQuotient(uscale);
+        const double predicted = phi - 0.5 * (f + a * actual_step).squaredNorm();
+        const double actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial)).squaredNorm();
+        const double ratio = predicted > 0.0 ? actual / predicted : -1.0;
+        if (std::isfinite(ratio) && ratio > 1e-4 && actual > 0.0) {
+            if (ratio < 0.25) radius *= 0.25;
+            else if (ratio > 0.75 && step.norm() > 0.8 * radius)
+                radius = std::min(2.0 * radius, 1e4);
+            trial.glob.trust_radius = radius;
+            trial.glob.trust_last_ratio = ratio;
+            ++trial.glob.trust_accepted;
+            state = std::move(trial);
+            return true;
+        }
+        ++state.glob.trust_rejected;
+        radius *= 0.25;
+    }
+    state.glob.trust_radius = radius;
+    return false;
 }
 
 /**

@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     state.param.niglob = 200;
     if (argc >= 8) state.param.use_ptc = std::stoi(argv[7]) != 0;
     if (argc >= 9) state.param.scale_coupled_system = std::stoi(argv[8]) >= 1;
+    if (argc >= 9) state.param.use_trust_region = std::stoi(argv[8]) >= 2;
     foil.SetOper(std::stod(argv[2]), -1, std::stod(argv[3]),
                  std::stod(argv[4]));
     const std::string prefix(argv[5]);
@@ -54,6 +55,8 @@ int main(int argc, char** argv) {
         number("cdpi", state.post.cdpi);
         number("rtol", state.param.rtol);
         number("ptc_enabled", state.param.use_ptc ? 1 : 0);
+        number("trust_accepted", state.glob.trust_accepted);
+        number("trust_rejected", state.glob.trust_rejected);
         number("residual", state.oper.viscous ? state.glob.R.norm() : 0.0);
         if (state.oper.viscous) {
             number("stored_xtr_upper", state.vsol.Xt(1, 1));
