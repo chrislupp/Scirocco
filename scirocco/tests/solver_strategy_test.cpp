@@ -69,3 +69,27 @@ TEST(SolverStrategy, TrustStepAcceptsLocalNewtonDirection) {
     EXPECT_GT(state.glob.trust_last_ratio, 0.9);
     EXPECT_EQ(state.glob.trust_accepted, 1);
 }
+
+TEST(SolverStrategy, AcceptedTrialHasConsistentStagnationCoordinates) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(2.0, -1.0, 1e6, 0.2);
+    ASSERT_TRUE(foil.Solve());
+    auto state = foil.GetState();
+    state.param.use_trust_region = true;
+    state.param.trust_update_topology = true;
+    state.glob.trust_radius = 10.;
+    state.glob.U.row(0) *= 1.01;
+    BuildGlobSys(state);
+    CalcForce(state);
+    SolveGlob(state);
+    ASSERT_TRUE(TakeTrustRegionStep(state));
+    const int i = state.isol.Istag[0], j = state.isol.Istag[1];
+    const double ui = state.glob.U(3, i), uj = state.glob.U(3, j);
+    const double s = (uj * state.foil.s(i) + ui * state.foil.s(j)) / (ui + uj);
+    EXPECT_NEAR(state.isol.sstag, s, 1e-14);
+    for (int k = 0; k < state.foil.N; ++k)
+        EXPECT_NEAR(state.isol.xi(k), std::abs(state.foil.s(k) - s), 1e-14);
+    const auto accepted_r = state.glob.R;
+    BuildGlobSys(state);
+    EXPECT_LT((state.glob.R - accepted_r).norm(), 1e-14);
+}

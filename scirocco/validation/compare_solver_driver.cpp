@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
     if (argc >= 8) state.param.use_ptc = std::stoi(argv[7]) != 0;
     if (argc >= 9) state.param.scale_coupled_system = std::stoi(argv[8]) >= 1;
     if (argc >= 9) state.param.use_trust_region = std::stoi(argv[8]) >= 2;
+    if (argc >= 9) state.param.trust_update_topology = std::stoi(argv[8]) >= 3;
     foil.SetOper(std::stod(argv[2]), -1, std::stod(argv[3]),
                  std::stod(argv[4]));
     const std::string prefix(argv[5]);

@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/forces.h"
@@ -64,6 +65,18 @@ VectorXd PackedState(const FoilState& state) {
     value.head(4 * n) = Eigen::Map<const VectorXd>(state.glob.U.data(), 4 * n);
     if (state.oper.givencl) value(4 * n) = state.oper.alpha;
     return value;
+}
+
+bool ValidTrialState(const FoilState& state) {
+    if (!state.glob.U.allFinite() || !std::isfinite(state.oper.alpha)) return false;
+    if ((state.glob.U.topRows(2).array() <= 0.0).any()) return false;
+    const auto& bracket = state.isol.Istag;
+    if (state.glob.U(3, bracket[0]) == 0.0 || state.glob.U(3, bracket[1]) == 0.0)
+        return false;
+    int left = bracket[0], right = bracket[1];
+    while (left >= 0 && state.glob.U(3, left) <= 0.0) --left;
+    while (right < state.foil.N && state.glob.U(3, right) <= 0.0) ++right;
+    return left > 0 && right < state.foil.N;
 }
 }  // namespace
 
@@ -231,8 +244,10 @@ void SolveCoupled(FoilState& state) {
         // convergence. Freezing stagnation data below a residual threshold
         // changes the root while the adjoint still differentiates the
         // moving-stagnation model.
-        StagPointMove(state);
-        UpdateTransition(state);
+        if (!state.param.use_trust_region || !state.param.trust_update_topology) {
+            StagPointMove(state);
+            UpdateTransition(state);
+        }
     }
 
     state.glob.conv = false;
@@ -750,13 +765,26 @@ bool TakeTrustRegionStep(FoilState& state) {
         trial.glob.dU = Eigen::Map<const MatrixXd>(physical_step.data(), 4, state.glob.Nsys);
         trial.glob.dalpha = state.oper.givencl ? physical_step(physical_step.size() - 1) : 0.0;
         UpdateState(trial);
-        // This first version guards the continuous update; transition and
-        // stagnation updates still happen in SolveCoupled after acceptance.
-        BuildGlobSys(trial);
-        CalcForce(trial);
+        // The local model uses the step before any representation changes
+        // (ue sign flips, amplification -> turbulent shear). The actual
+        // reduction includes those changes and all rebuilt dependent data.
         const VectorXd actual_step = (PackedState(trial) - x).cwiseQuotient(uscale);
         const double predicted = phi - 0.5 * (f + a * actual_step).squaredNorm();
-        const double actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial)).squaredNorm();
+        double actual = -std::numeric_limits<double>::infinity();
+        if (ValidTrialState(trial)) {
+            try {
+                if (state.param.trust_update_topology) {
+                    StagPointMove(trial);
+                    UpdateTransition(trial);
+                }
+                BuildGlobSys(trial);
+                CalcForce(trial);
+                actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial)).squaredNorm();
+            } catch (const std::exception&) {
+                // Reject recoverable domain/linear-solve errors in a trial.
+                // No mutation of the accepted state has taken place.
+            }
+        }
         const double ratio = predicted > 0.0 ? actual / predicted : -1.0;
         if (std::isfinite(ratio) && ratio > 1e-4 && actual > 0.0) {
             if (ratio < 0.25) radius *= 0.25;
