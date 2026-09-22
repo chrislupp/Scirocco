@@ -560,9 +560,11 @@ def _patched_calc_force(M):
         cl_alpha += cpbar * (_mfoil_module.sind(alpha) * dxv[0] - _mfoil_module.cosd(alpha) * dxv[1]) * np.pi / 180
         cm += cp1 * dx1nds / 3 + cp1 * dx2nds / 6 + cp2 * dx1nds / 6 + cp2 * dx2nds / 3
         cdpi = cdpi + dz * cpbar
-        cl /= chord; cm /= chord**2; cdpi /= chord
-        M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
-        M.post.cm, M.post.cdpi = cm, cdpi
+    # Match the real Python pressure integral, including its linearizations.
+    cl /= chord; cl_ue /= chord; cl_alpha /= chord
+    cm /= chord**2; cdpi /= chord
+    M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
+    M.post.cm, M.post.cdpi = cm, cdpi
 
     cd, cdf = dt(0), dt(0)
     if M.oper.viscous:

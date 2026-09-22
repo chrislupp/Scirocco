@@ -20,6 +20,78 @@ spec.loader.exec_module(original)
 
 
 class ComplexStepTest(unittest.TestCase):
+    def test_pressure_coefficients_and_partials_are_scale_invariant(self):
+        base = original.mfoil(naca='2412', npanel=40)
+        base.param.verb = 0
+        base.setoper(alpha=4.0, Ma=0.3)
+        base.solve()
+        expected = np.array([base.post.cl, base.post.cm, base.post.cdpi])
+        # The same pressure field on geometrically similar foils gives the
+        # same dimensionless forces, moments, and velocity/angle partials.
+        for scale in (0.5, 2.0, 3.2):
+            for module in (original, mfoil):
+                model = copy.deepcopy(base)
+                model.foil.x *= scale
+                model.geom.xref *= scale
+                model.geom.chord *= scale
+                module.calc_force(model)
+                assert_allclose([model.post.cl, model.post.cm, model.post.cdpi],
+                                expected, rtol=2e-13, atol=2e-15)
+                assert_allclose(model.post.cl_ue, base.post.cl_ue,
+                                rtol=2e-13, atol=2e-15)
+                assert_allclose(model.post.cl_alpha, base.post.cl_alpha,
+                                rtol=2e-13, atol=2e-15)
+
+    def test_nonunit_pressure_lift_partials_against_complex_step(self):
+        base = original.mfoil(naca='2412', npanel=40)
+        base.param.verb = 0
+        base.foil.x *= 2.0
+        base.geom.chord = 2.0
+        base.setoper(alpha=4.0, Ma=0.3)
+        base.solve()
+        step = 1e-20
+        for node in range(base.foil.N):
+            model = copy.deepcopy(base)
+            # Perturb one physical edge velocity, holding the others fixed.
+            model.isol.gamref = model.isol.gamref.astype(complex)
+            model.isol.gamref[node,0] += 1j*step/original.cosd(base.oper.alpha)
+            with mfoil_cs.complex_step_mode():
+                mfoil.calc_force(model)
+            assert_allclose(model.post.cl.imag/step, base.post.cl_ue[node],
+                            rtol=2e-13, atol=2e-15)
+        model = copy.deepcopy(base)
+        model.oper.alpha += 1j*step
+        with mfoil_cs.complex_step_mode():
+            mfoil.calc_force(model)
+        due = (-original.sind(base.oper.alpha)*base.isol.gamref[:,0]
+               + original.cosd(base.oper.alpha)*base.isol.gamref[:,1])*np.pi/180
+        expected = base.post.cl_alpha + base.post.cl_ue @ due
+        assert_allclose(model.post.cl.imag/step, expected, rtol=2e-13, atol=2e-15)
+
+    def test_nonunit_viscous_lift_trim(self):
+        models = []
+        for module, target in ((original, 0.4), (mfoil, 0.4+1j*1e-20)):
+            model = module.mfoil(naca='0012', npanel=100)
+            model.param.verb = 0
+            model.foil.x *= 2.0
+            model.geom.chord = 2.0
+            model.foil.s = module.spline2d(model.foil.x)['X'].x.copy()
+            if module is original:
+                model.setoper(alpha=3.0, Re=1e6, Ma=0.3, cl=target)
+                model.solve()
+            else:
+                with mfoil_cs.complex_step_mode():
+                    model.setoper(alpha=3.0, Re=1e6, Ma=0.3, cl=target)
+                    model.solve()
+            self.assertTrue(model.glob.conv)
+            assert_allclose(model.post.cl.real, 0.4, rtol=0, atol=2e-12)
+            models.append(model)
+        assert_allclose(models[1].oper.alpha.real, models[0].oper.alpha,
+                        rtol=0, atol=2e-11)
+        assert_allclose(models[1].post.cl.imag/1e-20, 1.0, rtol=0, atol=2e-12)
+        self.assertTrue(np.isfinite(models[1].oper.alpha.imag/1e-20))
+        self.assertGreater(abs(models[1].oper.alpha.imag/1e-20), 1.0)
+
     def test_full_gradient_against_high_precision_python(self):
         reference = Path(__file__).resolve().parents[1]/'scirocco/tests/high_precision_gradient_reference.txt'
         model = mfoil.mfoil(naca='0012', npanel=100)
@@ -35,11 +107,8 @@ class ComplexStepTest(unittest.TestCase):
             model.setoper(alpha=3.0, Re=1e6, Ma=0.3)
             model.solve()
             self.assertTrue(model.glob.conv)
-            # Normalize the pressure integral once (see the provenance audit).
-            model.geom.chord = 1.0
-            mfoil.calc_force(model)
-            values = np.array([model.post.cl/2, model.post.cd,
-                               model.post.cm/4, model.post.cdpi/2])
+            values = np.array([model.post.cl, model.post.cd,
+                               model.post.cm, model.post.cdpi])
         assert_allclose(values.imag/1e-20, np.loadtxt(reference), rtol=0, atol=2e-13)
 
     def test_vortex_stream_against_high_precision_integrals(self):

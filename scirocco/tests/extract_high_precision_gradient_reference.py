@@ -13,8 +13,8 @@ initial guess. Tighten the wake-spacing and transition subsolves, then solve
 the complete coupled equations with residual below 10**(-MP_DPS+15).
 The ten-pass not-a-knot arc-length spline is reproduced below because SciPy
 cannot interpolate arbitrary-precision arrays. Keep the original model's
-binary floating-point constants and quadrature data. Pressure outputs are
-normalized once, as in extract_remaining_gradient_reference.py.
+binary floating-point constants and quadrature data. Pressure outputs and
+their normalization come directly from Python's calc_force.
 
 The central-difference step/precision study measures this smooth solution
 branch. It is not interval certification of the entire nonlinear algorithm.
@@ -324,11 +324,8 @@ def run(delta):
         M.glob.U += du
     else:
         raise RuntimeError("MP Newton did not converge")
-    chord = M.geom.chord
-    M.geom.chord = mp.mpf(1)
     m.calc_force(M)
-    M.geom.chord = chord
-    values = [M.post.cl / chord, M.post.cd, M.post.cm / chord**2, M.post.cdpi / chord]
+    values = [M.post.cl, M.post.cd, M.post.cm, M.post.cdpi]
     note("outputs", *[mp.nstr(v, 30) for v in values])
     return values
 

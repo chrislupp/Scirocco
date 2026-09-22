@@ -434,9 +434,11 @@ def calc_force(M):
         cl_alpha += cpbar*(sind(alpha)*dxv[0] - cosd(alpha)*dxv[1])*np.pi/180
         cm += cp1*dx1nds/3 + cp1*dx2nds/6 + cp2*dx1nds/6 + cp2*dx2nds/3
         cdpi = cdpi + dz*cpbar
-        cl /= chord; cm /= chord**2; cdpi /= chord
-        M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
-        M.post.cm, M.post.cdpi = cm, cdpi
+    # Normalize the completed pressure integrals and their linearizations once.
+    cl /= chord; cl_ue /= chord; cl_alpha /= chord
+    cm /= chord**2; cdpi /= chord
+    M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
+    M.post.cm, M.post.cdpi = cm, cdpi
   
     # viscous contributions
     cd, cdf = 0, 0

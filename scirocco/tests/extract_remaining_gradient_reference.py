@@ -41,21 +41,6 @@ def solve(module, m, kwargs, redowake):
     else:
         m.solve()
     assert m.glob.conv
-    if m.geom.chord != 1:
-        # The upstream pressure integrator divides its running sum by chord
-        # inside each panel iteration. Evaluate the same Python integral with
-        # unit reference chord, then normalize ONCE: L/(q*c), M/(q*c*c).
-        # This explicit correction follows the integral definition; total Cd
-        # retains Python/XFOIL's existing unit-reference convention.
-        chord = m.geom.chord
-        try:
-            m.geom.chord = 1.0
-            module.calc_force(m)
-        finally:
-            m.geom.chord = chord
-        m.post.cl /= chord
-        m.post.cm /= chord**2
-        m.post.cdpi /= chord
     values = np.asarray([m.post.cl, m.post.cd, m.post.cm, m.post.cdpi, m.oper.alpha])
     assert np.isfinite(values).all()
     return values
