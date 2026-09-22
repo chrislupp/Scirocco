@@ -153,6 +153,13 @@ if(SCIROCCO_BUILD_TESTS)
             GRADIENT_CONTRACT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/gradient_contract_reference.h5")
         gtest_discover_tests(scirocco_gradient_contract_tests)
 
+        add_executable(scirocco_remaining_gradient_tests tests/remaining_gradient_test.cpp)
+        target_link_libraries(scirocco_remaining_gradient_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_remaining_gradient_tests PRIVATE
+            REMAINING_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/remaining_gradient_reference.h5")
+        gtest_discover_tests(scirocco_remaining_gradient_tests)
+
         # Ping tests: scirocco analytic vs mfoil-CS Jacobian references.
         add_executable(scirocco_ping_tests tests/ping_test.cpp)
         target_link_libraries(scirocco_ping_tests

@@ -150,8 +150,9 @@ class GeomChainTest : public ::testing::Test {
         auto& s = foil_.GetState();
         s.foil.x = foil_x;
         s.foil.N = N_;
-        s.foil.cumulative_s =
-            true;  // The extractor uses straight-panel lengths.
+        s.foil.arc_length_mode =
+            ArcLengthMode::Cumulative;  // The extractor uses straight-panel
+                                        // lengths.
         s.foil.s =
             foil_s; /* Match mfoil's foil.s exactly (no RecomputeArcLength) */
         /* Clear cached inviscid quantities so SolveInviscid rebuilds */

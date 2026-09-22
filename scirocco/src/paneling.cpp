@@ -116,7 +116,7 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
 }
 
 void RefreshPanelGeometry(Panel& panel) {
-    panel.cumulative_s = false;
+    panel.arc_length_mode = ArcLengthMode::Spline;
     const int N = panel.N;
     if (N < 2) return;
 
@@ -147,7 +147,7 @@ void MakePanels(const Geom& geom, int npanel, Panel& panel,
     SpacingResult spacing = SplineCurvature(geom.xpoint, N, Ufac, TEfac, stgt);
 
     panel.N = N;
-    panel.cumulative_s = false;
+    panel.arc_length_mode = ArcLengthMode::Fixed;
     panel.x = spacing.X;
     panel.s = spacing.S;
     panel.t = spacing.XS;

@@ -40,23 +40,38 @@ namespace scirocco {
  * Each matrix is [2 x N] matching the layout of foil.x
  */
 struct Sensitivity {
-    MatrixXd dcl_dx;    /**< d(cl)/d(foil.x) [2 x N] */
-    MatrixXd dcd_dx;    /**< d(cd)/d(foil.x) [2 x N] */
-    MatrixXd dcm_dx;    /**< d(cm)/d(foil.x) [2 x N] */
-    MatrixXd dcdpi_dx;  /**< d(cdpi)/d(foil.x) [2 x N] (inviscid pressure drag) */
+    MatrixXd dcl_dx; /**< d(cl)/d(foil.x) [2 x N] */
+    MatrixXd dcd_dx; /**< d(cd)/d(foil.x) [2 x N] */
+    MatrixXd dcm_dx; /**< d(cm)/d(foil.x) [2 x N] */
+    MatrixXd
+        dcdpi_dx; /**< d(cdpi)/d(foil.x) [2 x N] (near-field pressure drag) */
 
     /* Scalar operating-condition sensitivities */
-    double dcl_dalpha = 0.0;  /**< d(cl)/d(alpha) [per degree] */
-    double dcd_dalpha = 0.0;  /**< d(cd)/d(alpha) [per degree] */
-    double dcm_dalpha = 0.0;  /**< d(cm)/d(alpha) [per degree] */
+    double dcl_dalpha = 0.0; /**< d(cl)/d(alpha) [per degree] */
+    double dcd_dalpha = 0.0; /**< d(cd)/d(alpha) [per degree] */
+    double dcm_dalpha = 0.0; /**< d(cm)/d(alpha) [per degree] */
 
-    double dcl_dMa = 0.0;  /**< d(cl)/d(Ma) */
-    double dcd_dMa = 0.0;  /**< d(cd)/d(Ma) */
-    double dcm_dMa = 0.0;  /**< d(cm)/d(Ma) */
+    double dcl_dMa = 0.0; /**< d(cl)/d(Ma) */
+    double dcd_dMa = 0.0; /**< d(cd)/d(Ma) */
+    double dcm_dMa = 0.0; /**< d(cm)/d(Ma) */
 
-    double dcl_dRe = 0.0;  /**< d(cl)/d(Re) */
-    double dcd_dRe = 0.0;  /**< d(cd)/d(Re) */
-    double dcm_dRe = 0.0;  /**< d(cm)/d(Re) */
+    double dcl_dRe = 0.0; /**< d(cl)/d(Re) */
+    double dcd_dRe = 0.0; /**< d(cd)/d(Re) */
+    double dcm_dRe = 0.0; /**< d(cm)/d(Re) */
+    double dcdpi_dalpha = 0.0;
+    double dcdpi_dMa = 0.0;
+    double dcdpi_dRe = 0.0;
+
+    // Lift-target input and the resulting angle (per degree for alpha input).
+    double dcl_dcltarget = 0.0;
+    double dcd_dcltarget = 0.0;
+    double dcm_dcltarget = 0.0;
+    double dcdpi_dcltarget = 0.0;
+    MatrixXd dalpha_dx;
+    double dalpha_dalpha = 1.0;
+    double dalpha_dMa = 0.0;
+    double dalpha_dRe = 0.0;
+    double dalpha_dcltarget = 0.0;
 };
 
 }  // namespace scirocco

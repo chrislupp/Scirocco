@@ -126,39 +126,68 @@ class Scirocco {
 
     /* Accessors for sensitivity results (call ComputeSensitivities first) */
     [[nodiscard]] const MatrixXd& GetDclDx() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcl_dx;
     }
     [[nodiscard]] const MatrixXd& GetDcdDx() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcd_dx;
     }
     [[nodiscard]] const MatrixXd& GetDcmDx() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcm_dx;
     }
 
     /* Scalar operating-condition sensitivities */
     [[nodiscard]] double GetDclDalpha() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcl_dalpha;
     }
     [[nodiscard]] double GetDcdDalpha() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcd_dalpha;
     }
     [[nodiscard]] double GetDcmDalpha() const {
+        CheckSensitivityAvailable();
         return sensitivity_.dcm_dalpha;
     }
 
-    [[nodiscard]] double GetDclDMa() const { return sensitivity_.dcl_dMa; }
-    [[nodiscard]] double GetDcdDMa() const { return sensitivity_.dcd_dMa; }
-    [[nodiscard]] double GetDcmDMa() const { return sensitivity_.dcm_dMa; }
+    [[nodiscard]] double GetDclDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dMa;
+    }
+    [[nodiscard]] double GetDcdDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dMa;
+    }
+    [[nodiscard]] double GetDcmDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dMa;
+    }
 
-    [[nodiscard]] double GetDclDRe() const { return sensitivity_.dcl_dRe; }
-    [[nodiscard]] double GetDcdDRe() const { return sensitivity_.dcd_dRe; }
-    [[nodiscard]] double GetDcmDRe() const { return sensitivity_.dcm_dRe; }
+    [[nodiscard]] double GetDclDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dRe;
+    }
+    [[nodiscard]] double GetDcdDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dRe;
+    }
+    [[nodiscard]] double GetDcmDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dRe;
+    }
 
     /* Access internal state (for advanced use) */
-    FoilState& GetState() { return state_; }
+    FoilState& GetState() {
+        sensitivity_valid_ = false;
+        return state_;
+    }
     [[nodiscard]] const FoilState& GetState() const { return state_; }
 
    private:
+    void CheckSensitivityAvailable() const;
+    bool sensitivity_valid_ = false;
     FoilState state_;
     Sensitivity sensitivity_;
 };

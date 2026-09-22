@@ -252,6 +252,22 @@ def _patched_update_state(M):
     M.glob.U += omega * M.glob.dU
     M.oper.alpha += omega * M.glob.dalpha
 
+    # Preserve the original Python post-update projections and wake rebuild.
+    # The old CS wrapper omitted these, changing the real model in trim mode.
+    for si in range(3):
+        hk_min = 1.00005 if si == 2 else 1.02
+        param = _mfoil_module.build_param(M, si)
+        for j in M.vsol.Is[si]:
+            _mfoil_module.station_param(M, param, j)
+            hk, _ = _mfoil_module.get_Hk(M.glob.U[:, j], param)
+            if np.real(hk) < hk_min:
+                M.glob.U[1, j] += 2 * (hk_min - hk) * M.glob.U[1, j]
+    for i in It:
+        if np.real(M.glob.U[2, i]) < 0:
+            M.glob.U[2, i] = 0.1 * ctmax
+    if abs(np.real(omega * M.glob.dalpha)) > 1e-10:
+        _mfoil_module.rebuild_isol(M)
+
 
 # ---------------------------------------------------------------------------
 # Patched: solve_glob  (line 1950: max(abs(ue)), sparse dtype)

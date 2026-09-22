@@ -30,14 +30,18 @@
 */
 #pragma once
 
+#include <limits>
+
 #include "scirocco/config.h"
 
 namespace scirocco {
 
+enum class ArcLengthMode { Fixed, Spline, Cumulative };
+
 /** @brief Panel data (used for both airfoil and wake) */
 struct Panel {
-    bool cumulative_s =
-        false;  /**< True only for explicit straight-panel arc lengths. */
+    ArcLengthMode arc_length_mode = ArcLengthMode::Fixed;
+    double tracing_alpha = std::numeric_limits<double>::quiet_NaN();
     int N = 0;  /**< Number of nodes */
     MatrixXd x; /**< Node coordinates [2 x N] */
     VectorXd s; /**< Arclength values at nodes */

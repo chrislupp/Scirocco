@@ -200,6 +200,21 @@ TEST(GradientValidityTest, OperatingChangeInvalidatesPreviousSolve) {
     foil.SetOper(4);
     EXPECT_THROW(foil.ComputeSensitivities(), std::runtime_error);
 }
+TEST(GradientValidityTest, CachedAccessorsRejectStaleGradients) {
+    Scirocco foil("0012", 60);
+    EXPECT_THROW((void)foil.GetDclDalpha(), std::runtime_error);
+    foil.SetOper(3);
+    ASSERT_TRUE(foil.Solve());
+    const auto sens = foil.ComputeSensitivities();
+    EXPECT_DOUBLE_EQ(foil.GetDclDalpha(), sens.dcl_dalpha);
+    foil.SetOper(4);
+    EXPECT_THROW((void)foil.GetDclDx(), std::runtime_error);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_THROW((void)foil.GetDclDalpha(), std::runtime_error);
+    foil.ComputeSensitivities();
+    foil.GetState().oper.alpha = 5;
+    EXPECT_THROW((void)foil.GetDclDalpha(), std::runtime_error);
+}
 TEST(GradientValidityTest, InviscidDragIsIdenticallyZero) {
     Scirocco foil("2412", 80);
     foil.SetOper(5, -1, 0, .3);
@@ -210,12 +225,16 @@ TEST(GradientValidityTest, InviscidDragIsIdenticallyZero) {
     EXPECT_DOUBLE_EQ(sens.dcd_dMa, 0);
     EXPECT_DOUBLE_EQ(sens.dcd_dx.norm(), 0);
 }
-TEST(GradientValidityTest, TrimDoesNotExposeFixedAlphaGradients) {
+TEST(GradientValidityTest, TrimLiftDerivativesRespectConstraint) {
     Scirocco foil("0012", 100);
     foil.SetOper(3, .5, 1e6, 0);
     ASSERT_TRUE(foil.Solve());
     EXPECT_NEAR(foil.GetCl(), .5, 1e-10);
-    EXPECT_THROW(foil.ComputeSensitivities(), std::runtime_error);
-    EXPECT_THROW(ViscousSensitivities(foil.GetState()), std::runtime_error);
+    const auto sens = foil.ComputeSensitivities();
+    EXPECT_DOUBLE_EQ(sens.dcl_dx.norm(), 0);
+    EXPECT_DOUBLE_EQ(sens.dcl_dalpha, 0);
+    EXPECT_DOUBLE_EQ(sens.dcl_dMa, 0);
+    EXPECT_DOUBLE_EQ(sens.dcl_dRe, 0);
+    EXPECT_DOUBLE_EQ(sens.dcl_dcltarget, 1);
 }
 }  // namespace

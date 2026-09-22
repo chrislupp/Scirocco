@@ -83,6 +83,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Keep wake-spacing derivative iterations consistent with the primal, refresh
+  stagnation/transition data through convergence, and retain nonzero sparse
+  Jacobian entries.
+- Constructor-time arc labels now have an explicit fixed mode, so standalone
+  shape gradients match Python's unchanged arc labels. Spline and cumulative
+  geometry modes retain their matching derivative chains.
+- Lift-target gradients now include the implicit angle adjustment and target
+  derivatives, with the original Python frozen-wake behavior differentiated
+  through its initial angle. Inviscid lift targets are now actually solved.
+- Near-field pressure-drag gradients are computed for viscous flow; separate
+  angle, Mach, and Reynolds derivatives are available for `cdpi`.
+- The Python CS update preserves upstream post-update projections and wake
+  rebuilding. Its real update is checked directly against bundled Python.
+- Cached gradient getters reject stale results after a solve, input change,
+  or mutable state access.
 - Viscous shape gradients now differentiate Python mfoil's spline arc
   lengths throughout the boundary-layer and wake chains, including
   leading-edge and trailing-edge nodes. Explicit cumulative-length callers
@@ -93,8 +108,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   reference extension before it is used to check C++ gradients.
 - Inviscid `cd` angle and Mach derivatives are zero, matching the Python
   output, instead of incorrectly returning derivatives of `cdpi`.
-- Unconverged analyses, stale operating conditions, unsupported lift-target
-  sensitivities, and singular/inaccurate adjoint solves now report errors.
+- Unconverged analyses, stale operating conditions, and singular/inaccurate
+  adjoint solves now report errors.
   Removed `Param::adjoint_ridge` and the Philote stale/zero-gradient fallback.
 - Lift-target iteration refreshes force linearizations as Python mfoil does
   and applies the correct lower-surface velocity sign. Failed linear solves

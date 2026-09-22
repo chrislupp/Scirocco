@@ -42,7 +42,7 @@
 namespace scirocco {
 
 void RecomputeArcLength(FoilState& state) {
-    state.foil.cumulative_s = true;
+    state.foil.arc_length_mode = ArcLengthMode::Cumulative;
     int N = state.foil.N;
     state.foil.s(0) = 0.0;
     for (int i = 1; i < N; ++i) {
@@ -183,6 +183,7 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
 } /* namespace */
 
 void BuildWake(FoilState& state) {
+    state.wake.tracing_alpha = state.oper.alpha;
     int N = state.foil.N;
     double wakelen = state.geom.wakelen;
     double chord = state.geom.chord;

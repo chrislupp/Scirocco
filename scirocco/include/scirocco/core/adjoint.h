@@ -36,22 +36,23 @@
 namespace scirocco {
 
 /**
- * @brief Compute sensitivities for the inviscid problem using the adjoint method.
- * Must be called after SolveInviscid() and CalcForce().
+ * @brief Compute sensitivities for the inviscid problem using the adjoint
+ * method. Must be called after SolveInviscid() and CalcForce().
  *
  * Objectives: cl, cm, cdpi
  * Design variables: foil.x [2 x N] panel node coordinates
  *
  * The adjoint equation is: AIC^T * lambda = (dJ/dgamma)^T
- * Total sensitivity: dJ/dx = dJ/dx_partial + lambda^T * d(A*gamma - rhs)/dx
+ * Total sensitivity: dJ/dx = dJ/dx_partial - lambda^T * d(A*gamma - rhs)/dx
  * @param state foil state containing the converged inviscid solution
- * @return Sensitivity struct populated with dcl_dx, dcm_dx, dcdpi_dx
+ * Returns shape and scalar derivatives, with the lift constraint applied
+ * when givencl is set.
  */
 Sensitivity InviscidSensitivities(FoilState& state);
 
 /**
- * @brief Compute force partial derivatives w.r.t. panel coordinates (holding gamma
- * fixed) Populates: dcl_dx_partial, dcm_dx_partial, dcdpi_dx_partial in
+ * @brief Compute force partial derivatives w.r.t. panel coordinates (holding
+ * gamma fixed) Populates: dcl_dx_partial, dcm_dx_partial, dcdpi_dx_partial in
  * state.post
  * @param state foil state to update with partial derivative fields
  */
@@ -59,15 +60,18 @@ void CalcForceLin(FoilState& state);
 
 /**
  * @brief Compute sensitivities of cl, cd, cm w.r.t. angle of attack (alpha).
- * Inviscid only: uses stored gamref and cl_ue/cm_ue/cdpi_ue.
+ * Inviscid fixed-angle helper: uses stored gamref and cl_ue/cm_ue/cdpi_ue.
+ * Use InviscidSensitivities for complete lift-constrained derivatives.
  * @param state foil state containing the converged inviscid solution
- * @param sens Sensitivity struct to populate with dcl_dalpha, dcm_dalpha, dcd_dalpha
+ * @param sens Sensitivity struct to populate with dcl_dalpha, dcm_dalpha,
+ * dcd_dalpha
  */
 void AlphaSensitivities(FoilState& state, Sensitivity& sens);
 
 /**
  * @brief Compute sensitivities of cl, cd, cm w.r.t. Mach number.
- * Inviscid only: differentiates KT compressibility correction analytically.
+ * Inviscid fixed-angle helper: differentiates KT compressibility analytically.
+ * Use InviscidSensitivities for complete lift-constrained derivatives.
  * @param state foil state containing the converged inviscid solution
  * @param sens Sensitivity struct to populate with dcl_dMa, dcm_dMa, dcd_dMa
  */
@@ -87,8 +91,8 @@ void MachSensitivities(FoilState& state, Sensitivity& sens);
 VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs);
 
 /**
- * @brief Compute sensitivities for the viscous problem using the adjoint method.
- * Must be called after SolveViscous() and CalcForce().
+ * @brief Compute sensitivities for the viscous problem using the adjoint
+ * method. Must be called after SolveViscous() and CalcForce().
  *
  * Objectives: cl, cm, cd (Squire-Young total drag)
  * Design variables: foil.x [2 x N] panel node coordinates
@@ -98,46 +102,29 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs);
  *   dJ/dx_foil = ∂J/∂x_partial - λ_J^T · ∂R_V/∂x_foil
  * where the VJP λ_J^T · ∂R_V/∂x_foil = λ_bl^T · DRbl/∂x + ComputeRueVJP(λ_ue).
  * @param state foil state containing the converged viscous solution
- * @return Sensitivity struct populated with dcl_dx, dcm_dx, dcd_dx and scalar sensitivities
+ * @return Sensitivity struct populated with dcl_dx, dcm_dx, dcd_dx and scalar
+ * sensitivities
  */
 Sensitivity ViscousSensitivities(FoilState& state);
 
-/**
- * @brief Compute ∂R_V/∂alpha as a [4*Nsys] column vector.
- *
- * R_BL rows: zero (BL residual depends on U and xi only, not alpha directly).
- * R_ue rows: -∂ueinv/∂alpha, where
- *   foil i (0..N-1):  ueinv[i] = sgnue[i] * gamma[i],
- *                     gamma = gamref[:,0]*cos α + gamref[:,1]*sin α
- *   wake j=0 (continuity): same chain through gamma[N-1]
- *   wake j>0:  ueinv[N+j] = uewiref[j,0]*cos α + uewiref[j,1]*sin α
- * @param state foil state with a converged viscous solution
- * @return residual sensitivity vector ∂R_V/∂alpha of size 4*Nsys
- */
+/** Schur complement of Cl(V, alpha, p) = Cl_target.
+ * wake_seed contains fixed-final-alpha output derivatives with respect to the
+ * input angle that generated a frozen wake, in cl, cd, cm, cdpi order. */
+void ApplyLiftConstraint(Sensitivity& sens,
+                         const Vector4d& wake_seed = Vector4d::Zero());
+
+/** @brief Total residual derivative with respect to prescribed alpha.
+ * Includes circulation, wake tracing, and source-coupling chains, at fixed U.
+ * Returns a vector of size 4*Nsys. */
 VectorXd DRVDAlpha(FoilState& state);
 
-/**
- * @brief Compute ∂R_V/∂Ma as a [4*Nsys] column vector via central FD on
- * state.param.Minf with the BL closures' Mach-dependence integrated through
- * the residual. The Mach chain enters via GetUk (KT correction), GetMach2,
- * GetHss, GetRet (compressible density and Sutherland viscosity). A clean
- * analytic chain would require differentiating each closure w.r.t. Ma which
- * is invasive; the scalar FD here is well-conditioned (single direction)
- * and limited to ~1e-7 abs noise floor at h=1e-7.
- * @param state foil state with a converged viscous solution
- * @param h finite-difference step size (default 1e-7)
- * @return residual sensitivity vector ∂R_V/∂Ma of size 4*Nsys
- */
+/** @brief Analytic residual Mach derivative through BL closures and
+ * thermodynamics. The h argument is retained for source compatibility and is
+ * unused. */
 VectorXd DRVDMa(FoilState& state, double h = 1e-7);
 
-/**
- * @brief Compute ∂R_V/∂Re as a [4*Nsys] column vector via central FD on
- * state.param.mu0. Re enters only through Ret in BL closures.
- * dJ/dRe = ∂J/∂Re - λ^T · ∂R_V/∂Re. Note ∂param.mu0/∂Re = -mu0/Re.
- * @param state foil state with a converged viscous solution
- * @param h finite-difference step size (default 1e-7)
- * @return residual sensitivity vector ∂R_V/∂Re of size 4*Nsys
- */
+/** @brief Analytic residual Reynolds derivative through viscosity and Ret.
+ * The h argument is retained for source compatibility and is unused. */
 VectorXd DRVDRe(FoilState& state, double h = 1e-7);
 
 }  // namespace scirocco

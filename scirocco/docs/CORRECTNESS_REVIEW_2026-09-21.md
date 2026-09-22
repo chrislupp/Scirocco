@@ -50,13 +50,96 @@ by historical local edits. The 145 C++ / four Python passing tests reported
 below validate the locally corrected/tightened reference, not the untouched
 website version. No solver code was changed during this provenance audit.
 
-## Fix branch
+## Current gradient fixes
+
+The follow-up gradient work on `fix/mfoil-gradient-correctness` addresses the
+remaining known derivative defects. The sections after this one retain the
+initial review and first-round validation as historical records.
+
+- Panel arc-length derivatives now distinguish the constructor's fixed labels,
+  regenerated spline lengths, and cumulative straight-panel lengths. The
+  standalone constructor no longer silently differentiates a geometry update
+  it did not perform. Philote continues to use the regenerated spline path.
+- Inviscid and viscous lift-target sensitivities differentiate the constraint
+  `Cl = cltarget`. Output gradients include the resulting angle adjustment;
+  target and solved-angle derivatives are returned as well. The inviscid
+  public solve now actually enforces its requested lift target.
+- Frozen-wake trim retains the wake's tracing angle for geometric derivatives.
+  Initial-angle derivatives include wake motion and the subsequent trim
+  adjustment. Rebuilt-wake trim instead differentiates the wake at the solved
+  angle. This distinction is checked against independently solved Python cases.
+- Near-field pressure drag (`cdpi`) now has shape, angle, Mach, Reynolds and
+  lift-target derivatives in both solver modes. Total `cd` remains a distinct
+  output; its inviscid derivatives remain zero.
+- Wake-spacing differentiation uses the same iteration count and tolerance as
+  the primal. Newton updates retain Python's stagnation/transition refresh even
+  near convergence. Sparse assembly preserves nonzero Jacobian entries rather
+  than dropping values below a fixed threshold.
+- Cached public gradient accessors reject reads before successful computation
+  and after solves, setters, geometry helpers, or mutable state access. A
+  retained mutable reference still requires the caller to solve again after
+  edits; arbitrary subsequent writes through that reference are not tracked.
+
+The complex-step wrapper was also missing Python's post-update shape-factor
+projection, negative shear-state repair, and inviscid/wake rebuild. These were
+restored from Python's real `update_state`, not inferred from C++. An independent
+unit test compares their real behavior directly with that function. The bundled
+`mfoil.py` itself is unchanged by this work.
+
+Seven additional reference cases cover fixed arc labels, negative angle,
+cambered viscous flow, inviscid trim, frozen-wake viscous trim, rebuilt-wake
+viscous trim, and chord 2. They check all five returned outputs (`Cl`, `Cd`,
+`Cm`, `Cdpi`, solved alpha), ten shape directions per case and all four scalar
+inputs (initial alpha, Mach, Reynolds, lift target). Combined with the first
+reference set this gives 112 shape directions over ten cases. Reynolds
+sensitivities are multiplied by Reynolds before comparison.
+
+Unit-chord derivative checks retain `2e-11 + 2e-8*abs(reference)`. The new
+nonunit-chord shape checks use `5e-10 + 2e-8*abs(reference)`. Specifically, the
+chord-2 node-50 horizontal lift derivative is approximately
+`-0.00967396684920` in C++ and `-0.00967396663282` in Python CS, a difference of
+`2.16e-10` (relative `2.24e-8`). Tighter nonlinear solves and an independent
+40-digit spline calculation did not eliminate it. Its precise origin remains
+unresolved; the looser bound is stated explicitly, not a claim of agreement at
+the original tighter tolerance. An independent five-point finite-difference
+check of the Python primal approached the CS derivative (error `1.4e-8` at
+step `1e-5`) before roundoff/solve noise dominated at smaller steps; it cannot
+resolve the `2.16e-10` difference. No reference derivative was replaced with a
+C++ result.
+
+For chord 2, the reference generator explicitly corrects the upstream Python
+pressure integral's repeated in-loop normalization: it integrates with unit
+reference chord and then divides lift/pressure drag by chord once and moment
+by chord squared. This follows the force-integral definitions. Total drag
+retains the existing Python/XFOIL unit-reference convention. This reference
+correction does not change the Python or C++ forward implementations. The
+nonunit force conventions therefore remain a separate API/theory issue.
+
+These tests establish accuracy for the checked smooth solution branches, not
+for arbitrary separated flows, topology/transition changes, singular trim, or
+unconverged states. Panel-node sensitivities hold reference chord and moment
+reference point fixed and do not differentiate the initial repaneling from
+source geometry.
+
+Regenerate the additional references with:
+
+```sh
+OPENBLAS_NUM_THREADS=1 python3 scirocco/tests/extract_remaining_gradient_reference.py
+```
+
+Final validation of the follow-up: **153/153 C++ tests pass** in the Release
+build with Philote, HDF5 and sensitivity-debug tests enabled; **5/5 Python CS
+unit tests pass**. Both reference files were regenerated with the corrected
+wrapper and record the current Python source hashes. Changed C++ sources pass
+clang-format 17 and targeted clang-tidy reports no user-code warnings.
+
+## First-round fixes and validation
 
 `fix/mfoil-gradient-correctness` differentiates the original Python spline
 arc-length construction throughout the foil/wake chain. It fixes inviscid
 Cd scalar derivatives and rejects invalid primal/adjoint states and stale
-interface inputs. Lift-target primal iteration is repaired; constrained
-sensitivities remain explicitly unsupported.
+interface inputs. Lift-target primal iteration was repaired in the first round; constrained
+sensitivities were initially rejected and are now implemented as described above.
 
 The original `mfoil.py` and force-output conventions are unchanged. The CS
 wrapper now preserves the trailing-edge absolute-value chain and extends

@@ -4,8 +4,8 @@ sidebar_position: 5
 
 # Sensitivities
 
-Adjoint-computed gradients of $C_l$, $C_d$, $C_m$, and the inviscid
-pressure-drag component with respect to panel-node coordinates and
+Adjoint-computed gradients of $C_l$, $C_d$, $C_m$, and near-field
+pressure drag with respect to panel-node coordinates and
 operating-condition inputs. Headers:
 [`scirocco/data/sensitivity.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/sensitivity.h)
 and
@@ -14,7 +14,7 @@ and
 ## Calling
 
 ```cpp
-// Establish the panel-coordinate geometry used for shape derivatives.
+// Optional: reconstruct spline arc lengths when panel nodes are the inputs.
 scirocco::RefreshPanelGeometry(foil.GetState().foil);
 foil.SetOper(α, -1.0, Re, Ma);
 foil.Solve();                          // must converge first
@@ -34,7 +34,7 @@ struct Sensitivity {
     Eigen::MatrixXd dcl_dx;
     Eigen::MatrixXd dcd_dx;
     Eigen::MatrixXd dcm_dx;
-    Eigen::MatrixXd dcdpi_dx;   // d(cdpi)/d(x) — inviscid pressure-drag piece
+    Eigen::MatrixXd dcdpi_dx;   // d(cdpi)/d(x) — near-field pressure drag
 
     // Operating-condition gradients
     double dcl_dalpha = 0.0;    double dcd_dalpha = 0.0;    double dcm_dalpha = 0.0;
@@ -77,37 +77,58 @@ double dCd_dx_j = g(0, j);
 
 The adjoint solve reuses the SparseLU factorization stored by
 `StoreAdjointFactorization` during the primal Newton iteration, so the
-adjoint cost is one back-substitution per output (three outputs:
-$C_l$, $C_d$, $C_m$ — actually four with $C_{d,\pi}$). This is
+adjoint cost is one back-substitution per output (four outputs:
+$C_l$, $C_d$, $C_m$, $C_{d,\pi}$). This is
 a constant number of adjoint solves as $N$ grows. Factorization, geometric
 linearization, and back-substitution still grow with the number of nodes.
 
 ## Geometry and validity
 
-Panel-coordinate derivatives use Python mfoil's spline arc-length convention.
-Call `RefreshPanelGeometry` before the first shape-sensitive solve and after
-changing panel coordinates directly. Initial curvature-based panel generation
-stores arc lengths on the original geometry spline; reconstructing them through
-the resulting panel nodes defines the panel-coordinate input path. Sensitivities
-do not include derivatives of the original curvature-based repaneling. This reconstructs arc lengths from those nodes; the adjoint
-linearizes all ten spline reintegration passes, including the wake spacing
-and tangent chains. `RecomputeArcLength` explicitly selects straight-panel
-lengths for low-level callers and reference tests using that convention.
+Arc lengths have an explicit `ArcLengthMode`. The constructor preserves
+Python's original paneling and selects `Fixed`: node-coordinate derivatives
+hold those arc-length labels fixed, exactly as changing `mfoil.foil.x` alone
+does. `RefreshPanelGeometry` selects `Spline` and reconstructs arc lengths
+through the current nodes; its derivatives include all ten reintegration
+passes. Philote uses this spline path. `RecomputeArcLength` selects
+`Cumulative` straight-panel lengths. Each mode now uses its own matching
+foil/wake derivative chain. These are panel-node derivatives; they do not
+include the earlier curvature-based repaneling from source geometry.
 
-`ComputeSensitivities` requires a converged solve at the current operating
-conditions. Changing conditions with `SetOper` invalidates the previous
-solution. Lift-target derivatives are currently unsupported and raise an
-exception; use prescribed alpha for sensitivities.
+Reference chord, moment reference point, wake extent and other model
+parameters are held fixed when differentiating the exposed inputs. In
+particular, moving an endpoint does not automatically redefine reference chord.
 
-A singular adjoint factorization or a failed transpose-residual check raises
-an exception. Adjoint diagonal regularization and stale-gradient fallback
-have been removed. The Philote discipline propagates failed analyses and
-requires `Compute` at the same inputs before `ComputePartials`.
+`ComputeSensitivities` requires a converged solve. Failed adjoint solves raise
+an exception instead of substituting regularized, stale, or zero gradients.
+The cached getters require a successful `ComputeSensitivities` after the last
+solve, operating-condition/geometry change, or mutable `GetState()` access.
+When retaining a mutable state reference, solve again after modifying it.
+
+Lift-target derivatives include the angle adjustment needed to keep Cl equal
+to the target. `dcl_dx`, `dcl_dMa`, and `dcl_dRe` are consequently zero in this
+mode. New `d*_dcltarget` fields differentiate with respect to the target;
+`dalpha_dx`, `dalpha_dMa`, `dalpha_dRe`, `dalpha_dcltarget`, and
+`dalpha_dalpha` describe the resulting angle. The constraint uses the Schur
+complement of the fixed-angle linearization and fails explicitly when the
+lift/angle slope is singular.
+
+For viscous trim with Python's default `redowake=false`, the input angle
+sets the frozen wake geometry. Thus `d*_dalpha` is the derivative with respect
+to that **initial angle**, including the resulting trim adjustment. With
+`redowake=true`, the wake follows the solved angle and the converged solution
+is independent of its initial-angle guess. Inviscid trim has the same
+initial-guess independence.
+
+`dcdpi_dx`, `dcdpi_dalpha`, `dcdpi_dMa`, and `dcdpi_dRe` differentiate the
+actual near-field pressure-drag output in both inviscid and viscous modes.
+The Philote discipline continues to expose `cl`, `cd`, and `cm` at prescribed
+alpha; its existing input/output interface is unchanged.
 
 Inviscid `cd` and its derivatives are zero, matching Python mfoil. Near-field
-pressure drag `cdpi` is a separate output. Python's existing force-output
-normalization is preserved; use unit-chord geometry when conventional
-chord-normalized coefficients are required.
+pressure drag `cdpi` is a separate output. The existing C++ force conventions are unchanged: pressure-integrated
+Cl/Cdpi use reference chord, Cm uses its square, and total Cd retains the
+Python/XFOIL unit-reference convention. Use unit-chord geometry when
+conventional chord-normalized coefficients are required.
 
 ## See also
 

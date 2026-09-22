@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s mfoil -p 'test_*.py'
 No C++ values or generated C++ data are used here.
 """
+import copy
 import importlib.util
 from pathlib import Path
 import unittest
@@ -54,6 +55,27 @@ class ComplexStepTest(unittest.TestCase):
             with mfoil_cs.complex_step_mode():
                 scaled = mfoil.spline2d(foil.foil.x*(1+1j*1e-20))
             assert_allclose(scaled['X'].x.imag/1e-20, ref['X'].x, rtol=2e-12, atol=2e-12)
+
+    def test_update_preserves_python_projections_and_wake(self):
+        base = original.mfoil(naca='0012', npanel=100)
+        base.param.verb = 0
+        base.param.doplot = False
+        base.setoper(alpha=3., Re=1e6, Ma=.3)
+        base.solve()
+        self.assertTrue(base.glob.conv)
+        for redowake in (False, True):
+            real = copy.deepcopy(base)
+            real.oper.redowake = redowake
+            real.glob.dU = np.zeros_like(real.glob.U)
+            real.glob.dalpha = .1
+            # Force a post-update Hk correction, which the old wrapper omitted.
+            real.glob.U[1, 20] = .5 * real.glob.U[0, 20]
+            cs = copy.deepcopy(real)
+            original.update_state(real)
+            mfoil_cs._patched_update_state(cs)
+            assert_allclose(cs.glob.U, real.glob.U, rtol=2e-13, atol=2e-13)
+            assert_allclose(cs.isol.gam, real.isol.gam, rtol=2e-13, atol=2e-13)
+            assert_allclose(cs.wake.x, real.wake.x, rtol=2e-13, atol=2e-13)
 
     def test_trailing_edge_absolute_value_chain(self):
         x = original.mfoil(naca='2412', npanel=80).foil.x

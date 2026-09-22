@@ -30,6 +30,7 @@
 */
 #include "scirocco/scirocco.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -55,6 +56,7 @@ Scirocco::Scirocco(const MatrixXd& coords, int npanel) {
 }
 
 void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
+    sensitivity_valid_ = false;
     state_.glob.conv = false;
     state_.glob.lu_factorization.reset();
     state_.oper.alpha = alpha;
@@ -79,6 +81,7 @@ void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
 }
 
 bool Scirocco::Solve() {
+    sensitivity_valid_ = false;
     state_.glob.conv = false;
     state_.glob.lu_factorization.reset();
     try {
@@ -123,6 +126,28 @@ bool Scirocco::Solve() {
             /* Inviscid solver */
             SolveInviscid(state_);
             CalcForce(state_);
+            if (state_.oper.givencl) {
+                state_.glob.conv = false;
+                for (int iteration = 0; iteration < state_.param.niglob;
+                     ++iteration) {
+                    const double residual = state_.post.cl - state_.oper.cltgt;
+                    if (std::abs(residual) < state_.param.rtol) {
+                        state_.glob.conv = true;
+                        return true;
+                    }
+                    CalcForceLin(state_);
+                    Sensitivity slope;
+                    AlphaSensitivities(state_, slope);
+                    if (!std::isfinite(slope.dcl_dalpha) ||
+                        std::abs(slope.dcl_dalpha) < 1e-10)
+                        return false;
+                    state_.oper.alpha -=
+                        std::clamp(residual / slope.dcl_dalpha, -2.0, 2.0);
+                    BuildGamma(state_, state_.oper.alpha);
+                    CalcForce(state_);
+                }
+                return false;
+            }
             return true;
         }
     } catch (...) {
@@ -133,33 +158,40 @@ bool Scirocco::Solve() {
 }
 
 void Scirocco::GeomFlap(const Vector2d& xzhinge, double eta) {
+    sensitivity_valid_ = false;
     scirocco::GeomFlap(state_, xzhinge, eta);
 }
 
 void Scirocco::GeomAddCamber(const MatrixXd& xzcamb) {
+    sensitivity_valid_ = false;
     scirocco::GeomAddCamber(state_, xzcamb);
 }
 
-void Scirocco::GeomDerotate() { scirocco::GeomDerotate(state_); }
+void Scirocco::GeomDerotate() {
+    sensitivity_valid_ = false;
+    scirocco::GeomDerotate(state_);
+}
 
 Sensitivity Scirocco::ComputeSensitivities() {
+    sensitivity_valid_ = false;
     if (!state_.glob.conv) {
         throw std::runtime_error(
             "ComputeSensitivities: solve must converge first");
-    }
-    if (state_.oper.givencl) {
-        throw std::runtime_error(
-            "ComputeSensitivities: lift-target derivatives "
-            "are not implemented");
     }
     if (state_.oper.viscous && state_.glob.U.cols() > 0) {
         sensitivity_ = ViscousSensitivities(state_);
     } else {
         sensitivity_ = InviscidSensitivities(state_);
-        AlphaSensitivities(state_, sensitivity_);
-        MachSensitivities(state_, sensitivity_);
     }
+    sensitivity_valid_ = true;
     return sensitivity_;
+}
+
+void Scirocco::CheckSensitivityAvailable() const {
+    if (!sensitivity_valid_ || !state_.glob.conv)
+        throw std::runtime_error(
+            "ComputeSensitivities must succeed at the current state before "
+            "reading gradients");
 }
 
 }  // namespace scirocco

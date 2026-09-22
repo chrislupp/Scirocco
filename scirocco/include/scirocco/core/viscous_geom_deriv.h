@@ -30,9 +30,10 @@ namespace scirocco {
  *
  * The geometric chain takes dfoil_s_dx [N x 2N], with column 2*k+dim
  * corresponding to node k, coordinate dim. DFoilSDFoilX selects the spline
- * derivative used by RefreshPanelGeometry, or cumulative panel norms when
- * explicitly selected by RecomputeArcLength. The wake-coordinate and tangent
- * overloads accept the same Jacobian so the entire chain uses one convention.
+ * derivative used by RefreshPanelGeometry, cumulative panel norms selected
+ * by RecomputeArcLength, or zero for fixed constructor-time arc labels. The
+ * wake-coordinate and tangent overloads accept the same Jacobian so the entire
+ * chain uses one convention.
  *
  * Column layout for output matrices: column index = 2*k + dim, where
  *   k   ∈ [0, N)  is the foil node index

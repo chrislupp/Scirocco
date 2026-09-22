@@ -29,8 +29,11 @@
 namespace scirocco {
 
 MatrixXd DFoilSDFoilX(const Panel& foil) {
-    return foil.cumulative_s ? DFoilSDFoilXCumulative(foil)
-                             : SplineArcLengthDeriv(foil.x);
+    if (foil.arc_length_mode == ArcLengthMode::Spline)
+        return SplineArcLengthDeriv(foil.x);
+    if (foil.arc_length_mode == ArcLengthMode::Cumulative)
+        return DFoilSDFoilXCumulative(foil);
+    return MatrixXd::Zero(foil.N, 2 * foil.N);
 }
 
 MatrixXd DWakeXDFoilX(const FoilState& state) {
@@ -282,12 +285,12 @@ void SpaceGeomWithDeriv(double ds1, double L, int Np, VectorXd& sv,
     double c = N - d;
     double disc = std::max(b * b - 4.0 * a * c, 0.0);
     double r = 1.0 + (-b + std::sqrt(disc)) / (2.0 * a);
-    for (int k = 0; k < 10; ++k) {
+    for (int k = 0; k < 20; ++k) {
         double rN = std::pow(r, N);
         double R = rN - 1.0 - d * (r - 1.0);
         double R_r = N * std::pow(r, N - 1) - d;
         double dr = -R / R_r;
-        if (std::abs(dr) < 1e-12) break;
+        if (std::abs(dr) < 1e-14) break;
         r += dr;
     }
 
@@ -671,6 +674,15 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
  * @return MatrixXd of shape [2*Nw x 2N].
  */
 MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
+    if (std::isfinite(state.wake.tracing_alpha) &&
+        state.oper.alpha != state.wake.tracing_alpha) {
+        FoilState traced = state;
+        traced.oper.alpha = state.wake.tracing_alpha;
+        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
+                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
+        return DWakeXDFoilX(traced, dfoil_s_dx);
+    }
+
     int N = state.foil.N;
     int Nw = state.wake.N;
     int twoN = 2 * N;
@@ -798,6 +810,15 @@ MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  * @return MatrixXd of shape [2*Nw x 2N].
  */
 MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
+    if (std::isfinite(state.wake.tracing_alpha) &&
+        state.oper.alpha != state.wake.tracing_alpha) {
+        FoilState traced = state;
+        traced.oper.alpha = state.wake.tracing_alpha;
+        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
+                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
+        return DWakeTDFoilX(traced, dfoil_s_dx);
+    }
+
     int N = state.foil.N;
     int Nw = state.wake.N;
     int twoN = 2 * N;
@@ -961,6 +982,15 @@ Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
  * @return MatrixXd of shape [2 x Nw].
  */
 MatrixXd DWakeXDAlpha(const FoilState& state) {
+    if (std::isfinite(state.wake.tracing_alpha) &&
+        state.oper.alpha != state.wake.tracing_alpha) {
+        FoilState traced = state;
+        traced.oper.alpha = state.wake.tracing_alpha;
+        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
+                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
+        return DWakeXDAlpha(traced);
+    }
+
     /* Predictor-corrector chain in scalar α direction. Mirrors DWakeXDFoilX
      * but with dgam_dα (length N+1) instead of dgam_dx (matrix), and with
      * direct α-dependence in freestream V handled via InviscidVelocityDAlpha.
@@ -1047,6 +1077,15 @@ MatrixXd DWakeXDAlpha(const FoilState& state) {
  * @return MatrixXd of shape [2 x Nw].
  */
 MatrixXd DWakeTDAlpha(const FoilState& state) {
+    if (std::isfinite(state.wake.tracing_alpha) &&
+        state.oper.alpha != state.wake.tracing_alpha) {
+        FoilState traced = state;
+        traced.oper.alpha = state.wake.tracing_alpha;
+        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
+                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
+        return DWakeTDAlpha(traced);
+    }
+
     /* Same iterative sweep as DWakeXDAlpha but stores dv1 (for j<Nw-1)
      * and dv2 (for j=Nw-1) as the wake.t α-derivative.
      */
