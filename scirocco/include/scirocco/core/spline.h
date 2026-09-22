@@ -42,8 +42,8 @@ namespace scirocco {
  * where t is local parameter from 0 to ds = s[i+1] - s[i]
  */
 struct CubicSpline1D {
-    VectorXd s;  /* Parameter values at data points [N] */
-    MatrixXd c;  /* Coefficients [4 x (N-1)] */
+    VectorXd s; /* Parameter values at data points [N] */
+    MatrixXd c; /* Coefficients [4 x (N-1)] */
 
     /**
      * @brief Evaluate spline at parameter value
@@ -71,8 +71,8 @@ struct CubicSpline1D {
  * @brief 2D spline structure containing x and y splines
  */
 struct Spline2D {
-    CubicSpline1D X;  /* Spline for x coordinate */
-    CubicSpline1D Y;  /* Spline for y coordinate */
+    CubicSpline1D X; /* Spline for x coordinate */
+    CubicSpline1D Y; /* Spline for y coordinate */
 };
 
 /**
@@ -81,6 +81,12 @@ struct Spline2D {
  * @return Spline2D with arc-length corrected parameterization
  */
 Spline2D Spline2DCreate(const MatrixXd& points);
+
+/** @brief Analytic derivative of spline2d arc lengths, [N x 2N].
+ * Column 2*k+d corresponds to points(d,k). Includes the knot, coefficient,
+ * and quadrature-location chains in all ten reintegration passes.
+ */
+MatrixXd SplineArcLengthDeriv(const MatrixXd& points);
 
 /**
  * @brief Evaluate 2D spline at given parameter values

@@ -131,6 +131,8 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
                                 philote::Variables& outputs) {
     const auto& x_var = inputs.at("x");
     auto& state = solver_->GetState();
+    // Invalidate the previous solution before any geometry update can fail.
+    ClearSolution(state);
     auto& foil_x = state.foil.x;
     for (int i = 0; i < nnodes_; ++i) {
         foil_x(0, i) = x_var(i);
@@ -143,17 +145,15 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
        nodes with stale tangents from the initial paneling, producing an
        inconsistent state and breaking the adjoint LU factorization on R_V. */
     RefreshPanelGeometry(state.foil);
-    /* Also wipe leftover BL solution state so the next Solve starts from a
-       clean init rather than warm-starting from a different geometry's
-       converged BL state. */
-    ClearSolution(state);
 
     double alpha = inputs.at("alpha")(0);
     double Re = inputs.at("Re")(0);
     double Ma = inputs.at("Ma")(0);
 
     solver_->SetOper(alpha, -1.0, Re, Ma);
-    solver_->Solve();
+    if (!solver_->Solve()) {
+        throw std::runtime_error("Scirocco analysis did not converge");
+    }
 
     outputs.at("cl")(0) = solver_->GetCl();
     outputs.at("cd")(0) = solver_->GetCd();
@@ -168,42 +168,20 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
                                         philote::Partials& partials) {
-    /* Try to compute fresh sensitivities. If the adjoint LU factorization
-       throws (which can happen on intermediate iterates the optimizer
-       explores, even when the primal converged via PTC), fall back to the
-       last successful sensitivities so SLSQP doesn't crash mid-run. The
-       first failure with no cached state returns zeros — a warning is
-       printed to stderr in both cases. */
-    Sensitivity sens;
-    try {
-        sens = solver_->ComputeSensitivities();
-        cached_sens_ = sens;
-        has_cached_sens_ = true;
-    } catch (const std::exception& e) {
-        const bool noisy = solver_->GetState().param.verb >= 1;
-        if (noisy) {
-            std::cerr << "SiroccoDiscipline: ComputeSensitivities failed ("
-                      << e.what() << "); ";
-        }
-        if (has_cached_sens_) {
-            if (noisy) std::cerr << "reusing last-good sensitivities.\n";
-            sens = cached_sens_;
-        } else {
-            if (noisy) std::cerr << "returning zeros (no cache yet).\n";
-            sens.dcl_dx = MatrixXd::Zero(2, nnodes_);
-            sens.dcd_dx = MatrixXd::Zero(2, nnodes_);
-            sens.dcm_dx = MatrixXd::Zero(2, nnodes_);
-            sens.dcl_dalpha = 0.0;
-            sens.dcd_dalpha = 0.0;
-            sens.dcm_dalpha = 0.0;
-            sens.dcl_dRe = 0.0;
-            sens.dcd_dRe = 0.0;
-            sens.dcm_dRe = 0.0;
-            sens.dcl_dMa = 0.0;
-            sens.dcd_dMa = 0.0;
-            sens.dcm_dMa = 0.0;
-        }
+    const auto& state = solver_->GetState();
+    bool same_inputs = inputs.at("alpha")(0) == state.oper.alpha &&
+                       (state.oper.viscous ? inputs.at("Re")(0) == state.oper.Re
+                                           : inputs.at("Re")(0) <= 0.0) &&
+                       inputs.at("Ma")(0) == state.oper.Ma;
+    for (int i = 0; i < nnodes_; ++i) {
+        same_inputs = same_inputs && inputs.at("x")(i) == state.foil.x(0, i) &&
+                      inputs.at("x")(nnodes_ + i) == state.foil.x(1, i);
     }
+    if (!same_inputs) {
+        throw std::runtime_error(
+            "ComputePartials requires Compute at the same inputs");
+    }
+    const Sensitivity sens = solver_->ComputeSensitivities();
 
     /* d(cl,cd,cm)/dx — flatten [2 x N] row-major into [2N] */
     auto& dcl_dx = partials[{"cl", "x"}];

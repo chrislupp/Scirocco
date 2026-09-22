@@ -26,20 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   geometries while leaving the converged R = 0 state unchanged. New
   `Param` fields: `use_ptc`, `tau_init`, `tau_min`, `tau_max`,
   `tau_grow_clamp`, `tau_shrink_clamp`.
-- Diagonal-ridge fallback in `StoreAdjointFactorization` that retries
-  the LU with `R_V + ε·max|R_V|·I` on first failure, controlled by
-  `Param::adjoint_ridge` (default `1e-10`). Catches the genuine
-  `Rxt_xt → 0` ill-conditioning at the transition row that any faithful
-  mfoil port inherits.
 - `RefreshPanelGeometry` helper (in `paneling.cpp`) that rebuilds
   `panel.s` and `panel.t` from the current `panel.x` via
   `Spline2DCreate`. Called from `SiroccoDiscipline::Compute` after
   overwriting `foil.x` from an upstream geometry discipline, so the BL
   solver doesn't run on new coordinates with stale tangents.
-- Graceful adjoint-failure cache in `SiroccoDiscipline::ComputePartials`:
-  caches the last successful `Sensitivity` and reuses it if
-  `ComputeSensitivities()` throws, so the optimizer makes progress
-  through transient adjoint glitches instead of crashing.
 - `RefreshPanelGeometry` declaration in `scirocco/core/paneling.h`.
 - Three airfoil-optimization examples:
   - `examples/kulfan_inviscid_optimization/` — minimize `Cm²` at target
@@ -76,10 +67,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   clears solver state after each `foil.x` overwrite, so it works
   correctly when chained downstream of any upstream geometry discipline
   (not just one whose coords match the construction-time NACA paneling).
-- `PhilotePartialsTest` viscous-partial tolerances widened from `1e-12`
-  to `1e-3` / `5e-3` to reflect the panel-refresh path difference vs
-  constructor-time `MakePanels`. Engineering-equivalent; documented
-  inline.
 - `boundary_layer.cpp::ResidualTransition` and
   `transition.cpp::MarchAmplification` cleaned up to match
   `mfoil.py:2662` and `mfoil.py:2602` exactly (off-by-one in the
@@ -96,6 +83,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Viscous shape gradients now differentiate Python mfoil's spline arc
+  lengths throughout the boundary-layer and wake chains, including
+  leading-edge and trailing-edge nodes. Explicit cumulative-length callers
+  retain their own matching derivative convention.
+- Python complex-step references preserve the trailing-edge absolute-value
+  derivative and support complex knots in the original `spline2d` routine.
+  Independent spline identities and real-primal comparisons validate the
+  reference extension before it is used to check C++ gradients.
+- Inviscid `cd` angle and Mach derivatives are zero, matching the Python
+  output, instead of incorrectly returning derivatives of `cdpi`.
+- Unconverged analyses, stale operating conditions, unsupported lift-target
+  sensitivities, and singular/inaccurate adjoint solves now report errors.
+  Removed `Param::adjoint_ridge` and the Philote stale/zero-gradient fallback.
+- Lift-target iteration refreshes force linearizations as Python mfoil does
+  and applies the correct lower-surface velocity sign. Failed linear solves
+  no longer access an unallocated update matrix.
+- Gradient regression tests now use fresh Python references for the actual
+  spline geometry input path, including full-shape directions and leading-
+  and trailing-edge nodes, without relaxing tolerances or skipping nodes.
 - Stale "PHASE 1 STATUS: STUB (returns zeros)" docstring on
   `DWakeXDFoilX` in `viscous_geom_deriv.h`. The function is a real
   120-line linearized predictor-corrector wired into the wake-side

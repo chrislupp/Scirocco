@@ -55,20 +55,10 @@ using namespace Eigen;
 
 /* Tolerances matching sensitivity_reference_test.cpp */
 constexpr double TOL_INVISCID = 1e-10;
-constexpr double TOL_VISC_SHAPE = 1e-4;
-constexpr double TOL_VISC_SCALAR = 1e-9;
-/* The discipline now refreshes panel.s/panel.t from the input coords (via
-   Spline2DCreate) so derived state stays consistent with foil.x for any
-   upstream geometry. Standalone Scirocco builds the same state via the
-   constructor's two-pass SplineCurvature pipeline. The two paths give
-   engineering-accurate but not bit-identical viscous partials — relax the
-   viscous-partial tolerances to reflect that path difference. */
-constexpr double TOL_VISC_SCALAR_DISC = 1e-3;
-constexpr double TOL_VISC_SHAPE_DISC = 5e-3;
-
 /* ---------------------------------------------------------------------------
    HDF5 helpers (same as sensitivity_reference_test.cpp)
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -106,7 +96,8 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
 
 /* ---------------------------------------------------------------------------
    Protobuf helpers
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 namespace {
 
 google::protobuf::Struct BuildNacaOptions(const std::string& naca, int npanel) {
@@ -176,11 +167,12 @@ void SetCoordinateInputs(philote::Variables& inputs,
     inputs.at("Ma")(0) = Ma;
 }
 
-}  /* namespace */
+} /* namespace */
 
 /* ===========================================================================
    Primal output tests: discipline vs. standalone Scirocco
-   =========================================================================== */
+   ===========================================================================
+ */
 
 TEST(PhilotePrimalTest, InviscidMatchesStandalone) {
     scirocco::SiroccoDiscipline disc;
@@ -227,7 +219,8 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
 
 /* ===========================================================================
    Coordinate-input options path
-   =========================================================================== */
+   ===========================================================================
+ */
 
 TEST(PhilotePrimalTest, CoordinateOptionsMatchNaca) {
     scirocco::Scirocco naca_src("0012", 99);
@@ -253,7 +246,8 @@ TEST(PhilotePrimalTest, CoordinateOptionsMatchNaca) {
 
 /* ===========================================================================
    SetOptions error handling
-   =========================================================================== */
+   ===========================================================================
+ */
 
 TEST(PhiloteOptionsTest, BothNacaAndCoordinatesThrows) {
     scirocco::SiroccoDiscipline disc;
@@ -281,7 +275,8 @@ TEST(PhiloteOptionsTest, NeitherNacaNorCoordinatesThrows) {
 
 /* ===========================================================================
    Partial derivative tests: discipline partials vs. CS reference (HDF5)
-   =========================================================================== */
+   ===========================================================================
+ */
 
 class PhilotePartialsTest : public ::testing::Test {
    protected:
@@ -408,128 +403,60 @@ TEST_F(PhilotePartialsTest, InviscidShape) {
     }
 }
 
-TEST_F(PhilotePartialsTest, ViscousAlpha) {
-    double dcl_ref = readScalar<double>(getFile(), "viscous_alpha/dcl_dalpha");
-    double dcd_ref = readScalar<double>(getFile(), "viscous_alpha/dcd_dalpha");
-    double dcm_ref = readScalar<double>(getFile(), "viscous_alpha/dcm_dalpha");
-
-    scirocco::SiroccoDiscipline disc;
-    philote::Variables inputs, outputs;
-    philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
-                 partials);
-
-    scirocco::Scirocco ref("0012", 100);
-    ref.SetOper(3.0, -1.0, 1e6, 0.0);
-    ref.Solve();
-
-    SetCoordinateInputs(inputs, ref.GetFoilCoords(), 3.0, 1e6, 0.0);
-    disc.Compute(inputs, outputs);
-    disc.ComputePartials(inputs, partials);
-
-    auto rel = [](double got, double ref_val) {
-        return std::abs(got - ref_val) / std::max(std::abs(ref_val), 1e-10);
-    };
-
-    EXPECT_LT(rel(partials[{"cl", "alpha"}](0), dcl_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cd", "alpha"}](0), dcd_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cm", "alpha"}](0), dcm_ref), TOL_VISC_SCALAR_DISC);
-}
-
-TEST_F(PhilotePartialsTest, ViscousMach) {
-    double dcl_ref = readScalar<double>(getFile(), "viscous_mach/dcl_dMa");
-    double dcd_ref = readScalar<double>(getFile(), "viscous_mach/dcd_dMa");
-    double dcm_ref = readScalar<double>(getFile(), "viscous_mach/dcm_dMa");
-
-    scirocco::SiroccoDiscipline disc;
-    philote::Variables inputs, outputs;
-    philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
-                 partials);
-
-    scirocco::Scirocco ref("0012", 100);
-    ref.SetOper(3.0, -1.0, 1e6, 0.3);
-    ref.Solve();
-
-    SetCoordinateInputs(inputs, ref.GetFoilCoords(), 3.0, 1e6, 0.3);
-    disc.Compute(inputs, outputs);
-    disc.ComputePartials(inputs, partials);
-
-    auto rel = [](double got, double ref_val) {
-        return std::abs(got - ref_val) / std::max(std::abs(ref_val), 1e-10);
-    };
-
-    EXPECT_LT(rel(partials[{"cl", "Ma"}](0), dcl_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cd", "Ma"}](0), dcd_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cm", "Ma"}](0), dcm_ref), TOL_VISC_SCALAR_DISC);
-}
-
-TEST_F(PhilotePartialsTest, ViscousRe) {
-    double dcl_ref = readScalar<double>(getFile(), "viscous_re/dcl_dRe");
-    double dcd_ref = readScalar<double>(getFile(), "viscous_re/dcd_dRe");
-    double dcm_ref = readScalar<double>(getFile(), "viscous_re/dcm_dRe");
-
-    scirocco::SiroccoDiscipline disc;
-    philote::Variables inputs, outputs;
-    philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
-                 partials);
-
-    scirocco::Scirocco ref("0012", 100);
-    ref.SetOper(3.0, -1.0, 1e6, 0.0);
-    ref.Solve();
-
-    SetCoordinateInputs(inputs, ref.GetFoilCoords(), 3.0, 1e6, 0.0);
-    disc.Compute(inputs, outputs);
-    disc.ComputePartials(inputs, partials);
-
-    auto rel = [](double got, double ref_val) {
-        return std::abs(got - ref_val) / std::max(std::abs(ref_val), 1e-10);
-    };
-
-    EXPECT_LT(rel(partials[{"cl", "Re"}](0), dcl_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cd", "Re"}](0), dcd_ref), TOL_VISC_SCALAR_DISC);
-    EXPECT_LT(rel(partials[{"cm", "Re"}](0), dcm_ref), TOL_VISC_SCALAR_DISC);
-}
-
-TEST_F(PhilotePartialsTest, ViscousShape) {
-    /* Validate that discipline partials match standalone Scirocco exactly.
-       CS reference accuracy is already validated by sensitivity_reference_test;
-       this test verifies the Philote interface wiring doesn't corrupt partials. */
-    scirocco::SiroccoDiscipline disc;
-    philote::Variables inputs, outputs;
-    philote::Partials partials;
-    RunLifecycle(disc, BuildNacaOptions("0012", 100), inputs, outputs,
-                 partials);
-
-    scirocco::Scirocco ref("0012", 100);
-    ref.SetOper(3.0, -1.0, 1e6, 0.0);
-    ref.Solve();
-    auto sens = ref.ComputeSensitivities();
-
-    int nnodes = static_cast<int>(ref.GetFoilCoords().cols());
-    SetCoordinateInputs(inputs, ref.GetFoilCoords(), 3.0, 1e6, 0.0);
-    disc.Compute(inputs, outputs);
-    disc.ComputePartials(inputs, partials);
-
-    const auto& dcl_dx = partials[{"cl", "x"}];
-    const auto& dcd_dx = partials[{"cd", "x"}];
-    const auto& dcm_dx = partials[{"cm", "x"}];
-
-    for (int i = 0; i < nnodes; ++i) {
-        EXPECT_NEAR(dcl_dx(i), sens.dcl_dx(0, i), TOL_VISC_SHAPE_DISC)
-            << "dcl/dx row=0 node=" << i;
-        EXPECT_NEAR(dcl_dx(nnodes + i), sens.dcl_dx(1, i), TOL_VISC_SHAPE_DISC)
-            << "dcl/dx row=1 node=" << i;
-
-        EXPECT_NEAR(dcd_dx(i), sens.dcd_dx(0, i), TOL_VISC_SHAPE_DISC)
-            << "dcd/dx row=0 node=" << i;
-        EXPECT_NEAR(dcd_dx(nnodes + i), sens.dcd_dx(1, i), TOL_VISC_SHAPE_DISC)
-            << "dcd/dx row=1 node=" << i;
-
-        EXPECT_NEAR(dcm_dx(i), sens.dcm_dx(0, i), TOL_VISC_SHAPE_DISC)
-            << "dcm/dx row=0 node=" << i;
-        EXPECT_NEAR(dcm_dx(nnodes + i), sens.dcm_dx(1, i), TOL_VISC_SHAPE_DISC)
-            << "dcm/dx row=1 node=" << i;
+TEST_F(PhilotePartialsTest, PythonSplineContract) {
+    H5::H5File file(GRADIENT_CONTRACT_REFERENCE_FILE, H5F_ACC_RDONLY);
+    for (const std::string name :
+         {"inviscid_te", "viscous_spline", "viscous_mach"}) {
+        SCOPED_TRACE(name);
+        auto group = file.openGroup(name);
+        auto attr = [&](const char* key) {
+            double value;
+            group.openAttribute(key).read(H5::PredType::NATIVE_DOUBLE, &value);
+            return value;
+        };
+        MatrixXd x = readMatrix(file, name + "/x");
+        const int n = x.cols();
+        scirocco::SiroccoDiscipline disc;
+        philote::Variables inputs, outputs;
+        philote::Partials partials;
+        RunLifecycle(disc, BuildNacaOptions("0012", n - 1), inputs, outputs,
+                     partials);
+        SetCoordinateInputs(inputs, x, attr("alpha"), attr("Re"), attr("Ma"));
+        disc.Compute(inputs, outputs);
+        disc.ComputePartials(inputs, partials);
+        double primal[3];
+        group.openDataSet("outputs").read(primal, H5::PredType::NATIVE_DOUBLE);
+        const std::vector<std::string> names = {"cl", "cd", "cm"};
+        MatrixXd scalar = readMatrix(file, name + "/scalar_derivatives");
+        const std::vector<std::string> params = {"alpha", "Ma", "Re"};
+        for (int j = 0; j < 3; ++j) {
+            EXPECT_NEAR(outputs.at(names[j])(0), primal[j], 2e-11);
+            for (int p = 0; p < 3; ++p) {
+                double scale = p == 2 && attr("Re") > 0 ? attr("Re") : 1;
+                const double derivative = partials[{names[j], params[p]}](0);
+                EXPECT_NEAR(derivative * scale, scalar(p, j) * scale,
+                            2e-11 + 2e-8 * std::abs(scalar(p, j) * scale));
+            }
+        }
+        auto data = group.openDataSet("directions");
+        hsize_t dims[3];
+        data.getSpace().getSimpleExtentDims(dims);
+        std::vector<double> directions(dims[0] * 2 * n);
+        data.read(directions.data(), H5::PredType::NATIVE_DOUBLE);
+        MatrixXd ref = readMatrix(file, name + "/shape_derivatives");
+        for (size_t p = 0; p < dims[0]; ++p) {
+            SCOPED_TRACE(p);
+            for (int j = 0; j < 3; ++j) {
+                double got = 0;
+                for (int i = 0; i < 2 * n; ++i)
+                    got += partials[{names[j], "x"}](i) *
+                           directions[p * 2 * n + i];
+                EXPECT_NEAR(got, ref(p, j), 2e-11 + 2e-8 * std::abs(ref(p, j)));
+            }
+        }
+        // A previous valid Jacobian must not be reused for changed inputs.
+        inputs.at("alpha")(0) += 1;
+        EXPECT_THROW(disc.ComputePartials(inputs, partials),
+                     std::runtime_error);
     }
 }

@@ -53,8 +53,9 @@ def _patched_TE_info(X):
     hTE = -s[0] * t[1] + s[1] * t[0]
     dtdx = t1[0] * t2[1] - t2[0] * t1[1]
     p = s / _mfoil_module.norm2(s)
-    # Use np.real() instead of abs() — sign is fixed by geometry convention
-    tcp = np.real(t[0] * p[1] - t[1] * p[0])
+    # Differentiate abs(cross) on its real-base branch; retain its imaginary part.
+    cross = t[0] * p[1] - t[1] * p[0]
+    tcp = (1 if np.real(cross) >= 0 else -1) * cross
     tdp = np.dot(t, p)
     return t, hTE, dtdx, tcp, tdp
 
@@ -950,3 +951,9 @@ def complex_step_mode():
 
 # Re-export everything from mfoil
 from mfoil import *
+
+
+# Preserve Python mfoil.spline2d itself; only extend its SciPy primitive to
+# complex abscissae. See complex_spline.py for the interpolation equations.
+from complex_spline import cs_cubic_spline
+_mfoil_module.CubicSpline = cs_cubic_spline

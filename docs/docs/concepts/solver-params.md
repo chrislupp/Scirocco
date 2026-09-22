@@ -41,9 +41,10 @@ See [PTC concepts](./ptc) for the algorithm.
 
 ## Adjoint
 
-| Field | Default | Notes |
-| --- | --- | --- |
-| `adjoint_ridge` | `1e-10` | Diagonal ridge added to $R_V$ if SparseLU fails. Biases the adjoint by $O(\varepsilon \cdot \|R_V\|)$ but rescues near-singular configurations. |
+Adjoints use the unregularized converged Jacobian. Factorization failures and
+inaccurate transpose solves are reported as errors. The former
+`adjoint_ridge` option has been removed because a regularized Jacobian does
+not differentiate the Python mfoil equations.
 
 ## Boundary-layer closures
 

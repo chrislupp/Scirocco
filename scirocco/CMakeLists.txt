@@ -24,6 +24,7 @@ find_package(Eigen3 REQUIRED)
 # Source files
 set(SCIROCCO_SOURCES
     src/spline.cpp
+    src/spline_deriv.cpp
     src/geometry.cpp
     src/paneling.cpp
     src/panel_influence.cpp
@@ -144,6 +145,13 @@ if(SCIROCCO_BUILD_TESTS)
             SENSITIVITY_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/sensitivity_reference.h5"
         )
         gtest_discover_tests(scirocco_sensitivity_ref_tests)
+
+        add_executable(scirocco_gradient_contract_tests tests/gradient_contract_test.cpp)
+        target_link_libraries(scirocco_gradient_contract_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_gradient_contract_tests PRIVATE
+            GRADIENT_CONTRACT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/gradient_contract_reference.h5")
+        gtest_discover_tests(scirocco_gradient_contract_tests)
 
         # Ping tests: scirocco analytic vs mfoil-CS Jacobian references.
         add_executable(scirocco_ping_tests tests/ping_test.cpp)

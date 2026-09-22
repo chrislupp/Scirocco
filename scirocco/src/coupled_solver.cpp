@@ -140,6 +140,8 @@ void SolveViscous(FoilState& state) {
  * @param state Foil state
  */
 void SolveCoupled(FoilState& state) {
+    state.glob.conv = false;
+    state.glob.lu_factorization.reset();
     int niglob = state.param.niglob;
     double rtol = state.param.rtol;
 
@@ -150,8 +152,16 @@ void SolveCoupled(FoilState& state) {
         /* Build global system */
         BuildGlobSys(state);
 
-        /* Check convergence */
-        double rnorm = state.glob.R.norm();
+        // Python mfoil updates force values and the lift constraint each
+        // iteration.
+        CalcForce(state);
+        const VectorXd ue = state.glob.U.row(3).transpose();
+        const VectorXd mass = state.glob.U.row(1).transpose().cwiseProduct(ue);
+        const VectorXd rue = ue - GetUeInv(state) - state.vsol.ue_m * mass;
+        const double rcl =
+            state.oper.givencl ? state.post.cl - state.oper.cltgt : 0.0;
+        double rnorm = std::sqrt(state.glob.R.squaredNorm() +
+                                 rue.squaredNorm() + rcl * rcl);
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm
                       << ", tau = " << state.glob.tau << '\n';
@@ -186,7 +196,12 @@ void SolveCoupled(FoilState& state) {
         state.glob.R_norm_prev = rnorm;
 
         /* Solve and update */
-        SolveGlob(state);
+        try {
+            SolveGlob(state);
+        } catch (const std::runtime_error&) {
+            state.glob.conv = false;
+            return;
+        }
         UpdateState(state);
 
         /* StagPointMove and UpdateTransition perturb the state in ways that
@@ -238,7 +253,7 @@ void BuildGlobSys(FoilState& state) {
 
     /* Build using triplets for sparse matrix */
     std::vector<Triplet> triplets_U, triplets_x;
-    triplets_U.reserve(Nsys * 24);  /* Rough estimate */
+    triplets_U.reserve(Nsys * 24); /* Rough estimate */
     triplets_x.reserve(Nsys * 6);
 
     /* Loop over surfaces (lower, upper, wake) */
@@ -273,7 +288,7 @@ void BuildGlobSys(FoilState& state) {
         /* First point system */
         Vector3d R1;
         Matrix38d R1_U;
-        Matrix32d R1_x;  /* 3x2 for x linearization */
+        Matrix32d R1_x; /* 3x2 for x linearization */
         std::vector<int> J;
 
         if (si < 2) {
@@ -352,8 +367,8 @@ void BuildGlobSys(FoilState& state) {
             R1 = wake.R;
             R1_U.setZero();
             /* Map 3x12 to 3x8 format (we only store the needed blocks) */
-            R1_U.block<3, 4>(0, 0) = wake.R_U.block<3, 4>(0, 0);  /* Lower */
-            R1_U.block<3, 4>(0, 4) = wake.R_U.block<3, 4>(0, 4);  /* Upper */
+            R1_U.block<3, 4>(0, 0) = wake.R_U.block<3, 4>(0, 0); /* Lower */
+            R1_U.block<3, 4>(0, 4) = wake.R_U.block<3, 4>(0, 4); /* Upper */
             /* Wake contribution (indices 8-11 in R_U) stored separately */
             R1_x.setZero();
             J = {wake.J[0], wake.J[1]};
@@ -418,7 +433,8 @@ void BuildGlobSys(FoilState& state) {
             Vector2d xin(xi(ip), xi(i));
             Vector2d Aux_in(Aux(ip), Aux(i));
 
-            /* Compute residual - use transition residual at transition stations */
+            /* Compute residual - use transition residual at transition stations
+             */
             ResidualLin res;
             if (tran) {
                 /* Transition station: combined laminar + turbulent residual */
@@ -470,7 +486,7 @@ void BuildGlobSys(FoilState& state) {
         x_st(i) = -state.isol.sgnue(i);
     }
     for (int i = N; i < Nsys; ++i) {
-        x_st(i) = -1.0;  /* Wake has same sens as upper surface */
+        x_st(i) = -1.0; /* Wake has same sens as upper surface */
     }
 
     VectorXd R_st = state.glob.R_x * x_st;
@@ -544,7 +560,7 @@ void SolveGlob(FoilState& state) {
      * d(R_ue)/d(ds) = -ue_m * diag(ue) */
     for (int i = 0; i < Nsys; ++i) {
         int row = 3 * Nsys + i;
-        int ue_idx = 4 * i + 3;  /* ue index in state vector */
+        int ue_idx = 4 * i + 3; /* ue index in state vector */
 
         /* Identity part for ue */
         triplets.emplace_back(row, ue_idx, 1.0);
@@ -585,8 +601,9 @@ void SolveGlob(FoilState& state) {
         for (int i = 0; i < Nsys; ++i) {
             double duinv_dalpha = 0.0;
             if (i < state.foil.N) {
-                duinv_dalpha = -state.isol.gamref(i, 0) * Sind(alpha) +
-                               state.isol.gamref(i, 1) * Cosd(alpha);
+                duinv_dalpha = state.isol.sgnue(i) *
+                               (-state.isol.gamref(i, 0) * Sind(alpha) +
+                                state.isol.gamref(i, 1) * Cosd(alpha));
             } else if (i - state.foil.N <
                        static_cast<int>(state.isol.uewiref.rows())) {
                 int iw = i - state.foil.N;
@@ -621,17 +638,15 @@ void SolveGlob(FoilState& state) {
     solver.compute(state.glob.R_V);
     if (solver.info() != Eigen::Success) {
         std::cerr << "  Warning: SparseLU decomposition failed" << '\n';
-        state.glob.dU.setZero();
-        state.glob.dalpha = 0.0;
-        return;
+        throw std::runtime_error(
+            "SolveGlob: linear factorization/solve failed");
     }
 
     VectorXd dV = -solver.solve(R);
-    if (solver.info() != Eigen::Success) {
+    if (solver.info() != Eigen::Success || !dV.allFinite()) {
         std::cerr << "  Warning: SparseLU solve failed" << '\n';
-        state.glob.dU.setZero();
-        state.glob.dalpha = 0.0;
-        return;
+        throw std::runtime_error(
+            "SolveGlob: linear factorization/solve failed");
     }
 
     /* Store dU (reshaped from 4*Nsys vector to 4xNsys matrix) */
@@ -692,8 +707,8 @@ void UpdateState(FoilState& state) {
         double Uk = state.glob.U(2, i);
         double dUk = state.glob.dU(2, i);
         /* Skip small values (don't limit small amp/ctau) */
-        if (!state.vsol.turb[i] && Uk < 0.2) continue;         /* small amp */
-        if (state.vsol.turb[i] && Uk < 0.1 * ctmax) continue;  /* small ctau */
+        if (!state.vsol.turb[i] && Uk < 0.2) continue;        /* small amp */
+        if (state.vsol.turb[i] && Uk < 0.1 * ctmax) continue; /* small ctau */
         if (Uk == 0.0 || dUk == 0.0) continue;
         /* Check if update would make value negative */
         if (Uk + dUk < 0.0) {
@@ -834,7 +849,7 @@ void CalcUeM(FoilState& state) {
     }
 
     /* 2. B = d(airfoil streamfunction)/d(source) [(N+1) x (N+Nw-2)] */
-    int Npanel = N + Nw - 2;  /* N-1 airfoil panels + Nw-1 wake panels */
+    int Npanel = N + Nw - 2; /* N-1 airfoil panels + Nw-1 wake panels */
     MatrixXd B = MatrixXd::Zero(N + 1, Npanel);
 
     for (int i = 0; i < N; ++i) {
@@ -890,7 +905,7 @@ void CalcUeM(FoilState& state) {
     /* 3. Bp = -inv(AIC) * B [N x (N+Nw-2)]
      * Note: AIC is (N+1) x (N+1), but last row is Kutta condition */
     MatrixXd Bp = -state.isol.AIC.lu().solve(B);
-    Bp.conservativeResize(N, Npanel);  /* Remove last row */
+    Bp.conservativeResize(N, Npanel); /* Remove last row */
 
     /* 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)] */
     MatrixXd Csig = MatrixXd::Zero(Nw, Npanel);
@@ -921,7 +936,7 @@ void CalcUeM(FoilState& state) {
             Vector2d Xr = 0.5 * (state.wake.x.col(im) + state.wake.x.col(ir));
 
             if (j == Nw - 1) {
-                Xr = 2.0 * Xm - Xl;  /* Ghost extension */
+                Xr = 2.0 * Xm - Xl; /* Ghost extension */
             }
 
             double d1 = (Xm - Xl).norm();
@@ -988,7 +1003,7 @@ void CalcUeM(FoilState& state) {
      * Df = Bp for foil, Dw = Cgam*Bp + Csig for wake */
     MatrixXd CgamBp = Cgam * Bp;
     MatrixXd Dw = CgamBp + Csig;
-    Dw.row(0) = Bp.row(N - 1);  /* First wake point same as TE */
+    Dw.row(0) = Bp.row(N - 1); /* First wake point same as TE */
 
     state.vsol.ue_sigma.resize(Nsys, Npanel);
     state.vsol.ue_sigma.topRows(N) = Bp;
@@ -1026,9 +1041,7 @@ void CalcUeM(FoilState& state) {
  * @brief Rebuild sensitivities after stagnation point move
  * @param state Foil state
  */
-void RebuildUeM(FoilState& state) {
-    CalcUeM(state);
-}
+void RebuildUeM(FoilState& state) { CalcUeM(state); }
 
 /**
  * @brief Rebuild R_V at converged state and store SparseLU factorization
@@ -1049,7 +1062,7 @@ void StoreAdjointFactorization(FoilState& state) {
         ue(i) = std::max(ue(i), 1e-10 * uemax);
     }
 
-    int NN = 4 * Nsys;  /* No cl-alpha for adjoint */
+    int NN = 4 * Nsys; /* No cl-alpha for adjoint */
     state.glob.R_V.resize(NN, NN);
 
     std::vector<Triplet> triplets;
@@ -1079,45 +1092,11 @@ void StoreAdjointFactorization(FoilState& state) {
 
     state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
 
-    /* Factor and store. R_V can be near-singular at converged states where
-     * a transition row's xt_U chain has blown up through Rxt_xt → 0 (a
-     * genuine ill-conditioning of the implicit transition formulation that
-     * any faithful mfoil port inherits). Retry once with a diagonal ridge
-     * sized to ||R_V||_∞ — biases the adjoint by O(ε·||R_V||) but keeps
-     * SLSQP making progress instead of crashing on the LU. */
+    // A ridge solves a different derivative problem. Fail instead of returning
+    // a gradient of a regularized model that Python mfoil did not evaluate.
     auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
     lu->compute(state.glob.R_V);
-    if (lu->info() != Eigen::Success) {
-        double rv_inf = 0.0;
-        for (int k = 0; k < state.glob.R_V.outerSize(); ++k) {
-            for (SparseMatrixd::InnerIterator it(state.glob.R_V, k); it; ++it) {
-                rv_inf = std::max(rv_inf, std::abs(it.value()));
-            }
-        }
-        const double scale = std::max(1.0, rv_inf);
-        SparseMatrixd R_V_reg = state.glob.R_V;
-        const double eps = state.param.adjoint_ridge * scale;
-        for (int i = 0; i < R_V_reg.rows(); ++i) {
-            R_V_reg.coeffRef(i, i) += eps;
-        }
-        lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
-        lu->compute(R_V_reg);
-        if (state.param.verb >= 1) {
-            std::cerr << "  StoreAdjointFactorization: bare R_V singular,"
-                         " retried with ε="
-                      << state.param.adjoint_ridge << "·max|R_V|=" << eps
-                      << " ridge\n";
-        }
-    }
-    if (lu->info() == Eigen::Success) {
-        state.glob.lu_factorization = lu;
-    } else {
-        state.glob.lu_factorization = nullptr;
-        if (state.param.verb >= 1) {
-            std::cerr << "  Warning: adjoint LU factorization failed even with"
-                         " ridge\n";
-        }
-    }
+    state.glob.lu_factorization = lu->info() == Eigen::Success ? lu : nullptr;
 }
 
 /**
@@ -1146,4 +1125,4 @@ void RebuildIsol(FoilState& state) {
     }
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

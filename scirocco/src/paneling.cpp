@@ -79,13 +79,14 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
             /* Force TE resolution */
             double xmid = 0.5 * (xy_fine(0, i) + xy_fine(0, i + 1));
             double xx =
-                (xmid - xmin) / (xmax - xmin);  /* Close to 1 means at TE */
+                (xmid - xmin) / (xmax - xmin); /* Close to 1 means at TE */
             skint += TEfac * 0.5 * std::exp(-100.0 * (1.0 - xx));
 
             sk(i + 1) = sk(i) + skint;
         }
 
-        /* Offset by fraction of average to avoid problems with zero curvature */
+        /* Offset by fraction of average to avoid problems with zero curvature
+         */
         double sk_avg = sk.sum() / nfine;
         sk = sk.array() + 2.0 * sk_avg;
 
@@ -115,6 +116,7 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
 }
 
 void RefreshPanelGeometry(Panel& panel) {
+    panel.cumulative_s = false;
     const int N = panel.N;
     if (N < 2) return;
 
@@ -136,15 +138,16 @@ void RefreshPanelGeometry(Panel& panel) {
 
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt) {
-    int N = npanel + 1;  /* Number of nodes */
+    int N = npanel + 1; /* Number of nodes */
 
     /* Use curvature-based spacing (must match mfoil exactly) */
-    double Ufac = 2.0;   /* Uniformity factor (higher = more uniform) */
-    double TEfac = 0.1;  /* TE resolution factor (higher = more TE resolution) */
+    double Ufac = 2.0;  /* Uniformity factor (higher = more uniform) */
+    double TEfac = 0.1; /* TE resolution factor (higher = more TE resolution) */
 
     SpacingResult spacing = SplineCurvature(geom.xpoint, N, Ufac, TEfac, stgt);
 
     panel.N = N;
+    panel.cumulative_s = false;
     panel.x = spacing.X;
     panel.s = spacing.S;
     panel.t = spacing.XS;

@@ -14,6 +14,8 @@ and
 ## Calling
 
 ```cpp
+// Establish the panel-coordinate geometry used for shape derivatives.
+scirocco::RefreshPanelGeometry(foil.GetState().foil);
 foil.SetOper(α, -1.0, Re, Ma);
 foil.Solve();                          // must converge first
 Sensitivity sens = foil.ComputeSensitivities();
@@ -77,20 +79,35 @@ The adjoint solve reuses the SparseLU factorization stored by
 `StoreAdjointFactorization` during the primal Newton iteration, so the
 adjoint cost is one back-substitution per output (three outputs:
 $C_l$, $C_d$, $C_m$ — actually four with $C_{d,\pi}$). This is
-**independent of $N$**, which is what makes panel-node gradients
-practical.
+a constant number of adjoint solves as $N$ grows. Factorization, geometric
+linearization, and back-substitution still grow with the number of nodes.
 
-## Adjoint ridge fallback
+## Geometry and validity
 
-If the SparseLU factorization is numerically singular (typically at a
-converged state with low-damping transition rows), the adjoint solve
-adds a tiny diagonal ridge `Param::adjoint_ridge` (default `1e-10`) to
-$R_V$ and retries. The bias on the resulting gradient is
-$O(\varepsilon \cdot \|R_V\|)$ — small enough to be invisible in normal
-work, large enough to disambiguate when it triggers.
+Panel-coordinate derivatives use Python mfoil's spline arc-length convention.
+Call `RefreshPanelGeometry` before the first shape-sensitive solve and after
+changing panel coordinates directly. Initial curvature-based panel generation
+stores arc lengths on the original geometry spline; reconstructing them through
+the resulting panel nodes defines the panel-coordinate input path. Sensitivities
+do not include derivatives of the original curvature-based repaneling. This reconstructs arc lengths from those nodes; the adjoint
+linearizes all ten spline reintegration passes, including the wake spacing
+and tangent chains. `RecomputeArcLength` explicitly selects straight-panel
+lengths for low-level callers and reference tests using that convention.
 
-If you suspect a ridge fired, set `state.param.verb = 1` before
-`ComputeSensitivities` and watch for the warning line.
+`ComputeSensitivities` requires a converged solve at the current operating
+conditions. Changing conditions with `SetOper` invalidates the previous
+solution. Lift-target derivatives are currently unsupported and raise an
+exception; use prescribed alpha for sensitivities.
+
+A singular adjoint factorization or a failed transpose-residual check raises
+an exception. Adjoint diagonal regularization and stale-gradient fallback
+have been removed. The Philote discipline propagates failed analyses and
+requires `Compute` at the same inputs before `ComputePartials`.
+
+Inviscid `cd` and its derivatives are zero, matching Python mfoil. Near-field
+pressure drag `cdpi` is a separate output. Python's existing force-output
+normalization is preserved; use unit-chord geometry when conventional
+chord-normalized coefficients are required.
 
 ## See also
 

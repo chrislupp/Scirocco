@@ -38,15 +38,15 @@ namespace scirocco {
 
 /* Global system variables */
 struct Glob {
-    int Nsys = 0;         /**< Number of equations and states */
-    MatrixXd U;           /**< Primary states [th, ds, sa, ue] [4 x Nsys] */
-    MatrixXd dU;          /**< Primary state update [4 x Nsys] */
-    double dalpha = 0.0;  /**< Angle of attack update */
-    bool conv = true;     /**< Converged flag */
-    VectorXd R;           /**< Residuals [3*Nsys] */
-    SparseMatrixd R_U;    /**< Residual Jacobian w.r.t. primary states */
-    SparseMatrixd R_x;    /**< Residual Jacobian w.r.t. xi [3*Nsys x Nsys] */
-    SparseMatrixd R_V;    /**< Global Jacobian [4*Nsys x 4*Nsys] */
+    int Nsys = 0;        /**< Number of equations and states */
+    MatrixXd U;          /**< Primary states [th, ds, sa, ue] [4 x Nsys] */
+    MatrixXd dU;         /**< Primary state update [4 x Nsys] */
+    double dalpha = 0.0; /**< Angle of attack update */
+    bool conv = false;   /**< Converged flag */
+    VectorXd R;          /**< Residuals [3*Nsys] */
+    SparseMatrixd R_U;   /**< Residual Jacobian w.r.t. primary states */
+    SparseMatrixd R_x;   /**< Residual Jacobian w.r.t. xi [3*Nsys x Nsys] */
+    SparseMatrixd R_V;   /**< Global Jacobian [4*Nsys x 4*Nsys] */
     /* ∂R_BL/∂Re·Re for the analytic Re chain (accumulated in BuildGlobSys
        from each station's ResidualLin.lin_Ret). Re enters R only through
        Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re /
@@ -58,7 +58,7 @@ struct Glob {
        and pre-multiplying by Ma here keeps the BuildGlobSys aggregation
        uniform: ∂R/∂Ma = dR_dMa_times_Ma / Ma. Size 3*Nsys (BL rows). */
     VectorXd dR_dMa_times_Ma;
-    bool realloc = false;  /**< If true, system Jacobians will be reallocated */
+    bool realloc = false; /**< If true, system Jacobians will be reallocated */
 
     /* Stored SparseLU factorization of R_V for adjoint solves */
     std::shared_ptr<Eigen::SparseLU<SparseMatrixd>> lu_factorization;

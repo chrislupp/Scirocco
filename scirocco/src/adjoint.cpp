@@ -164,7 +164,7 @@ void CalcForceLin(FoilState& state) {
         double ddx1nds_dx1x = -dx1(0) + dxv(0);
         double ddx1nds_dx1z = -dx1(1) + dxv(1);
         double ddx1nds_dx2x =
-            dx1(0);  /* d(dxv)/d(x2_x) = (1,0), d(dx1)/d(x2_x) = 0 */
+            dx1(0); /* d(dxv)/d(x2_x) = (1,0), d(dx1)/d(x2_x) = 0 */
         double ddx1nds_dx2z = dx1(1);
 
         /* d(dx2nds)/d(x1_x) = (-1,0).dx2 + dxv.(0,0) = -dx2(0) */
@@ -215,7 +215,8 @@ void CalcForceLin(FoilState& state) {
      * - cd: Squire-Young from end-of-wake state Uw only; cd_V is sparse at iw.
      * - dcd/dx_partial = 0 because Squire-Young has no direct foil.x
      * dependence.
-     * ======================================================================== */
+     * ========================================================================
+     */
     if (state.oper.viscous && state.glob.U.cols() > 0) {
         int Nsys = static_cast<int>(state.glob.U.cols());
         state.post.cl_V = VectorXd::Zero(4 * Nsys);
@@ -329,7 +330,8 @@ Sensitivity InviscidSensitivities(FoilState& state) {
     sens.dcl_dx = MatrixXd::Zero(2, N);
     sens.dcm_dx = MatrixXd::Zero(2, N);
     sens.dcdpi_dx = MatrixXd::Zero(2, N);
-    sens.dcd_dx = MatrixXd::Zero(2, N);  /* Zero for inviscid (no viscous drag) */
+    sens.dcd_dx =
+        MatrixXd::Zero(2, N); /* Zero for inviscid (no viscous drag) */
 
     for (int k = 0; k < N; ++k) {
         sens.dcl_dx(0, k) = state.post.dcl_dx_partial(0, k) - vjp_cl(2 * k);
@@ -350,7 +352,8 @@ void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
     double cosa = Cosd(alpha);
     double sina = Sind(alpha);
 
-    /* dgam/dalpha = gamref[:,0]*(-sin a) + gamref[:,1]*(cos a), times deg2rad */
+    /* dgam/dalpha = gamref[:,0]*(-sin a) + gamref[:,1]*(cos a), times deg2rad
+     */
     VectorXd dgam_dalpha =
         (-sina * state.isol.gamref.col(0) + cosa * state.isol.gamref.col(1)) *
         kDegToRad;
@@ -360,8 +363,7 @@ void AlphaSensitivities(FoilState& state, Sensitivity& sens) {
 
     sens.dcl_dalpha = state.post.cl_alpha + state.post.cl_ue.dot(dueinv_dalpha);
     sens.dcm_dalpha = 0.0 + state.post.cm_ue.dot(dueinv_dalpha);
-    sens.dcd_dalpha =
-        state.post.cdpi_alpha + state.post.cdpi_ue.dot(dueinv_dalpha);
+    sens.dcd_dalpha = 0.0;  // Python mfoil reports zero inviscid cd.
 }
 
 static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
@@ -376,8 +378,8 @@ static void ComputeCpDerivsMa(double ue, const Param& param, double Ma,
         return;
     }
 
-    double b = param.KTb;  /* sqrt(1-Ma^2) */
-    double l = param.KTl;  /* Ma^2/(1+b)^2 */
+    double b = param.KTb; /* sqrt(1-Ma^2) */
+    double l = param.KTl; /* Ma^2/(1+b)^2 */
 
     /* db/dMa = -Ma/b */
     double db = -Ma / b;
@@ -429,7 +431,7 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
 
     VectorXd ue = GetUeInv(state);
 
-    double dcl = 0.0, dcm = 0.0, dcdpi = 0.0;
+    double dcl = 0.0, dcm = 0.0;
     double cosa = Cosd(alpha);
     double sina = Sind(alpha);
     Vector2d xref = state.geom.xref;
@@ -445,7 +447,6 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
         Vector2d dx2 = x2 - xref;
 
         double dx_lift = -dxv(0) * cosa - dxv(1) * sina;
-        double dz = dxv(1) * cosa - dxv(0) * sina;
 
         double dcp_ip, d2cp_ip;
         double dcp_i, d2cp_i;
@@ -454,7 +455,6 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
 
         double dcpbar = 0.5 * (dcp_ip + dcp_i);
         dcl += dx_lift * dcpbar;
-        dcdpi += dz * dcpbar;
 
         double dx1nds = dxv(0) * dx1(0) + dxv(1) * dx1(1);
         double dx2nds = dxv(0) * dx2(0) + dxv(1) * dx2(1);
@@ -464,7 +464,7 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
 
     sens.dcl_dMa = dcl / chord;
     sens.dcm_dMa = dcm / (chord * chord);
-    sens.dcd_dMa = dcdpi / chord;
+    sens.dcd_dMa = 0.0;  // cdpi is a separate output from cd.
 }
 
 /**
@@ -479,15 +479,23 @@ void MachSensitivities(FoilState& state, Sensitivity& sens) {
  *        + ComputeRueVJP(state, λ_ue, dfoil_s_dx)             [2N]
  *   5. dJ/dx_foil = ∂J/∂x_partial - vjp_J.
  * @param state foil state containing the converged viscous solution
- * @return Sensitivity struct with dcl_dx, dcm_dx, dcd_dx, and scalar sensitivities
+ * @return Sensitivity struct with dcl_dx, dcm_dx, dcd_dx, and scalar
+ * sensitivities
  */
 Sensitivity ViscousSensitivities(FoilState& state) {
     int N = state.foil.N;
     int Nsys = state.glob.Nsys;
 
-    if (!state.oper.viscous || state.glob.U.cols() == 0) {
+    if (!state.oper.viscous || state.glob.U.cols() == 0 || !state.glob.conv) {
         throw std::runtime_error(
             "ViscousSensitivities: viscous primal not converged");
+    }
+
+    if (state.oper.givencl) {
+        throw std::runtime_error(
+            "ViscousSensitivities: lift-target derivatives are not "
+            "implemented; "
+            "solve at a prescribed alpha for sensitivities");
     }
 
     /* 1. Force partials */
@@ -507,13 +515,13 @@ Sensitivity ViscousSensitivities(FoilState& state) {
 
     /* 4. VJPs — DRbl as dense matrix * lambda_bl (lambda_bl size 3*Nsys),
      *    plus ComputeRueVJP for the wake-side chain. */
-    MatrixXd dfoil_s_dx = DFoilSDFoilXCumulative(state.foil);
-    MatrixXd dRbl_dx = DRblDFoilX(state, dfoil_s_dx);  /* [3*Nsys x 2N] */
+    MatrixXd dfoil_s_dx = DFoilSDFoilX(state.foil);
+    MatrixXd dRbl_dx = DRblDFoilX(state, dfoil_s_dx); /* [3*Nsys x 2N] */
 
     auto vjp = [&](const VectorXd& lambda) -> VectorXd {
         VectorXd lambda_bl = lambda.head(3 * Nsys);
         VectorXd lambda_ue = lambda.tail(Nsys);
-        VectorXd out = (lambda_bl.transpose() * dRbl_dx).transpose();  /* [2N] */
+        VectorXd out = (lambda_bl.transpose() * dRbl_dx).transpose(); /* [2N] */
         out += ComputeRueVJP(state, lambda_ue, dfoil_s_dx);
         return out;
     };
@@ -539,19 +547,13 @@ Sensitivity ViscousSensitivities(FoilState& state) {
 
     /* 6. Scalar parameter sensitivities: dJ/dp = ∂J/∂p_partial - λ^T·∂R_V/∂p.
      *
-     * ∂R_V/∂p is computed via 4th-order central FD on the parameter at FIXED
-     * U, with all p-dependent geometry/closure quantities re-evaluated
-     * analytically (NOT a Newton re-solve). For alpha that means rebuilding
-     * gam, wake.x, wake.t, ue_sigma — these all depend on alpha but the
-     * earlier "gamma-only" DRVDAlpha missed the wake.x/ue_sigma chains and
-     * was off by ~5e-4 rel. For Ma it means rebuilding all of KTb, KTl, H0,
-     * cps, mu0, rho0 via InitThermo (closures use these). For Re it means
-     * updating mu0 only (Ret = X/mu0).
+     * DRVDAlpha includes the circulation, wake, and mass-coupling chains.
+     * DRVDRe and DRVDMa differentiate the boundary-layer closures and
+     * thermodynamic parameters analytically at fixed U.
      *
-     * ∂J/∂p_partial captures the explicit p-dependence in J(U_fixed, p):
-     *   alpha: cl/cm/cdpi have explicit cos/sin factors → cl_alpha, etc.
-     *   Ma:    cp uses KT-corrected uk(ue, KTl, KTb) and cd uses uk → FD.
-     *   Re:    no explicit dependence (Re only enters through R via Ret). */
+     * Explicit output dependence is the lift rotation for alpha and the
+     * Karman-Tsien pressure/velocity correction for Mach. Reynolds number
+     * enters the outputs only through the converged state. */
     {
         VectorXd dRV_dalpha = DRVDAlpha(state);
         sens.dcl_dalpha = state.post.cl_alpha - lambda_cl.dot(dRV_dalpha);
@@ -670,8 +672,8 @@ VectorXd DRVDAlpha(FoilState& state) {
 
     VectorXd dgam_dalpha = DGammaDAlpha(state);
     VectorXd dxi_dalpha = DXiDAlpha(state);
-    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state);  /* [2 x Nw] */
-    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state);  /* [2 x Nw] */
+    MatrixXd dwake_x_dalpha = DWakeXDAlpha(state); /* [2 x Nw] */
+    MatrixXd dwake_t_dalpha = DWakeTDAlpha(state); /* [2 x Nw] */
 
     VectorXd dR = VectorXd::Zero(4 * Nsys);
 
@@ -686,7 +688,7 @@ VectorXd DRVDAlpha(FoilState& state) {
         dueinv(i) = state.isol.sgnue(i) * dgam_dalpha(i);
     }
     dueinv(N) =
-        state.isol.sgnue(N - 1) * dgam_dalpha(N - 1);  /* wake[0] continuity */
+        state.isol.sgnue(N - 1) * dgam_dalpha(N - 1); /* wake[0] continuity */
     for (int j = 1; j < Nw; ++j) {
         Vector2d xi_w = state.wake.x.col(j);
         Vector2d t_w = state.wake.t.col(j);
@@ -710,14 +712,14 @@ VectorXd DRVDAlpha(FoilState& state) {
     for (int j = 0; j < Nsys; ++j) {
         mass(j) = state.glob.U(1, j) * state.glob.U(3, j);
     }
-    VectorXd phi = state.vsol.sigma_m * mass;  /* [Npanel] */
+    VectorXd phi = state.vsol.sigma_m * mass; /* [Npanel] */
 
     /* For each wake panel j, the contribution-to-B uses PanelLinSourceStream
      * on left half [wake.x[j], Xm] and right half [Xm, X_right]. The α-deriv
      * of (a, b) flows through dXj endpoints (no xi α-dep since xi = foil.x). */
     auto dwx_col = [&](int j) { return dwake_x_dalpha.col(j); };
 
-    VectorXd rhs_alpha = VectorXd::Zero(N + 1);  /* top N rows; Kutta row = 0 */
+    VectorXd rhs_alpha = VectorXd::Zero(N + 1); /* top N rows; Kutta row = 0 */
     for (int j = 0; j < Nw - 1; ++j) {
         Vector2d Xm = 0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
         Vector2d dXm = 0.5 * (dwx_col(j) + dwx_col(j + 1));
@@ -845,8 +847,8 @@ VectorXd DRVDAlpha(FoilState& state) {
                                                      dvortex_zero, alpha);
         Vector2d Vinf(state.oper.Vinf * Cosd(alpha),
                       state.oper.Vinf * Sind(alpha));
-        Vector2d VGv = vd_v.V - Vinf;  /* V_G · v at wake.x[jw] */
-        Matrix2d VGv_xi = vd_v.V_xi;   /* (V_G · v)_xi (Vinf is xi-indep) */
+        Vector2d VGv = vd_v.V - Vinf; /* V_G · v at wake.x[jw] */
+        Matrix2d VGv_xi = vd_v.V_xi;  /* (V_G · v)_xi (Vinf is xi-indep) */
         dCgam_v_dalpha(jw) = t_w.dot(VGv_xi * dwxj) + VGv.dot(dwtj);
 
         /* dCsig[j,:]·phi/dα: chain through wake-source panel velocities
@@ -1040,7 +1042,8 @@ VectorXd DRVDAlpha(FoilState& state) {
     for (int i = 0; i < N; ++i) {
         dR(3 * Nsys + i) = -dueinv(i) - state.isol.sgnue(i) * dBphi_dalpha(i);
     }
-    dR(3 * Nsys + N) = -dueinv(N) - dBphi_dalpha(N - 1);  /* wake[0] continuity */
+    dR(3 * Nsys + N) =
+        -dueinv(N) - dBphi_dalpha(N - 1); /* wake[0] continuity */
     for (int j = 1; j < Nw; ++j) {
         /* Cgam[j,:] · dBphi.head(N): rebuild Cgam[j,:] from stored Cgam? It's
          * not cached. Recompute via InviscidVelocity returning V_G [2 x N]. */
@@ -1066,7 +1069,8 @@ VectorXd DRVDMa(FoilState& state, double h) {
      * through every Ma-dependent closure in the BL residuals. BuildGlobSys
      * accumulates per-station ∂R/∂Ma·Ma into glob.dR_dMa_times_Ma; the
      * chain finishes with ∂R/∂Ma = dR_dMa_times_Ma / Ma. ue-equation rows
-     * are Ma-independent (ueinv, sigma_m, ue_m, mass all Ma-indep at fixed U). */
+     * are Ma-independent (ueinv, sigma_m, ue_m, mass all Ma-indep at fixed U).
+     */
     (void)h;
     int Nsys = state.glob.Nsys;
     state.glob.realloc = true;
@@ -1095,7 +1099,8 @@ VectorXd DRVDRe(FoilState& state, double h) {
 }
 
 /**
- * @brief SolveViscousAdjoint — transpose solve through the converged viscous R_V.
+ * @brief SolveViscousAdjoint — transpose solve through the converged viscous
+ * R_V.
  *
  * R_V is assembled and LU-factored by StoreAdjointFactorization. Eigen's
  * SparseLU supports transpose solves via the `.transpose()` view, which is
@@ -1117,7 +1122,17 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
         throw std::runtime_error(
             "SolveViscousAdjoint: R_V factorization unavailable (singular?)");
     }
-    return state.glob.lu_factorization->transpose().solve(rhs);
+    VectorXd lambda = state.glob.lu_factorization->transpose().solve(rhs);
+    VectorXd residual = state.glob.R_V.transpose() * lambda - rhs;
+    // Check the original equations, never a regularized replacement.
+    VectorXd scale = state.glob.R_V.cwiseAbs().transpose() * lambda.cwiseAbs();
+    scale += rhs.cwiseAbs();
+    if (!lambda.allFinite() || !residual.allFinite() ||
+        residual.norm() > 1e-11 * std::max(scale.norm(), 1e-30)) {
+        throw std::runtime_error(
+            "SolveViscousAdjoint: inaccurate transpose solve");
+    }
+    return lambda;
 }
 
 }  // namespace scirocco

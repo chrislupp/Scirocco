@@ -28,11 +28,11 @@ namespace scirocco {
  * These provide d(geom_quantity)/d(foil.x) for the geometric quantities that
  * the viscous residual R_V depends on (xi, wake.x, wake.s, wgap, sstag).
  *
- * All functions take dfoil_s_dx [N x 2N] (derivative of airfoil arc-length
- * foil.s w.r.t. foil.x in row-major (k, dim)=(k*2+dim) column ordering) as
- * an input parameter so the test can supply mfoil's spline-based version
- * (matching the complex-step reference) while production can use the
- * cumulative-panel-norm version from DFoilSDFoilXCumulative.
+ * The geometric chain takes dfoil_s_dx [N x 2N], with column 2*k+dim
+ * corresponding to node k, coordinate dim. DFoilSDFoilX selects the spline
+ * derivative used by RefreshPanelGeometry, or cumulative panel norms when
+ * explicitly selected by RecomputeArcLength. The wake-coordinate and tangent
+ * overloads accept the same Jacobian so the entire chain uses one convention.
  *
  * Column layout for output matrices: column index = 2*k + dim, where
  *   k   ∈ [0, N)  is the foil node index
@@ -41,21 +41,23 @@ namespace scirocco {
  */
 
 /**
- * @brief Compute d(foil.s)/d(foil.x) using cumulative panel norms (matches scirocco's
- * RecomputeArcLength). Returns matrix of shape [N x 2N].
+ * @brief Compute d(foil.s)/d(foil.x) using cumulative panel norms (matches
+ * scirocco's RecomputeArcLength). Returns matrix of shape [N x 2N].
  *
- * NOTE: this does NOT match mfoil's spline-based foil.s (~4e-5 relative
- * discrepancy near stagnation). Tests against mfoil_cs should load
- * d(foil.s)/d(foil.x) from the HDF5 reference instead.
+ * This is only the derivative of RecomputeArcLength. For spline arc lengths
+ * from RefreshPanelGeometry, use DFoilSDFoilX or SplineArcLengthDeriv.
  *
  * @param foil Panel object containing foil geometry.
  * @return MatrixXd of shape [N x 2N].
  */
 MatrixXd DFoilSDFoilXCumulative(const Panel& foil);
 
+/** @brief Arc-length Jacobian for the panel's declared geometry convention. */
+MatrixXd DFoilSDFoilX(const Panel& foil);
+
 /**
- * @brief d(sstag)/d(foil.x) — stagnation point arc-length, gamma-based interpolation.
- * Returns VectorXd of length 2N.
+ * @brief d(sstag)/d(foil.x) — stagnation point arc-length, gamma-based
+ * interpolation. Returns VectorXd of length 2N.
  *
  * Chain pieces:
  *   1. d(sstag)/d(foil.s[Istag]) via interpolation weights (w1, w2)
@@ -132,9 +134,9 @@ MatrixXd DXiDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 /**
- * @brief d(wake.x)/d(foil.x) — wake node coordinates from BuildWake's predictor-
- * corrector streamline tracing. Returns [2*Nw x 2N], where row d*Nw + j =
- * d(wake.x(d, j))/d(foil.x).
+ * @brief d(wake.x)/d(foil.x) — wake node coordinates from BuildWake's
+ * predictor- corrector streamline tracing. Returns [2*Nw x 2N], where row d*Nw
+ * + j = d(wake.x(d, j))/d(foil.x).
  *
  * Implementation: linearized predictor-corrector sweep matching BuildWake.
  * The initial wake.x[:,0] = x_te + 1e-5·chord·t_te depends on foil.x[:,0]
@@ -151,11 +153,12 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
  * @return MatrixXd of shape [2*Nw x 2N].
  */
 MatrixXd DWakeXDFoilX(const FoilState& state);
+MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 /**
- * @brief d(wake.t)/d(foil.x) — wake unit-tangent vectors from BuildWake's predictor-
- * corrector sweep. Returns [2*Nw x 2N], same row layout as DWakeXDFoilX
- * (row d*Nw + j = d(wake.t(d, j))/d(foil.x)).
+ * @brief d(wake.t)/d(foil.x) — wake unit-tangent vectors from BuildWake's
+ * predictor- corrector sweep. Returns [2*Nw x 2N], same row layout as
+ * DWakeXDFoilX (row d*Nw + j = d(wake.t(d, j))/d(foil.x)).
  *
  * For j < Nw-1, wake.t[j] = V/|V| at wake.x[j] (the v1 in iteration i=j).
  * For j == Nw-1, wake.t[Nw-1] = V/|V| at the PREDICTOR point x_pred from
@@ -169,6 +172,7 @@ MatrixXd DWakeXDFoilX(const FoilState& state);
  * @return MatrixXd of shape [2*Nw x 2N].
  */
 MatrixXd DWakeTDFoilX(const FoilState& state);
+MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 /* ----- Alpha-direction (scalar) versions of the above. Used by the analytic
  * DRVDAlpha chain. Each returns a SINGLE-column derivative since α is scalar.
@@ -184,9 +188,9 @@ MatrixXd DWakeTDFoilX(const FoilState& state);
 VectorXd DGammaDAlpha(const FoilState& state);
 
 /**
- * @brief d(wake.x)/d(alpha) [2 x Nw] — mirrors DWakeXDFoilX's predictor-corrector
- * sweep with dgam_dα (length N+1) and direct freestream alpha contribution
- * in the velocity.
+ * @brief d(wake.x)/d(alpha) [2 x Nw] — mirrors DWakeXDFoilX's
+ * predictor-corrector sweep with dgam_dα (length N+1) and direct freestream
+ * alpha contribution in the velocity.
  *
  * @param state FoilState containing the current solution and geometry.
  * @return MatrixXd of shape [2 x Nw].
@@ -202,7 +206,8 @@ MatrixXd DWakeXDAlpha(const FoilState& state);
 MatrixXd DWakeTDAlpha(const FoilState& state);
 
 /**
- * @brief d(wake.s)/d(alpha) [Nw] — cumulative panel norms along wake.x perturbation.
+ * @brief d(wake.s)/d(alpha) [Nw] — cumulative panel norms along wake.x
+ * perturbation.
  *
  * @param state FoilState containing the current solution and geometry.
  * @return VectorXd of length Nw.
@@ -210,7 +215,8 @@ MatrixXd DWakeTDAlpha(const FoilState& state);
 VectorXd DWakeSDAlpha(const FoilState& state);
 
 /**
- * @brief d(sstag)/d(alpha) — scalar. Chain through dgamma at the stagnation panel.
+ * @brief d(sstag)/d(alpha) — scalar. Chain through dgamma at the stagnation
+ * panel.
  *
  * @param state FoilState containing the current solution and geometry.
  * @return Scalar derivative of sstag w.r.t. alpha.
@@ -247,8 +253,8 @@ Vector2d InviscidVelocityDAlpha(const FoilState& state, const Vector2d& xi,
                                 const VectorXd& dgam_dalpha);
 
 /**
- * @brief d(TE info)/d(foil.x[k]_dim): expose the static helper from adjoint.cpp.
- * Only nodes k ∈ {0, 1, N-2, N-1} produce nonzero output.
+ * @brief d(TE info)/d(foil.x[k]_dim): expose the static helper from
+ * adjoint.cpp. Only nodes k ∈ {0, 1, N-2, N-1} produce nonzero output.
  *
  * @param foil_x Foil node coordinate matrix [2 x N].
  * @param k Node index (only k ∈ {0, 1, N-2, N-1} produce nonzero output).
@@ -297,8 +303,8 @@ VelDeriv InviscidVelocityWithDeriv(const FoilState& state, const Vector2d& xi,
                                    const MatrixXd& dgam_dx, double alpha);
 
 /**
- * @brief Overload: use arbitrary vortex strengths `vortex` (length N+1, with the
- * streamfunction slot in entry N — but the velocity computation only uses
+ * @brief Overload: use arbitrary vortex strengths `vortex` (length N+1, with
+ * the streamfunction slot in entry N — but the velocity computation only uses
  * entries 0..N-1) and a corresponding dvortex_dx [N+1 x 2N] chain. Used by
  * Phase 2b to chain through V_for_v at wake stations (Cgam direct-derivative
  * chain). Pass dvortex_dx = MatrixXd::Zero(...) to hold the vortex strengths
@@ -316,4 +322,4 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
                                       const VectorXd& vortex,
                                       const MatrixXd& dvortex_dx, double alpha);
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

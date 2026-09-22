@@ -42,6 +42,7 @@
 namespace scirocco {
 
 void RecomputeArcLength(FoilState& state) {
+    state.foil.cumulative_s = true;
     int N = state.foil.N;
     state.foil.s(0) = 0.0;
     for (int i = 1; i < N; ++i) {
@@ -100,9 +101,9 @@ void StagPointFind(FoilState& state) {
     state.isol.sgnue.resize(N);
     for (int i = 0; i < N; ++i) {
         if (i < j) {
-            state.isol.sgnue(i) = -1.0;  /* Lower surface */
+            state.isol.sgnue(i) = -1.0; /* Lower surface */
         } else {
-            state.isol.sgnue(i) = 1.0;  /* Upper surface */
+            state.isol.sgnue(i) = 1.0; /* Upper surface */
         }
     }
 
@@ -144,7 +145,7 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
         return x;
     }
 
-    int N = Np - 1;  /* Number of intervals */
+    int N = Np - 1; /* Number of intervals */
     double d = L / dx0;
 
     /* Solve for geometric ratio r using Newton iteration
@@ -179,7 +180,7 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
 
     return x;
 }
-}  /* namespace */
+} /* namespace */
 
 void BuildWake(FoilState& state) {
     int N = state.foil.N;
@@ -190,13 +191,13 @@ void BuildWake(FoilState& state) {
     int Nw = static_cast<int>(std::ceil(N / 10.0 + 10.0 * wakelen));
 
     /* TE point (average of upper and lower TE) */
-    Vector2d xy1 = state.foil.x.col(0);      /* Lower TE */
-    Vector2d xyN = state.foil.x.col(N - 1);  /* Upper TE */
+    Vector2d xy1 = state.foil.x.col(0);     /* Lower TE */
+    Vector2d xyN = state.foil.x.col(N - 1); /* Upper TE */
     Vector2d xte = 0.5 * (xy1 + xyN);
 
     /* TE direction: tangent pointing downstream */
-    Vector2d n = xyN - xy1;      /* Normal to TE gap */
-    Vector2d t_te(n(1), -n(0));  /* Rotate 90 degrees to get tangent */
+    Vector2d n = xyN - xy1;     /* Normal to TE gap */
+    Vector2d t_te(n(1), -n(0)); /* Rotate 90 degrees to get tangent */
     /* Ensure tangent points downstream (positive x) */
     if (t_te(0) < 0) t_te = -t_te;
 
@@ -260,8 +261,8 @@ void BuildWake(FoilState& state) {
     state.isol.uewi.resize(Nw);
     state.isol.uewiref.resize(Nw, 2);
 
-    Vector2d cs0(1.0, 0.0);   /* cos(0), sin(0) */
-    Vector2d cs90(0.0, 1.0);  /* cos(90), sin(90) */
+    Vector2d cs0(1.0, 0.0);  /* cos(0), sin(0) */
+    Vector2d cs90(0.0, 1.0); /* cos(90), sin(90) */
 
     for (int i = 0; i < Nw; ++i) {
         Vector2d xi = state.wake.x.col(i);
@@ -321,7 +322,7 @@ void SetWakeGap(FoilState& state) {
     /* Get TE info including dtdx */
     TEInfo te = GetTEInfo(state.foil.x);
     double hTE = te.hTE;
-    state.geom.hTE = hTE;  /* Store in geometry */
+    state.geom.hTE = hTE; /* Store in geometry */
 
     /* Length scale factor */
     double flen = 2.5;
@@ -334,7 +335,7 @@ void SetWakeGap(FoilState& state) {
 
     /* Cubic decay of wake gap (matches mfoil exactly) */
     state.vsol.wgap.resize(Nw);
-    double xi0 = state.isol.xi(N);  /* xi at first wake point */
+    double xi0 = state.isol.xi(N); /* xi at first wake point */
 
     for (int i = 0; i < Nw; ++i) {
         double xi_wake = state.isol.xi(N + i);
@@ -358,7 +359,7 @@ void StagPointMove(FoilState& state) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     (void)state.isol
-        .sstag;  /* Original stagnation point (unused but kept for debugging) */
+        .sstag; /* Original stagnation point (unused but kept for debugging) */
 
     /* Get edge velocity from global solution */
     VectorXd ue = state.glob.U.row(3).head(N).transpose();
@@ -398,7 +399,7 @@ void StagPointMove(FoilState& state) {
         I0 = I0_new;
         I1 = I0_new + 1;
     } else {
-        newpanel = false;  /* Staying on the current panel */
+        newpanel = false; /* Staying on the current panel */
     }
 
     /* Move point along panel by interpolating where ue = 0 */
@@ -445,4 +446,4 @@ void StagPointMove(FoilState& state) {
     }
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

@@ -55,6 +55,8 @@ Scirocco::Scirocco(const MatrixXd& coords, int npanel) {
 }
 
 void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
+    state_.glob.conv = false;
+    state_.glob.lu_factorization.reset();
     state_.oper.alpha = alpha;
     state_.oper.Ma = Ma;
 
@@ -72,52 +74,61 @@ void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
         state_.oper.viscous = false;
     }
 
-    state_.oper.Vinf = 1.0;  /* Normalized */
-    state_.oper.rho = 1.0;   /* Normalized density */
+    state_.oper.Vinf = 1.0; /* Normalized */
+    state_.oper.rho = 1.0;  /* Normalized density */
 }
 
 bool Scirocco::Solve() {
-    if (state_.param.verb >= 1) {
-        std::cout << "Scirocco::Solve viscous=" << state_.oper.viscous
-                  << ", Re=" << state_.oper.Re << '\n';
-    }
-    if (state_.oper.viscous) {
-        /* Initialize parameters for viscous solve.
-         * Do NOT override rtol/niglob/verb here — those are settable defaults
-         * (Param: rtol=1e-11, niglob=50, verb=0). Earlier code clamped rtol
-         * to 1e-6 which is far too loose for adjoint precision. */
-        state_.oper.initbl = true;
-
-        /* Initialize thermodynamics */
-        state_.param.Vinf = state_.oper.Vinf;
-        state_.param.Minf = state_.oper.Ma;
-        /* muinf = rho * V * chord / Re */
-        state_.param.muinf = state_.oper.rho * state_.oper.Vinf *
-                             state_.geom.chord / state_.oper.Re;
-        state_.param.mu0 = state_.param.muinf;
-        state_.param.rho0 = state_.oper.rho;
-        /* Karman-Tsien compressibility correction
-         *   KTb = sqrt(1 - Ma^2),  KTl = Ma^2 / (1 + sqrt(1 - Ma^2))^2
-         * At Ma=0: KTb=1, KTl=0 (no correction). Earlier code hardcoded
-         * KTl=0 unconditionally, killing Ma sensitivity. */
-        if (state_.oper.Ma > 0.0) {
-            double b = std::sqrt(1.0 - state_.oper.Ma * state_.oper.Ma);
-            state_.param.KTb = b;
-            state_.param.KTl =
-                (state_.oper.Ma * state_.oper.Ma) / ((1.0 + b) * (1.0 + b));
-        } else {
-            state_.param.KTb = 1.0;
-            state_.param.KTl = 0.0;
+    state_.glob.conv = false;
+    state_.glob.lu_factorization.reset();
+    try {
+        if (state_.param.verb >= 1) {
+            std::cout << "Scirocco::Solve viscous=" << state_.oper.viscous
+                      << ", Re=" << state_.oper.Re << '\n';
         }
+        if (state_.oper.viscous) {
+            /* Initialize parameters for viscous solve.
+             * Do NOT override rtol/niglob/verb here — those are settable
+             * defaults (Param: rtol=1e-11, niglob=50, verb=0). Earlier code
+             * clamped rtol to 1e-6 which is far too loose for adjoint
+             * precision. */
+            state_.oper.initbl = true;
 
-        /* Viscous solver */
-        SolveViscous(state_);
-        return state_.glob.conv;
-    } else {
-        /* Inviscid solver */
-        SolveInviscid(state_);
-        CalcForce(state_);
-        return true;
+            /* Initialize thermodynamics */
+            state_.param.Vinf = state_.oper.Vinf;
+            state_.param.Minf = state_.oper.Ma;
+            /* muinf = rho * V * chord / Re */
+            state_.param.muinf = state_.oper.rho * state_.oper.Vinf *
+                                 state_.geom.chord / state_.oper.Re;
+            state_.param.mu0 = state_.param.muinf;
+            state_.param.rho0 = state_.oper.rho;
+            /* Karman-Tsien compressibility correction
+             *   KTb = sqrt(1 - Ma^2),  KTl = Ma^2 / (1 + sqrt(1 - Ma^2))^2
+             * At Ma=0: KTb=1, KTl=0 (no correction). Earlier code hardcoded
+             * KTl=0 unconditionally, killing Ma sensitivity. */
+            if (state_.oper.Ma > 0.0) {
+                double b = std::sqrt(1.0 - state_.oper.Ma * state_.oper.Ma);
+                state_.param.KTb = b;
+                state_.param.KTl =
+                    (state_.oper.Ma * state_.oper.Ma) / ((1.0 + b) * (1.0 + b));
+            } else {
+                state_.param.KTb = 1.0;
+                state_.param.KTl = 0.0;
+            }
+
+            /* Viscous solver */
+            SolveViscous(state_);
+            return state_.glob.conv;
+        } else {
+            /* Inviscid solver */
+            SolveInviscid(state_);
+            CalcForce(state_);
+            return true;
+        }
+    } catch (...) {
+        state_.glob.conv = false;
+        state_.glob.lu_factorization.reset();
+        throw;
     }
 }
 
@@ -132,11 +143,17 @@ void Scirocco::GeomAddCamber(const MatrixXd& xzcamb) {
 void Scirocco::GeomDerotate() { scirocco::GeomDerotate(state_); }
 
 Sensitivity Scirocco::ComputeSensitivities() {
+    if (!state_.glob.conv) {
+        throw std::runtime_error(
+            "ComputeSensitivities: solve must converge first");
+    }
+    if (state_.oper.givencl) {
+        throw std::runtime_error(
+            "ComputeSensitivities: lift-target derivatives "
+            "are not implemented");
+    }
     if (state_.oper.viscous && state_.glob.U.cols() > 0) {
         sensitivity_ = ViscousSensitivities(state_);
-        /* Alpha/Mach/Re scalar viscous chains: Phase 5b/5c — deferred.
-         * For inviscid-derivable scalar sensitivities, leave the existing
-         * inviscid helpers' values (zeros if not invoked). */
     } else {
         sensitivity_ = InviscidSensitivities(state_);
         AlphaSensitivities(state_, sensitivity_);

@@ -1,0 +1,302 @@
+# Correctness and gradient review — 2026-09-21
+
+Before the fix, the existing tests passed, but gradients were incorrect
+across the public interface. The most consequential verified defect is a mismatch between the
+geometry used by the viscous primal and the geometry differentiated by its
+adjoint. A leading-edge drag derivative is wrong by 18.95% on a converged,
+unit-chord NACA 0012 case.
+
+The findings below describe the original implementation before the fixes on
+`fix/mfoil-gradient-correctness`. Finding 5 corrects the initial normalization
+claim using XFOIL's documented convention. Source references below identify
+the reviewed implementation. Temporary reproductions and logs are in
+`/tmp/scirocco-review-artifacts/`; the independent Release build is in
+`/tmp/scirocco-review-build/`.
+
+## Fix branch
+
+`fix/mfoil-gradient-correctness` differentiates the original Python spline
+arc-length construction throughout the foil/wake chain. It fixes inviscid
+Cd scalar derivatives and rejects invalid primal/adjoint states and stale
+interface inputs. Lift-target primal iteration is repaired; constrained
+sensitivities remain explicitly unsupported.
+
+The original `mfoil.py` and force-output conventions are unchanged. The CS
+wrapper now preserves the trailing-edge absolute-value chain and extends
+SciPy's not-a-knot interpolation to complex knot positions. Independent
+SciPy comparisons, polynomial reproduction, geometric scaling, and the
+unmodified Python primal validate that extension without using C++ answers.
+
+New references contain 42 shape directions across three operating cases,
+including LE, stagnation-adjacent and TE coordinates, plus alpha/Mach/Re
+checks. C++ end-to-end checks use `2e-11 + 2e-8*abs(reference)` tolerances;
+Reynolds derivatives are scaled by Re so absolute tolerance cannot hide them.
+Spline arc-length directional derivatives use a `3e-11` absolute tolerance.
+Initial curvature-based repaneling is outside the panel-node derivative
+contract: call `RefreshPanelGeometry` before shape-sensitive solves, as the
+Philote discipline does.
+
+To regenerate and validate the Python references:
+
+```sh
+OPENBLAS_NUM_THREADS=1 python3 -m unittest discover -s mfoil -p 'test_*.py'
+OPENBLAS_NUM_THREADS=1 python3 scirocco/tests/extract_gradient_contract_reference.py
+```
+
+The generator checks convergence, finiteness and agreement with the
+unmodified Python real primal before accepting each derivative. The HDF5
+file records SHA256 hashes of all three Python source files.
+
+Validation on the fix branch: all 145 C++ tests pass in a fresh Release
+build with Philote, HDF5 output, and sensitivity-debug tests enabled. This
+includes the interface's actual `Compute`/`ComputePartials` path against the
+new Python references. All four independent Python CS tests pass. Changed
+C++ files pass clang-format 17; targeted clang-tidy reports no user-code
+warnings in the changed core and discipline sources. Python CS validation
+is also registered in CI.
+
+## Findings in the original implementation
+
+### 1. [P1] Different arc-length definitions in primal and shape adjoint
+
+Locations: `src/adjoint.cpp:510`, `src/paneling.cpp:124`,
+`src/philote/philote_discipline.cpp:145`.
+
+`RefreshPanelGeometry`, called by the optimization discipline, computes
+`foil.s` by integrating a cubic spline through the panel nodes. The adjoint
+unconditionally uses `DFoilSDFoilXCumulative`, which differentiates a sum of
+straight-panel lengths. These are different functions of the coordinates.
+The resulting error propagates through the stagnation location, boundary-layer
+coordinates, wake spacing, and mass/source coupling.
+
+Reproduction: NACA 0012, 100 panels, alpha=3 degrees, Re=1e6, Ma=0; call
+`RefreshPanelGeometry` before solving, as the discipline does. Use mfoil
+complex-step with the same spline arc-length construction (ten passes of
+five-point quadrature and not-a-knot cubic splines). Node numbers are zero-based.
+
+| Derivative at node 50, vertical coordinate | C++ adjoint | mfoil CS, same spline geometry | Relative error |
+|---|---:|---:|---:|
+| dCl/dz | -0.002322268644769834 | -0.002255124074985435 | 2.98% |
+| dCd/dz | -0.000028948833431194 | -0.000035718116550849 | 18.95% |
+| dCm/dz | -0.000528029320219897 | -0.000537651987228819 | 1.79% |
+
+The C++ and complex-step primal coefficients agree within 4e-14 absolute.
+Thus the mismatch is not an unconverged or different primal solution.
+As a localization experiment, replacing only the relevant `dfoil_s_dx`
+columns with complex-step derivatives of the spline calculation gives
+dCd/dz=-0.000035718116523625, agreeing within 8e-10 relative. The same
+substitution repairs the lift and moment derivatives and the other sampled
+nodes. No production source was changed for this experiment.
+
+The current end-to-end shape test explicitly changes the primal to cumulative
+arc length (`tests/sensitivity_reference_test.cpp:324`) and skips node 50
+(`:359`). It therefore does not test the geometry path used by the discipline.
+
+Required correction: use one arc-length definition in the primal and adjoint.
+For fidelity to spline-based mfoil, differentiate the spline construction.
+Changing production to cumulative length is an alternative model change that
+must be explicit. Validate the actual discipline geometry path, including the
+leading edge and trailing-edge-adjacent nodes.
+
+### 2. [P1] Sensitivities are returned after a failed primal solve
+
+Locations: `src/adjoint.cpp:488`, `src/philote/philote_discipline.cpp:156`.
+
+The guard in `ViscousSensitivities` checks that a state matrix exists, but does
+not check `glob.conv`. The discipline also discards the boolean returned by
+`Solve`. An implicit adjoint evaluated at an unfinished Newton iterate is not
+the derivative of the finite-iteration computation, nor a verified derivative
+of a converged solution.
+
+Reproduction:
+
+```cpp
+Scirocco foil("0012", 100);
+foil.GetState().param.niglob = 1;
+foil.SetOper(3.0, -1.0, 1e6, 0.0);
+bool converged = foil.Solve();              // false; BL residual norm 1.1711
+auto sensitivity = foil.ComputeSensitivities(); // succeeds
+```
+
+This returns dCl/dalpha=0.1068925716573119 and
+dCd/dalpha=0.0007639005159239261 despite the failed solve.
+
+Required correction: reject invalid primal states and propagate a failed
+analysis through the discipline instead of exposing ordinary outputs and
+partials. The convergence criterion should cover the coupled residual,
+including edge-velocity matching and any lift constraint; currently
+`SolveCoupled` checks only the three boundary-layer residuals.
+
+### 3. [P1] The discipline substitutes stale or zero gradients on failure
+
+Location: `src/philote/philote_discipline.cpp:178-195`.
+
+If an adjoint throws, `ComputePartials` returns cached sensitivities from a
+previous input point, or zeros if there is no cache. Neither is generally the
+Jacobian of the current outputs. The warning is conditional on verbosity,
+which is zero by default. This can make an optimizer report false stationarity
+or take a step based on another design's gradient.
+
+This finding follows directly from the exception path; the Philote server
+was not built or run in this review. Required correction: propagate an
+explicit derivative/analysis failure. If approximate gradients are wanted,
+they need an explicit, observable approximation contract.
+
+Related numerical limitation: `StoreAdjointFactorization` retries a singular
+Jacobian with a diagonal ridge. That changes the adjoint equations. The
+documentation's claim that gradient bias is simply O(epsilon*norm(R_V)) is
+not a valid bound near singularity: the inverse Jacobian's conditioning and
+the objective/residual sensitivities also enter. Check the unregularized
+adjoint residual and expose when the regularized result is being used.
+
+### 4. [P1] Lift-target mode assembles an uninitialized constraint and can crash
+
+Locations: `src/coupled_solver.cpp:564-577`, `:622-626`, `:1052`.
+
+The lift-constraint row uses `post.cl`, `post.cl_alpha`, and `post.cl_ue`,
+but `CalcForce` is only called after `SolveCoupled` in the viscous solve.
+For a new solver these fields are zero/empty, leaving the constraint row
+without a useful Jacobian. On factorization failure, `dU.setZero()` does
+not allocate the still-empty matrix, and `UpdateState` subsequently indexes it.
+
+Reproduction in the fresh Release build:
+
+```cpp
+Scirocco foil("0012", 100);
+foil.SetOper(3.0, 0.5, 1e6, 0.0);
+foil.Solve();
+```
+
+This prints `Warning: SparseLU decomposition failed` and exits with SIGSEGV
+(exit status 139). Even after the primal failure is repaired, the adjoint
+explicitly discards the extra lift-constraint/alpha unknown, so its derivatives
+would be fixed-alpha derivatives rather than derivatives of a trimmed solve.
+
+Required correction: update force values/linearizations during trim iteration,
+handle a failed linear solve without updating from an invalid `dU`, and either
+implement the constrained adjoint or reject sensitivity requests in this mode.
+
+### 5. Nonunit-chord output convention needs clarification (corrected finding)
+
+The original review called the lack of `/chord` in total drag a confirmed bug.
+That was too strong. XFOIL deliberately defines `CD = D/q`, using an implied
+unit reference chord. Its `CDCALC` uses the same Squire–Young expression as
+Python mfoil, without dividing by actual chord. Conventional `Cd = D/(q*c)`
+is a different output; they agree at unit chord.
+
+Sources: [Drela and Youngren's XFOIL manual, Units](https://web.mit.edu/drela/Public/web/xfoil/xfoil_doc.txt)
+and [XFOIL CDCALC](https://github.com/RobotLocomotion/xfoil/blob/master/src/xfoil.f#L1149-L1185).
+The mfoil paper uses conventional chord-normalized coefficients, which is why
+comparing the expression with the paper alone suggested a missing factor.
+
+There remains an inconsistency for nonunit geometry: C++ normalizes Cl and Cdf
+with actual chord, but its Cd expression follows XFOIL's unit-reference
+convention. Python's total drag has that same definition; Python also divides
+its pressure-force accumulators by chord inside the panel loop. The observed
+factor-of-two Cd change when doubling chord establishes the implemented
+scaling, not by itself a violation of the XFOIL convention.
+
+For the gradient fix, Python's forward output definition is authoritative.
+Do not insert a C++-only chord normalization. A future change to nonunit-chord
+output conventions would need a deliberate, consistent Python/API decision
+and separate validation. Derivatives must match the function actually returned.
+
+### 6. [P2] Inviscid Cd scalar derivatives belong to a different output
+
+Locations: `src/adjoint.cpp:363-364`, `:467`; `src/forces.cpp:154`.
+
+`CalcForce` reports Cd=0 in inviscid mode, consistently with the bundled
+mfoil. Shape derivatives of Cd are also zero. But `AlphaSensitivities` and
+`MachSensitivities` put derivatives of near-field pressure drag, Cdpi, into
+the Cd fields passed to the optimizer.
+
+Reproduction: NACA 2412, 80 panels, alpha=5 degrees, Re=0, Ma=0.3:
+
+```text
+Cd = 0
+Cdpi = -0.005322085194654508
+reported dCd/dalpha = -0.001386156255337185
+reported dCd/dMa = -0.02524907413674087
+```
+
+The derivative of the implemented constant-zero Cd output must be zero.
+Required correction: return zero inviscid Cd scalar derivatives and expose
+Cdpi scalar derivatives separately if needed.
+
+### 7. [P2] The complex-step reference drops a trailing-edge derivative
+
+Location: `mfoil/mfoil_cs.py:57`.
+
+`tcp = np.real(cross)` removes the imaginary perturbation. Holding the sign
+of `abs(cross)` fixed is appropriate away from a sign change; holding its
+value fixed is not. The analytic extension is
+`np.sign(np.real(cross))*cross`.
+
+For NACA 2412, 80 panels, alpha=5 degrees, the derivative dCl/dx at node 0 is:
+
+```text
+C++ analytic:                   -0.7937942200467308
+current complex-step reference: -0.85457948
+sign-preserving CS reference:   -0.79379422
+```
+
+Six trailing-edge/adjacent coordinate checks agree with C++ after preserving
+the imaginary part. Thus this particular mismatch is a reference defect,
+not evidence that the C++ trailing-edge derivative should be changed.
+The checked-in inviscid shape tests use interior nodes and miss this path.
+
+Required correction: repair the complex-step extension, regenerate affected
+references, and include trailing-edge coordinates in validation. Every
+reference solve should also assert convergence and agreement of its real
+primal state before its imaginary part is accepted as a derivative.
+
+## What passed and what it establishes
+
+Built all core tests, including the optional sensitivity isolation tests:
+
+```sh
+cmake -S scirocco -B /tmp/scirocco-review-build \
+  -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_BUILD_PHILOTE=OFF \
+  -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON -DSCIROCCO_BUILD_PROBES=ON
+cmake --build /tmp/scirocco-review-build -j 6
+ctest --test-dir /tmp/scirocco-review-build --output-on-failure -j 6
+```
+
+All 116 tests passed in 36.24 seconds. This covers the supplied primal,
+panel influence, closure, transition/residual, force-partial, geometry-chain,
+and end-to-end reference cases. The seven end-to-end sensitivity tests were
+also run directly to inspect numerical errors:
+
+| Supplied check | Maximum observed relative error |
+|---|---:|
+| Inviscid alpha, Cl/Cm | 4.4e-12 |
+| Inviscid Mach, Cl/Cm | 6.7e-12 |
+| Viscous shape, two tested interior nodes, cumulative geometry | 3.0e-11 |
+| Viscous alpha, Cl/Cd/Cm | 1.1e-10 |
+| Viscous Mach, Cl/Cd/Cm | 3.7e-11 |
+| Viscous Re, Cl/Cd/Cm | 8.4e-11 |
+
+Fresh mfoil complex-step alpha and Reynolds checks for NACA 0012 also agree
+within 9e-11 relative, with matching real primal outputs. A fresh Mach check
+at Ma=0.3 agrees within 4.2e-11 relative for Cl, Cd, and Cm. The spline-based
+checks and repaired trailing-edge reference above were generated afresh;
+they do not rely on the stored HDF5 answers.
+
+The discrete-adjoint sign and transpose convention is consistent:
+`R_U^T lambda = J_U^T`, then `dJ/dp = J_p - lambda^T R_p`.
+The pressure integration, Karman–Tsien chain, and wake-state drag
+differentiation have strong agreement on the supplied unit-chord cases.
+The shape problem is a missing/mismatched upstream geometry chain, not an
+incorrect adjoint sign. The current Mach implementation is analytic; the
+older status document describing a finite-difference fallback is stale.
+
+These results do not certify arbitrary geometries, separated/transition-switch
+states, trim mode, singular Jacobians, or the Philote runtime. An attempted
+additional cambered viscous case (NACA 2412, 80 panels, alpha=4 degrees,
+Re=1e6, Ma=0.3) did not converge in the Python complex-step solve; its
+derivatives were excluded rather than classified as C++ errors. Complex-step
+accuracy requires a valid analytic extension, a consistent primal, and a
+converged solve. The reference file alone cannot guarantee those conditions.
+
+The immediate priorities are to align the geometry chain, propagate analysis
+and derivative failures, and validate the exact interface used by optimization.

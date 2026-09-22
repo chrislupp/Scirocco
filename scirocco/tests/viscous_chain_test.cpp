@@ -56,7 +56,8 @@ static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
 }
 
-/* -------------------- HDF5 helpers (same as sensitivity test) --------------- */
+/* -------------------- HDF5 helpers (same as sensitivity test) ---------------
+ */
 namespace {
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
@@ -100,9 +101,10 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
     for (size_t i = 0; i < dims[0]; ++i) out[i] = static_cast<int>(buf[i]);
     return out;
 }
-}  /* namespace */
+} /* namespace */
 
-/* -------------------- Fixture: rebuild state matching mfoil_cs -------------- */
+/* -------------------- Fixture: rebuild state matching mfoil_cs --------------
+ */
 class GeomChainTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -148,13 +150,15 @@ class GeomChainTest : public ::testing::Test {
         auto& s = foil_.GetState();
         s.foil.x = foil_x;
         s.foil.N = N_;
+        s.foil.cumulative_s =
+            true;  // The extractor uses straight-panel lengths.
         s.foil.s =
-            foil_s;  /* Match mfoil's foil.s exactly (no RecomputeArcLength) */
+            foil_s; /* Match mfoil's foil.s exactly (no RecomputeArcLength) */
         /* Clear cached inviscid quantities so SolveInviscid rebuilds */
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        SolveInviscid(s);  /* builds AIC, gamref, gam (does NOT touch foil.s) */
+        SolveInviscid(s); /* builds AIC, gamref, gam (does NOT touch foil.s) */
         StagPointFind(s);
         BuildWake(s);
         ExtendXiToWake(s);
@@ -243,12 +247,14 @@ bool GeomChainTest::loaded_ = false;
 
 /* ============================================================================
    Sanity: base scirocco state matches the HDF5 reference
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, BaseStateMatchesReference) { verifyBase(); }
 
 /* ============================================================================
    DFoilSDFoilXCumulative — pure analytical, validate vs CS reference
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, DFoilSDFoilXCumulative) {
     auto& s = foil_.GetState();
     MatrixXd a = DFoilSDFoilXCumulative(s.foil);
@@ -260,7 +266,8 @@ TEST_F(GeomChainTest, DFoilSDFoilXCumulative) {
 
 /* ============================================================================
    DSstagDFoilX
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, DSstagDFoilX) {
     auto& s = foil_.GetState();
     VectorXd a = scirocco::DSstagDFoilX(s, dfoil_s_dx_);
@@ -272,7 +279,8 @@ TEST_F(GeomChainTest, DSstagDFoilX) {
 
 /* ============================================================================
    DWakeSDFoilX
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, DWakeSDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DWakeSDFoilX(s, dfoil_s_dx_);
@@ -286,7 +294,8 @@ TEST_F(GeomChainTest, DWakeSDFoilX) {
 
 /* ============================================================================
    DXiDFoilX (foil + wake combined)
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, DXiDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DXiDFoilX(s, dfoil_s_dx_);
@@ -300,7 +309,8 @@ TEST_F(GeomChainTest, DXiDFoilX) {
 
 /* ============================================================================
    DWgapDFoilX
-   ============================================================================ */
+   ============================================================================
+ */
 TEST_F(GeomChainTest, DWgapDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DWgapDFoilX(s, dfoil_s_dx_);
