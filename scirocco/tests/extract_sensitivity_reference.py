@@ -20,6 +20,7 @@ Usage:
 """
 
 import sys
+import hashlib
 import os
 import time
 import numpy as np
@@ -291,6 +292,10 @@ def main():
     print("=" * 60)
 
     with h5py.File(OUTPUT_FILE, 'w') as f:
+        for source in ('mfoil.py', 'mfoil_cs.py', 'complex_spline.py'):
+            source_path = os.path.join(os.path.dirname(__file__), '../../mfoil', source)
+            with open(source_path, 'rb') as source_file:
+                f.attrs[source+'_sha256'] = hashlib.sha256(source_file.read()).hexdigest()
 
         # ----- inviscid_shape -----
         print("\n--- inviscid_shape (NACA 2412, 80 panels, alpha=5) ---")

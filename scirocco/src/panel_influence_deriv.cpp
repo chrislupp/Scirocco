@@ -33,6 +33,7 @@
 #include <cmath>
 
 #include "scirocco/util/math_utils.h"
+#include "vortex_stream_quadrature.h"
 
 namespace scirocco {
 
@@ -55,8 +56,8 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
     PanelInfoDeriv d;
     d.info = GetPanelInfo(Xj, xi);
 
-    Vector2d x1p = Xj.col(0);  /* panel endpoint 1 */
-    Vector2d x2p = Xj.col(1);  /* panel endpoint 2 */
+    Vector2d x1p = Xj.col(0); /* panel endpoint 1 */
+    Vector2d x2p = Xj.col(1); /* panel endpoint 2 */
     Vector2d dx = x2p - x1p;
     double len = d.info.len;
 
@@ -103,10 +104,10 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
 
     /* Store dt/d(Xj) as 2x4 matrix for chain rule */
     Eigen::Matrix<double, 2, 4> dt_dXj;
-    dt_dXj.col(0) = (-Vector2d::Unit(0) + t * t(0)) * inv_len;  /* d/d(x1p_x) */
-    dt_dXj.col(1) = (-Vector2d::Unit(1) + t * t(1)) * inv_len;  /* d/d(x1p_z) */
-    dt_dXj.col(2) = (Vector2d::Unit(0) - t * t(0)) * inv_len;   /* d/d(x2p_x) */
-    dt_dXj.col(3) = (Vector2d::Unit(1) - t * t(1)) * inv_len;   /* d/d(x2p_z) */
+    dt_dXj.col(0) = (-Vector2d::Unit(0) + t * t(0)) * inv_len; /* d/d(x1p_x) */
+    dt_dXj.col(1) = (-Vector2d::Unit(1) + t * t(1)) * inv_len; /* d/d(x1p_z) */
+    dt_dXj.col(2) = (Vector2d::Unit(0) - t * t(0)) * inv_len;  /* d/d(x2p_x) */
+    dt_dXj.col(3) = (Vector2d::Unit(1) - t * t(1)) * inv_len;  /* d/d(x2p_z) */
 
     /* dn/d(Xj): n = [-t(1), t(0)] */
     Eigen::Matrix<double, 2, 4> dn_dXj;
@@ -222,9 +223,12 @@ PanelInfoDeriv GetPanelInfoDeriv(const Matrix2d& Xj, const Vector2d& xi) {
 
 /* ============================================================================
  * PanelLinVortexStreamDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi) {
+    if (detail::FarVortexPanel(Xj, xi)) return detail::FarVortexStream(Xj, xi);
+
     LinVortexStreamDeriv result;
 
     PanelInfoDeriv pid = GetPanelInfoDeriv(Xj, xi);
@@ -252,7 +256,8 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
     /* P1 = inv_2pi * (z*dtheta - d + x*logr1 - (x-d)*logr2) */
     double P1 = inv_2pi * (z * dtheta - d + x * logr1 - (x - d) * logr2);
 
-    /* P2 = x*P1 + inv_2pi * (0.5*r2^2*logr2 - 0.5*r1^2*logr1 - r2^2/4 + r1^2/4) */
+    /* P2 = x*P1 + inv_2pi * (0.5*r2^2*logr2 - 0.5*r1^2*logr1 - r2^2/4 + r1^2/4)
+     */
     double r1_sq = info.r1 * info.r1;
     double r2_sq = info.r2 * info.r2;
     double P2 = x * P1 + inv_2pi * (0.5 * r2_sq * logr2 - 0.5 * r1_sq * logr1 -
@@ -339,7 +344,8 @@ LinVortexStreamDeriv PanelLinVortexStreamDeriv(const Matrix2d& Xj,
 
 /* ============================================================================
  * PanelConstSourceStreamDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi) {
     ConstSourceStreamDeriv result;
@@ -369,7 +375,8 @@ ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
 
     /* For derivative purposes, when r1 or r2 is zero the thetas are
      * replaced with constants and logr is set to 0. We treat these as
-     * non-differentiable points and set the corresponding derivatives to zero. */
+     * non-differentiable points and set the corresponding derivatives to zero.
+     */
     if (r1_zero) {
         logr1 = 0.0;
         theta1 = kPi;
@@ -434,7 +441,8 @@ ConstSourceStreamDeriv PanelConstSourceStreamDeriv(const Matrix2d& Xj,
 
 /* ============================================================================
  * PanelLinVortexVelocityDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi) {
     LinVortexVelocityDeriv result;
@@ -578,7 +586,8 @@ LinVortexVelocityDeriv PanelLinVortexVelocityDeriv(const Matrix2d& Xj,
 
 /* ============================================================================
  * PanelConstSourceVelocityDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
                                                        const Vector2d& xi) {
     ConstSourceVelocityDeriv result;
@@ -653,7 +662,8 @@ ConstSourceVelocityDeriv PanelConstSourceVelocityDeriv(const Matrix2d& Xj,
 
 /* ============================================================================
  * PanelLinSourceStreamDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
                                                const Vector2d& xi) {
     LinSourceStreamDeriv result;
@@ -786,7 +796,8 @@ LinSourceStreamDeriv PanelLinSourceStreamDeriv(const Matrix2d& Xj,
 
 /* ============================================================================
  * PanelLinSourceVelocityDeriv
- * ============================================================================ */
+ * ============================================================================
+ */
 LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
                                                    const Vector2d& xi) {
     LinSourceVelocityDeriv result;
@@ -905,4 +916,4 @@ LinSourceVelocityDeriv PanelLinSourceVelocityDeriv(const Matrix2d& Xj,
     return result;
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

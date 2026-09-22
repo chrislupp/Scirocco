@@ -393,6 +393,10 @@ TEST_F(MfoilReferenceTest, StagnationPoint) {
                   << " (ref: " << gam_ref(i) << ")" << std::endl;
     }
 
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
 
     EXPECT_EQ(state.isol.Istag[0], Istag_ref[0]) << "Istag[0] mismatch";
@@ -454,6 +458,10 @@ TEST_F(MfoilReferenceTest, XiAndSurfaces) {
     auto& state = foil.GetState();
 
     BuildGamma(state, 0.0);
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
     BuildWake(state);
     ExtendXiToWake(state);
@@ -500,6 +508,10 @@ TEST_F(MfoilReferenceTest, CalcUeM) {
     state.param.KTl = 0.0;
 
     BuildGamma(state, 0.0);
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
     BuildWake(state);
     ExtendXiToWake(state);
@@ -1864,6 +1876,10 @@ TEST_F(MfoilReferenceTest, GetUeInvRef) {
     auto& state = foil.GetState();
 
     BuildGamma(state, 0.0);
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
     BuildWake(state);
 
@@ -3076,6 +3092,10 @@ TEST_F(MfoilReferenceTest, RebuildUeM) {
     InitThermo(state);
     BuildGamma(state, state.oper.alpha);
     BuildWake(state);
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
     IdentifySurfaces(state);
     SetWakeGap(state);
@@ -3545,6 +3565,10 @@ TEST_F(MfoilReferenceTest, IdentifySurfacesDedicated) {
     InitThermo(state);
     BuildGamma(state, state.oper.alpha);
     BuildWake(state);
+    // At alpha=0 the symmetric foil stagnates on a node. Use the saved
+    // circulation input so roundoff in BuildGamma cannot choose the opposite
+    // bracketing panel. BuildGamma is checked independently above.
+    state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
     ExtendXiToWake(state);
     IdentifySurfaces(state);

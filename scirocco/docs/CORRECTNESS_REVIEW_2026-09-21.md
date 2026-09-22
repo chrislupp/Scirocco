@@ -50,9 +50,83 @@ by historical local edits. The 145 C++ / four Python passing tests reported
 below validate the locally corrected/tightened reference, not the untouched
 website version. No solver code was changed during this provenance audit.
 
-## Current gradient fixes
+## Resolution of the nonunit-chord numerical discrepancy
 
-The follow-up gradient work on `fix/mfoil-gradient-correctness` addresses the
+The previously unresolved `2.16e-10` lift-gradient difference was localized by
+comparing both implementations at the same Python geometry and solution state.
+The projected boundary-layer contribution then differed by only `2.5e-14`,
+while the velocity-coupling contribution accounted for `2.16e-10`.
+
+The main source was cancellation in `panel_linvortex_stream`: its closed-form
+first moment subtracts large terms and divides by a short panel length. For
+short leading-edge panels viewed from distant surface nodes, Python and C++
+influence-matrix entries differed by up to `2.55e-14`. The corresponding
+circulation coordinate derivative reaches about 186, and the inviscid matrix
+condition number is about `1.01e4`. Using the Python derivative of the influence
+matrix with the C++ matrix alone produced a `1.14e-9` circulation-derivative
+difference. This identifies a concrete assembly-precision problem, rather than
+attributing the error solely to the coupled system's large condition number.
+
+An independent 60-digit integration of the underlying log-distance kernel
+confirmed cancellation in the Python closed form as well: representative
+coefficient errors were `1e-15` to `5e-15`, versus about `1e-19` with direct
+quadrature. The fix therefore improves **both Python and C++**, rather than
+using either implementation's rounded answers as the oracle.
+
+For evaluation points farther than four panel lengths from the midpoint,
+`panel_linvortex_stream` now evaluates the same integral with 12-point Gauss
+quadrature:
+
+`(a,b) = L/(2*pi) * integral_0^1 log(|xi - ((1-t)*x0+t*x1)|) * (1-t,t) dt`.
+
+The C++ coordinate derivatives differentiate that quadrature, including panel
+length, endpoint motion and evaluation-point motion. Python's real and
+complex-step paths share the new evaluator. Near-panel and endpoint limits
+retain the original formulas. Here the midpoint series parameter is below 1/8,
+while 12-point Gauss integration is exact for polynomials through degree 23;
+this makes truncation negligible at double precision. No aerodynamic equations,
+boundary conditions, or force normalizations were changed.
+
+On the original chord-2 case, the revised derivatives are approximately
+`-0.00967396675509` (C++) and `-0.00967396676665` (Python CS): the difference is
+now `1.16e-11`, about nineteen times smaller. The nonunit-chord tolerance
+exception has been removed; all end-to-end cases again use
+`2e-11 + 2e-8*abs(reference)`.
+
+The new `vortex_stream_reference.txt` fixture is generated independently by
+`extract_vortex_stream_reference.py`, using mpmath at 60 digits to integrate
+and differentiate the defining kernel. It covers all six coordinate inputs,
+short/distant panels, translated panels, and points on both sides of the
+numerical evaluation threshold. Both Python and C++ test against this fixture.
+The preceding Python implementation fails five of its seven value checks;
+for a panel 0.003 units long viewed from roughly 1000 units away, its coefficient
+error reaches `1.32e-8`.
+Regeneration requires `mpmath`; the normal tests read the checked-in fixture.
+
+This numerical correction **does modify the bundled `mfoil.py`**, specifically
+`panel_linvortex_stream` and its new helper/quadrature data. The earlier
+provenance audit and statements that `mfoil.py` was unchanged describe the
+preceding commits. The change is justified by the independent integral, not
+by matching C++. The two end-to-end Python reference files and the legacy sensitivity/wake-chain
+fixtures were regenerated and record the updated source hashes.
+
+Six legacy component tests at exactly zero angle now use the saved Python
+circulation as the input to stagnation detection. On a symmetric foil the
+stagnation point lies on a node; changing the sign of a roundoff-sized gamma
+selects the opposite bracketing panel and flips that node's streamwise sign.
+These tests compare the same component inputs and keep their original output
+tolerances. The separate circulation-solve tests and end-to-end tests still
+exercise the C++ solution. No production stagnation rule was changed.
+
+Validation of this numerical correction: all **154 C++ tests** pass, including
+the affected legacy cases rerun after fixture regeneration, and all **six
+Python tests** pass. The four regenerated HDF5 fixtures have matching current
+Python source hashes and finite data throughout. The new kernel and derivative
+code passes clang-format 17 and targeted clang-tidy without user-code warnings.
+
+## Earlier gradient fixes
+
+The preceding gradient work on `fix/mfoil-gradient-correctness` addresses the
 remaining known derivative defects. The sections after this one retain the
 initial review and first-round validation as historical records.
 
@@ -99,8 +173,8 @@ nonunit-chord shape checks use `5e-10 + 2e-8*abs(reference)`. Specifically, the
 chord-2 node-50 horizontal lift derivative is approximately
 `-0.00967396684920` in C++ and `-0.00967396663282` in Python CS, a difference of
 `2.16e-10` (relative `2.24e-8`). Tighter nonlinear solves and an independent
-40-digit spline calculation did not eliminate it. Its precise origin remains
-unresolved; the looser bound is stated explicitly, not a claim of agreement at
+40-digit spline calculation did not eliminate it. At that stage its precise origin remained
+unresolved; the looser bound was stated explicitly, not a claim of agreement at
 the original tighter tolerance. An independent five-point finite-difference
 check of the Python primal approached the CS derivative (error `1.4e-8` at
 step `1e-5`) before roundoff/solve noise dominated at smaller steps; it cannot

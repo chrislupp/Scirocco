@@ -89,6 +89,8 @@ def _patched_panel_info(Xj, xi):
 # Patched panel functions: use .real for r < ep comparisons and theta < 0
 # ---------------------------------------------------------------------------
 def _patched_panel_linvortex_stream(Xj, xi):
+    far = _mfoil_module.panel_linvortex_stream_far(Xj, xi)
+    if far is not None: return far
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     ep = 1e-9
     logr1 = 0. if (np.real(r1) < ep) else np.log(r1)

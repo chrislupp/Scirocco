@@ -33,6 +33,7 @@
 #include <cmath>
 
 #include "scirocco/util/math_utils.h"
+#include "vortex_stream_quadrature.h"
 
 namespace scirocco {
 
@@ -149,6 +150,13 @@ void PanelLinVortexVelocity(const Matrix2d& Xj, const Vector2d& xi,
 
 void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
                           double& b) {
+    if (detail::FarVortexPanel(Xj, xi)) {
+        const auto result = detail::FarVortexStream(Xj, xi, false);
+        a = result.a;
+        b = result.b;
+        return;
+    }
+
     /* Streamfunction influence from linear vortex panel
      * Matches Python: P1, P2 formulas with a = P1 - P2/d, b = P2/d */
 
@@ -174,7 +182,8 @@ void PanelLinVortexStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
     /* P1 = (0.5/pi)*(z*(theta2-theta1) - d + x*logr1 - (x-d)*logr2) */
     double P1 = inv_2pi * (z * dtheta - d + x * logr1 - (x - d) * logr2);
 
-    /* P2 = x*P1 + (0.5/pi)*(0.5*r2^2*logr2 - 0.5*r1^2*logr1 - r2^2/4 + r1^2/4) */
+    /* P2 = x*P1 + (0.5/pi)*(0.5*r2^2*logr2 - 0.5*r1^2*logr1 - r2^2/4 + r1^2/4)
+     */
     double r1_sq = info.r1 * info.r1;
     double r2_sq = info.r2 * info.r2;
     double P2 = x * P1 + inv_2pi * (0.5 * r2_sq * logr2 - 0.5 * r1_sq * logr1 -
@@ -374,4 +383,4 @@ void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi, Vector2d& a,
     b = ug2 * t + wg2 * n;
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

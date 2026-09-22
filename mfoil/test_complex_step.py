@@ -20,6 +20,27 @@ spec.loader.exec_module(original)
 
 
 class ComplexStepTest(unittest.TestCase):
+    def test_vortex_stream_against_high_precision_integrals(self):
+        reference = Path(__file__).resolve().parents[1]/'scirocco/tests/vortex_stream_reference.txt'
+        for row in np.loadtxt(reference):
+            # Fixture integrates the log-distance kernel with mpmath at 60
+            # digits and differentiates that integral independently.
+            coords, expected = row[:6], row[6:8]
+            xj = coords[:4].reshape(2, 2).T
+            xi = coords[4:]
+            length = np.linalg.norm(xj[:,1]-xj[:,0])
+            for module in (original, mfoil):
+                got = module.panel_linvortex_stream(xj, xi)
+                assert_allclose(got, expected, rtol=2e-13, atol=5e-16*length)
+            for k in range(6):
+                perturbed = coords.astype(complex)
+                perturbed[k] += 1j*1e-20
+                with mfoil_cs.complex_step_mode():
+                    got = mfoil.panel_linvortex_stream(
+                        perturbed[:4].reshape(2, 2).T, perturbed[4:])
+                derivative = np.imag(got)/1e-20
+                assert_allclose(derivative, row[[8+k, 14+k]], rtol=2e-13, atol=5e-14)
+
     def test_spline_real_values_match_scipy(self):
         for n in (2, 3, 8):
             x = np.linspace(0, 1, n)**1.5

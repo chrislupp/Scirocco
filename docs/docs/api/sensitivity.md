@@ -130,6 +130,14 @@ Cl/Cdpi use reference chord, Cm uses its square, and total Cd retains the
 Python/XFOIL unit-reference convention. Use unit-chord geometry when
 conventional chord-normalized coefficients are required.
 
+## Numerical precision
+
+Distant linear-vortex streamfunction coefficients use a stable quadrature of
+mfoil's log-distance integral to avoid cancellation for short panels. Python
+and C++ use the same mathematical integral, and its coordinate derivatives
+are checked against independent 60-digit references. The end-to-end Python
+comparisons use `2e-11 + 2e-8*abs(reference)` for both unit and nonunit chord.
+
 ## See also
 
 - Tutorial: [Check analytic sensitivities](../tutorials/sensitivities) — use

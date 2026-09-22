@@ -76,10 +76,9 @@ std::vector<MatrixXd> Directions(H5::Group& group) {
     }
     return out;
 }
-void Check(double got, double reference, double absolute_tolerance = 2e-11) {
+void Check(double got, double reference) {
     EXPECT_TRUE(std::isfinite(got));
-    EXPECT_NEAR(got, reference,
-                absolute_tolerance + 2e-8 * std::abs(reference));
+    EXPECT_NEAR(got, reference, 2e-11 + 2e-8 * std::abs(reference));
 }
 
 class RemainingGradientTest : public ::testing::TestWithParam<const char*> {};
@@ -115,18 +114,12 @@ TEST_P(RemainingGradientTest, PythonOutputsAndAllExposedDerivatives) {
                                         sens.dcdpi_dx, sens.dalpha_dx};
     const auto directions = Directions(group);
     const MatrixXd reference = ReadMatrix(group, "shape_derivatives");
-    // The chord=2 leading-edge lift derivative differs from independent Python
-    // CS by 2.2e-10 (also after tighter solves and high-precision spline
-    // checks). Record a 5e-10 absolute accuracy bound for this scaled-geometry
-    // case; keep the original bound for every unit-chord case. See the review
-    // report.
-    const double shape_atol = state.geom.chord == 1.0 ? 2e-11 : 5e-10;
     for (size_t p = 0; p < directions.size(); ++p) {
         SCOPED_TRACE(p);
         for (int j = 0; j < 5; ++j) {
             SCOPED_TRACE(j);
             Check((shape[j].array() * directions[p].array()).sum(),
-                  reference(p, j), shape_atol);
+                  reference(p, j));
         }
     }
     MatrixXd scalar(4, 5);

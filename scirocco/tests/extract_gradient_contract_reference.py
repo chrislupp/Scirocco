@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate gradient references from Python mfoil, without reading C++ data.
 
-The real oracle is the unmodified mfoil.py. Panel-coordinate inputs are
+The real oracle is bundled mfoil.py without complex-step patches. Its local
+corrections are documented in the correctness review. Panel-coordinate inputs are
 reparameterized using its spline2d. The CS path calls the SAME spline2d;
 only SciPy's rejection of complex knots and nonanalytic primitives are
 extended by mfoil_cs. Check convergence and real primal agreement before

@@ -114,12 +114,14 @@ if(SCIROCCO_BUILD_TESTS)
         # --- Default suite: primal + end-to-end adjoint coverage ---
 
         add_executable(scirocco_tests
+            tests/vortex_stream_test.cpp
             tests/spline_test.cpp
             tests/geometry_test.cpp
             tests/mfoil_reference_test.cpp
         )
         target_link_libraries(scirocco_tests scirocco GTest::gtest_main hdf5_cpp-shared)
         target_compile_definitions(scirocco_tests PRIVATE
+            VORTEX_STREAM_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/vortex_stream_reference.txt"
             MFOIL_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/mfoil_reference.h5"
         )
         gtest_discover_tests(scirocco_tests)

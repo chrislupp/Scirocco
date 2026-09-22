@@ -83,6 +83,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Avoid cancellation in distant linear-vortex streamfunction coefficients and
+  coordinate derivatives by integrating the same log-distance kernel directly
+  in Python and C++. Validate against independent 60-digit integrals and remove
+  the nonunit-chord gradient tolerance exception.
 - Keep wake-spacing derivative iterations consistent with the primal, refresh
   stagnation/transition data through convergence, and retain nonzero sparse
   Jacobian entries.
