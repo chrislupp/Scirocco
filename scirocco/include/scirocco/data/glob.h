@@ -47,6 +47,9 @@ struct Glob {
     SparseMatrixd R_U;   /**< Residual Jacobian w.r.t. primary states */
     SparseMatrixd R_x;   /**< Residual Jacobian w.r.t. xi [3*Nsys x Nsys] */
     SparseMatrixd R_V;   /**< Global Jacobian [4*Nsys x 4*Nsys] */
+    VectorXd coupled_residual; /**< Full physical residual, including ue/Cl */
+    VectorXd variable_scale;   /**< U = diag(variable_scale) * scaled_U */
+    VectorXd residual_scale;   /**< Multipliers for coupled residual rows */
     /* ∂R_BL/∂Re·Re for the analytic Re chain (accumulated in BuildGlobSys
        from each station's ResidualLin.lin_Ret). Re enters R only through
        Ret = ρ·ue·θ/μ_0 with ∂Ret/∂Re = Ret/Re, so ∂R/∂Re = dR_dRe_times_Re /

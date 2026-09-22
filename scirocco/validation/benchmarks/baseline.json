@@ -1,0 +1,33 @@
+{
+  "driver_sha256": "6fa516bb89e705dd16cbe871fa13893055c014df5815548dfcd705dd76865386",
+  "strategy": null,
+  "ptc": 1,
+  "cases": 62,
+  "converged": 49,
+  "seconds": 49.17819824500475,
+  "iterations": 2635,
+  "failures": [
+    "paper_alpha_1.9975",
+    "paper_alpha_1.995",
+    "extended_0012_a12_r200000_m0.4",
+    "extended_0012_a15_r200000_m0.4",
+    "extended_0012_a12_r1e+06_m0.4",
+    "extended_0012_a15_r1e+06_m0.4",
+    "extended_2412_a8_r200000_m0.4",
+    "extended_2412_a12_r200000_m0.4",
+    "extended_2412_a15_r200000_m0.4",
+    "extended_2412_a8_r1e+06_m0",
+    "extended_2412_a8_r1e+06_m0.4",
+    "extended_2412_a12_r1e+06_m0.4",
+    "extended_2412_a15_r1e+06_m0.4"
+  ],
+  "original": {
+    "cases": 30,
+    "converged": 28
+  },
+  "extended": {
+    "cases": 32,
+    "converged": 21
+  },
+  "timing_note": "Exploratory timing; build/test activity overlapped. Use convergence and iteration counts for this stage decision."
+}

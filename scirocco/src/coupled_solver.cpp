@@ -629,16 +629,44 @@ void SolveGlob(FoilState& state) {
     /* Build sparse matrix */
     state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
 
+    // Equilibrate only the linear solve. Keep the physical Jacobian and
+    // residual intact for convergence checks and adjoint factorization.
+    state.glob.coupled_residual = R;
+    auto& uscale = state.glob.variable_scale;
+    auto& rscale = state.glob.residual_scale;
+    uscale = VectorXd::Ones(NN);
+    rscale = VectorXd::Ones(NN);
+    SparseMatrixd linear_system = state.glob.R_V;
+    if (state.param.scale_coupled_system) {
+        const double thickness = 1e-4 * state.geom.chord;
+        for (int i = 0; i < Nsys; ++i) {
+            uscale(4 * i) = std::max(std::abs(state.glob.U(0, i)), thickness);
+            uscale(4 * i + 1) = std::max(std::abs(state.glob.U(1, i)), thickness);
+            uscale(4 * i + 2) = state.vsol.turb[i] ? 0.03 : 1.0;
+            uscale(4 * i + 3) = state.oper.Vinf;
+        }
+        VectorXd row_norm = VectorXd::Zero(NN);
+        for (int col = 0; col < linear_system.outerSize(); ++col)
+            for (SparseMatrixd::InnerIterator it(linear_system, col); it; ++it)
+                row_norm(it.row()) += std::abs(it.value() * uscale(it.col()));
+        for (int row = 0; row < NN; ++row)
+            rscale(row) = 1.0 / std::max(row_norm(row), 1e-30);
+        for (int col = 0; col < linear_system.outerSize(); ++col)
+            for (SparseMatrixd::InnerIterator it(linear_system, col); it; ++it)
+                it.valueRef() *= rscale(it.row()) * uscale(it.col());
+    }
+
     /* Solve sparse system */
     Eigen::SparseLU<SparseMatrixd> solver;
-    solver.compute(state.glob.R_V);
+    solver.compute(linear_system);
     if (solver.info() != Eigen::Success) {
         std::cerr << "  Warning: SparseLU decomposition failed" << '\n';
         throw std::runtime_error(
             "SolveGlob: linear factorization/solve failed");
     }
 
-    VectorXd dV = -solver.solve(R);
+    VectorXd dV = -solver.solve(rscale.cwiseProduct(R));
+    dV = uscale.cwiseProduct(dV);
     if (solver.info() != Eigen::Success || !dV.allFinite()) {
         std::cerr << "  Warning: SparseLU solve failed" << '\n';
         throw std::runtime_error(

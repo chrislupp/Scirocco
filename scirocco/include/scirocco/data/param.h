@@ -37,6 +37,7 @@ struct Param {
     /* Solver parameters */
     int verb = 0; /**< Printing verbosity level (higher = more verbose) */
     double rtol = 1e-11; /**< Residual tolerance for Newton */
+    bool scale_coupled_system = true; /**< Equilibrate equations and variables */
     int niglob = 200;    /**< Maximum number of global iterations (raised from
                               50 to give PTC headroom on rough intermediate
                               iterates that need extra Newton steps to ramp
