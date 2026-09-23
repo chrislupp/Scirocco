@@ -83,6 +83,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Normalize the Python reference pressure forces and lift partials once after
+  panel integration, fixing nonunit-chord outputs and lift trim. Remove manual
+  force normalization from the gradient reference generators.
+- Remove the remaining distant-source streamfunction cancellation in Python
+  and C++, including endpoint, evaluation-point, and panel-frame derivatives.
+  Add independent source-integral checks and an 80-digit full Python gradient
+  reference with a tighter regression for the disputed nonunit-chord case.
 - Avoid cancellation in distant linear-vortex streamfunction coefficients and
   coordinate derivatives by integrating the same log-distance kernel directly
   in Python and C++. Validate against independent 60-digit integrals and remove
