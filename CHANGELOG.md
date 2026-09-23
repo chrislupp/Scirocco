@@ -85,7 +85,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - Preserve HDF5 reference-test discovery when the output writer has already
   created its library target; run the full gradient and solver suites in the
-  coverage job.
+  coverage job. Run coverage tests in parallel and keep the optional
+  derivative-debug tests in their dedicated CI job.
 - Use the multipoint example's NACA 0012 CST fit and finite trailing-edge gap
   throughout the Philote tutorials so their viscous sweeps converge. Add a
   Reynolds-sweep regression and refresh the documented results.

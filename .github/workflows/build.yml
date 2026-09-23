@@ -277,7 +277,6 @@ jobs:
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
         -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
-        -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -286,7 +285,9 @@ jobs:
       working-directory: ${{github.workspace}}/build
       env:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
-      run: ctest --output-on-failure
+      # Chain-piece debug tests run in build-debug-suite; the default suite
+      # already exercises their production paths through end-to-end gradients.
+      run: ctest --output-on-failure --parallel $(nproc)
 
     - name: Generate Coverage Report
       run: |
