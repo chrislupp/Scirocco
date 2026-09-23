@@ -68,7 +68,8 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                        const MatrixXd& dfoil_s_dx);
 
 /**
- * @brief Compute d(R_ue)/d(foil.x) [Nsys x 2N] forward Jacobian (FOR VALIDATION ONLY).
+ * @brief Compute d(R_ue)/d(foil.x) [Nsys x 2N] forward Jacobian (FOR VALIDATION
+ * ONLY).
  *
  * Builds the full dense Jacobian by applying ComputeRueVJP with each row of
  * the identity matrix as lambda. Slow (Nsys * Npanel work) — use VJP in
@@ -81,4 +82,4 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
  */
 MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

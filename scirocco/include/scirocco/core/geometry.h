@@ -42,11 +42,11 @@ struct FoilState;
 
 /** @brief Trailing edge information result */
 struct TEInfo {
-    Vector2d t;   /**< Unit tangent at TE (average of upper/lower) */
-    double hTE;   /**< TE gap height */
-    double dtdx;  /**< d(theta)/dx at TE */
-    double tcp;   /**< TE constant source panel strength factor */
-    double tdp;   /**< TE vortex panel strength factor */
+    Vector2d t;  /**< Unit tangent at TE (average of upper/lower) */
+    double hTE;  /**< TE gap height */
+    double dtdx; /**< d(theta)/dx at TE */
+    double tcp;  /**< TE constant source panel strength factor */
+    double tdp;  /**< TE vortex panel strength factor */
 };
 
 /** @brief Generate NACA 4 or 5-digit airfoil points
@@ -97,4 +97,4 @@ void GeomAddCamber(FoilState& state, const MatrixXd& xzcamb);
  */
 void GeomDerotate(FoilState& state);
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

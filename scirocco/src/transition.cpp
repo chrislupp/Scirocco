@@ -85,7 +85,7 @@ int MarchAmplification(FoilState& state, int si) {
 
             double Ramp = U2(2) - U1(2) - damp * dx;
 
-            if (std::abs(Ramp) < 1e-12) break;  /* Converged */
+            if (std::abs(Ramp) < 1e-12) break; /* Converged */
 
             /* Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx */
             double Ramp_U2 = 1.0 - 0.5 * damp2_U2(2) * dx;
@@ -125,7 +125,7 @@ void UpdateTransition(FoilState& state) {
     /* Updates transition location using current state
      * Updates turb flags and U[2,:] (amp/ctau) as needed */
 
-    for (int si = 0; si < 2; ++si) {  /* Lower and upper only */
+    for (int si = 0; si < 2; ++si) { /* Lower and upper only */
         const auto& Is = state.vsol.Is[si];
         int N = static_cast<int>(Is.size());
         if (N == 0) continue;
@@ -142,7 +142,7 @@ void UpdateTransition(FoilState& state) {
                 break;
             }
         }
-        if (ilam0 < 0) ilam0 = N - 1;  /* All laminar */
+        if (ilam0 < 0) ilam0 = N - 1; /* All laminar */
 
         /* Save current sa values (so we don't change them unnecessarily) */
         VectorXd sa(N);
@@ -162,7 +162,8 @@ void UpdateTransition(FoilState& state) {
         }
 
         if (ilam < ilam0) {
-            /* Transition is now earlier: fill in turb between [ilam+1, ilam0] */
+            /* Transition is now earlier: fill in turb between [ilam+1, ilam0]
+             */
             param.turb = true;
             StationParam(state, param, Is[ilam + 1]);
             auto [sa0, temp] = GetCttr(state.glob.U.col(Is[ilam + 1]), param);
@@ -184,7 +185,7 @@ void UpdateTransition(FoilState& state) {
                        "negative ctau in UpdateTransition");
                 state.vsol.turb[Is[idx]] = true;
             }
-        } else {  /* ilam > ilam0 */
+        } else { /* ilam > ilam0 */
             /* Transition is now later: mark stations as laminar
              * Amplification already filled in by march_amplification */
             for (int idx = ilam0; idx <= ilam && idx < N; ++idx) {
@@ -202,11 +203,11 @@ void StoreTransition(FoilState& state, int si, int i) {
      * i: station index in Is array (transition is between i-1 and i) */
 
     if (si < 2 && i > 0) {
-        double xt = state.vsol.xt;  /* Current transition xi location */
+        double xt = state.vsol.xt; /* Current transition xi location */
 
         const auto& Is = state.vsol.Is[si];
-        int i0 = Is[i - 1];  /* Pre-transition node */
-        int i1 = Is[i];      /* Post-transition node */
+        int i0 = Is[i - 1]; /* Pre-transition node */
+        int i1 = Is[i];     /* Post-transition node */
 
         double xi0 = state.isol.xi(i0);
         double xi1 = state.isol.xi(i1);
@@ -216,7 +217,7 @@ void StoreTransition(FoilState& state, int si, int i) {
             double x0 = state.foil.x(0, i0);
             double x1 = state.foil.x(0, i1);
 
-            state.vsol.Xt(si, 0) = xt;  /* xi location */
+            state.vsol.Xt(si, 0) = xt; /* xi location */
             /* Interpolate x location */
             if (std::abs(xi1 - xi0) > 1e-12) {
                 state.vsol.Xt(si, 1) =

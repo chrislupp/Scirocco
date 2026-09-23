@@ -78,7 +78,7 @@ int main() {
 
             /* Analytic from ResidualLin */
             auto res = ResidualStation(param, x, U, Aux);
-            Vector3d lin_Ma_an = res.lin_Ma;  /* already Vector3d·Ma */
+            Vector3d lin_Ma_an = res.lin_Ma; /* already Vector3d·Ma */
 
             /* FD: perturb Ma + InitThermo on a copy of state's Param,
              * then call ResidualStation with the perturbed param.

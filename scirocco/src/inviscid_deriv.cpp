@@ -81,7 +81,7 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
      *   x1=k) */
 
     for (int i = 0; i < N; ++i) {
-        if (nogap && i == N - 1) continue;  /* Skip no-gap row */
+        if (nogap && i == N - 1) continue; /* Skip no-gap row */
         double lam_i = lambda(i);
         if (std::abs(lam_i) < 1e-20) continue;
 
@@ -109,10 +109,10 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
             /* Xj derivatives (affect panel endpoint coordinates)
              * Xj = [x1_x, x1_z, x2_x, x2_z] = node j and j+1 */
             Vector4d dR_dXj = deriv.a_Xj * gj + deriv.b_Xj * gjp;
-            sens(2 * j) += lam_i * dR_dXj(0);            /* x1_x = node j x */
-            sens(2 * j + 1) += lam_i * dR_dXj(1);        /* x1_z = node j z */
-            sens(2 * (j + 1)) += lam_i * dR_dXj(2);      /* x2_x = node j+1 x */
-            sens(2 * (j + 1) + 1) += lam_i * dR_dXj(3);  /* x2_z = node j+1 z */
+            sens(2 * j) += lam_i * dR_dXj(0);           /* x1_x = node j x */
+            sens(2 * j + 1) += lam_i * dR_dXj(1);       /* x1_z = node j z */
+            sens(2 * (j + 1)) += lam_i * dR_dXj(2);     /* x2_x = node j+1 x */
+            sens(2 * (j + 1) + 1) += lam_i * dR_dXj(3); /* x2_z = node j+1 z */
         }
 
         /* --- (2) TE source panel contribution ---
@@ -134,7 +134,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
             sens(2 * i + 1) += lam_i * deriv.val_xi(1) * sigma_factor;
 
             /* Xj derivatives for TE panel: Xj = [N-1, 0]
-             * (dtcp/dx and dtdp/dx are handled separately in section (5) below) */
+             * (dtcp/dx and dtdp/dx are handled separately in section (5) below)
+             */
             sens(2 * (N - 1)) += lam_i * deriv.val_Xj(0) * sigma_factor;
             sens(2 * (N - 1) + 1) += lam_i * deriv.val_Xj(1) * sigma_factor;
             sens(0) += lam_i * deriv.val_Xj(2) * sigma_factor;
@@ -157,7 +158,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
             double gam_factor = 0.5 * te.tdp * (gam(0) - gam(N - 1));
             /* Total R contribution = (a+b) * gam_factor */
 
-            /* xi derivatives (a_xi and b_xi are Vector2d: [d/dxi_x, d/dxi_z]) */
+            /* xi derivatives (a_xi and b_xi are Vector2d: [d/dxi_x, d/dxi_z])
+             */
             double dab_dxi_x = deriv.a_xi(0) + deriv.b_xi(0);
             double dab_dxi_z = deriv.a_xi(1) + deriv.b_xi(1);
             sens(2 * i) += lam_i * dab_dxi_x * gam_factor;
@@ -291,7 +293,8 @@ VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
  *   lambda_f^T * dBp * phi reduces to
  *     mu^T (dA * v + dB * phi)  where v = Bp * phi, mu = A^{-T} lambda_f.
  * This function computes the mu^T dA v half.
- * ============================================================================ */
+ * ============================================================================
+ */
 VectorXd AICMatVecVJP(const FoilState& state, const VectorXd& lambda,
                       const VectorXd& v) {
     int N = state.foil.N;

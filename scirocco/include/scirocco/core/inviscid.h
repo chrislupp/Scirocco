@@ -37,7 +37,8 @@ namespace scirocco {
 
 /**
  * @brief Build and solve the inviscid linear system for gamma
- * @param state FoilState with panels set up; filled with AIC matrix and vorticity solutions
+ * @param state FoilState with panels set up; filled with AIC matrix and
+ * vorticity solutions
  * @param alpha Angle of attack [degrees]
  */
 void BuildGamma(FoilState& state, double alpha);
@@ -73,7 +74,8 @@ Vector2d InviscidVelocity(const MatrixXd& X, const VectorXd& G, double Vinf,
 
 /**
  * @brief Solve inviscid problem (top-level)
- * @param state FoilState with geometry and operating conditions; updated with inviscid solution
+ * @param state FoilState with geometry and operating conditions; updated with
+ * inviscid solution
  */
 void SolveInviscid(FoilState& state);
 

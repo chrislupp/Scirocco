@@ -63,7 +63,8 @@ int main() {
     std::cout << "Base: cl=" << s.post.cl << " cd=" << s.post.cd
               << " cm=" << s.post.cm << "\n";
 
-    /* Replicate the dJ_dMa(0) = dcl/dMa code from ViscousSensitivities Ma block */
+    /* Replicate the dJ_dMa(0) = dcl/dMa code from ViscousSensitivities Ma block
+     */
     int N = s.foil.N;
     double Ma = s.oper.Ma;
     double chord = s.geom.chord;

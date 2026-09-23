@@ -36,14 +36,16 @@
 namespace scirocco {
 
 /**
- * @brief Compute the vector-Jacobian product: lambda^T * d(A*gamma - rhs)/dx_foil
+ * @brief Compute the vector-Jacobian product: lambda^T * d(A*gamma -
+ * rhs)/dx_foil
  *
  * This avoids forming the full [N+1 x N+1 x 2N] tensor.
  *
  * @param state FoilState with solved inviscid problem (AIC, gam, gamref)
  * @param lambda Adjoint vector [N+1] (solution of A^T * lambda = dJ/dgamma)
  * @param alpha Angle of attack [degrees]
- * @return VJP vector [2*N]: the total sensitivity contribution from the AIC system
+ * @return VJP vector [2*N]: the total sensitivity contribution from the AIC
+ * system
  */
 VectorXd AICResidualSensVJP(const FoilState& state, const VectorXd& lambda,
                             double alpha);

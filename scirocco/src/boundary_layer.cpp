@@ -57,7 +57,7 @@ Param BuildParam(const FoilState& state, int si) {
 
     /* Set surface-specific flags */
     param.wake = (si == 2);
-    param.turb = param.wake;  /* Wake is fully turbulent (matches mfoil) */
+    param.turb = param.wake; /* Wake is fully turbulent (matches mfoil) */
     param.simi = false;
 
     return param;
@@ -81,11 +81,11 @@ void InitBoundaryLayer(FoilState& state) {
     /* Initialize boundary layer by marching from stagnation point
      * Matches mfoil's init_boundary_layer approach */
 
-    constexpr double Hmaxl = 3.8;  /* Max H before laminar separation */
-    constexpr double Hmaxt = 2.5;  /* Max H before turbulent separation */
+    constexpr double Hmaxl = 3.8; /* Max H before laminar separation */
+    constexpr double Hmaxt = 2.5; /* Max H before turbulent separation */
     constexpr int nNewton = 30;
     constexpr int iNswitch =
-        12;  /* Switch to inverse after this many iterations */
+        12; /* Switch to inverse after this many iterations */
 
     int N = state.foil.N;
     int Nw = state.wake.N;
@@ -153,12 +153,12 @@ void InitBoundaryLayer(FoilState& state) {
             }
             /* Thwaites initialization */
             auto [th, ds] = ThwaitesInit(K, nu);
-            double xst = 1e-6;  /* Small but nonzero */
+            double xst = 1e-6; /* Small but nonzero */
             Vector4d Ust(th, ds, 0.0, K * xst);
 
             /* Newton refinement at stagnation (matching mfoil) */
             param.turb = false;
-            param.simi = true;  /* Similarity station flag */
+            param.simi = true; /* Similarity station flag */
 
             for (int iNewton = 0; iNewton < 20; ++iNewton) {
                 /* Call residual at stagnation with simi=true */
@@ -189,7 +189,7 @@ void InitBoundaryLayer(FoilState& state) {
                 Ust(2) += dU3(2);
             }
 
-            param.simi = false;  /* Reset similarity flag */
+            param.simi = false; /* Reset similarity flag */
 
             /* Store stagnation state (mfoil approach)
              * When hitstag, both point 0 and point 1 get the stagnation state,
@@ -199,16 +199,16 @@ void InitBoundaryLayer(FoilState& state) {
                 U(3, 0) = ue(0);
                 U.col(1) = Ust;
                 U(3, 1) = ue(1);
-                i0 = 1;  /* March will start from i0+1 = 2 */
+                i0 = 1; /* March will start from i0+1 = 2 */
             } else {
                 U.col(0) = Ust;
                 U(3, 0) = ue(0);
-                i0 = 0;  /* March will start from i0+1 = 1 */
+                i0 = 0; /* March will start from i0+1 = 1 */
             }
 
         } else {
             /* Wake: initialize from TE states */
-            i0 = 0;  /* Reset for wake */
+            i0 = 0; /* Reset for wake */
             auto wres = WakeSys(state, param);
             /* WakeSys modifies param.wake to false for cttr calculation;
              * reset it to true for wake marching (matches mfoil behavior) */
@@ -223,7 +223,7 @@ void InitBoundaryLayer(FoilState& state) {
         }
 
         /* March over rest of points */
-        bool tran = false;  /* Transition flag */
+        bool tran = false; /* Transition flag */
         int i = i0 + 1;
 
         while (i < Nsurf) {
@@ -307,8 +307,8 @@ void InitBoundaryLayer(FoilState& state) {
                 Vector4d Ui = U.col(i) + dU;
 
                 /* Clip extreme values */
-                Ui(0) = std::max(Ui(0), 1e-12);  /* theta > 0 */
-                Ui(1) = std::max(Ui(1), 1e-12);  /* delta* > 0 */
+                Ui(0) = std::max(Ui(0), 1e-12); /* theta > 0 */
+                Ui(1) = std::max(Ui(1), 1e-12); /* delta* > 0 */
                 if (param.turb) {
                     Ui(2) = std::max(std::min(Ui(2), 0.3), 1e-7);
                 }
@@ -355,7 +355,8 @@ void InitBoundaryLayer(FoilState& state) {
                 U.col(i) = U.col(i - 1);
                 U(3, i) = ue(i);
 
-                /* At transition station, preserve cttr instead of laminar amp */
+                /* At transition station, preserve cttr instead of laminar amp
+                 */
                 if (tran) {
                     auto [ct, ct_U] = GetCttr(U.col(i), param);
                     U(2, i) = ct;
@@ -370,7 +371,7 @@ void InitBoundaryLayer(FoilState& state) {
             /* Check for transition (laminar only) */
             if (!param.turb && !tran && U(2, i) > param.ncrit) {
                 tran = true;
-                continue;  /* Redo station with transition */
+                continue; /* Redo station with transition */
             }
 
             if (tran) {
@@ -592,7 +593,7 @@ double GetCDi_LamWake_dRet(const Vector4d& U, const Param& paramin) {
     (void)unused_Ret_U;
     /* Hs_dRet in laminar = 0 (Hs has no Ret dep in laminar branch) */
     double HsRet = Hs * Ret;
-    double HsRet_dRet = Hs;  /* Hs_dRet = 0 for laminar */
+    double HsRet_dRet = Hs; /* Hs_dRet = 0 for laminar */
     double Hk_inv = 1.0 / Hk;
     double one_m = 1.0 - Hk_inv;
     double num = 2.0 * 1.1 * one_m * one_m * Hk_inv;
@@ -644,8 +645,8 @@ double GetCDixt_dRet(const Vector4d& U, double x, const Param& param) {
 }
 
 /**
- * @brief GetCteq, GetUq, GetDamp _dRet — for the turbulent and transition cases.
- * cteq depends on Hs, Us, Hk, H, Ret directly. Uq takes Ret as a direct
+ * @brief GetCteq, GetUq, GetDamp _dRet — for the turbulent and transition
+ * cases. cteq depends on Hs, Us, Hk, H, Ret directly. Uq takes Ret as a direct
  * arg (not via U). Damp uses Ret in the laminar amplification formula.
  * For Mach=0 NACA 0012 alpha=3 Re=1e6 ViscousRe test, these matter only
  * at turbulent foil stations and wake. For now keep the chain there.
@@ -662,7 +663,8 @@ double GetCteq_dRet(const Vector4d& U, const Param& param) {
      *   num = CC * Hs * (Hk-1) * Hkc²
      *   den = (1-Us) * H * Hk²
      *   Hkc = (param.wake) ? Hk-1 : Hk - 1 - C/Ret  (clamped)
-     * ∂cteq/∂Ret at fixed U: Hk and H are Ret-indep. Hs, Us, Hkc carry Ret-dep. */
+     * ∂cteq/∂Ret at fixed U: Hk and H are Ret-indep. Hs, Us, Hkc carry Ret-dep.
+     */
     double CC = 0.5 / (param.GA * param.GA * param.GB);
     double C = param.GC;
     auto [Hk, unused_Hk_U] = GetHk(U, param);
@@ -683,7 +685,7 @@ double GetCteq_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) {
         if (Hk < 1.00005) Hk = 1.00005;
         Hkc = Hk - 1.0;
-        Hkc_dRet = 0.0;  /* no Ret dep in wake branch */
+        Hkc_dRet = 0.0; /* no Ret dep in wake branch */
     } else {
         if (Hk < 1.05) Hk = 1.05;
         Hkc = Hk - 1.0 - C / Ret;
@@ -737,7 +739,8 @@ double GetUq_dRet_arg(double /*cf*/, double Hk, double Ret, double ds,
 }
 
 /**
- * @brief ∂uq/∂cf at fixed (ds, Hk, Ret). ut = 0.5*cf - (Hkc/AHk)². ∂ut/∂cf = 0.5.
+ * @brief ∂uq/∂cf at fixed (ds, Hk, Ret). ut = 0.5*cf - (Hkc/AHk)². ∂ut/∂cf =
+ * 0.5.
  * @param ds displacement thickness
  * @param param boundary layer parameter struct
  * @return ∂uq/∂cf at fixed (ds, Hk, Ret)
@@ -793,7 +796,6 @@ double GetDamp_dRet(const Vector4d& U, const Param& param) {
     return rf_dRet * af * da / th;
 }
 
-
 ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
                                    double rhoinf) {
     ThermoMaDeriv d;
@@ -807,7 +809,8 @@ ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
     /* KTb = sqrt(1 - Ma²)  → KTb_dMa = -Ma/KTb */
     d.KTb_dMa = -Ma / KTb;
 
-    /* KTl = Ma²/(1+KTb)²  → KTl_dMa = 2*Ma/(1+KTb)² - 2*Ma²/(1+KTb)³ · KTb_dMa */
+    /* KTl = Ma²/(1+KTb)²  → KTl_dMa = 2*Ma/(1+KTb)² - 2*Ma²/(1+KTb)³ · KTb_dMa
+     */
     double opb = 1.0 + KTb;
     d.KTl_dMa =
         2.0 * Ma / (opb * opb) - 2.0 * Ma * Ma / (opb * opb * opb) * d.KTb_dMa;
@@ -816,7 +819,8 @@ ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
      *   → H0_dMa = -2·Vinf²/(gmi·Ma³) */
     d.H0_dMa = -2.0 * Vinf * Vinf / (gmi * Ma * Ma * Ma);
 
-    /* mu0 = muinf/finf, finf = Tr^1.5 · (1+Ts)/(Tr+Ts), Tr = 1 - 0.5·Vinf²/H0 */
+    /* mu0 = muinf/finf, finf = Tr^1.5 · (1+Ts)/(Tr+Ts), Tr = 1 - 0.5·Vinf²/H0
+     */
     double H0 = param.H0;
     double muinf = param.muinf;
     double Tr = 1.0 - 0.5 * Vinf * Vinf / H0;
@@ -956,12 +960,14 @@ double GetRet_dMa(const Vector4d& U, const Param& param,
                      rho * (-0.5 * M2_dMa / den_iso);
 
     double Ret = rho * uk * th / mu;
-    /* ∂Ret/∂Ma at fixed U: rho_dMa·uk·th/mu + rho·uk_dMa·th/mu - Ret·mu_dMa/mu */
+    /* ∂Ret/∂Ma at fixed U: rho_dMa·uk·th/mu + rho·uk_dMa·th/mu - Ret·mu_dMa/mu
+     */
     return rho_dMa * uk * th / mu + rho * uk_dMa * th / mu - Ret * mu_dMa / mu;
 }
 
 /**
- * @brief ∂Hs/∂Ma at fixed U. Chains through Hk(Ma), M2(Ma), and (turb only) Ret(Ma).
+ * @brief ∂Hs/∂Ma at fixed U. Chains through Hk(Ma), M2(Ma), and (turb only)
+ * Ret(Ma).
  * @param U boundary layer state vector [th, ds, sa, ue]
  * @param param boundary layer parameter struct
  * @param d thermo Ma-derivative struct
@@ -982,7 +988,7 @@ double GetHs_dMa(const Vector4d& U, const Param& param,
         Hk_dMa = 0;
     }
 
-    double Hs_base_dMa = 0;  /* ∂Hs(no Mach correction)/∂Ma via Hk and Ret */
+    double Hs_base_dMa = 0; /* ∂Hs(no Mach correction)/∂Ma via Hk and Ret */
     if (param.turb) {
         constexpr double Hsmin = 1.5;
         constexpr double dHsinf = 0.015;
@@ -1146,8 +1152,8 @@ double GetCf_dMa(const Vector4d& U, const Param& param,
 }
 
 /**
- * @brief CDi sub-functions — chain rule each. For laminar (cDi=num/Ret) only Ret_dMa
- * matters; for turb the chain goes through cf, Hk, Hs, Us.
+ * @brief CDi sub-functions — chain rule each. For laminar (cDi=num/Ret) only
+ * Ret_dMa matters; for turb the chain goes through cf, Hk, Hs, Us.
  * @param U boundary layer state vector [th, ds, sa, ue]
  * @param param boundary layer parameter struct
  * @param d thermo Ma-derivative struct
@@ -1254,7 +1260,7 @@ double GetCDi_LamWake_dMa(const Vector4d& U, const Param& paramin,
     auto [Ret, unused_Ret_U] = GetRet(U, param);
     (void)unused_Ret_U;
     double Hk_dMa = GetHk_dMa(U, param, d);
-    double Hs_dMa = GetHs_dMa(U, param, d);  /* laminar Hs */
+    double Hs_dMa = GetHs_dMa(U, param, d); /* laminar Hs */
     double Ret_dMa = GetRet_dMa(U, param, d);
     double HsRet = Hs * Ret;
     double HsRet_dMa = Hs_dMa * Ret + Hs * Ret_dMa;
@@ -1315,8 +1321,8 @@ double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
 }
 
 /**
- * @brief ∂GetDamp/∂Ma at fixed U. Chain: GetDamp uses Hk(Ma) via Hmi, ar, da, af;
- * and Ret(Ma) via lr = log(Ret)/log(10). Laminar amplification only.
+ * @brief ∂GetDamp/∂Ma at fixed U. Chain: GetDamp uses Hk(Ma) via Hmi, ar, da,
+ * af; and Ret(Ma) via lr = log(Ret)/log(10). Laminar amplification only.
  * @param U boundary layer state vector [th, ds, sa, ue]
  * @param param boundary layer parameter struct
  * @param d thermo Ma-derivative struct
@@ -1461,8 +1467,8 @@ double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
 }
 
 /**
- * @brief ComputeStationLinRet: Returns Vector3d lin_Ret = sum_k ∂R/∂Ret_k · Ret_k
- * for the three residual equations (Rmom, Rshape, Rlag) at the station.
+ * @brief ComputeStationLinRet: Returns Vector3d lin_Ret = sum_k ∂R/∂Ret_k ·
+ * Ret_k for the three residual equations (Rmom, Rshape, Rlag) at the station.
  *
  * Mirrors ResidualStation's formula structure but tracks ONLY the Ret-
  * derivative path (closures' explicit ∂/∂Ret · Ret contribution). U and
@@ -1576,7 +1582,8 @@ Vector3d ComputeStationLinRet(const Param& param, const Vector2d& x,
      * ∂Rshape/∂Ret_k · Ret_k contributions:
      *   Hslog: Hslog_dRet_Ret
      *   2*Hss/Hs → ∂(2*Hss/Hs)/∂Ret · Ret = 2*Hss * (-1/Hs^2) * Hs_dRet_Ret
-     *   xlog * (0.5*cfxtu - cDixt): xlog*(0.5*cfxtu_dRet_Ret - cDixt_dRet_Ret) */
+     *   xlog * (0.5*cfxtu - cDixt): xlog*(0.5*cfxtu_dRet_Ret - cDixt_dRet_Ret)
+     */
     double Rshape_dRet_Ret = Hslog_dRet_Ret +
                              (-2.0 * Hss / (Hs * Hs)) * uelog * Hs_dRet_Ret +
                              xlog * (0.5 * cfxtu_dRet_Ret - cDixt_dRet_Ret);
@@ -1783,7 +1790,8 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     (void)unused_Hw2_U;
     double Hw = 0.5 * (Hw1 + Hw2);
 
-    /* Ms = upwinded M2 (0.5 symmetric average per the formula in GetMach2 use) */
+    /* Ms = upwinded M2 (0.5 symmetric average per the formula in GetMach2 use)
+     */
     auto [Ms1, unused_Ms1_U] = GetMach2(U1, param);
     (void)unused_Ms1_U;
     auto [Ms2, unused_Ms2_U] = GetMach2(U2, param);
@@ -1832,7 +1840,8 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
 
     /* ---- Rmom = thlog + (2+H+Hw-Ms)*uelog - 0.5·xlog·cfxt ----
      * thlog has no Ma dep. H, Hw have no Ma dep. Ms, uelog, cfxt do.
-     * ∂Rmom/∂Ma = (-Ms_dMa)·uelog + (2+H+Hw-Ms)·uelog_dMa - 0.5·xlog·cfxt_dMa */
+     * ∂Rmom/∂Ma = (-Ms_dMa)·uelog + (2+H+Hw-Ms)·uelog_dMa - 0.5·xlog·cfxt_dMa
+     */
     double Rmom_dMa = (-Ms_dMa) * uelog + (2.0 + H + Hw - Ms) * uelog_dMa -
                       0.5 * xlog * cfxt_dMa;
 
@@ -2013,7 +2022,7 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
         /* saa, salog have no Ma dep. */
         double saa = (1.0 - upw) * U1(2) + upw * U2(2);
         double saa_dMa =
-            -upw_dMa * U1(2) + upw_dMa * U2(2);  /* upwind has Ma-dep */
+            -upw_dMa * U1(2) + upw_dMa * U2(2); /* upwind has Ma-dep */
 
         double sa1_safe = std::max(U1(2), 1e-10);
         double sa2_safe = std::max(U2(2), 1e-10);
@@ -2058,7 +2067,7 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
     return Vector3d{Rmom_dMa, Rshape_dMa, Rlag_dMa} * Ma;
 }
 
-}  /* namespace detail */
+} /* namespace detail */
 using namespace detail;
 
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
@@ -2074,7 +2083,7 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
 
     /* Copy and modify for wake gap */
     Matrix42d U = Uin;
-    U.row(1) -= Aux.transpose();  /* Remove wake gap from delta* */
+    U.row(1) -= Aux.transpose(); /* Remove wake gap from delta* */
 
     Vector4d U1 = U.col(0);
     Vector4d U2 = U.col(1);
@@ -2397,9 +2406,9 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
 
     WakeResult result;
 
-    int il = state.vsol.Is[0].back();   /* Lower surface TE index */
-    int iu = state.vsol.Is[1].back();   /* Upper surface TE index */
-    int iw = state.vsol.Is[2].front();  /* First wake index */
+    int il = state.vsol.Is[0].back();  /* Lower surface TE index */
+    int iu = state.vsol.Is[1].back();  /* Upper surface TE index */
+    int iw = state.vsol.Is[2].front(); /* First wake index */
 
     Vector4d Ul = state.glob.U.col(il);
     Vector4d Uu = state.glob.U.col(iu);
@@ -2518,11 +2527,11 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     double dx = x2 - x1;
 
     /* Determine transition location (xt) using amplification equation */
-    double xt = x1 + 0.5 * dx;  /* Initial guess */
+    double xt = x1 + 0.5 * dx; /* Initial guess */
     double ncrit = param_base.ncrit;
     constexpr int nNewton = 30;
 
-    double sa1 = U1(2);  /* Amplification at point 1 */
+    double sa1 = U1(2); /* Amplification at point 1 */
 
     /* Newton iteration to find xt */
     for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
@@ -2531,16 +2540,16 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
 
         /* State at xt (linear interpolation) */
         Vector4d Ut = w1 * U1 + w2 * U2;
-        Vector4d Ut_xt = (U2 - U1) / dx;  /* d(Ut)/d(xt) */
-        Ut(2) = ncrit;                    /* Amplification at transition = ncrit */
-        Ut_xt(2) = 0.0;                   /* sa at xt is always ncrit */
+        Vector4d Ut_xt = (U2 - U1) / dx; /* d(Ut)/d(xt) */
+        Ut(2) = ncrit;  /* Amplification at transition = ncrit */
+        Ut_xt(2) = 0.0; /* sa at xt is always ncrit */
 
         /* Get damping at U1 and Ut */
         Param param = param_base;
         param.turb = false;
         auto [damp1, damp1_U1] = GetDamp(U1, param);
         auto [dampt, dampt_Ut] = GetDamp(Ut, param);
-        dampt_Ut(2) = 0.0;  /* No dependence on sa at transition */
+        dampt_Ut(2) = 0.0; /* No dependence on sa at transition */
 
         /* Residual for transition location: ncrit - sa1 - 0.5*(xt-x1)*(damp1 +
          * dampt) */
@@ -2587,7 +2596,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     Vector8d Rxt_U = Vector8d::Zero();
     Rxt_U.head<4>() = -0.5 * (xt - x1) * (damp1_U1 + dampt_Ut * w1);
     Rxt_U.tail<4>() = -0.5 * (xt - x1) * dampt_Ut * w2;
-    Rxt_U(2) -= 1.0;  /* d(Rxt)/d(sa1) = -1 */
+    Rxt_U(2) -= 1.0; /* d(Rxt)/d(sa1) = -1 */
 
     /* Ut_x at fixed xt */
     Vector4d Ut_x1 = (U2 - U1) * (w2 - 1.0) / dx;
@@ -2742,7 +2751,8 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
      *   (a) Rl.lin_Ret + Rt.lin_Ret (direct closure Ret-deps with x_lam, U_lam
      *   fixed) (b) ∂xt/∂Re · (Rl.lin_x.col(1) + Rt.lin_x.col(0))      [direct x
      *   dep] (c) ∂xt/∂Re · (Rl_Utl · Utl_xt + Rt_Utt · Utt_xt)      [Utl, Utt
-     *   depend on xt] (d) (Rt_Utt · ê_2) · cttr_dRet·Ret_t [cttr(Re) directly] */
+     *   depend on xt] (d) (Rt_Utt · ê_2) · cttr_dRet·Ret_t [cttr(Re) directly]
+     */
     {
         /* damp_dRet at the two endpoints used in Rxt */
         Param p_lam = param_base;
@@ -2762,9 +2772,9 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
 
         /* ∂R/∂xt via Utl/Utt = Ut(xt): */
         Vector4d Utl_xt = Ut_xt;
-        Utl_xt(2) = 0.0;  /* ncrit constant */
+        Utl_xt(2) = 0.0; /* ncrit constant */
         Vector4d Utt_xt = Ut_xt;
-        Utt_xt(2) = cttr_Ut.dot(Ut_xt);  /* cttr(Ut(xt)) chain through Ut_xt */
+        Utt_xt(2) = cttr_Ut.dot(Ut_xt); /* cttr(Ut(xt)) chain through Ut_xt */
 
         Vector3d dR_dxt_via_Ut = Rl_Utl * Utl_xt + Rt_Utt * Utt_xt;
 
@@ -2794,4 +2804,4 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     return result;
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

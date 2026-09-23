@@ -66,7 +66,8 @@ void WriteVector(H5::Group& grp, const std::string& name, const VectorXd& vec) {
 void WriteMatrix(H5::Group& grp, const std::string& name, const MatrixXd& mat) {
     if (mat.size() == 0) return;
     /* Eigen is column-major; write as (rows x cols) and transpose to row-major
-       for HDF5 compatibility with h5py/numpy (which expect row-major C order). */
+       for HDF5 compatibility with h5py/numpy (which expect row-major C order).
+     */
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
         row_major = mat;
     hsize_t dims[2] = {static_cast<hsize_t>(mat.rows()),

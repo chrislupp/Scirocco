@@ -46,7 +46,8 @@ static bool withinTol(double got, double ref) {
 
 /* ---------------------------------------------------------------------------
  * HDF5 helpers
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 namespace {
 VectorXd readVector(H5::H5File& file, const std::string& path) {
     H5::DataSet ds = file.openDataSet(path);
@@ -86,8 +87,8 @@ std::vector<int64_t> readIntVec(H5::H5File& file, const std::string& path) {
 }  // namespace
 
 /**
- * @brief Helper: make a Param matching the test's MakeParam (NACA 0012, 130 panels,
- * alpha=3, Ma=0.4, plus turb/wake flags)
+ * @brief Helper: make a Param matching the test's MakeParam (NACA 0012, 130
+ * panels, alpha=3, Ma=0.4, plus turb/wake flags)
  * @param Re Reynolds number
  * @param Ma Mach number
  * @param turb turbulent flag
@@ -108,7 +109,8 @@ static Param MakeParam(double Re, double Ma, bool turb, bool wake) {
 
 /* ---------------------------------------------------------------------------
  * Test fixture: shared converged state for the higher-level tests.
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 class PingTest : public ::testing::Test {
    protected:
     static std::unique_ptr<Scirocco> foil_;

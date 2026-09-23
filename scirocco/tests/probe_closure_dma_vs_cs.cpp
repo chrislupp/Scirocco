@@ -10,7 +10,6 @@
 #include <iostream>
 #include <vector>
 
-#include "scirocco/properties/bl_properties.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/properties/bl_properties.h"

@@ -59,7 +59,7 @@ TEST(GeometryTest, NacaPointsCambered) {
     for (int i = 0; i < geom.npoint; ++i) {
         max_camber = std::max(max_camber, std::abs(geom.xpoint(1, i)));
     }
-    EXPECT_GT(max_camber, 0.01);  /* Should have some thickness/camber */
+    EXPECT_GT(max_camber, 0.01); /* Should have some thickness/camber */
 }
 
 TEST(GeometryTest, SetCoords) {

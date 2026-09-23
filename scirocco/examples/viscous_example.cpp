@@ -48,7 +48,7 @@ int main() {
 
     /* Set Reynolds number for viscous analysis */
     double Re = 1.0e6;
-    double Ma = 0.0;  /* Incompressible */
+    double Ma = 0.0; /* Incompressible */
 
     /* Analyze at different angles of attack */
     std::cout << std::fixed << std::setprecision(4);

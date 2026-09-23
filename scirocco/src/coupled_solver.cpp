@@ -68,10 +68,12 @@ VectorXd PackedState(const FoilState& state) {
 }
 
 bool ValidTrialState(const FoilState& state) {
-    if (!state.glob.U.allFinite() || !std::isfinite(state.oper.alpha)) return false;
+    if (!state.glob.U.allFinite() || !std::isfinite(state.oper.alpha))
+        return false;
     if ((state.glob.U.topRows(2).array() <= 0.0).any()) return false;
     const auto& bracket = state.isol.Istag;
-    if (state.glob.U(3, bracket[0]) == 0.0 || state.glob.U(3, bracket[1]) == 0.0)
+    if (state.glob.U(3, bracket[0]) == 0.0 ||
+        state.glob.U(3, bracket[1]) == 0.0)
         return false;
     int left = bracket[0], right = bracket[1];
     while (left >= 0 && state.glob.U(3, left) <= 0.0) --left;
@@ -141,7 +143,8 @@ void SolveViscous(FoilState& state) {
     state.glob.continuation_steps = 0;
     state.glob.continuation_iterations = 0;
     std::unique_ptr<FoilState> initial;
-    if (state.param.use_continuation) initial = std::make_unique<FoilState>(state);
+    if (state.param.use_continuation)
+        initial = std::make_unique<FoilState>(state);
 
     /* Solve coupled system */
     SolveCoupled(state);
@@ -254,7 +257,8 @@ void SolveCoupled(FoilState& state) {
         // convergence. Freezing stagnation data below a residual threshold
         // changes the root while the adjoint still differentiates the
         // moving-stagnation model.
-        if (!state.param.use_trust_region || !state.param.trust_update_topology) {
+        if (!state.param.use_trust_region ||
+            !state.param.trust_update_topology) {
             StagPointMove(state);
             UpdateTransition(state);
         }
@@ -271,11 +275,14 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
     // Rebuilding it at intermediate angles would change the final model
     // relative to a cold solve at the requested operating conditions.
     if (target.oper.redowake || target.param.continuation_max_attempts <= 0 ||
-        target.param.continuation_max_iterations <= 0) return false;
+        target.param.continuation_max_iterations <= 0)
+        return false;
     int attempts = 0, steps = 0, iterations = 0;
     auto solve = [&](FoilState& trial) {
-        const int remaining = target.param.continuation_max_iterations - iterations;
-        if (attempts >= target.param.continuation_max_attempts || remaining <= 0)
+        const int remaining =
+            target.param.continuation_max_iterations - iterations;
+        if (attempts >= target.param.continuation_max_attempts ||
+            remaining <= 0)
             return false;
         trial.param.niglob = std::min(target.param.niglob, remaining);
         ++attempts;
@@ -306,25 +313,34 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
         if (!solve(seed)) {
             seed = seed_initial;
             seed.param.use_ptc = !seed.param.use_ptc;
-            if (!solve(seed)) { record(); return false; }
+            if (!solve(seed)) {
+                record();
+                return false;
+            }
         }
-        const double start = target.oper.givencl ? seed.post.cl : seed.oper.alpha;
-        const double finish = target.oper.givencl ? target.oper.cltgt : target.oper.alpha;
+        const double start =
+            target.oper.givencl ? seed.post.cl : seed.oper.alpha;
+        const double finish =
+            target.oper.givencl ? target.oper.cltgt : target.oper.alpha;
         const double span = finish - start;
         const double increment = target.oper.givencl ? 0.2 : 2.0;
         double progress = 0.0;
-        double step = std::min(1.0, increment / std::max(std::abs(span), increment));
+        double step =
+            std::min(1.0, increment / std::max(std::abs(span), increment));
         while (attempts < target.param.continuation_max_attempts &&
                iterations < target.param.continuation_max_iterations) {
             const double next = std::min(1.0, progress + step);
             FoilState trial = seed;
             trial.oper.givencl = target.oper.givencl;
             const double value = next == 1.0 ? finish : start + next * span;
-            if (target.oper.givencl) trial.oper.cltgt = value;
-            else trial.oper.alpha = value;
+            if (target.oper.givencl)
+                trial.oper.cltgt = value;
+            else
+                trial.oper.alpha = value;
             RebuildIsol(trial);
             if (target.param.verb >= 1)
-                std::cout << "  Continuation: fraction=" << next << ", target=" << value << '\n';
+                std::cout << "  Continuation: fraction=" << next
+                          << ", target=" << value << '\n';
             if (solve(trial)) {
                 ++steps;
                 if (next == 1.0) {
@@ -751,7 +767,8 @@ void SolveGlob(FoilState& state) {
      * (1/tau)(U_{n+1} - U_n) term vanishes (U_{n+1} = U_n), so the
      * converged R = 0 root is unchanged and the adjoint's StoreAdjoint-
      * Factorization (which uses state.glob.R_U, not R_V) is untouched. */
-    if (state.param.use_ptc && !state.param.use_trust_region && state.glob.tau > 0.0) {
+    if (state.param.use_ptc && !state.param.use_trust_region &&
+        state.glob.tau > 0.0) {
         const double lambda = 1.0 / state.glob.tau;
         for (int i = 0; i < 4 * Nsys; ++i) {
             triplets.emplace_back(i, i, lambda);
@@ -773,7 +790,8 @@ void SolveGlob(FoilState& state) {
         const double thickness = 1e-4 * state.geom.chord;
         for (int i = 0; i < Nsys; ++i) {
             uscale(4 * i) = std::max(std::abs(state.glob.U(0, i)), thickness);
-            uscale(4 * i + 1) = std::max(std::abs(state.glob.U(1, i)), thickness);
+            uscale(4 * i + 1) =
+                std::max(std::abs(state.glob.U(1, i)), thickness);
             uscale(4 * i + 2) = state.vsol.turb[i] ? 0.03 : 1.0;
             uscale(4 * i + 3) = state.oper.Vinf;
         }
@@ -849,21 +867,27 @@ bool TakeTrustRegionStep(FoilState& state) {
         } else {
             const VectorXd edge = newton - cauchy;
             const double b = cauchy.dot(edge);
-            const double t = (-b + std::sqrt(b * b + edge.squaredNorm() *
-                                                    (radius * radius - cauchy.squaredNorm()))) /
-                             edge.squaredNorm();
+            const double t =
+                (-b + std::sqrt(b * b +
+                                edge.squaredNorm() *
+                                    (radius * radius - cauchy.squaredNorm()))) /
+                edge.squaredNorm();
             step = cauchy + t * edge;
         }
         FoilState trial = state;
         const VectorXd physical_step = uscale.cwiseProduct(step);
-        trial.glob.dU = Eigen::Map<const MatrixXd>(physical_step.data(), 4, state.glob.Nsys);
-        trial.glob.dalpha = state.oper.givencl ? physical_step(physical_step.size() - 1) : 0.0;
+        trial.glob.dU = Eigen::Map<const MatrixXd>(physical_step.data(), 4,
+                                                   state.glob.Nsys);
+        trial.glob.dalpha =
+            state.oper.givencl ? physical_step(physical_step.size() - 1) : 0.0;
         UpdateState(trial);
         // The local model uses the step before any representation changes
         // (ue sign flips, amplification -> turbulent shear). The actual
         // reduction includes those changes and all rebuilt dependent data.
-        const VectorXd actual_step = (PackedState(trial) - x).cwiseQuotient(uscale);
-        const double predicted = phi - 0.5 * (f + a * actual_step).squaredNorm();
+        const VectorXd actual_step =
+            (PackedState(trial) - x).cwiseQuotient(uscale);
+        const double predicted =
+            phi - 0.5 * (f + a * actual_step).squaredNorm();
         double actual = -std::numeric_limits<double>::infinity();
         if (ValidTrialState(trial)) {
             try {
@@ -873,7 +897,8 @@ bool TakeTrustRegionStep(FoilState& state) {
                 }
                 BuildGlobSys(trial);
                 CalcForce(trial);
-                actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial)).squaredNorm();
+                actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial))
+                                         .squaredNorm();
             } catch (const std::exception&) {
                 // Reject recoverable domain/linear-solve errors in a trial.
                 // No mutation of the accepted state has taken place.
@@ -881,7 +906,8 @@ bool TakeTrustRegionStep(FoilState& state) {
         }
         const double ratio = predicted > 0.0 ? actual / predicted : -1.0;
         if (std::isfinite(ratio) && ratio > 1e-4 && actual > 0.0) {
-            if (ratio < 0.25) radius *= 0.25;
+            if (ratio < 0.25)
+                radius *= 0.25;
             else if (ratio > 0.75 && step.norm() > 0.8 * radius)
                 radius = std::min(2.0 * radius, 1e4);
             trial.glob.trust_radius = radius;

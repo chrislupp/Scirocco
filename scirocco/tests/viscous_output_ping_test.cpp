@@ -198,8 +198,8 @@ TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
     VectorXd b = VectorXd::Random(NN);
     VectorXd g = VectorXd::Random(NN);
 
-    VectorXd y = s.glob.lu_factorization->solve(g);  /* R_V^{-1} g */
-    VectorXd lambda = SolveViscousAdjoint(s, b);     /* R_V^{-T} b */
+    VectorXd y = s.glob.lu_factorization->solve(g); /* R_V^{-1} g */
+    VectorXd lambda = SolveViscousAdjoint(s, b);    /* R_V^{-T} b */
 
     double lhs = b.dot(y);
     double rhs = lambda.dot(g);

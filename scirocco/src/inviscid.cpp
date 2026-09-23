@@ -56,21 +56,21 @@ void InitThermo(FoilState& state) {
         state.param.muinf = rhoinf * Vinf * state.geom.chord / state.oper.Re;
     }
 
-    double finf = 1.0;  /* Sutherland's ratio (1 for incompressible) */
+    double finf = 1.0; /* Sutherland's ratio (1 for incompressible) */
 
     /* Compressibility corrections (only when Ma > 0) */
     if (Ma > 0) {
-        state.param.KTb = std::sqrt(1.0 - Ma * Ma);  /* Karman-Tsien beta */
+        state.param.KTb = std::sqrt(1.0 - Ma * Ma); /* Karman-Tsien beta */
         state.param.KTl =
             Ma * Ma /
-            ((1.0 + state.param.KTb) * (1.0 + state.param.KTb));  /* KT lambda */
+            ((1.0 + state.param.KTb) * (1.0 + state.param.KTb)); /* KT lambda */
 
         /* Stagnation enthalpy: H0 = (1 + 0.5*gmi*Ma²) * Vinf² / (gmi * Ma²) */
         state.param.H0 =
             (1.0 + 0.5 * gmi * Ma * Ma) * Vinf * Vinf / (gmi * Ma * Ma);
 
         /* Temperature ratio and Sutherland's law */
-        double Tr = 1.0 - 0.5 * Vinf * Vinf / state.param.H0;  /* T_inf / T_0 */
+        double Tr = 1.0 - 0.5 * Vinf * Vinf / state.param.H0; /* T_inf / T_0 */
         finf = std::pow(Tr, 1.5) * (1.0 + state.param.Tsrat) /
                (Tr + state.param.Tsrat);
 
@@ -138,8 +138,8 @@ void BuildGamma(FoilState& state, double alpha) {
         A(i, N) = -1.0;
 
         /* Right-hand sides: -Vinf * (y*cos(alpha) - x*sin(alpha)) */
-        rhs(i, 0) = -xi(1);  /* alpha = 0: -y */
-        rhs(i, 1) = xi(0);   /* alpha = 90: x */
+        rhs(i, 0) = -xi(1); /* alpha = 0: -y */
+        rhs(i, 1) = xi(0);  /* alpha = 90: x */
 
         /* TE source panel influence */
         Matrix2d XjTE;
@@ -262,7 +262,7 @@ VectorXd GetUeInv(const FoilState& state) {
     VectorXd uew;
     if (state.oper.viscous && state.wake.N > 0) {
         uew = state.isol.uewiref * cs;
-        uew(0) = uea(uea.size() - 1);  /* Continuity */
+        uew(0) = uea(uea.size() - 1); /* Continuity */
     }
 
     /* Concatenate */
@@ -287,7 +287,7 @@ MatrixXd GetUeInvRef(const FoilState& state) {
     MatrixXd uewref;
     if (state.oper.viscous && state.wake.N > 0) {
         uewref = state.isol.uewiref;
-        uewref.row(0) = uearef.row(uearef.rows() - 1);  /* Continuity */
+        uewref.row(0) = uearef.row(uearef.rows() - 1); /* Continuity */
     }
 
     /* Concatenate */

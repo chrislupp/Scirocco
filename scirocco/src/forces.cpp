@@ -159,7 +159,7 @@ void CalcForce(FoilState& state) {
         !state.vsol.Is.empty()) {
         /* Squire-Young relation for total drag (from wake trailing edge) */
         if (state.vsol.Is.size() > 2 && !state.vsol.Is[2].empty()) {
-            int iw = state.vsol.Is[2].back();  /* End of wake */
+            int iw = state.vsol.Is[2].back(); /* End of wake */
             if (iw < state.glob.U.cols()) {
                 Vector4d Uw = state.glob.U.col(iw);
                 auto [H, H_U] = GetH(Uw);
@@ -176,7 +176,7 @@ void CalcForce(FoilState& state) {
         double rho = state.oper.rho;
         double qinf = 0.5 * rho * Vinf * Vinf;
 
-        for (int si = 0; si < 2; ++si) {  /* Lower and upper surfaces */
+        for (int si = 0; si < 2; ++si) { /* Lower and upper surfaces */
             if (si >= static_cast<int>(state.vsol.Is.size())) continue;
             const auto& Is = state.vsol.Is[si];
             if (Is.empty()) continue;

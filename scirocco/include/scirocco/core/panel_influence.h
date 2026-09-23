@@ -36,11 +36,11 @@ namespace scirocco {
 
 /** @brief Panel geometry information */
 struct PanelInfo {
-    double r1, r2;          /* Distances from xi to panel endpoints */
-    double theta1, theta2;  /* Angles from xi to panel endpoints */
-    double x1, x2;          /* Local x coordinates (along panel) */
-    double y;               /* Local y coordinate (perpendicular to panel) */
-    double len;             /* Panel length */
+    double r1, r2;         /* Distances from xi to panel endpoints */
+    double theta1, theta2; /* Angles from xi to panel endpoints */
+    double x1, x2;         /* Local x coordinates (along panel) */
+    double y;              /* Local y coordinate (perpendicular to panel) */
+    double len;            /* Panel length */
 };
 
 /**
@@ -114,4 +114,4 @@ void PanelLinSourceStream(const Matrix2d& Xj, const Vector2d& xi, double& a,
 void PanelLinSourceVelocity(const Matrix2d& Xj, const Vector2d& xi, Vector2d& a,
                             Vector2d& b);
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

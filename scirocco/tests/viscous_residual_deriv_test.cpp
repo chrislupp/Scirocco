@@ -43,7 +43,8 @@ static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
 }
 
-/* -------------------- HDF5 helpers ------------------------------------------ */
+/* -------------------- HDF5 helpers ------------------------------------------
+ */
 namespace {
 template <typename T>
 T readScalar(H5::H5File& f, const std::string& p) {
@@ -96,12 +97,13 @@ MatrixXd read3DAsMatrix(H5::H5File& f, const std::string& p) {
     }
     return m;
 }
-}  /* namespace */
+} /* namespace */
 
 /* ---------------------------------------------------------------------------
    Fixture: load comprehensive_reference.h5 and rebuild scirocco viscous state
    to the same point mfoil was at when the CS reference was extracted.
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 class ResidualDerivTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -153,14 +155,14 @@ class ResidualDerivTest : public ::testing::Test {
         auto& s = foil_.GetState();
         s.foil.x = foil_x;
         s.foil.N = N_;
-        RecomputeArcLength(s);  /* cumulative panel norms (matches CS chain) */
+        RecomputeArcLength(s); /* cumulative panel norms (matches CS chain) */
         s.oper.viscous = true;
         s.oper.initbl = true;
         s.param.verb = 0;
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        SolveViscous(s);  /* converges to its own state; we'll override below */
+        SolveViscous(s); /* converges to its own state; we'll override below */
         ASSERT_TRUE(s.glob.conv) << "viscous solve did not converge";
 
         /* Override U, wgap to match the HDF5 reference. UE-BASED xi:

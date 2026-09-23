@@ -1,6 +1,6 @@
 /**
- * @brief Phase B diagnostic: ping each per-closure _dMa helper against 4th-order
- * FD on Ma at fixed U. Reports worst rel error per closure across all
+ * @brief Phase B diagnostic: ping each per-closure _dMa helper against
+ * 4th-order FD on Ma at fixed U. Reports worst rel error per closure across all
  * stations to localize which _dMa has a bug.
  */
 
@@ -74,7 +74,8 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
         double f_m2 = eval_at(Ma0 - 2 * h);
         double fd = (-f_p2 + 8 * f_p1 - 8 * f_m1 + f_m2) / (12 * h);
 
-        /* Restore baseline before computing analytic (we need baseline param) */
+        /* Restore baseline before computing analytic (we need baseline param)
+         */
         s.oper.Ma = Ma0;
         InitThermo(s);
         Param p_now = s.param;
@@ -90,7 +91,7 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
          * the ResidualLin bug — we print FD curves at each node + closure
          * for the user to spot.
          * (Skip per-station analytic isolation for now.) */
-        double an = 0;  /* placeholder */
+        double an = 0; /* placeholder */
         double err = std::abs(an - fd);
         if (err > stats.max_abs) {
             stats.max_abs = err;

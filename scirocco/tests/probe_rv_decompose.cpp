@@ -87,15 +87,16 @@ int main() {
     StoreAdjointFactorization(s);
 
     /* Now: decompose R_V[144, 195]. */
-    int Istag0 = s.isol.Istag[0];  /* node 47 */
-    int Istag1 = s.isol.Istag[1];  /* node 48 */
+    int Istag0 = s.isol.Istag[0]; /* node 47 */
+    int Istag1 = s.isol.Istag[1]; /* node 48 */
     std::cout << "Istag = [" << Istag0 << ", " << Istag1 << "]\n";
     std::cout << "sstag_ue = [" << s.isol.sstag_ue(0) << ", "
               << s.isol.sstag_ue(1) << "]\n";
 
     /* (1) Compute the simi-station R1_U at node Istag1=48 manually.
-     * Replicate the BuildGlobSys simi-station path (coupled_solver.cpp 240+). */
-    int si = 1;  /* upper surface */
+     * Replicate the BuildGlobSys simi-station path (coupled_solver.cpp 240+).
+     */
+    int si = 1; /* upper surface */
     const auto& Is = s.vsol.Is[si];
     Param param = BuildParam(s, si);
     VectorXd xi(Is.size());

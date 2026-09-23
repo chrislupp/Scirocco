@@ -123,11 +123,11 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     MatrixXd c(4, n - 1);
     for (int i = 0; i < n - 1; ++i) {
         double hi = h(i);
-        c(3, i) = y(i);  /* constant term */
+        c(3, i) = y(i); /* constant term */
         c(2, i) = (y(i + 1) - y(i)) / hi -
-                  hi * (2.0 * d2y(i) + d2y(i + 1)) / 6.0;  /* linear term */
-        c(1, i) = d2y(i) / 2.0;                            /* quadratic term */
-        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);      /* cubic term */
+                  hi * (2.0 * d2y(i) + d2y(i + 1)) / 6.0; /* linear term */
+        c(1, i) = d2y(i) / 2.0;                           /* quadratic term */
+        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);     /* cubic term */
     }
 
     return c;

@@ -84,7 +84,8 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param);
  */
 ScalarLin4 GetCf(const Vector4d& U, const Param& param);
 
-/** @brief Dissipation coefficient (combined turbulent / laminar with floor switch)
+/** @brief Dissipation coefficient (combined turbulent / laminar with floor
+ * switch)
  *  @param U     State vector [theta, ds, sa, ue]
  *  @param param Flow parameter struct
  *  @return ScalarLin4 value and linearization w.r.t. U
@@ -121,7 +122,8 @@ ScalarLin4 GetCDi_LamStress(const Vector4d& U, const Param& param);
 
 /** @brief Laminar wake dissipation contribution
  *  @param U      State vector [theta, ds, sa, ue]
- *  @param paramin Flow parameter struct (turb flag overridden to false internally)
+ *  @param paramin Flow parameter struct (turb flag overridden to false
+ * internally)
  *  @return ScalarLin4 value and linearization w.r.t. U
  */
 ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin);
@@ -261,11 +263,13 @@ struct ThermoMaDeriv {
     double rho0_dMa = 0; /**< d(rho0)/dMa */
 };
 
-/** @brief Compute derivatives of all thermodynamic reference quantities w.r.t. Ma.
+/** @brief Compute derivatives of all thermodynamic reference quantities w.r.t.
+ * Ma.
  *  @param param  Flow parameter struct
  *  @param Vinf   Freestream velocity
  *  @param rhoinf Freestream density
- *  @return ThermoMaDeriv struct populated with all reference quantity derivatives
+ *  @return ThermoMaDeriv struct populated with all reference quantity
+ * derivatives
  */
 ThermoMaDeriv ComputeThermoMaDeriv(const Param& param, double Vinf,
                                    double rhoinf);
@@ -366,6 +370,6 @@ double GetCfxt_dMa(const Vector4d& U, double x, const Param& param,
 double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
                     const ThermoMaDeriv& d);
 
-}  /* namespace detail */
+} /* namespace detail */
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

@@ -1,6 +1,6 @@
 /**
- * @brief Print scirocco's sstag_ue, sgnue, Istag, and the augmentation R_st values
- * at the comprehensive_reference linearization point.
+ * @brief Print scirocco's sstag_ue, sgnue, Istag, and the augmentation R_st
+ * values at the comprehensive_reference linearization point.
  */
 
 #include <H5Cpp.h>
@@ -39,8 +39,8 @@ static VectorXd readVector(H5::H5File& f, const std::string& p) {
 }
 
 /**
- * @brief Entry point: prints sstag_ue and stagnation quantities before and after
- *        overriding U with the mfoil reference state.
+ * @brief Entry point: prints sstag_ue and stagnation quantities before and
+ * after overriding U with the mfoil reference state.
  * @return 0 on success.
  */
 int main() {

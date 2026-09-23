@@ -39,18 +39,19 @@ namespace scirocco {
 
 /** @brief Viscous solution variables */
 struct Vsol {
-    VectorXd th;                         /**< Momentum thickness [Nsys] */
-    VectorXd ds;                         /**< Displacement thickness [Nsys] */
-    std::array<std::vector<int>, 3> Is;  /**< Surface indices [lower, upper, wake] */
-    VectorXd wgap;                       /**< Wake gap over wake points */
-    MatrixXd ue_m;          /**< Linearization of ue w.r.t. mass (all nodes) */
-    SparseMatrixd sigma_m;  /**< d(source)/d(mass) matrix */
-    MatrixXd ue_sigma;      /**< d(ue)/d(source) matrix */
+    VectorXd th; /**< Momentum thickness [Nsys] */
+    VectorXd ds; /**< Displacement thickness [Nsys] */
+    std::array<std::vector<int>, 3>
+        Is;                /**< Surface indices [lower, upper, wake] */
+    VectorXd wgap;         /**< Wake gap over wake points */
+    MatrixXd ue_m;         /**< Linearization of ue w.r.t. mass (all nodes) */
+    SparseMatrixd sigma_m; /**< d(source)/d(mass) matrix */
+    MatrixXd ue_sigma;     /**< d(ue)/d(source) matrix */
     std::vector<bool>
-        turb;         /**< Flag indicating turbulent (true) or laminar (false) */
-    double xt = 0.0;  /**< Transition location (xi) on current surface */
-    Matrix2d Xt =
-        Matrix2d::Zero();  /**< Transition xi/x for lower and upper surfaces [2x2] */
+        turb;        /**< Flag indicating turbulent (true) or laminar (false) */
+    double xt = 0.0; /**< Transition location (xi) on current surface */
+    Matrix2d Xt = Matrix2d::Zero(); /**< Transition xi/x for lower and upper
+                                       surfaces [2x2] */
 };
 
 }  // namespace scirocco

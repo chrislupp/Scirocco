@@ -50,7 +50,8 @@ using namespace Eigen;
 
 /* ---------------------------------------------------------------------------
  * HDF5 helpers
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 template <typename T>
 static T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -99,7 +100,8 @@ static std::vector<int> readIntVector(H5::H5File& file,
 
 /* ---------------------------------------------------------------------------
  * Test fixture
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 class ForwardReferenceTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -215,7 +217,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
     /* ---- Compare R_x element-by-element ---- */
     MatrixXd R_x_cpp = MatrixXd(state.glob.R_x);
     constexpr double ATOL =
-        1e-10;  /* absolute tolerance (filter mfoil 1e-15 hack noise) */
+        1e-10; /* absolute tolerance (filter mfoil 1e-15 hack noise) */
     /* RTOL bumped from 1e-10 to 5e-9 for R_U comparison: 5 entries at turbulent
      * station 4 (Rshape/Rlag derivatives) sit at ~2.5e-9 rel — the natural FP
      * noise floor for ~50+ cascaded BL-closure operations
@@ -334,7 +336,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
     if (worst_RU_row >= 0) {
         int sta = worst_RU_row / 3;
         int eq = worst_RU_row % 3;
-        int var = worst_RU_col % 4;  /* 0=th, 1=ds, 2=sa, 3=ue */
+        int var = worst_RU_col % 4; /* 0=th, 1=ds, 2=sa, 3=ue */
         int node = worst_RU_col / 4;
         const char* var_names[] = {"th", "ds", "sa", "ue"};
         std::cout << "  Worst: row=" << worst_RU_row << " (sta=" << sta

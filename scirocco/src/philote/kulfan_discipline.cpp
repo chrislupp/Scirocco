@@ -129,7 +129,7 @@ void KulfanDiscipline::BuildEvalStations() {
         const double fi = f(i);
         double psi = 1.0 - (te + 1.0) * fi * std::pow(1.0 - fi, te) -
                      std::pow(1.0 - fi, te + 1.0);
-        if (psi < 0.0) psi = 0.0;  /* guard fp roundoff */
+        if (psi < 0.0) psi = 0.0; /* guard fp roundoff */
         if (psi > 1.0) psi = 1.0;
         psi_eval_(i) = psi;
     }
@@ -172,8 +172,8 @@ void KulfanDiscipline::Compute(const philote::Variables& inputs,
     for (int i = 0; i < n_cst_lower_; ++i) cst_l(i) = lower_var(i);
 
     const int N = N_per_side_;
-    const VectorXd y_u_shape = Phi_u_ * cst_u;  /* C·S_u  (no TE term) */
-    const VectorXd y_l_shape = Phi_l_ * cst_l;  /* C·S_l */
+    const VectorXd y_u_shape = Phi_u_ * cst_u; /* C·S_u  (no TE term) */
+    const VectorXd y_l_shape = Phi_l_ * cst_l; /* C·S_l */
 
     auto& x_var = outputs.at("x");
 

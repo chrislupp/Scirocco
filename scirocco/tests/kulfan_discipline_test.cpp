@@ -123,22 +123,24 @@ VectorXd FitCstSurface(int n_cst, double te_offset,
     for (int j = 0; j < M; ++j) {
         const double psi = psi_samples[j];
         const double one_minus = 1.0 - psi;
-        const double C = std::sqrt(psi) * one_minus;  /* N1=0.5, N2=1.0 */
+        const double C = std::sqrt(psi) * one_minus; /* N1=0.5, N2=1.0 */
         for (int i = 0; i < n_cst; ++i) {
             A(j, i) = C * binom(i) * std::pow(psi, i) *
                       std::pow(one_minus, order - i);
         }
         b(j) = y_samples[j] - psi * te_offset;
     }
-    /* Normal equations (well-conditioned for small n_cst on a uniform sample) */
+    /* Normal equations (well-conditioned for small n_cst on a uniform sample)
+     */
     return (A.transpose() * A).ldlt().solve(A.transpose() * b);
 }
 
-}  /* namespace */
+} /* namespace */
 
 /* ---------------------------------------------------------------------------
    Basic invariants
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, SetupShapesAreConsistent) {
     scirocco::KulfanDiscipline disc;
@@ -163,7 +165,8 @@ TEST(KulfanDisciplineTest, OddNpanelRejected) {
 
 /* ---------------------------------------------------------------------------
    LE / TE invariants
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, LeadingAndTrailingEdgeAtChordEndpoints) {
     scirocco::KulfanDiscipline disc;
@@ -193,14 +196,15 @@ TEST(KulfanDisciplineTest, LeadingAndTrailingEdgeAtChordEndpoints) {
 
 /* ---------------------------------------------------------------------------
    NACA-0012 reproduction via least-squares CST fit
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
     const int n_cst = 8;
     const int npanel = 200;
 
     /* NACA-0012 has a small open TE; account for it via te_upper / te_lower. */
-    const double te_thk = NacaT(1.0, 0.12);  /* half-thickness at psi = 1 */
+    const double te_thk = NacaT(1.0, 0.12); /* half-thickness at psi = 1 */
 
     /* Sample the NACA-0012 thickness on a dense grid for the fit */
     const int n_fit = 200;
@@ -254,7 +258,8 @@ TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
 /* ---------------------------------------------------------------------------
    Bernstein positivity: positive CPs → positive thickness everywhere, not
    just at panel nodes. Cross-check on a dense intermediate-ψ grid.
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
     const int n_cst = 6;
@@ -316,7 +321,7 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
             S += raw[i] * binoms[i] * std::pow(psi, i) *
                  std::pow(one_minus, order - i);
         }
-        const double thk = C * S;  /* upper has +C·S, lower has -C·S */
+        const double thk = C * S; /* upper has +C·S, lower has -C·S */
         min_thk = std::min(min_thk, thk);
     }
     EXPECT_GE(min_thk, 0.0);
@@ -324,7 +329,8 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
 
 /* ---------------------------------------------------------------------------
    Analytical partials match central FD
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
     scirocco::KulfanDiscipline disc;
@@ -389,7 +395,8 @@ TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
 /* ---------------------------------------------------------------------------
    Smoothness output: D_i = A_{i+2} − 2 A_{i+1} + A_i, with constant
    linear partials. Verify both the values and the [1, −2, 1] Jacobian.
-   --------------------------------------------------------------------------- */
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
     scirocco::KulfanDiscipline disc;

@@ -37,18 +37,22 @@ struct Param {
     /* Solver parameters */
     int verb = 0; /**< Printing verbosity level (higher = more verbose) */
     double rtol = 1e-11; /**< Residual tolerance for Newton */
-    bool scale_coupled_system = true; /**< Equilibrate equations and variables */
-    bool use_trust_region = false; /**< Experimental scaled dogleg step control */
+    bool scale_coupled_system =
+        true; /**< Equilibrate equations and variables */
+    bool use_trust_region =
+        false; /**< Experimental scaled dogleg step control */
     bool trust_update_topology = true; /**< Evaluate the complete trial state */
     double trust_radius_initial = 10.0;
     int trust_max_trials = 16;
-    bool use_continuation = true; /**< Retry failed cold starts along an angle/Cl path */
+    bool use_continuation =
+        true; /**< Retry failed cold starts along an angle/Cl path */
     int continuation_max_attempts = 24;
-    int continuation_max_iterations = 800; /**< Total extra coupled iterations */
-    int niglob = 200;    /**< Maximum number of global iterations (raised from
-                              50 to give PTC headroom on rough intermediate
-                              iterates that need extra Newton steps to ramp
-                              tau back up to full Newton) */
+    int continuation_max_iterations =
+        800;          /**< Total extra coupled iterations */
+    int niglob = 200; /**< Maximum number of global iterations (raised from
+                           50 to give PTC headroom on rough intermediate
+                           iterates that need extra Newton steps to ramp
+                           tau back up to full Newton) */
 
     /* Pseudo-transient continuation (PTC) for the coupled BL Newton solve.
        Adds (1/tau) * I to the Jacobian diagonal so that early Newton steps

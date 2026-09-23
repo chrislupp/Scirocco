@@ -35,8 +35,9 @@
 
 namespace scirocco {
 
-/** @brief Recompute foil.s (arc-length parametrization) from foil.x as cumulative
- *         panel lengths. Call after perturbing foil.x so that foil.s is consistent.
+/** @brief Recompute foil.s (arc-length parametrization) from foil.x as
+ * cumulative panel lengths. Call after perturbing foil.x so that foil.s is
+ * consistent.
  *  @param state FoilState whose foil.x coordinates have been updated
  */
 void RecomputeArcLength(FoilState& state);
@@ -82,4 +83,4 @@ void IdentifySurfaces(FoilState& state);
  */
 void SetWakeGap(FoilState& state);
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

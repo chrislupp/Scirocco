@@ -52,13 +52,13 @@ inline double cosd(double deg) { return std::cos(deg * DEG2RAD); }
 /* Helper: sin of angle in degrees */
 inline double sind(double deg) { return std::sin(deg * DEG2RAD); }
 
-}  /* anonymous namespace */
+} /* anonymous namespace */
 
 void NacaPoints(Geom& geom, const std::string& digits) {
     geom.name = "NACA " + digits;
 
-    const int N = 100;      /* Points per side */
-    const double te = 1.5;  /* Trailing-edge bunching factor */
+    const int N = 100;     /* Points per side */
+    const double te = 1.5; /* Trailing-edge bunching factor */
 
     /* Generate x distribution (bunched towards TE) */
     VectorXd f = VectorXd::LinSpaced(N + 1, 0.0, 1.0);
@@ -175,8 +175,8 @@ TEInfo GetTEInfo(const MatrixXd& x) {
      * interior) t1: lower surface tangent (from node 1 toward node 0, i.e.,
      * toward lower TE) t2: upper surface tangent (from node N-2 toward node
      * N-1, i.e., toward upper TE) */
-    Vector2d t1 = x.col(0) - x.col(1);          /* Lower: toward TE */
-    Vector2d t2 = x.col(N - 1) - x.col(N - 2);  /* Upper: toward TE */
+    Vector2d t1 = x.col(0) - x.col(1);         /* Lower: toward TE */
+    Vector2d t2 = x.col(N - 1) - x.col(N - 2); /* Upper: toward TE */
     t1.normalize();
     t2.normalize();
 
@@ -217,11 +217,12 @@ void GeomFlap(FoilState& state, const Vector2d& xzhinge, double eta) {
     /* Deploy a flap at hinge location with given deflection angle
      * Matches mfoil.mgeom_flap */
 
-    MatrixXd X = state.geom.xpoint;  /* Make a copy */
+    MatrixXd X = state.geom.xpoint; /* Make a copy */
     int N = static_cast<int>(X.cols());
-    double xh = xzhinge(0);  /* x hinge location */
+    double xh = xzhinge(0); /* x hinge location */
 
-    /* Build rotation matrix (positive eta = clockwise when viewed from above) */
+    /* Build rotation matrix (positive eta = clockwise when viewed from above)
+     */
     Eigen::Matrix2d R;
     R << cosd(eta), sind(eta), -sind(eta), cosd(eta);
 
@@ -364,4 +365,4 @@ void GeomDerotate(FoilState& state) {
     ClearSolution(state);
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

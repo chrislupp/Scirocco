@@ -59,7 +59,7 @@ constexpr double TOL_TIGHT = 1e-10;
 constexpr double TOL_NORMAL = 1e-6;
 constexpr double TOL_LOOSE = 1e-4;
 constexpr double TOL_BL =
-    1e-2;  /* For BL marching with accumulated numerical differences */
+    1e-2; /* For BL marching with accumulated numerical differences */
 
 /**
  * @brief Helper to read scalar from HDF5
@@ -198,7 +198,8 @@ bool MfoilReferenceTest::file_loaded_ = false;
 
 /* ============================================================================
    GEOMETRY TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, GeometryNACA0012) {
     /* Read reference data */
@@ -236,7 +237,8 @@ TEST_F(MfoilReferenceTest, GeometryNACA0012) {
 
 /* ============================================================================
    PANEL INFLUENCE TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, PanelLinSourceStream) {
     H5::Group panel = getFile().openGroup("panel_influence");
@@ -357,7 +359,8 @@ TEST_F(MfoilReferenceTest, PanelLinSourceVelocity) {
 
 /* ============================================================================
    INVISCID SOLUTION TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, BuildGamma) {
     VectorXd gam_ref = readVector(getFile(), "inviscid/gam");
@@ -409,7 +412,8 @@ TEST_F(MfoilReferenceTest, StagnationPoint) {
 
 /* ============================================================================
    WAKE TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, BuildWake) {
     int Nw_ref = readScalar<int>(getFile(), "wake/N");
@@ -443,7 +447,8 @@ TEST_F(MfoilReferenceTest, BuildWake) {
 
 /* ============================================================================
    XI AND SURFACES TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, XiAndSurfaces) {
     VectorXd xi_ref = readVector(getFile(), "surfaces/xi");
@@ -486,7 +491,8 @@ TEST_F(MfoilReferenceTest, XiAndSurfaces) {
 
 /* ============================================================================
    UE_M MATRIX TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, CalcUeM) {
     MatrixXd ue_m_ref = readMatrix(getFile(), "ue_m/matrix");
@@ -595,7 +601,8 @@ TEST_F(MfoilReferenceTest, CalcUeM) {
 
 /* ============================================================================
    BL PROPERTY FUNCTION TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, BLProperties_Laminar) {
     H5::Group props = getFile().openGroup("bl_properties/laminar1");
@@ -779,7 +786,8 @@ TEST_F(MfoilReferenceTest, BLProperties_Turbulent) {
 
 /* ============================================================================
    RESIDUAL STATION TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, ResidualStation) {
     H5::Group residuals = getFile().openGroup("residual_station");
@@ -885,7 +893,8 @@ TEST_F(MfoilReferenceTest, ResidualStation) {
 
 /* ============================================================================
    GLOBAL SYSTEM TESTS
-   ============================================================================ */
+   ============================================================================
+ */
 
 TEST_F(MfoilReferenceTest, InitialResidual) {
     double R_norm_ref = readScalar<double>(getFile(), "glob_sys/R_norm");
@@ -962,7 +971,8 @@ TEST_F(MfoilReferenceTest, InitialResidual) {
               << std::endl;
     std::cout << "  Ratio: " << R_norm / R_norm_ref << std::endl;
 
-    /* This is the key test - if our |R| matches mfoil's, everything is working */
+    /* This is the key test - if our |R| matches mfoil's, everything is working
+     */
     EXPECT_LT(std::abs(R_norm - R_norm_ref) / R_norm_ref, 0.1)
         << "Initial residual should be within 10% of reference";
 
@@ -1090,7 +1100,7 @@ TEST_F(MfoilReferenceTest, WakeSys) {
     CalcUeM(state);
     InitBoundaryLayer(state);
 
-    Param param = BuildParam(state, 2);  /* Wake surface */
+    Param param = BuildParam(state, 2); /* Wake surface */
     auto result = WakeSys(state, param);
 
     double err_R = (result.R - R_ref.head<3>()).norm();
@@ -1137,7 +1147,7 @@ TEST_F(MfoilReferenceTest, ResidualTransition) {
     state.param.ncrit = 9.0;
 
     /* Set up the transition location (Xt is 2x2: [lower/upper, xi/x]) */
-    state.vsol.Xt(1, 0) = Xt;  /* Upper surface transition xi */
+    state.vsol.Xt(1, 0) = Xt; /* Upper surface transition xi */
 
     Vector2d xi_vec(xi(0), xi(1));
     Matrix42d U_mat;
@@ -1156,7 +1166,7 @@ TEST_F(MfoilReferenceTest, ResidualTransition) {
     param.KTb = state.param.KTb;
     param.KTl = state.param.KTl;
     param.ncrit = state.param.ncrit;
-    param.turb = false;  /* Start with laminar */
+    param.turb = false; /* Start with laminar */
     param.wake = false;
     param.simi = false;
 
@@ -1165,7 +1175,7 @@ TEST_F(MfoilReferenceTest, ResidualTransition) {
 
     double err_R = (R - R_ref.head<3>()).norm();
     double ref_norm =
-        std::max(R_ref.head<3>().norm(), 1e-10);  /* Avoid division by zero */
+        std::max(R_ref.head<3>().norm(), 1e-10); /* Avoid division by zero */
 
     /*
      * The reference residual is essentially zero (1e-13), so we check absolute
@@ -1573,10 +1583,10 @@ TEST_F(MfoilReferenceTest, PanelLinVortexVelocity) {
         PanelLinVortexVelocity(Xj_eigen, xi_eigen, &vdir_z, false, a_z, b_z);
 
         /* a_x and b_x are scalar projections onto vdir_x */
-        double ax = a_x(0);  /* x component of a projected onto x */
+        double ax = a_x(0); /* x component of a projected onto x */
         double bx = b_x(0);
-        double az = a_z(0);  /* x component of a projected onto z (should be z */
-                             /* comp of full vector) */
+        double az = a_z(0); /* x component of a projected onto z (should be z */
+                            /* comp of full vector) */
         double bz = b_z(0);
 
         double err = std::max({std::abs(ax - ax_ref), std::abs(az - az_ref),
@@ -2195,7 +2205,7 @@ TEST_F(MfoilReferenceTest, CalcForce_Inviscid) {
     /* Create fresh state using the Scirocco class */
     Scirocco foil("0012", 130);
     foil.SetOper(alpha, -1.0, 0,
-                 0);  /* alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0 */
+                 0); /* alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0 */
     FoilState& state = foil.GetState();
 
     SolveInviscid(state);
@@ -2232,7 +2242,7 @@ TEST_F(MfoilReferenceTest, GetUeInv) {
     state.foil.x = x;
     state.foil.s = s;
     state.isol.gamref = gamref;
-    state.isol.gam = gam;  /* Required for GetUeInv check */
+    state.isol.gam = gam; /* Required for GetUeInv check */
     state.isol.sgnue = sgnue;
     state.oper.alpha = 0.0;
     state.oper.viscous = true;
@@ -2268,7 +2278,7 @@ TEST_F(MfoilReferenceTest, BuildParam) {
     int failed = 0;
 
     FoilState state;
-    state.param.gam = 1.4;  /* Initialize with some values */
+    state.param.gam = 1.4; /* Initialize with some values */
 
     for (int si = 0; si < 3; ++si) {
         std::string path = "build_param/surface_" + std::to_string(si);
@@ -2385,7 +2395,7 @@ TEST_F(MfoilReferenceTest, MakePanels) {
     int N_ref = readScalar<int>(getFile(), "make_panels/N");
 
     /* Create panels using scirocco */
-    Scirocco foil("0012", 130);  /* Same as mfoil: npanel=130 */
+    Scirocco foil("0012", 130); /* Same as mfoil: npanel=130 */
     FoilState& state = foil.GetState();
 
     /* Compare */
@@ -2417,7 +2427,7 @@ TEST_F(MfoilReferenceTest, SplineCurvature) {
     double TEfac = readScalar<double>(getFile(), "spline_curvature/TEfac");
 
     /* Call scirocco's SplineCurvature */
-    VectorXd stgt;  /* Empty target */
+    VectorXd stgt; /* Empty target */
     SpacingResult result = SplineCurvature(xpoint, N, Ufac, TEfac, stgt);
 
     /* Compare */
@@ -2756,7 +2766,7 @@ TEST_F(MfoilReferenceTest, GetDistributions) {
     state.isol.sstag = sstag;
     state.isol.xi = xi;
     state.vsol.turb = turb_ref;
-    state.glob.conv = true;  /* Mark as converged */
+    state.glob.conv = true; /* Mark as converged */
 
     /* Call GetDistributions */
     GetDistributions(state);
@@ -2931,7 +2941,8 @@ TEST_F(MfoilReferenceTest, InitThermo) {
      * SetOper signature: (alpha, cl, Re, Ma)
      */
     Scirocco foil("0012", 130);
-    foil.SetOper(0.0, -1.0, Re_ref, Ma_ref);  /* alpha=0, cl=-1(unused), Re, Ma */
+    foil.SetOper(0.0, -1.0, Re_ref,
+                 Ma_ref); /* alpha=0, cl=-1(unused), Re, Ma */
     auto& state = foil.GetState();
 
     /* Call InitThermo explicitly (SetOper doesn't call it) */
@@ -2963,7 +2974,7 @@ TEST_F(MfoilReferenceTest, InitThermo) {
 
     Scirocco foil_comp("0012", 130);
     foil_comp.SetOper(0.0, -1.0, Re_ref,
-                      Ma_comp);  /* alpha=0, cl=-1, Re, Ma=0.5 */
+                      Ma_comp); /* alpha=0, cl=-1, Re, Ma=0.5 */
     auto& state_comp = foil_comp.GetState();
 
     /* Call InitThermo explicitly */
@@ -3051,7 +3062,7 @@ TEST_F(MfoilReferenceTest, RebuildIsol) {
 
     /* Test RebuildIsol at alpha=5 */
     state.oper.alpha = test_alpha;
-    state.oper.viscous = false;  /* Don't rebuild wake */
+    state.oper.viscous = false; /* Don't rebuild wake */
     RebuildIsol(state);
 
     double gam5_err = (state.isol.gam - gam_alpha5_ref).norm();
@@ -3191,7 +3202,7 @@ TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
             double calc_val = state.glob.U(i, j);
             double err = std::abs(calc_val - ref_val);
             if (std::abs(ref_val) > 1e-10) {
-                err /= std::abs(ref_val);  /* Relative error */
+                err /= std::abs(ref_val); /* Relative error */
             }
             if (err > max_U_err) {
                 max_U_err = err;
@@ -3236,7 +3247,7 @@ TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
               << state.glob.U(1, 65) << " " << state.glob.U(2, 65) << " "
               << state.glob.U(3, 65) << std::endl;
     /* Print first wake stations (j=131 is first wake, given N=131) */
-    int N = state.foil.N;  /* Should be 131 */
+    int N = state.foil.N; /* Should be 131 */
     std::cout << "  foil.N=" << N << " wake starts at j=" << N << std::endl;
     for (int j = N; j < std::min(N + 5, n_cols); ++j) {
         double err_th = std::abs(state.glob.U(0, j) - U_ref(0, j)) /
@@ -3341,7 +3352,7 @@ TEST_F(MfoilReferenceTest, SolveInviscidDedicated) {
     /* Create foil and solve inviscid */
     Scirocco foil("0012", 130);
     foil.SetOper(alpha, -1.0, 0,
-                 0);  /* alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0 */
+                 0); /* alpha, cl=-1 (use alpha), Re=0 (inviscid), Ma=0 */
     auto& state = foil.GetState();
 
     SolveInviscid(state);
@@ -3737,7 +3748,7 @@ TEST_F(MfoilReferenceTest, NacaPointsDedicated) {
         int npoint_ref = readScalar<int>(getFile(), path + "/npoint");
 
         /* Create foil with this NACA code */
-        Scirocco foil(code, 100);  /* npanel=100 */
+        Scirocco foil(code, 100); /* npanel=100 */
         auto& state = foil.GetState();
 
         /* Check npoint */

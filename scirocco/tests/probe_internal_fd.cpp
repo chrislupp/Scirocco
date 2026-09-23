@@ -24,7 +24,8 @@ struct Force {
 };
 
 /**
- * @brief Solve the airfoil at the given conditions and return force coefficients.
+ * @brief Solve the airfoil at the given conditions and return force
+ * coefficients.
  * @param alpha Angle of attack in degrees.
  * @param Ma Mach number.
  * @param Re Reynolds number.
@@ -93,7 +94,8 @@ int main() {
         }
     }
 
-    /* -- Shape FD at node 20, dim 0 (worst rel case) ------------------------ */
+    /* -- Shape FD at node 20, dim 0 (worst rel case) ------------------------
+     */
     std::cout << "\n=== Shape FD at node 20 dim 0 vs analytic (Re=1e6, "
                  "alpha=3) ===\n";
     {

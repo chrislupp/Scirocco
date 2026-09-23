@@ -41,9 +41,9 @@ namespace scirocco {
  * @brief Result from curvature-based spacing
  */
 struct SpacingResult {
-    MatrixXd X;   /* New point coordinates [2 x N] */
-    VectorXd S;   /* Arc-length values at points */
-    MatrixXd XS;  /* Tangent vectors [2 x N] */
+    MatrixXd X;  /* New point coordinates [2 x N] */
+    VectorXd S;  /* Arc-length values at points */
+    MatrixXd XS; /* Tangent vectors [2 x N] */
 };
 
 /**
@@ -57,8 +57,8 @@ void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt = VectorXd());
 
 /**
- * @brief Refresh panel.s (arc length) and panel.t (tangent) from panel.x, leaving
- * panel.x untouched. Use after directly setting panel.x to new node
+ * @brief Refresh panel.s (arc length) and panel.t (tangent) from panel.x,
+ * leaving panel.x untouched. Use after directly setting panel.x to new node
  * coordinates (e.g. from an upstream geometry discipline) so derived
  * geometric state stays consistent with panel.x — without re-spacing,
  * which would break upstream gradient chains.

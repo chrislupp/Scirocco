@@ -71,13 +71,14 @@ using namespace Eigen;
  * agree to ~3e-11 rel. 1e-8 tolerance keeps a 300x safety margin while
  * catching any future regression that pushes the wake-row chain back to
  * the historical 1e-4 floor. */
-constexpr double TOL_INVISCID = 1e-10;  /* inviscid: machine precision */
+constexpr double TOL_INVISCID = 1e-10; /* inviscid: machine precision */
 constexpr double TOL_VISC_SHAPE = 1e-8;
 constexpr double TOL_VISC_SCALAR_ALPHA = 1e-9;
 
 /* ---------------------------------------------------------------------------
  * HDF5 helpers (same pattern as mfoil_reference_test.cpp)
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -128,7 +129,8 @@ std::vector<int> readIntVector(H5::H5File& file, const std::string& path) {
 
 /* ---------------------------------------------------------------------------
  * Test fixture: loads HDF5 once for all tests
- * --------------------------------------------------------------------------- */
+ * ---------------------------------------------------------------------------
+ */
 class SensitivityReferenceTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;

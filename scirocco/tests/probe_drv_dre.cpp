@@ -45,7 +45,7 @@ int main() {
         BuildGlobSys(sp);
         VectorXd R(4 * Nsys);
         R.head(3 * Nsys) = sp.glob.R;
-        R.tail(Nsys).setZero();  /* ue rows have no Re dep */
+        R.tail(Nsys).setZero(); /* ue rows have no Re dep */
         return R;
     };
     VectorXd Rp2 = eval_RBL(Re0 + 2 * h);

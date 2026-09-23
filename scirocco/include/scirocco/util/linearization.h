@@ -39,7 +39,7 @@ namespace scirocco {
 template <typename V, typename L>
 struct LinResult {
     V value;
-    L lin;  /* Linearization w.r.t. state U */
+    L lin; /* Linearization w.r.t. state U */
 };
 
 /* Common type aliases for boundary layer property functions */
@@ -57,13 +57,14 @@ using Vec3Lin8 = LinResult<Vector3d, Matrix38d>;
 template <typename V, typename LinU, typename LinX>
 struct LinResultWithX {
     V value;
-    LinU lin_U;  /* Linearization w.r.t. U */
-    LinX lin_x;  /* Linearization w.r.t. x */
+    LinU lin_U; /* Linearization w.r.t. U */
+    LinX lin_x; /* Linearization w.r.t. x */
 };
 
 /**
- * @brief Residual at a station: 3 residuals with derivatives w.r.t. U[8] and x[2],
- * plus optional ∂R/∂Re·Re and ∂R/∂Ma·Ma for the analytic scalar-param chains.
+ * @brief Residual at a station: 3 residuals with derivatives w.r.t. U[8] and
+ * x[2], plus optional ∂R/∂Re·Re and ∂R/∂Ma·Ma for the analytic scalar-param
+ * chains.
  *
  * lin_Ret = sum_k (∂R/∂Ret_k · Ret_k) — Re chain (single param: mu0).
  * lin_Ma  = ∂R/∂Ma · Ma — Ma chain (multi-param: KTb, KTl, H0, cps, mu0,
@@ -80,4 +81,4 @@ struct ResidualLin {
     Vector3d lin_Ma = Vector3d::Zero();
 };
 
-}  /* namespace scirocco */
+} /* namespace scirocco */

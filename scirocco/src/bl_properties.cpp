@@ -42,8 +42,8 @@ ScalarLin4 GetH(const Vector4d& U) {
     double H = ds / th;
 
     Vector4d H_U = Vector4d::Zero();
-    H_U(0) = -ds / (th * th);  /* dH/dth */
-    H_U(1) = 1.0 / th;         /* dH/dds */
+    H_U(0) = -ds / (th * th); /* dH/dth */
+    H_U(1) = 1.0 / th;        /* dH/dds */
 
     return {H, H_U};
 }
@@ -71,7 +71,7 @@ ScalarLin4 GetHw(const Vector4d& U, double wgap) {
     double Hw = wgap / th;
 
     Vector4d Hw_U = Vector4d::Zero();
-    Hw_U(0) = -Hw / th;  /* dHw/dth = -wgap/th^2 */
+    Hw_U(0) = -Hw / th; /* dHw/dth = -wgap/th^2 */
 
     return {Hw, Hw_U};
 }
@@ -304,7 +304,8 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
     return {cf, cf_U};
 }
 
-/** @brief Helper: laminar dissipation (used by laminar flow and as floor for turbulent)
+/** @brief Helper: laminar dissipation (used by laminar flow and as floor for
+ * turbulent)
  *  @param U     State vector [theta, ds, sa, ue]
  *  @param param Flow parameter struct
  *  @return ScalarLin4 value and linearization w.r.t. U
@@ -431,7 +432,8 @@ ScalarLin4 GetCDi_LamWake(const Vector4d& U, const Param& paramin) {
     double Hk_inv = 1.0 / Hk;
     double one_minus_Hk_inv = 1.0 - Hk_inv;
     double num = 2.0 * 1.1 * one_minus_Hk_inv * one_minus_Hk_inv * Hk_inv;
-    /* d(num)/dHk = 2*1.1 * (2*(1-1/Hk)*(1/Hk^2)*(1/Hk) + (1-1/Hk)^2*(-1/Hk^2)) */
+    /* d(num)/dHk = 2*1.1 * (2*(1-1/Hk)*(1/Hk^2)*(1/Hk) + (1-1/Hk)^2*(-1/Hk^2))
+     */
     double num_Hk = 2.0 * 1.1 *
                     (2.0 * one_minus_Hk_inv * (Hk_inv * Hk_inv) * Hk_inv +
                      one_minus_Hk_inv * one_minus_Hk_inv * (-Hk_inv * Hk_inv));
@@ -590,7 +592,7 @@ ScalarLin4 GetDamp(const Vector4d& U, const Param& param) {
     double lrc = aa + 0.7 * (bb + 1.0);
     Vector4d lrc_U = aa_U + 0.7 * bb_U;
 
-    constexpr double lten = 2.302585092994046;  /* log(10) */
+    constexpr double lten = 2.302585092994046; /* log(10) */
     double lr = std::log(Ret) / lten;
     Vector4d lr_U = (1.0 / Ret) * Ret_U / lten;
 
@@ -707,7 +709,8 @@ ScalarLin4 GetCteq(const Vector4d& U, const Param& param) {
 
 ScalarLin4 GetCttr(const Vector4d& U, const Param& param) {
     /* Initial sqrt(ctau) at transition (matches mfoil get_cttr)
-     * Note: transition happens just before the wake starts, so force wake=false */
+     * Note: transition happens just before the wake starts, so force wake=false
+     */
     Param param_nowake = param;
     param_nowake.wake = false;
 
@@ -743,7 +746,7 @@ ScalarLin8 GetUpw(const Vector4d& U1, const Vector4d& U2, const Param& param) {
     /* Triggering constant and wake factor */
     double Hut = 1.0;
     double C = param.wake ? 1.0 : 5.0;
-    double Huc = C * Hut / (Hk2 * Hk2);  /* only depends on U2 */
+    double Huc = C * Hut / (Hk2 * Hk2); /* only depends on U2 */
 
     Vector8d Huc_U;
     Huc_U.head<4>() = Z;
@@ -919,4 +922,4 @@ ScalarLin8 GetUq(double ds, const Vector8d& ds_U, double cf,
     return {uq, uq_U};
 }
 
-}  /* namespace scirocco */
+} /* namespace scirocco */
