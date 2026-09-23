@@ -43,12 +43,14 @@
 #include <variable.h>
 
 #include <Eigen/Core>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "scirocco/kulfan_discipline.h"
 #include "scirocco/scirocco.h"
 
 using namespace Eigen;
@@ -125,8 +127,8 @@ google::protobuf::Struct BuildCoordOptions(const scirocco::MatrixXd& coords,
     return opts;
 }
 
-void RunLifecycle(scirocco::SiroccoDiscipline& disc,
-                  const google::protobuf::Struct& opts,
+template <typename Discipline>
+void RunLifecycle(Discipline& disc, const google::protobuf::Struct& opts,
                   philote::Variables& inputs, philote::Variables& outputs,
                   philote::Partials& partials) {
     disc.Initialize();
@@ -215,6 +217,51 @@ TEST(PhilotePrimalTest, ViscousMatchesStandalone) {
     EXPECT_NEAR(outputs.at("cl")(0), ref.GetCl(), 1e-8);
     EXPECT_NEAR(outputs.at("cd")(0), ref.GetCd(), 1e-8);
     EXPECT_NEAR(outputs.at("cm")(0), ref.GetCm(), 1e-8);
+}
+
+TEST(PhilotePrimalTest, TutorialReynoldsSweep) {
+    // Match examples/tutorials/tutorial_airfoil.py, including its finite TE.
+    scirocco::KulfanDiscipline geometry;
+    google::protobuf::Struct options;
+    for (const auto* name : {"n_cst_upper", "n_cst_lower"})
+        (*options.mutable_fields())[name].set_number_value(6);
+    (*options.mutable_fields())["npanel"].set_number_value(100);
+    (*options.mutable_fields())["te_upper"].set_number_value(0.00063);
+    (*options.mutable_fields())["te_lower"].set_number_value(-0.00063);
+    philote::Variables geometry_inputs, geometry_outputs;
+    philote::Partials geometry_partials;
+    RunLifecycle(geometry, options, geometry_inputs, geometry_outputs,
+                 geometry_partials);
+    const std::array<double, 6> coefficients{
+        0.1706635358053721,  0.15626369325824663, 0.1546327069833401,
+        0.14462202838023833, 0.13318428664336585, 0.15537328876198608};
+    for (int i = 0; i < 6; ++i) {
+        geometry_inputs.at("cst_upper")(i) = coefficients[i];
+        geometry_inputs.at("cst_lower")(i) = coefficients[i];
+    }
+    geometry.Compute(geometry_inputs, geometry_outputs);
+    scirocco::SiroccoDiscipline analysis;
+    philote::Variables inputs, outputs;
+    philote::Partials partials;
+    RunLifecycle(analysis, BuildNacaOptions("0012", 100), inputs, outputs,
+                 partials);
+    for (int i = 0; i < 202; ++i)
+        inputs.at("x")(i) = geometry_outputs.at("x")(i);
+    inputs.at("alpha")(0) = 2.0;
+    inputs.at("Ma")(0) = 0.0;
+    // Rounded tutorial output: catch nonconvergence and stale cached forces.
+    const std::array<std::array<double, 3>, 4> cases{{{2.5e5, 0.27840, 0.00967},
+                                                      {5e5, 0.21612, 0.00698},
+                                                      {1e6, 0.20489, 0.00565},
+                                                      {2e6, 0.21067, 0.00531}}};
+    for (const auto& row : cases) {
+        SCOPED_TRACE(row[0]);
+        inputs.at("Re")(0) = row[0];
+        ASSERT_NO_THROW(analysis.Compute(inputs, outputs));
+        EXPECT_NEAR(outputs.at("cl")(0), row[1], 1e-5);
+        EXPECT_NEAR(outputs.at("cd")(0), row[2], 1e-5);
+        EXPECT_TRUE(std::isfinite(outputs.at("cm")(0)));
+    }
 }
 
 /* ===========================================================================

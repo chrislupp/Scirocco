@@ -277,6 +277,7 @@ jobs:
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
         -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+        -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -285,9 +286,7 @@ jobs:
       working-directory: ${{github.workspace}}/build
       env:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
-      run: >
-        ctest --output-on-failure
-        -R "^(SplineTest|GeometryTest|MfoilReference|Philote)"
+      run: ctest --output-on-failure
 
     - name: Generate Coverage Report
       run: |

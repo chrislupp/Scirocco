@@ -358,9 +358,13 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
                 if (step < 1e-4) break;
             }
         }
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
         // The caller retains the failed direct solve at the requested point,
         // never an intermediate solution at a different operating condition.
+        if (target.param.verb >= 1)
+            std::cout << "  Continuation failed: " << error.what() << '\n';
+        record();
+        return false;
     }
     record();
     return false;
@@ -899,9 +903,13 @@ bool TakeTrustRegionStep(FoilState& state) {
                 CalcForce(trial);
                 actual = phi - 0.5 * rscale.cwiseProduct(CoupledResidual(trial))
                                          .squaredNorm();
-            } catch (const std::exception&) {
+            } catch (const std::exception& error) {
                 // Reject recoverable domain/linear-solve errors in a trial.
                 // No mutation of the accepted state has taken place.
+                actual = -std::numeric_limits<double>::infinity();
+                if (state.param.verb >= 1)
+                    std::cout << "  Trust trial rejected: " << error.what()
+                              << '\n';
             }
         }
         const double ratio = predicted > 0.0 ? actual / predicted : -1.0;

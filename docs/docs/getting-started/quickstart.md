@@ -9,7 +9,9 @@ in two Philote-Cpp gRPC servers and Python uses the Philote-MDO bindings to
 present them as OpenMDAO components:
 
 ```text
-Python/OpenMDAO -> KulfanDiscipline -> panel coordinates -> SiroccoDiscipline
+Cl = 0.48270391
+Cd = 0.000e+00
+Cm = -0.00569190
 ```
 
 Scirocco does not currently install an in-process `import scirocco` module.
@@ -30,7 +32,7 @@ scirocco/build-philote/src/philote/scirocco_kulfan_server localhost:50052
 scirocco/build-philote/src/philote/scirocco_server localhost:50051
 ```
 
-The first server creates a Kulfan/CST airfoil. The second analyzes the panel
+The first server creates a Kulfan/CST airfoil with a 0.00126-chord trailing-edge gap. The second analyzes the panel
 coordinates it receives.
 
 ## Run one analysis
@@ -60,6 +62,8 @@ problem.model.add_subsystem(
         channel=grpc.insecure_channel("localhost:50052"),
         n_cst_upper=6,
         n_cst_lower=6,
+        te_upper=0.00063,
+        te_lower=-0.00063,
         npanel=npanel,
     ),
     promotes_inputs=["cst_upper", "cst_lower"],
@@ -77,9 +81,12 @@ problem.model.add_subsystem(
 
 problem.setup()
 
-# Symmetric, NACA-0012-like CST coefficients. Positive coefficients produce
+# Symmetric NACA 0012 CST fit (also used by the multipoint example). Positive coefficients produce
 # positive thickness; use the same values on the upper and lower surfaces.
-cst_0012 = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+cst_0012 = np.array([
+    0.1706635358053721, 0.15626369325824663, 0.1546327069833401,
+    0.14462202838023833, 0.13318428664336585, 0.15537328876198608,
+])
 problem.set_val("cst_upper", cst_0012)
 problem.set_val("cst_lower", cst_0012)
 problem.set_val("analysis.alpha", 4.0, units="deg")

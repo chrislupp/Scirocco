@@ -1,13 +1,13 @@
 """Evaluate thickness and camber changes through the Kulfan discipline."""
 
 import grpc
-import numpy as np
 import openmdao.api as om
 from philote_mdo.openmdao import RemoteExplicitComponent
+from tutorial_airfoil import CST_0012, TE_UPPER, TE_LOWER
 
 
 NPANEL = 100
-BASE = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+BASE = CST_0012
 
 
 def main():
@@ -18,6 +18,8 @@ def main():
             channel=grpc.insecure_channel("localhost:50052"),
             n_cst_upper=6,
             n_cst_lower=6,
+            te_upper=TE_UPPER,
+            te_lower=TE_LOWER,
             npanel=NPANEL,
         ),
         promotes_inputs=["cst_upper", "cst_lower"],

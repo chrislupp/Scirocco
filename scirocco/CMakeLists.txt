@@ -96,12 +96,14 @@ if(SCIROCCO_BUILD_TESTS)
     find_package(hdf5 CONFIG QUIET)
     if(NOT hdf5_FOUND)
         find_package(HDF5 COMPONENTS CXX QUIET)
-        if(HDF5_FOUND AND NOT TARGET hdf5_cpp-shared)
-            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
-            set_target_properties(hdf5_cpp-shared PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
-                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
-            )
+        if(HDF5_FOUND)
+            if(NOT TARGET hdf5_cpp-shared)
+                add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+                set_target_properties(hdf5_cpp-shared PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                    INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+                )
+            endif()
             set(hdf5_FOUND TRUE)
         endif()
     endif()

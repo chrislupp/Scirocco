@@ -28,7 +28,7 @@ source .venv/bin/activate
 python examples/tutorials/quickstart.py
 ```
 
-Do not proceed until it reports approximately `Cl = 0.48320` and zero drag.
+Do not proceed until it reports approximately `Cl = 0.48270` and zero drag.
 That check catches server, protocol, dependency, and port problems in one run.
 
 ## Learning path

@@ -83,6 +83,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Preserve HDF5 reference-test discovery when the output writer has already
+  created its library target; run the full gradient and solver suites in the
+  coverage job.
+- Use the multipoint example's NACA 0012 CST fit and finite trailing-edge gap
+  throughout the Philote tutorials so their viscous sweeps converge. Add a
+  Reynolds-sweep regression and refresh the documented results.
+- Handle failed continuation and trust-region trial exceptions explicitly,
+  preserving state rollback while satisfying Clang-Tidy.
 - Normalize the Python reference pressure forces and lift partials once after
   panel integration, fixing nonunit-chord outputs and lift trim. Remove manual
   force normalization from the gradient reference generators.

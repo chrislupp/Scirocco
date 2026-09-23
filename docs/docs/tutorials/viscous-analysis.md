@@ -42,11 +42,11 @@ the first tutorial. The value of `Re` selects the solve path:
 The tested result is:
 
 ```text
-       Re       Cl        Cd        Cm
- 2.50e+05   0.21382   0.01123   0.00728
- 5.00e+05   0.15099   0.00795   0.01536
- 1.00e+06   0.13889   0.00554   0.02043
- 2.00e+06   0.07474   0.00484   0.03382
+Re       Cl        Cd        Cm
+ 2.50e+05   0.27840   0.00967  -0.00665
+ 5.00e+05   0.21612   0.00698   0.00425
+ 1.00e+06   0.20489   0.00565   0.00514
+ 2.00e+06   0.21067   0.00531   0.00320
 ```
 
 Expect non-zero drag; for this case it decreases as Reynolds number rises.

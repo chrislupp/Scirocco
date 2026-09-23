@@ -19,7 +19,10 @@ python examples/tutorials/03_geometry_modifications.py
 Start from the same symmetric coefficient vector:
 
 ```python
-base = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+base = np.array([
+    0.1706635358053721, 0.15626369325824663, 0.1546327069833401,
+    0.14462202838023833, 0.13318428664336585, 0.15537328876198608,
+])
 
 problem.set_val("analysis.alpha", 2.0, units="deg")
 problem.set_val("analysis.Re", 1.0e6)
@@ -46,9 +49,9 @@ for name, (upper, lower) in cases.items():
 The tested result is:
 
 ```text
-thin      Cl=0.17310 Cd=0.00534
-baseline  Cl=0.13889 Cd=0.00554
-cambered  Cl=0.20838 Cd=0.00579
+thin      Cl=0.21032 Cd=0.00533
+baseline  Cl=0.20489 Cd=0.00565
+cambered  Cl=0.27794 Cd=0.00574
 ```
 
 Each `run_model()` follows the same chain:

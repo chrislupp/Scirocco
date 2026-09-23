@@ -4,6 +4,7 @@ import grpc
 import numpy as np
 import openmdao.api as om
 from philote_mdo.openmdao import RemoteExplicitComponent
+from tutorial_airfoil import CST_0012, TE_UPPER, TE_LOWER
 
 
 def _active_error(error):
@@ -19,6 +20,8 @@ def main():
             channel=grpc.insecure_channel("localhost:50052"),
             n_cst_upper=6,
             n_cst_lower=6,
+            te_upper=TE_UPPER,
+            te_lower=TE_LOWER,
             npanel=npanel,
         ),
         promotes_inputs=["cst_upper", "cst_lower"],
@@ -38,7 +41,7 @@ def main():
     problem.model.add_objective("analysis.cd")
     problem.setup()
 
-    base = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+    base = CST_0012
     problem.set_val("cst_upper", base)
     problem.set_val("cst_lower", base)
     problem.set_val("analysis.alpha", 4.0, units="deg")

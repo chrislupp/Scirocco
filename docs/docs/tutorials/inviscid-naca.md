@@ -23,7 +23,10 @@ Everything through `problem.setup()` stays the same. Replace the input and
 output section with:
 
 ```python
-cst_0012 = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+cst_0012 = np.array([
+    0.1706635358053721, 0.15626369325824663, 0.1546327069833401,
+    0.14462202838023833, 0.13318428664336585, 0.15537328876198608,
+])
 problem.set_val("cst_upper", cst_0012)
 problem.set_val("cst_lower", cst_0012)
 problem.set_val("analysis.Re", 0.0)
@@ -67,16 +70,16 @@ both components (`npanel + 1` nodes).
 The tested 100-panel result is:
 
 ```text
- alpha       Cl          Cd          Cm
-  -4.0   -0.48319   0.000e+00    0.00613
-  -2.0   -0.24174   0.000e+00    0.00307
+alpha       Cl          Cd          Cm
+  -4.0   -0.48270   0.000e+00    0.00569
+  -2.0   -0.24150   0.000e+00    0.00285
    0.0   -0.00000   0.000e+00    0.00000
-   2.0    0.24174   0.000e+00   -0.00307
-   4.0    0.48320   0.000e+00   -0.00613
-   6.0    0.72408   0.000e+00   -0.00915
-   8.0    0.96409   0.000e+00   -0.01213
-  10.0    1.20295   0.000e+00   -0.01506
-  12.0    1.44037   0.000e+00   -0.01791
+   2.0    0.24150   0.000e+00   -0.00285
+   4.0    0.48270   0.000e+00   -0.00569
+   6.0    0.72333   0.000e+00   -0.00850
+   8.0    0.96310   0.000e+00   -0.01127
+  10.0    1.20171   0.000e+00   -0.01399
+  12.0    1.43889   0.000e+00   -0.01663
 ```
 
 Small last-digit differences are normal. Lift should remain nearly linear

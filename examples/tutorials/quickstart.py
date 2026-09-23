@@ -5,13 +5,13 @@ port 50051 before running this file from the repository root.
 """
 
 import grpc
-import numpy as np
 import openmdao.api as om
 from philote_mdo.openmdao import RemoteExplicitComponent
+from tutorial_airfoil import CST_0012, TE_UPPER, TE_LOWER
 
 
 NPANEL = 100
-CST_0012 = np.array([0.170, 0.160, 0.145, 0.145, 0.160, 0.170])
+
 
 
 def main():
@@ -22,6 +22,8 @@ def main():
             channel=grpc.insecure_channel("localhost:50052"),
             n_cst_upper=6,
             n_cst_lower=6,
+            te_upper=TE_UPPER,
+            te_lower=TE_LOWER,
             npanel=NPANEL,
         ),
         promotes_inputs=["cst_upper", "cst_lower"],
