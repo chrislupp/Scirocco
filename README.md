@@ -188,6 +188,19 @@ the previous verbose behavior through the internal state:
 foil.GetState().param.verb = 1;
 ```
 
+## Optimization examples
+
+- [Single-point viscous CST optimization](examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py): minimize drag at a prescribed lift with an area constraint.
+- [Multipoint CST optimization](examples/cst_range_optimization/README.rst): minimize equally weighted drag at `Cl = 0.55` and `0.70`, with guards at `0.30` and `0.80`. Includes analytic gradients, independent optimality checks, and geometry and convergence plots.
+
+Run the multipoint example from the repository root:
+
+```bash
+python examples/cst_range_optimization/run.py \
+    --binary scirocco/build-philote/src/philote/scirocco_server \
+    --output pa_output/cst_multipoint
+```
+
 ## API Reference
 
 ### Scirocco Class

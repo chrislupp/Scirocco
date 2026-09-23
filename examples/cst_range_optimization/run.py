@@ -1,4 +1,4 @@
-"""Range-based Scirocco benchmark. All output and server processes belong to --output."""
+"""CST multipoint optimization. All output and server processes belong to --output."""
 import os
 
 os.environ["OPENMDAO_REPORTS"] = "false"
@@ -133,7 +133,7 @@ def derivative_check(prob, pool):
         "passed": passed,
         "analytic": analytic.tolist(),
         "records": records,
-        "description": "One deterministic mixed shape/angle direction, all eight Cl and Cm outputs and weighted Cd; central differences at three steps.",
+        "description": "One deterministic mixed shape/angle direction, all Cl and Cm outputs and weighted Cd; central differences at three steps.",
     }
 
 
@@ -147,6 +147,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--panels", type=int, default=100)
+    parser.add_argument(
+        "--formulation",
+        choices=["multipoint", "single-point-guards", "two-point-guards"],
+        default="two-point-guards",
+        help="Use range drag, or drag at Cl=0.55 (and optionally 0.70) with guards at 0.30 and 0.80",
+    )
     parser.add_argument("--thickness-degree", type=int, default=4)
     parser.add_argument("--camber-degree", type=int, default=3)
     parser.add_argument("--seed", type=Path)
@@ -174,14 +180,28 @@ def main():
     parser.add_argument(
         "--binary",
         type=Path,
-        default=Path("/tmp/scirocco-gradient-philote/src/philote/scirocco_server"),
+        default=ROOT / "scirocco/build-philote/src/philote/scirocco_server",
     )
     args = parser.parse_args()
-    if any(not 0.25 <= point <= 0.85 for point in args.extra_lift_point):
-        parser.error("Extra lift points must lie within [0.25, 0.85]")
-    TARGETS = np.unique(np.r_[BASE_TARGETS, args.extra_lift_point])
+    if not args.binary.is_file():
+        parser.error(f"Scirocco server not found: {args.binary}. Set --binary to your built server.")
+    base_targets, base_weights = BASE_TARGETS, BASE_WEIGHTS
+    if args.formulation == "single-point-guards":
+        base_targets = np.array([0.30, 0.55, 0.80])
+        base_weights = np.array([0.0, 1.0, 0.0])
+    elif args.formulation == "two-point-guards":
+        base_targets = np.array([0.30, 0.55, 0.70, 0.80])
+        base_weights = np.array([0.0, 0.5, 0.5, 0.0])
+    if any(
+        not base_targets[0] <= point <= base_targets[-1]
+        for point in args.extra_lift_point
+    ):
+        parser.error(
+            f"Extra lift points must lie within [{base_targets[0]}, {base_targets[-1]}]"
+        )
+    TARGETS = np.unique(np.r_[base_targets, args.extra_lift_point])
     WEIGHTS = np.zeros(len(TARGETS))
-    for point, weight in zip(BASE_TARGETS, BASE_WEIGHTS):
+    for point, weight in zip(base_targets, base_weights):
         WEIGHTS[np.argmin(abs(TARGETS - point))] = weight
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=True)

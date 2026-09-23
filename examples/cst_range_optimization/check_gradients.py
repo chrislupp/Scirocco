@@ -21,7 +21,8 @@ def main():
     parser.add_argument(
         "--binary",
         type=Path,
-        default=Path("/tmp/scirocco-gradient-philote/src/philote/scirocco_server"),
+        default=Path(__file__).resolve().parents[2]
+        / "scirocco/build-philote/src/philote/scirocco_server",
     )
     args = parser.parse_args()
     summary = json.loads(args.summary.read_text())
@@ -72,7 +73,7 @@ def main():
             + ["own_alpha"]
         )
         # Each force row depends only on its own angle, so a simultaneous
-        # angle perturbation checks all eight nonzero angle derivatives.
+        # angle perturbation checks every nonzero angle derivative.
         for factor in [1.0, 0.1]:
             columns = {k: [] for k in analytic}
             for col in range(geometry_jac.shape[1] + 1):
