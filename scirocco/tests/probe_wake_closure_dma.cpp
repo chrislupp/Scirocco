@@ -1,12 +1,13 @@
-// Targeted ping at wake station 1 — break down Rshape and Rlag analytic
-// contributions vs FD per closure. Specifically tests Hs_dMa, cDi_dMa,
-// cDixt_dMa via FD on the public closures.
+/**
+ * @brief Targeted ping at wake station 1 — break down Rshape and Rlag analytic
+ * contributions vs FD per closure. Specifically tests Hs_dMa, cDi_dMa,
+ * cDixt_dMa via FD on the public closures.
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
 
-#include "scirocco/core/bl_chain_internals.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/properties/bl_properties.h"
@@ -15,6 +16,11 @@
 using namespace scirocco;
 using namespace Eigen;
 
+/**
+ * @brief Entry point: pings each closure's FD ∂/∂Ma at wake station 1 and
+ *        compares against the analytic _dMa values.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -30,13 +36,13 @@ int main() {
     double h = std::abs(Ma0) * 1e-5;
     Param base_param = s.param;
 
-    // Wake station 1 = vsol.Is[2][1]. Use U at that node.
+    /* Wake station 1 = vsol.Is[2][1]. Use U at that node. */
     int wnode = s.vsol.Is[2][1];
     Vector4d U = s.glob.U.col(wnode);
     double x = s.isol.xi(wnode);
 
-    // Build param matching wake station 1 in ResidualStation (wake=true,
-    // turb=true after BuildParam + StationParam)
+    /* Build param matching wake station 1 in ResidualStation (wake=true,
+     * turb=true after BuildParam + StationParam) */
     Param p = base_param;
     p.wake = true;
     p.turb = true;
@@ -125,7 +131,7 @@ int main() {
               << "\n";
     std::cout << "  GetUk @ Vinf*(ue/Vinf=" << U(3) / p.Vinf << ")\n";
 
-    // Print closure VALUES at baseline
+    /* Print closure VALUES at baseline */
     auto [Hk_v, _hu] = GetHk(U, p);
     auto [Hs_v, _Hsu] = GetHs(U, p);
     auto [Ret_v, _Ru] = GetRet(U, p);
@@ -138,7 +144,7 @@ int main() {
               << " Hs(lam)=" << Hs_l << " Ret=" << Ret_v << " cDi=" << cDi_v
               << " cDixt=" << cDixt_v << "\n";
 
-    // Analytic _dMa values for direct comparison
+    /* Analytic _dMa values for direct comparison */
     detail::ThermoMaDeriv d = detail::ComputeThermoMaDeriv(p, p.Vinf, 0.0);
     std::cout << "\nAnalytic _dMa (use turb=T param):\n";
     std::cout << "  GetUk_dMa     = " << detail::GetUk_dMa(U(3), p, d) << "\n";

@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -38,13 +38,13 @@ namespace scirocco {
 
 namespace {
 
-// Find segment index for parameter value
+/* Find segment index for parameter value */
 int FindSegment(const VectorXd& s, double sval) {
     int n = static_cast<int>(s.size());
     if (sval <= s(0)) return 0;
     if (sval >= s(n - 1)) return n - 2;
 
-    // Binary search
+    /* Binary search */
     int lo = 0, hi = n - 1;
     while (hi - lo > 1) {
         int mid = (lo + hi) / 2;
@@ -57,15 +57,15 @@ int FindSegment(const VectorXd& s, double sval) {
     return lo;
 }
 
-// Build cubic spline with not-a-knot boundary conditions (like
-// scipy.CubicSpline) Returns coefficient matrix [4 x (N-1)]
+/* Build cubic spline with not-a-knot boundary conditions (like
+ * scipy.CubicSpline) Returns coefficient matrix [4 x (N-1)] */
 MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     int n = static_cast<int>(s.size());
     if (n < 2) {
         throw std::invalid_argument("Need at least 2 points for spline");
     }
 
-    // Compute intervals
+    /* Compute intervals */
     VectorXd h(n - 1);
     for (int i = 0; i < n - 1; ++i) {
         h(i) = s(i + 1) - s(i);
@@ -74,10 +74,10 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
     VectorXd d2y = VectorXd::Zero(n);
 
     if (n == 2) {
-        // Linear interpolation (no curvature)
+        /* Linear interpolation (no curvature) */
         d2y.setZero();
     } else if (n == 3) {
-        // Quadratic - single d2y value (constant curvature)
+        /* Quadratic - single d2y value (constant curvature) */
         double dy0 = (y(1) - y(0)) / h(0);
         double dy1 = (y(2) - y(1)) / h(1);
         double d2 = 2.0 * (dy1 - dy0) / (h(0) + h(1));
@@ -85,14 +85,14 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
         d2y(1) = d2;
         d2y(2) = d2;
     } else {
-        // Not-a-knot: solve full system with boundary conditions
-        // The third derivative is continuous at x[1] and x[n-2]
+        /* Not-a-knot: solve full system with boundary conditions
+         * The third derivative is continuous at x[1] and x[n-2] */
 
-        // Build full n x n system (almost tridiagonal with extra entries)
+        /* Build full n x n system (almost tridiagonal with extra entries) */
         MatrixXd A = MatrixXd::Zero(n, n);
         VectorXd rhs = VectorXd::Zero(n);
 
-        // Interior equations (i = 1 to n-2): continuity of first derivative
+        /* Interior equations (i = 1 to n-2): continuity of first derivative */
         for (int i = 1; i < n - 1; ++i) {
             A(i, i - 1) = h(i - 1);
             A(i, i) = 2.0 * (h(i - 1) + h(i));
@@ -101,33 +101,33 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
                 6.0 * ((y(i + 1) - y(i)) / h(i) - (y(i) - y(i - 1)) / h(i - 1));
         }
 
-        // Not-a-knot at left: third derivative continuous at s[1]
-        // d2y[0] * (1/h0) - d2y[1] * (1/h0 + 1/h1) + d2y[2] * (1/h1) = 0
+        /* Not-a-knot at left: third derivative continuous at s[1]
+         * d2y[0] * (1/h0) - d2y[1] * (1/h0 + 1/h1) + d2y[2] * (1/h1) = 0 */
         A(0, 0) = h(1);
         A(0, 1) = -(h(0) + h(1));
         A(0, 2) = h(0);
         rhs(0) = 0.0;
 
-        // Not-a-knot at right: third derivative continuous at s[n-2]
+        /* Not-a-knot at right: third derivative continuous at s[n-2] */
         A(n - 1, n - 3) = h(n - 2);
         A(n - 1, n - 2) = -(h(n - 3) + h(n - 2));
         A(n - 1, n - 1) = h(n - 3);
         rhs(n - 1) = 0.0;
 
-        // Solve the system
+        /* Solve the system */
         d2y = A.partialPivLu().solve(rhs);
     }
 
-    // Compute coefficients for each segment
-    // f(t) = c0*t^3 + c1*t^2 + c2*t + c3 where t = s - s[i]
+    /* Compute coefficients for each segment
+     * f(t) = c0*t^3 + c1*t^2 + c2*t + c3 where t = s - s[i] */
     MatrixXd c(4, n - 1);
     for (int i = 0; i < n - 1; ++i) {
         double hi = h(i);
-        c(3, i) = y(i);  // constant term
+        c(3, i) = y(i); /* constant term */
         c(2, i) = (y(i + 1) - y(i)) / hi -
-                  hi * (2.0 * d2y(i) + d2y(i + 1)) / 6.0;  // linear term
-        c(1, i) = d2y(i) / 2.0;                            // quadratic term
-        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);      // cubic term
+                  hi * (2.0 * d2y(i) + d2y(i + 1)) / 6.0; /* linear term */
+        c(1, i) = d2y(i) / 2.0;                           /* quadratic term */
+        c(0, i) = (d2y(i + 1) - d2y(i)) / (6.0 * hi);     /* cubic term */
     }
 
     return c;
@@ -154,7 +154,7 @@ double CubicSpline1D::EvalDeriv2(double sval) const {
 }
 
 void QuadSeg(VectorXd& xq, VectorXd& wq) {
-    // 5-point Gauss-Legendre quadrature on [0,1]
+    /* 5-point Gauss-Legendre quadrature on [0,1] */
     xq.resize(5);
     wq.resize(5);
     xq << 0.046910077030668, 0.230765344947158, 0.500000000000000,
@@ -171,19 +171,19 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
 
     Spline2D spline;
 
-    // Initial arc-length estimate
+    /* Initial arc-length estimate */
     VectorXd s = VectorXd::Zero(n);
     for (int i = 1; i < n; ++i) {
         s(i) = s(i - 1) + (points.col(i) - points.col(i - 1)).norm();
     }
 
-    // Build initial splines
+    /* Build initial splines */
     spline.X.s = s;
     spline.X.c = BuildCubicSpline(s, points.row(0));
     spline.Y.s = s;
     spline.Y.c = BuildCubicSpline(s, points.row(1));
 
-    // Re-integrate to true arc-length via several passes
+    /* Re-integrate to true arc-length via several passes */
     VectorXd xq, wq;
     QuadSeg(xq, wq);
 
@@ -195,7 +195,7 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
         for (int i = 0; i < n - 1; ++i) {
             double ds = s(i + 1) - s(i);
 
-            // Integrate arc length over segment using quadrature
+            /* Integrate arc length over segment using quadrature */
             double sint = 0.0;
             for (int q = 0; q < 5; ++q) {
                 double sq = s(i) + xq(q) * ds;

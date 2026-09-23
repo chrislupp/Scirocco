@@ -1,5 +1,7 @@
-// Compare scirocco analytic ∂R_BL/∂Ma vs mfoil-CS reference
-// (drv_dma_cs_reference.h5). CS-based — replaces FD-based probe_drv_dma.cpp.
+/**
+ * @brief Compare scirocco analytic ∂R_BL/∂Ma vs mfoil-CS reference
+ * (drv_dma_cs_reference.h5). CS-based — replaces FD-based probe_drv_dma.cpp.
+ */
 #include <H5Cpp.h>
 
 #include <Eigen/Dense>
@@ -14,6 +16,11 @@
 using namespace scirocco;
 using namespace Eigen;
 
+/**
+ * @brief Entry point: loads CS reference, computes analytic dR/dMa, and
+ *        reports worst-case absolute and relative errors.
+ * @return 0 on success, 1 on Nsys mismatch.
+ */
 int main() {
     const std::string h5path =
         std::string(SCIROCCO_TEST_DATA_DIR) + "/drv_dma_cs_reference.h5";

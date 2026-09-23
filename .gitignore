@@ -37,9 +37,9 @@ CTestTestfile.cmake
 # Analysis output
 pa_output/
 
-# Plans and theory
-plans/
-theory/
+# Plans and theory (top-level only)
+/plans/
+/theory/
 
 # Python
 __pycache__/
@@ -66,3 +66,6 @@ examples/**/*_result*.png
 
 # modopt per-run output directories
 *_outputs/
+
+# Local Claude Code configuration (machine-specific, not shared)
+CLAUDE.local.md

@@ -1,8 +1,10 @@
-// Compare scirocco's analytic adjoint gradient against scirocco's own
-// finite-difference gradient (no mfoil). If these agree at <1e-9 rel,
-// the analytic chain is internally consistent and the remaining floor
-// against the CS reference is a scirocco-mfoil primal divergence.
-// If they disagree, the analytic chain has a real bug.
+/**
+ * @brief Compare scirocco's analytic adjoint gradient against scirocco's own
+ * finite-difference gradient (no mfoil). If these agree at <1e-9 rel,
+ * the analytic chain is internally consistent and the remaining floor
+ * against the CS reference is a scirocco-mfoil primal divergence.
+ * If they disagree, the analytic chain has a real bug.
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -21,6 +23,15 @@ struct Force {
     double cl, cd, cm;
 };
 
+/**
+ * @brief Solve the airfoil at the given conditions and return force
+ * coefficients.
+ * @param alpha Angle of attack in degrees.
+ * @param Ma Mach number.
+ * @param Re Reynolds number.
+ * @param foil_x_override Optional override for foil surface coordinates.
+ * @return Force coefficients {cl, cd, cm}.
+ */
 static Force solveAt(double alpha, double Ma, double Re,
                      const MatrixXd* foil_x_override = nullptr) {
     Scirocco foil("0012", 100);
@@ -47,11 +58,16 @@ static Force solveAt(double alpha, double Ma, double Re,
     return {s.post.cl, s.post.cd, s.post.cm};
 }
 
+/**
+ * @brief Entry point: compares analytic sensitivities against FD for alpha and
+ *        shape perturbations.
+ * @return 0 on success.
+ */
 int main() {
-    // -- Alpha FD vs analytic ----------------------------------------------
+    /* -- Alpha FD vs analytic ---------------------------------------------- */
     std::cout << "=== Alpha FD vs analytic (Re=1e6, alpha=3) ===\n";
     {
-        // Analytic
+        /* Analytic */
         Scirocco foil("0012", 100);
         foil.SetOper(3.0, -1.0, 1e6, 0.0);
         foil.Solve();
@@ -62,7 +78,7 @@ int main() {
         std::cout << "Analytic: dcl=" << a_dcl << " dcd=" << a_dcd
                   << " dcm=" << a_dcm << "\n";
 
-        // FD with several step sizes
+        /* FD with several step sizes */
         for (double h : {1e-3, 1e-4, 1e-5, 1e-6}) {
             auto fp = solveAt(3.0 + h, 0.0, 1e6);
             auto fm = solveAt(3.0 - h, 0.0, 1e6);
@@ -78,7 +94,8 @@ int main() {
         }
     }
 
-    // -- Shape FD at node 20, dim 0 (worst rel case) ------------------------
+    /* -- Shape FD at node 20, dim 0 (worst rel case) ------------------------
+     */
     std::cout << "\n=== Shape FD at node 20 dim 0 vs analytic (Re=1e6, "
                  "alpha=3) ===\n";
     {
@@ -91,11 +108,11 @@ int main() {
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        // Snapshot foil.x BEFORE solve so FD perturbations have a clean
-        // baseline
+        /* Snapshot foil.x BEFORE solve so FD perturbations have a clean
+         * baseline */
         MatrixXd x_base = s.foil.x.leftCols(s.foil.N);
-        // For consistency with the sensitivity test, run RecomputeArcLength
-        // (matches its convention)
+        /* For consistency with the sensitivity test, run RecomputeArcLength
+         * (matches its convention) */
         RecomputeArcLength(s);
         SolveViscous(s);
         CalcForce(s);

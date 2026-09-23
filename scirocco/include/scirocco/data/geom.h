@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,8 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_DATA_GEOM_H
-#define SCIROCCO_DATA_GEOM_H
+#pragma once
 
 #include <string>
 
@@ -37,17 +36,15 @@
 
 namespace scirocco {
 
-// Geometry data
+/** @brief Geometry data */
 struct Geom {
-    double chord = 1.0;           // Chord length
-    double wakelen = 1.0;         // Wake extent length, in chords
-    int npoint = 0;               // Number of geometry representation points
-    std::string name = "noname";  // Airfoil name, e.g. "NACA 0012"
-    MatrixXd xpoint;              // Point coordinates [2 x npoint]
-    Vector2d xref{0.25, 0.0};     // Moment reference point
-    double hTE = 0.0;             // Trailing edge gap height
+    double chord = 1.0;   /**< Chord length */
+    double wakelen = 1.0; /**< Wake extent length, in chords */
+    int npoint = 0;       /**< Number of geometry representation points */
+    std::string name = "noname"; /**< Airfoil name, e.g. "NACA 0012" */
+    MatrixXd xpoint;             /**< Point coordinates [2 x npoint] */
+    Vector2d xref{0.25, 0.0};    /**< Moment reference point */
+    double hTE = 0.0;            /**< Trailing edge gap height */
 };
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_DATA_GEOM_H

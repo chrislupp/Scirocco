@@ -434,9 +434,11 @@ def calc_force(M):
         cl_alpha += cpbar*(sind(alpha)*dxv[0] - cosd(alpha)*dxv[1])*np.pi/180
         cm += cp1*dx1nds/3 + cp1*dx2nds/6 + cp2*dx1nds/6 + cp2*dx2nds/3
         cdpi = cdpi + dz*cpbar
-        cl /= chord; cm /= chord**2; cdpi /= chord
-        M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
-        M.post.cm, M.post.cdpi = cm, cdpi
+    # Normalize the completed pressure integrals and their linearizations once.
+    cl /= chord; cl_ue /= chord; cl_alpha /= chord
+    cm /= chord**2; cdpi /= chord
+    M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
+    M.post.cm, M.post.cdpi = cm, cdpi
   
     # viscous contributions
     cd, cdf = 0, 0
@@ -959,6 +961,26 @@ def panel_linvortex_velocity(Xj, xi, vdir, onmid):
     return a, b
 
 
+# Stable evaluation of the same vortex streamfunction integral in the far field.
+# The closed form below loses digits by subtracting large first moments when
+# panel length is small relative to distance. Twelve-point Gauss integration
+# of log(distance), with linear basis weights, avoids that cancellation.
+_vortex_quad_t, _vortex_quad_w = np.polynomial.legendre.leggauss(12)
+_vortex_quad_t = 0.5 * (_vortex_quad_t + 1)
+_vortex_quad_w = 0.5 * _vortex_quad_w
+
+
+def panel_linvortex_stream_far(Xj, xi):
+    dx = Xj[:,1] - Xj[:,0]
+    rmid = xi - 0.5*(Xj[:,0] + Xj[:,1])
+    # Freeze only the numerical evaluation branch during complex step.
+    if np.sum(dx.real**2) <= 1e-24 or np.sum(rmid.real**2) <= 16*np.sum(dx.real**2):
+        return None
+    r = xi[:,None] - Xj[:,0,None] - dx[:,None]*_vortex_quad_t
+    values = norm2(dx)/(2*np.pi) * _vortex_quad_w * 0.5*np.log(np.sum(r*r, axis=0))
+    return np.sum((1-_vortex_quad_t)*values), np.sum(_vortex_quad_t*values)
+
+
 #-------------------------------------------------------------------------------
 def panel_linvortex_stream(Xj, xi):
     # calculates the streamfunction coefficients for a linear vortex panel
@@ -970,6 +992,9 @@ def panel_linvortex_stream(Xj, xi):
     # DETAILS
     #   The streamfunction due to the panel is then a*g1 + b*g2
     #   where g1 and g2 are the vortex strengths at the panel endpoints
+
+    far = panel_linvortex_stream_far(Xj, xi)
+    if far is not None: return far
 
     # panel info
     t, n, x, z, d, r1, r2, theta1, theta2 = panel_info(Xj, xi)
@@ -1023,6 +1048,29 @@ def panel_constsource_velocity(Xj, xi, vdir):
     return a
 
 
+def panel_source_stream_far(Xj, xi, linear):
+    dx = Xj[:,1]-Xj[:,0]
+    rmid = xi-0.5*(Xj[:,0]+Xj[:,1])
+    if np.sum(dx.real**2) <= 1e-24 or np.sum(rmid.real**2) <= 16*np.sum(dx.real**2):
+        return None
+    length = norm2(dx)
+    t = dx/length
+    n = np.array([-t[1], t[0]])
+    r = xi-Xj[:,0]
+    x, z = np.dot(r,t), np.dot(r,n)
+    theta1, theta2 = atan2(z,x), atan2(z,x-length)
+    if not linear and abs(np.real(theta1+theta2)-np.pi) <= 1e-12:
+        return None  # retain the original convention on its branch cut
+    theta = atan2(z,x-_vortex_quad_t*length)
+    if linear:
+        theta = np.where(theta.real < 0, theta+2*np.pi, theta)
+        shift = 0
+    else:
+        shift = -0.25 if np.real(theta1+theta2) > np.pi else 0.75
+    values = length*_vortex_quad_w*(theta/(2*np.pi)+shift)
+    return np.sum((1-_vortex_quad_t)*values), np.sum(_vortex_quad_t*values)
+
+
 #-------------------------------------------------------------------------------
 def panel_constsource_stream(Xj, xi):
     # calculates the streamfunction coefficient for a constant source panel
@@ -1035,6 +1083,9 @@ def panel_constsource_stream(Xj, xi):
     #   The streamfunction due to the panel is then a*s
     #   where s is the panel source strength
   
+    far = panel_source_stream_far(Xj, xi, False)
+    if far is not None: return sum(far)
+
     # panel info
     t, n, x, z, d, r1, r2, theta1, theta2 = panel_info(Xj, xi)
     
@@ -1101,6 +1152,9 @@ def panel_linsource_stream(Xj, xi):
     # DETAILS
     #   The streamfunction due to the panel is then a*s1 + b*s2
     #   where s1 and s2 are the source strengths at the panel endpoints
+
+    far = panel_source_stream_far(Xj, xi, True)
+    if far is not None: return far
 
     # panel info
     t, n, x, z, d, r1, r2, theta1, theta2 = panel_info(Xj, xi)

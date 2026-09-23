@@ -24,6 +24,7 @@ find_package(Eigen3 REQUIRED)
 # Source files
 set(SCIROCCO_SOURCES
     src/spline.cpp
+    src/spline_deriv.cpp
     src/geometry.cpp
     src/paneling.cpp
     src/panel_influence.cpp
@@ -95,17 +96,22 @@ if(SCIROCCO_BUILD_TESTS)
     find_package(hdf5 CONFIG QUIET)
     if(NOT hdf5_FOUND)
         find_package(HDF5 COMPONENTS CXX QUIET)
-        if(HDF5_FOUND AND NOT TARGET hdf5_cpp-shared)
-            add_library(hdf5_cpp-shared INTERFACE IMPORTED)
-            set_target_properties(hdf5_cpp-shared PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
-                INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
-            )
+        if(HDF5_FOUND)
+            if(NOT TARGET hdf5_cpp-shared)
+                add_library(hdf5_cpp-shared INTERFACE IMPORTED)
+                set_target_properties(hdf5_cpp-shared PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${HDF5_CXX_INCLUDE_DIRS}"
+                    INTERFACE_LINK_LIBRARIES "${HDF5_CXX_LIBRARIES}"
+                )
+            endif()
             set(hdf5_FOUND TRUE)
         endif()
     endif()
     if(GTest_FOUND)
         include(GoogleTest)
+        add_executable(scirocco_solver_strategy_tests tests/solver_strategy_test.cpp)
+        target_link_libraries(scirocco_solver_strategy_tests scirocco GTest::gtest_main)
+        gtest_discover_tests(scirocco_solver_strategy_tests)
     endif()
     if(GTest_FOUND AND hdf5_FOUND)
         message(STATUS "Found HDF5")
@@ -113,12 +119,15 @@ if(SCIROCCO_BUILD_TESTS)
         # --- Default suite: primal + end-to-end adjoint coverage ---
 
         add_executable(scirocco_tests
+            tests/vortex_stream_test.cpp
             tests/spline_test.cpp
             tests/geometry_test.cpp
             tests/mfoil_reference_test.cpp
         )
         target_link_libraries(scirocco_tests scirocco GTest::gtest_main hdf5_cpp-shared)
         target_compile_definitions(scirocco_tests PRIVATE
+            SOURCE_STREAM_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/source_stream_reference.txt"
+            VORTEX_STREAM_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/vortex_stream_reference.txt"
             MFOIL_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/mfoil_reference.h5"
         )
         gtest_discover_tests(scirocco_tests)
@@ -145,6 +154,21 @@ if(SCIROCCO_BUILD_TESTS)
         )
         gtest_discover_tests(scirocco_sensitivity_ref_tests)
 
+        add_executable(scirocco_gradient_contract_tests tests/gradient_contract_test.cpp)
+        target_link_libraries(scirocco_gradient_contract_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_gradient_contract_tests PRIVATE
+            GRADIENT_CONTRACT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/gradient_contract_reference.h5")
+        gtest_discover_tests(scirocco_gradient_contract_tests)
+
+        add_executable(scirocco_remaining_gradient_tests tests/remaining_gradient_test.cpp)
+        target_link_libraries(scirocco_remaining_gradient_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_remaining_gradient_tests PRIVATE
+            REMAINING_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/remaining_gradient_reference.h5"
+            HIGH_PRECISION_GRADIENT_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/high_precision_gradient_reference.txt")
+        gtest_discover_tests(scirocco_remaining_gradient_tests)
+
         # Ping tests: scirocco analytic vs mfoil-CS Jacobian references.
         add_executable(scirocco_ping_tests tests/ping_test.cpp)
         target_link_libraries(scirocco_ping_tests
@@ -152,6 +176,21 @@ if(SCIROCCO_BUILD_TESTS)
         target_compile_definitions(scirocco_ping_tests PRIVATE
             PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/ping_reference.h5")
         gtest_discover_tests(scirocco_ping_tests)
+
+        # Geometric chain tests: closed-form forward chains
+        # (DFoilSDFoilXCumulative, DSstagDFoilX, DWakeSDFoilX, DXiDFoilX,
+        # DWgapDFoilX, DWakeXDFoilX) validated against complex-step references
+        # in geom_chain_reference.h5. Promoted into the default suite once all
+        # chains validated at 1e-10 rel / 2e-11 abs.
+        add_executable(scirocco_viscous_chain_tests
+            tests/viscous_chain_test.cpp
+        )
+        target_link_libraries(scirocco_viscous_chain_tests
+            scirocco GTest::gtest_main hdf5_cpp-shared)
+        target_compile_definitions(scirocco_viscous_chain_tests PRIVATE
+            GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
+        )
+        gtest_discover_tests(scirocco_viscous_chain_tests)
 
         # --- Opt-in: chain-piece sensitivity debug tests ---
         # These isolate which link of the adjoint chain is broken when a
@@ -168,17 +207,6 @@ if(SCIROCCO_BUILD_TESTS)
             target_compile_definitions(scirocco_sensitivity_tests PRIVATE
                 SENSITIVITY_PING_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/sensitivity_ping_reference.h5")
             gtest_discover_tests(scirocco_sensitivity_tests)
-
-            # Phase 1 geometric chain tests
-            add_executable(scirocco_viscous_chain_tests
-                tests/viscous_chain_test.cpp
-            )
-            target_link_libraries(scirocco_viscous_chain_tests
-                scirocco GTest::gtest_main hdf5_cpp-shared)
-            target_compile_definitions(scirocco_viscous_chain_tests PRIVATE
-                GEOM_CHAIN_REFERENCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/geom_chain_reference.h5"
-            )
-            gtest_discover_tests(scirocco_viscous_chain_tests)
 
             # Phase 2 residual partial tests
             add_executable(scirocco_viscous_residual_tests

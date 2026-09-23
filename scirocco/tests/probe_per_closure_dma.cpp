@@ -1,6 +1,8 @@
-// Phase B diagnostic: ping each per-closure _dMa helper against 4th-order
-// FD on Ma at fixed U. Reports worst rel error per closure across all
-// stations to localize which _dMa has a bug.
+/**
+ * @brief Phase B diagnostic: ping each per-closure _dMa helper against
+ * 4th-order FD on Ma at fixed U. Reports worst rel error per closure across all
+ * stations to localize which _dMa has a bug.
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -17,19 +19,19 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// The _dMa helpers + ComputeThermoMaDeriv live in an anonymous namespace
-// in boundary_layer.cpp, so they're not callable from outside. We mirror
-// them here as a temporary harness — declare extern for the ones that
-// are static, OR re-derive them inline by calling Get<X>(perturbed param)
-// directly.
-//
-// Strategy: per closure, compute analytic via small re-implementation that
-// matches the production helper, AND compute FD by perturbing state.oper.Ma
-// + calling InitThermo + calling the public Get<X>(U, param).
-//
-// This validates that the production Get<X>_dMa formulas (which we cannot
-// call directly) match FD. Since they're inline in ComputeStationLinMa,
-// any mismatch surfaces at the higher level.
+/* The _dMa helpers + ComputeThermoMaDeriv live in an anonymous namespace
+ * in boundary_layer.cpp, so they're not callable from outside. We mirror
+ * them here as a temporary harness — declare extern for the ones that
+ * are static, OR re-derive them inline by calling Get<X>(perturbed param)
+ * directly.
+ *
+ * Strategy: per closure, compute analytic via small re-implementation that
+ * matches the production helper, AND compute FD by perturbing state.oper.Ma
+ * + calling InitThermo + calling the public Get<X>(U, param).
+ *
+ * This validates that the production Get<X>_dMa formulas (which we cannot
+ * call directly) match FD. Since they're inline in ComputeStationLinMa,
+ * any mismatch surfaces at the higher level. */
 
 struct PingStats {
     std::string name;
@@ -53,14 +55,14 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
     for (int node = 0; node < Nsys; ++node) {
         Vector4d U = s.glob.U.col(node);
         double xi = (node < N) ? s.isol.xi(node) : s.isol.xi(node);
-        // Use a per-surface param (turb flag depends on node)
+        /* Use a per-surface param (turb flag depends on node) */
         Param p = param0;
         if (node < static_cast<int>(s.vsol.turb.size())) {
             p.turb = s.vsol.turb[node];
         }
         p.wake = (node >= N);
 
-        // 4-pt central FD
+        /* 4-pt central FD */
         auto eval_at = [&](double Ma_pert) {
             s.oper.Ma = Ma_pert;
             InitThermo(s);
@@ -72,7 +74,8 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
         double f_m2 = eval_at(Ma0 - 2 * h);
         double fd = (-f_p2 + 8 * f_p1 - 8 * f_m1 + f_m2) / (12 * h);
 
-        // Restore baseline before computing analytic (we need baseline param)
+        /* Restore baseline before computing analytic (we need baseline param)
+         */
         s.oper.Ma = Ma0;
         InitThermo(s);
         Param p_now = s.param;
@@ -81,14 +84,14 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
         }
         p_now.wake = (node >= N);
 
-        // For now we only run the FD path; analytic comes from the
-        // production code via ComputeStationLinMa accumulation, which is
-        // tested at the ResidualLin level in probe_drv_dma. Here we use
-        // the FD value to localize which CLOSURE'S Ma chain is causing
-        // the ResidualLin bug — we print FD curves at each node + closure
-        // for the user to spot.
-        // (Skip per-station analytic isolation for now.)
-        double an = 0;  // placeholder
+        /* For now we only run the FD path; analytic comes from the
+         * production code via ComputeStationLinMa accumulation, which is
+         * tested at the ResidualLin level in probe_drv_dma. Here we use
+         * the FD value to localize which CLOSURE'S Ma chain is causing
+         * the ResidualLin bug — we print FD curves at each node + closure
+         * for the user to spot.
+         * (Skip per-station analytic isolation for now.) */
+        double an = 0; /* placeholder */
         double err = std::abs(an - fd);
         if (err > stats.max_abs) {
             stats.max_abs = err;
@@ -102,12 +105,17 @@ PingStats run_ping(const std::string& name, FoilState& s, PrimalFn primal) {
             if (rel > stats.max_rel) stats.max_rel = rel;
         }
     }
-    // Restore state
+    /* Restore state */
     s.oper.Ma = Ma0;
     s.param = param0;
     return stats;
 }
 
+/**
+ * @brief Entry point: probes each public closure's FD ∂/∂Ma profile across all
+ *        stations and reports the worst-magnitude node per closure.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -117,14 +125,14 @@ int main() {
     s.param.verb = 0;
     SolveViscous(s);
 
-    // Probe each public closure's FD profile across all stations. Compare
-    // the FD profile against what ComputeStationLinMa thinks each station
-    // should contribute, station-by-station.
-    //
-    // The simplest closure-level diagnostic: for each closure X, dump the
-    // FD ∂X/∂Ma at each station. We compare those numbers against the
-    // analytic formula by inspecting the relevant section of
-    // ComputeStationLinMa source by hand.
+    /* Probe each public closure's FD profile across all stations. Compare
+     * the FD profile against what ComputeStationLinMa thinks each station
+     * should contribute, station-by-station.
+     *
+     * The simplest closure-level diagnostic: for each closure X, dump the
+     * FD ∂X/∂Ma at each station. We compare those numbers against the
+     * analytic formula by inspecting the relevant section of
+     * ComputeStationLinMa source by hand. */
 
     auto getH = [](const Vector4d& U, const Param& p, double) {
         return GetH(U).value;
@@ -174,7 +182,7 @@ int main() {
 
     std::vector<std::pair<std::string, double>> closure_fd_max;
     auto dump_closure = [&](const std::string& name, auto fn) {
-        // For each station compute FD ∂X/∂Ma.
+        /* For each station compute FD ∂X/∂Ma. */
         int N = s.foil.N;
         int Nw = s.wake.N;
         int Nsys = N + Nw;

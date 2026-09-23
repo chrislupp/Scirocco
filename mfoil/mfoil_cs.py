@@ -53,8 +53,9 @@ def _patched_TE_info(X):
     hTE = -s[0] * t[1] + s[1] * t[0]
     dtdx = t1[0] * t2[1] - t2[0] * t1[1]
     p = s / _mfoil_module.norm2(s)
-    # Use np.real() instead of abs() — sign is fixed by geometry convention
-    tcp = np.real(t[0] * p[1] - t[1] * p[0])
+    # Differentiate abs(cross) on its real-base branch; retain its imaginary part.
+    cross = t[0] * p[1] - t[1] * p[0]
+    tcp = (1 if np.real(cross) >= 0 else -1) * cross
     tdp = np.dot(t, p)
     return t, hTE, dtdx, tcp, tdp
 
@@ -88,6 +89,8 @@ def _patched_panel_info(Xj, xi):
 # Patched panel functions: use .real for r < ep comparisons and theta < 0
 # ---------------------------------------------------------------------------
 def _patched_panel_linvortex_stream(Xj, xi):
+    far = _mfoil_module.panel_linvortex_stream_far(Xj, xi)
+    if far is not None: return far
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     ep = 1e-9
     logr1 = 0. if (np.real(r1) < ep) else np.log(r1)
@@ -113,6 +116,8 @@ def _patched_panel_constsource_velocity(Xj, xi, vdir=None):
 
 
 def _patched_panel_constsource_stream(Xj, xi):
+    far = _mfoil_module.panel_source_stream_far(Xj, xi, False)
+    if far is not None: return sum(far)
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     ep = 1e-9
     logr1, theta1, theta2 = (0, np.pi, np.pi) if (np.real(r1) < ep) else (np.log(r1), theta1, theta2)
@@ -125,6 +130,8 @@ def _patched_panel_constsource_stream(Xj, xi):
 
 
 def _patched_panel_linsource_stream(Xj, xi):
+    far = _mfoil_module.panel_source_stream_far(Xj, xi, True)
+    if far is not None: return far
     t, n, x, z, d, r1, r2, theta1, theta2 = _patched_panel_info(Xj, xi)
     if np.real(theta1) < 0:
         theta1 = theta1 + 2 * np.pi
@@ -250,6 +257,22 @@ def _patched_update_state(M):
     _mfoil_module.vprint(M.param, 2, '  state update: under-relaxation = %.5f' % (omega))
     M.glob.U += omega * M.glob.dU
     M.oper.alpha += omega * M.glob.dalpha
+
+    # Preserve the original Python post-update projections and wake rebuild.
+    # The old CS wrapper omitted these, changing the real model in trim mode.
+    for si in range(3):
+        hk_min = 1.00005 if si == 2 else 1.02
+        param = _mfoil_module.build_param(M, si)
+        for j in M.vsol.Is[si]:
+            _mfoil_module.station_param(M, param, j)
+            hk, _ = _mfoil_module.get_Hk(M.glob.U[:, j], param)
+            if np.real(hk) < hk_min:
+                M.glob.U[1, j] += 2 * (hk_min - hk) * M.glob.U[1, j]
+    for i in It:
+        if np.real(M.glob.U[2, i]) < 0:
+            M.glob.U[2, i] = 0.1 * ctmax
+    if abs(np.real(omega * M.glob.dalpha)) > 1e-10:
+        _mfoil_module.rebuild_isol(M)
 
 
 # ---------------------------------------------------------------------------
@@ -537,9 +560,11 @@ def _patched_calc_force(M):
         cl_alpha += cpbar * (_mfoil_module.sind(alpha) * dxv[0] - _mfoil_module.cosd(alpha) * dxv[1]) * np.pi / 180
         cm += cp1 * dx1nds / 3 + cp1 * dx2nds / 6 + cp2 * dx1nds / 6 + cp2 * dx2nds / 3
         cdpi = cdpi + dz * cpbar
-        cl /= chord; cm /= chord**2; cdpi /= chord
-        M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
-        M.post.cm, M.post.cdpi = cm, cdpi
+    # Match the real Python pressure integral, including its linearizations.
+    cl /= chord; cl_ue /= chord; cl_alpha /= chord
+    cm /= chord**2; cdpi /= chord
+    M.post.cl, M.post.cl_ue, M.post.cl_alpha = cl, cl_ue, cl_alpha
+    M.post.cm, M.post.cdpi = cm, cdpi
 
     cd, cdf = dt(0), dt(0)
     if M.oper.viscous:
@@ -950,3 +975,9 @@ def complex_step_mode():
 
 # Re-export everything from mfoil
 from mfoil import *
+
+
+# Preserve Python mfoil.spline2d itself; only extend its SciPy primitive to
+# complex abscissae. See complex_spline.py for the interpolation equations.
+from complex_spline import cs_cubic_spline
+_mfoil_module.CubicSpline = cs_cubic_spline

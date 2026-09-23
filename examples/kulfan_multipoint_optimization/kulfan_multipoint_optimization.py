@@ -27,9 +27,8 @@ Architecture
                            └─→ [AirfoilArea] ─→ area
 
 Each analysis component has its own RemoteExplicitComponent connected to
-its own scirocco_server process. SLSQP sees a vector alpha DV (length N)
-and N independent Cl equality constraints alongside the shared geometry
-DVs.
+its own scirocco_server process. IPOPT sees one alpha DV per point and N
+independent Cl equality constraints alongside the shared geometry DVs.
 
 Usage
 -----
@@ -55,7 +54,7 @@ DESIGN_POINTS = [
     # name        target_cl   Re      Ma   weight
     ("low_cl",       0.30,   1.0e6,  0.0,    1.0),
     ("mid_cl",       0.50,   1.0e6,  0.0,    1.5),
-    ("high_cl",      0.70,   1.0e6,  0.0,    1.0),
+    ("high_cl",      0.80,   1.0e6,  0.0,    1.0),
 ]
 N_POINTS = len(DESIGN_POINTS)
 
@@ -281,6 +280,39 @@ def _set_baseline_inputs(prob, cst_u, cst_l, alphas):
         prob.set_val(f"analysis_{i}.Ma", float(ma))
 
 
+def _initialize_alphas_at_targets(prob, cst_u, cst_l):
+    """Newton-match each design point's lift on the initial geometry."""
+    alphas = np.full(N_POINTS, 5.0)
+    _set_baseline_inputs(prob, cst_u, cst_l, alphas)
+
+    lift_outputs = [f"analysis_{i}.cl" for i in range(N_POINTS)]
+    alpha_inputs = [f"analysis_{i}.alpha" for i in range(N_POINTS)]
+
+    for _ in range(5):
+        prob.run_model()
+        errors = np.array([
+            float(prob.get_val(output)[0]) - DESIGN_POINTS[i][1]
+            for i, output in enumerate(lift_outputs)
+        ])
+        if np.max(np.abs(errors)) < 1e-4:
+            print(f"  Lift-feasible initial alphas: {alphas}")
+            return
+
+        totals = prob.compute_totals(of=lift_outputs, wrt=alpha_inputs)
+        for i, (output, alpha_input) in enumerate(
+            zip(lift_outputs, alpha_inputs)
+        ):
+            slope = float(totals[output, alpha_input][0, 0])
+            if abs(slope) < 1e-8:
+                raise RuntimeError(
+                    f"Cannot initialize {alpha_input}: dCl/dalpha is zero"
+                )
+            alphas[i] = np.clip(alphas[i] - errors[i] / slope, -2.0, 10.0)
+            prob.set_val(alpha_input, alphas[i])
+
+    raise RuntimeError("Could not match initial lift targets in five iterations")
+
+
 # ---------------------------------------------------------------------------
 # Examples
 # ---------------------------------------------------------------------------
@@ -377,8 +409,7 @@ def example_optimization(geometry_channel, analysis_channels):
     )
 
     prob.setup()
-    _set_baseline_inputs(prob, cst_u_init, cst_l_init,
-                         alphas=[5.0] * N_POINTS)
+    _initialize_alphas_at_targets(prob, cst_u_init, cst_l_init)
 
     print("\n" + "=" * 72)
     print(f"Multipoint optimization: minimize Σ w_i·Cd_i across {N_POINTS} "
@@ -405,8 +436,13 @@ def example_optimization(geometry_channel, analysis_channels):
             "hessian_approximation": "limited-memory",
         },
     )
-    optimizer.solve()
+    results = optimizer.solve()
     optimizer.print_results()
+    if not results["success"]:
+        raise RuntimeError(
+            f"IPOPT failed with status {results['return_status']}; "
+            "no optimization result will be plotted"
+        )
 
     cst_u_opt = prob.get_val("cst_upper").copy()
     cst_l_opt = prob.get_val("cst_lower").copy()

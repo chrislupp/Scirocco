@@ -96,12 +96,19 @@ double NacaT(double x, double tmax) {
     return t0 * (tmax / 0.2);
 }
 
-// Least-squares fit of CST upper-surface coefficients to a target
-// half-thickness profile y_target(psi) with te_offset accounted for, so the
-// fitted Bernstein polynomial S(psi) satisfies
-//
-//   C(psi) · S(psi) + psi · te_offset ≈ y_target(psi).
-//
+/**
+ * @brief Least-squares fit of CST upper-surface coefficients to a target
+ * half-thickness profile y_target(psi) with te_offset accounted for, so the
+ * fitted Bernstein polynomial S(psi) satisfies
+ *
+ *   C(psi) · S(psi) + psi · te_offset ≈ y_target(psi).
+ *
+ * @param n_cst Number of CST coefficients.
+ * @param te_offset Trailing-edge thickness offset.
+ * @param psi_samples Sample points in [0, 1].
+ * @param y_samples Target half-thickness values at psi_samples.
+ * @return Fitted CST coefficient vector of length n_cst.
+ */
 VectorXd FitCstSurface(int n_cst, double te_offset,
                        const std::vector<double>& psi_samples,
                        const std::vector<double>& y_samples) {
@@ -116,22 +123,24 @@ VectorXd FitCstSurface(int n_cst, double te_offset,
     for (int j = 0; j < M; ++j) {
         const double psi = psi_samples[j];
         const double one_minus = 1.0 - psi;
-        const double C = std::sqrt(psi) * one_minus;  // N1=0.5, N2=1.0
+        const double C = std::sqrt(psi) * one_minus; /* N1=0.5, N2=1.0 */
         for (int i = 0; i < n_cst; ++i) {
             A(j, i) = C * binom(i) * std::pow(psi, i) *
                       std::pow(one_minus, order - i);
         }
         b(j) = y_samples[j] - psi * te_offset;
     }
-    // Normal equations (well-conditioned for small n_cst on a uniform sample)
+    /* Normal equations (well-conditioned for small n_cst on a uniform sample)
+     */
     return (A.transpose() * A).ldlt().solve(A.transpose() * b);
 }
 
-}  // namespace
+} /* namespace */
 
-// ---------------------------------------------------------------------------
-// Basic invariants
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Basic invariants
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, SetupShapesAreConsistent) {
     scirocco::KulfanDiscipline disc;
@@ -154,9 +163,10 @@ TEST(KulfanDisciplineTest, OddNpanelRejected) {
                  std::invalid_argument);
 }
 
-// ---------------------------------------------------------------------------
-// LE / TE invariants
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   LE / TE invariants
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, LeadingAndTrailingEdgeAtChordEndpoints) {
     scirocco::KulfanDiscipline disc;
@@ -174,28 +184,29 @@ TEST(KulfanDisciplineTest, LeadingAndTrailingEdgeAtChordEndpoints) {
 
     const int N = disc.npanel() / 2;
     const int npoint = disc.npoint();
-    // LE at index N (shared)
+    /* LE at index N (shared) */
     EXPECT_NEAR(outputs.at("x")(N), 0.0, 1e-14);
     EXPECT_NEAR(outputs.at("x")(npoint + N), 0.0, 1e-14);
-    // TE at indices 0 (lower) and 2N (upper)
+    /* TE at indices 0 (lower) and 2N (upper) */
     EXPECT_NEAR(outputs.at("x")(0), 1.0, 1e-12);
     EXPECT_NEAR(outputs.at("x")(npoint + 0), 0.0, 1e-12);
     EXPECT_NEAR(outputs.at("x")(2 * N), 1.0, 1e-12);
     EXPECT_NEAR(outputs.at("x")(npoint + 2 * N), 0.0, 1e-12);
 }
 
-// ---------------------------------------------------------------------------
-// NACA-0012 reproduction via least-squares CST fit
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   NACA-0012 reproduction via least-squares CST fit
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
     const int n_cst = 8;
     const int npanel = 200;
 
-    // NACA-0012 has a small open TE; account for it via te_upper / te_lower.
-    const double te_thk = NacaT(1.0, 0.12);  // half-thickness at psi = 1
+    /* NACA-0012 has a small open TE; account for it via te_upper / te_lower. */
+    const double te_thk = NacaT(1.0, 0.12); /* half-thickness at psi = 1 */
 
-    // Sample the NACA-0012 thickness on a dense grid for the fit
+    /* Sample the NACA-0012 thickness on a dense grid for the fit */
     const int n_fit = 200;
     std::vector<double> psi_samples(n_fit), y_upper_samples(n_fit),
         y_lower_samples(n_fit);
@@ -203,9 +214,9 @@ TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
         const double psi = static_cast<double>(j) / (n_fit - 1);
         psi_samples[j] = psi;
         y_upper_samples[j] = NacaT(psi, 0.12);
-        // y_lower(psi) = -C·S_l + psi·te_lower (with te_lower = -te_thk)
-        // and we want y_lower = -NacaT (mirrored). Internally the discipline
-        // computes -C·S_l, so we fit S_l against +NacaT(psi).
+        /* y_lower(psi) = -C·S_l + psi·te_lower (with te_lower = -te_thk)
+           and we want y_lower = -NacaT (mirrored). Internally the discipline
+           computes -C·S_l, so we fit S_l against +NacaT(psi). */
         y_lower_samples[j] = NacaT(psi, 0.12);
     }
 
@@ -227,7 +238,7 @@ TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
 
     disc.Compute(inputs, outputs);
 
-    // Reference: NACA-0012 generated by the scirocco helper.
+    /* Reference: NACA-0012 generated by the scirocco helper. */
     scirocco::Geom ref;
     scirocco::NacaPoints(ref, "0012");
     ASSERT_EQ(ref.npoint, disc.npoint());
@@ -239,15 +250,16 @@ TEST(KulfanDisciplineTest, Naca0012ReproductionViaCstFit) {
         const double dy = outputs.at("x")(npoint + i) - ref.xpoint(1, i);
         max_err = std::max(max_err, std::sqrt(dx * dx + dy * dy));
     }
-    // Order-7 (n_cst=8) CST captures NACA-0012 to well under 1e-3 with the
-    // open-TE convention. Tighter tolerances need more coefficients.
+    /* Order-7 (n_cst=8) CST captures NACA-0012 to well under 1e-3 with the
+       open-TE convention. Tighter tolerances need more coefficients. */
     EXPECT_LT(max_err, 1e-3);
 }
 
-// ---------------------------------------------------------------------------
-// Bernstein positivity: positive CPs → positive thickness everywhere, not
-// just at panel nodes. Cross-check on a dense intermediate-ψ grid.
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Bernstein positivity: positive CPs → positive thickness everywhere, not
+   just at panel nodes. Cross-check on a dense intermediate-ψ grid.
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
     const int n_cst = 6;
@@ -259,9 +271,9 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
     RunLifecycle(disc, BuildOptions(n_cst, n_cst, npanel, 0.0, 0.0), inputs,
                  outputs, partials);
 
-    // Wildly non-uniform but strictly positive coefficients (the kind a
-    // cubic spline interpolant could overshoot through). Bernstein basis
-    // should still produce a non-negative interpolant everywhere.
+    /* Wildly non-uniform but strictly positive coefficients (the kind a
+       cubic spline interpolant could overshoot through). Bernstein basis
+       should still produce a non-negative interpolant everywhere. */
     std::vector<double> raw = {0.30, 0.05, 0.40, 0.02, 0.35, 0.04};
     auto& up = inputs.at("cst_upper");
     auto& lo = inputs.at("cst_lower");
@@ -271,9 +283,9 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
     }
     disc.Compute(inputs, outputs);
 
-    // Panel nodes: lower y must be ≤ upper y (and at the LE / TE they're
-    // equal). Walk over the lower-then-upper layout: for each chord station
-    // q ∈ [0, N], lower is at index (N − q), upper is at index (N + q).
+    /* Panel nodes: lower y must be ≤ upper y (and at the LE / TE they're
+       equal). Walk over the lower-then-upper layout: for each chord station
+       q ∈ [0, N], lower is at index (N − q), upper is at index (N + q). */
     const int N = disc.npanel() / 2;
     const int npoint = disc.npoint();
     for (int q = 1; q < N; ++q) {
@@ -282,8 +294,8 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
         EXPECT_GT(y_u, y_l) << "Thickness non-positive at q=" << q;
     }
 
-    // Dense intermediate-ψ cross-check by re-evaluating the closed-form CST
-    // expression with the same coefficients, on 5000 uniform ψ samples.
+    /* Dense intermediate-ψ cross-check by re-evaluating the closed-form CST
+       expression with the same coefficients, on 5000 uniform ψ samples. */
     auto binom = [](int n, int i) {
         if (i < 0 || i > n) return 0.0;
         if (i > n - i) i = n - i;
@@ -309,15 +321,16 @@ TEST(KulfanDisciplineTest, PositiveCpsGivePositiveThicknessEverywhere) {
             S += raw[i] * binoms[i] * std::pow(psi, i) *
                  std::pow(one_minus, order - i);
         }
-        const double thk = C * S;  // upper has +C·S, lower has -C·S
+        const double thk = C * S; /* upper has +C·S, lower has -C·S */
         min_thk = std::min(min_thk, thk);
     }
     EXPECT_GE(min_thk, 0.0);
 }
 
-// ---------------------------------------------------------------------------
-// Analytical partials match central FD
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Analytical partials match central FD
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
     scirocco::KulfanDiscipline disc;
@@ -330,7 +343,7 @@ TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
     const int n_l = disc.n_cst_lower();
     const int npoint = disc.npoint();
 
-    // Non-trivial baseline
+    /* Non-trivial baseline */
     std::vector<double> raw_u = {0.20, 0.18, 0.16, 0.20, 0.18, 0.16};
     std::vector<double> raw_l = {0.18, 0.16, 0.14, 0.18, 0.16, 0.14};
     auto& up = inputs.at("cst_upper");
@@ -379,10 +392,11 @@ TEST(KulfanDisciplineTest, PartialsMatchCentralFD) {
     EXPECT_LT(max_err_l, 1e-8);
 }
 
-// ---------------------------------------------------------------------------
-// Smoothness output: D_i = A_{i+2} − 2 A_{i+1} + A_i, with constant
-// linear partials. Verify both the values and the [1, −2, 1] Jacobian.
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Smoothness output: D_i = A_{i+2} − 2 A_{i+1} + A_i, with constant
+   linear partials. Verify both the values and the [1, −2, 1] Jacobian.
+   ---------------------------------------------------------------------------
+ */
 
 TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
     scirocco::KulfanDiscipline disc;
@@ -400,7 +414,7 @@ TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
 
     disc.Compute(inputs, outputs);
 
-    // Values match the closed-form second differences.
+    /* Values match the closed-form second differences. */
     for (int i = 0; i < n_u - 2; ++i) {
         const double expected = raw_u[i + 2] - 2.0 * raw_u[i + 1] + raw_u[i];
         EXPECT_NEAR(outputs.at("smoothness_upper")(i), expected, 1e-14);
@@ -410,7 +424,7 @@ TEST(KulfanDisciplineTest, SmoothnessSecondDifferenceAndPartials) {
         EXPECT_NEAR(outputs.at("smoothness_lower")(i), expected, 1e-14);
     }
 
-    // Constant Jacobian — verify the [1, −2, 1] band exactly.
+    /* Constant Jacobian — verify the [1, −2, 1] band exactly. */
     disc.ComputePartials(inputs, partials);
     const auto& d_su = partials[{"smoothness_upper", "cst_upper"}];
     for (int i = 0; i < n_u - 2; ++i) {

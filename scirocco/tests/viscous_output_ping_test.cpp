@@ -22,15 +22,16 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// ============================================================================
-// Phase 3 ping: validate viscous output partials cl_V, cm_V, cd_V populated
-// by CalcForceLin against finite differences inside scirocco's own CalcForce.
-//
-// Self-contained — no HDF5/mfoil reference needed. The Squire-Young cd_U
-// derivation in CalcForceLin is the only new analytic chain at this phase.
-// cl_V/cm_V are aliases of cl_ue/cm_ue already validated by other tests but
-// we sanity-check the structural mapping too.
-// ============================================================================
+/**
+ * @brief Phase 3 ping: validate viscous output partials cl_V, cm_V, cd_V
+ * populated by CalcForceLin against finite differences inside scirocco's own
+ * CalcForce.
+ *
+ * Self-contained — no HDF5/mfoil reference needed. The Squire-Young cd_U
+ * derivation in CalcForceLin is the only new analytic chain at this phase.
+ * cl_V/cm_V are aliases of cl_ue/cm_ue already validated by other tests but
+ * we sanity-check the structural mapping too.
+ */
 class ViscousOutputPingTest : public ::testing::Test {
    protected:
     Scirocco foil_{"0012", 100};
@@ -53,14 +54,14 @@ TEST_F(ViscousOutputPingTest, ClVMatchesClUe) {
     int N = s.foil.N;
     int Nsys = static_cast<int>(s.glob.U.cols());
     ASSERT_EQ(s.post.cl_V.size(), 4 * Nsys);
-    // cl_V[4*i + 3] == cl_ue[i] for foil nodes; other entries zero.
+    /* cl_V[4*i + 3] == cl_ue[i] for foil nodes; other entries zero. */
     for (int i = 0; i < N; ++i) {
         EXPECT_DOUBLE_EQ(s.post.cl_V(4 * i + 3), s.post.cl_ue(i));
         EXPECT_DOUBLE_EQ(s.post.cl_V(4 * i + 0), 0.0);
         EXPECT_DOUBLE_EQ(s.post.cl_V(4 * i + 1), 0.0);
         EXPECT_DOUBLE_EQ(s.post.cl_V(4 * i + 2), 0.0);
     }
-    // Wake entries: all zero.
+    /* Wake entries: all zero. */
     for (int i = N; i < Nsys; ++i) {
         for (int k = 0; k < 4; ++k) {
             EXPECT_DOUBLE_EQ(s.post.cl_V(4 * i + k), 0.0);
@@ -83,9 +84,11 @@ TEST_F(ViscousOutputPingTest, CmVMatchesCmUe) {
     }
 }
 
-// CS reference: ∂cd/∂Uw at iw computed via mfoil_cs complex-step on
-// calc_force at perturbed glob.U[:, iw]. Reference file:
-// extract_viscous_output_ping_cs.py.
+/**
+ * @brief CS reference: ∂cd/∂Uw at iw computed via mfoil_cs complex-step on
+ * calc_force at perturbed glob.U[:, iw]. Reference file:
+ * extract_viscous_output_ping_cs.py.
+ */
 TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
     auto& s = foil_.GetState();
     int Nsys = static_cast<int>(s.glob.U.cols());
@@ -94,7 +97,7 @@ TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
     ASSERT_FALSE(s.vsol.Is[2].empty());
     int iw = s.vsol.Is[2].back();
 
-    // Load CS reference
+    /* Load CS reference */
     H5::H5File file(VISCOUS_OUTPUT_PING_REFERENCE_FILE, H5F_ACC_RDONLY);
     int iw_ref = 0;
     file.openDataSet("iw").read(&iw_ref, H5::PredType::NATIVE_INT);
@@ -102,7 +105,7 @@ TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
     std::vector<double> cd_U_cs(4);
     file.openDataSet("cd_U").read(cd_U_cs.data(), H5::PredType::NATIVE_DOUBLE);
 
-    // Compare analytic to mfoil-CS at machine precision.
+    /* Compare analytic to mfoil-CS at machine precision. */
     for (int k = 0; k < 4; ++k) {
         double got = s.post.cd_U(k);
         double ref = cd_U_cs[k];
@@ -112,7 +115,7 @@ TEST_F(ViscousOutputPingTest, CdUMatchesCS) {
                             << " abs=" << err;
     }
 
-    // cd_V must be sparse at the end-of-wake column iw only.
+    /* cd_V must be sparse at the end-of-wake column iw only. */
     ASSERT_EQ(s.post.cd_V.size(), 4 * Nsys);
     for (int i = 0; i < Nsys; ++i) {
         for (int k = 0; k < 4; ++k) {
@@ -136,14 +139,15 @@ TEST_F(ViscousOutputPingTest, DcdDxPartialIsZero) {
            "→ dcd/dx_partial must be exactly zero.";
 }
 
-// ============================================================================
-// Phase 5: ∂R_V/∂alpha FD validation. Holds U and foil.x fixed, perturbs
-// alpha, recomputes the global system, takes (R(α+h) - R(α-h))/(2h) and
-// compares to analytic DRVDAlpha. Central FD at h=1e-6 → noise ~1e-12.
-// ============================================================================
-// CS reference: ∂R_V/∂alpha at fixed glob.U via mfoil_cs complex-step.
-// Reference matches scirocco's ue-based convention (StagPointMove with
-// fixed glob.U[3]).
+/**
+ * @brief Phase 5: ∂R_V/∂alpha FD validation. Holds U and foil.x fixed,
+ * perturbs alpha, recomputes the global system, takes (R(α+h) - R(α-h))/(2h)
+ * and compares to analytic DRVDAlpha. Central FD at h=1e-6 → noise ~1e-12.
+ *
+ * CS reference: ∂R_V/∂alpha at fixed glob.U via mfoil_cs complex-step.
+ * Reference matches scirocco's ue-based convention (StagPointMove with
+ * fixed glob.U[3]).
+ */
 TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesCS) {
     auto& s = foil_.GetState();
     int Nsys = s.glob.Nsys;
@@ -177,13 +181,13 @@ TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesCS) {
     EXPECT_LE(max_rel, 1e-9);
 }
 
-// ============================================================================
-// Phase 4: forward/reverse adjoint consistency.
-//   For any b, g ∈ ℝ^{4·Nsys}:
-//     bᵀ · (R_V^{-1} g) == (R_V^{-T} b)ᵀ · g
-//   Pure linear-algebra identity. Tests the transpose solve through
-//   SolveViscousAdjoint vs. SparseLU's forward solve.
-// ============================================================================
+/**
+ * @brief Phase 4: forward/reverse adjoint consistency.
+ *   For any b, g ∈ ℝ^{4·Nsys}:
+ *     bᵀ · (R_V^{-1} g) == (R_V^{-T} b)ᵀ · g
+ *   Pure linear-algebra identity. Tests the transpose solve through
+ *   SolveViscousAdjoint vs. SparseLU's forward solve.
+ */
 TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
     auto& s = foil_.GetState();
     StoreAdjointFactorization(s);
@@ -194,15 +198,15 @@ TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
     VectorXd b = VectorXd::Random(NN);
     VectorXd g = VectorXd::Random(NN);
 
-    VectorXd y = s.glob.lu_factorization->solve(g);  // R_V^{-1} g
-    VectorXd lambda = SolveViscousAdjoint(s, b);     // R_V^{-T} b
+    VectorXd y = s.glob.lu_factorization->solve(g); /* R_V^{-1} g */
+    VectorXd lambda = SolveViscousAdjoint(s, b);    /* R_V^{-T} b */
 
     double lhs = b.dot(y);
     double rhs = lambda.dot(g);
     double abs_err = std::abs(lhs - rhs);
     double rel_err = abs_err / std::max(std::abs(lhs), 1.0);
 
-    // Linear-algebra identity should hold near machine precision.
+    /* Linear-algebra identity should hold near machine precision. */
     EXPECT_LE(rel_err, 1e-12)
         << "Forward/reverse adjoint inconsistency: lhs=" << lhs
         << " rhs=" << rhs << " abs=" << abs_err << " rel=" << rel_err;

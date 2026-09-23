@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,28 +28,25 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_FORCES_H
-#define SCIROCCO_CORE_FORCES_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
 
 namespace scirocco {
 
-// Calculate force and moment coefficients
-// INPUT:
-//   state : FoilState with solution (inviscid or viscous)
-// OUTPUT:
-//   state.post : Filled with cl, cd, cm, cp, etc.
+/**
+ * @brief Calculate force and moment coefficients
+ * @param state FoilState with solution (inviscid or viscous); state.post is
+ *              filled with cl, cd, cm, cp, etc. on return
+ */
 void CalcForce(FoilState& state);
 
-// Compute distributions (theta, delta*, cf, etc.)
-// INPUT:
-//   state : FoilState with viscous solution
-// OUTPUT:
-//   state.post : Distribution quantities calculated
+/**
+ * @brief Compute distributions (theta, delta*, cf, etc.)
+ * @param state FoilState with viscous solution; state.post distribution
+ *              quantities are calculated on return
+ */
 void GetDistributions(FoilState& state);
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_FORCES_H

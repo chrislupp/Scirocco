@@ -216,7 +216,7 @@ TEST_F(SensitivityPingTest, PanelLinSourceVelocityDeriv_Xj) {
 
 TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
     int nfail = 0;
-    // ConstSourceStream xi
+    /* ConstSourceStream xi */
     {
         auto d = PanelConstSourceStreamDeriv(kXj, kXi);
         VectorXd cs = readVector(*file_, "panels/ConstSourceStream/val_xi");
@@ -229,7 +229,7 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
             }
         }
     }
-    // LinVortexVelocity xi
+    /* LinVortexVelocity xi */
     {
         auto d = PanelLinVortexVelocityDeriv(kXj, kXi);
         MatrixXd cs_a = readMatrix(*file_, "panels/LinVortexVelocity/a_xi");
@@ -247,7 +247,7 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
             }
         }
     }
-    // ConstSourceVelocity xi
+    /* ConstSourceVelocity xi */
     {
         auto d = PanelConstSourceVelocityDeriv(kXj, kXi);
         MatrixXd cs = readMatrix(*file_, "panels/ConstSourceVelocity/val_xi");
@@ -260,7 +260,7 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
             }
         }
     }
-    // LinSourceStream xi
+    /* LinSourceStream xi */
     {
         auto d = PanelLinSourceStreamDeriv(kXj, kXi);
         VectorXd cs_a = readVector(*file_, "panels/LinSourceStream/a_xi");
@@ -276,7 +276,7 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
             }
         }
     }
-    // LinSourceVelocity xi
+    /* LinSourceVelocity xi */
     {
         auto d = PanelLinSourceVelocityDeriv(kXj, kXi);
         MatrixXd cs_a = readMatrix(*file_, "panels/LinSourceVelocity/a_xi");
@@ -297,9 +297,9 @@ TEST_F(SensitivityPingTest, AllInfluenceDeriv_xi) {
     std::cout << "AllInfluenceDeriv_xi: " << nfail << " failures\n";
 }
 
-// ---------------------------------------------------------------------------
-// Force partials: dcl/dx at fixed gamma, NACA 2412 α=5
-// ---------------------------------------------------------------------------
+/**
+ * @brief Force partials: dcl/dx at fixed gamma, NACA 2412 α=5
+ */
 TEST_F(SensitivityPingTest, ForcePartials_cl) {
     Scirocco foil("2412", 80);
     foil.SetOper(5.0);
@@ -333,9 +333,9 @@ TEST_F(SensitivityPingTest, ForcePartials_cl) {
               << " failures, max|.|=" << max_abs << "\n";
 }
 
-// ---------------------------------------------------------------------------
-// Inviscid Ma=0 and Re-inviscid sanity (no FD)
-// ---------------------------------------------------------------------------
+/**
+ * @brief Inviscid Ma=0 and Re-inviscid sanity (no FD)
+ */
 TEST_F(SensitivityPingTest, InviscidMachSensitivityZero) {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 0.0, 0.0);

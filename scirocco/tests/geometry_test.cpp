@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -43,7 +43,7 @@ TEST(GeometryTest, NacaPoints4Digit) {
     EXPECT_GT(geom.npoint, 0);
     EXPECT_NEAR(geom.chord, 1.0, 1e-6);
 
-    // Points should form a closed loop (first and last x should be similar)
+    /* Points should form a closed loop (first and last x should be similar) */
     EXPECT_NEAR(geom.xpoint(0, 0), geom.xpoint(0, geom.npoint - 1), 0.1);
 }
 
@@ -54,12 +54,12 @@ TEST(GeometryTest, NacaPointsCambered) {
     EXPECT_EQ(geom.name, "NACA 2412");
     EXPECT_GT(geom.npoint, 0);
 
-    // Cambered airfoil should have y != 0 at max camber location
+    /* Cambered airfoil should have y != 0 at max camber location */
     double max_camber = 0.0;
     for (int i = 0; i < geom.npoint; ++i) {
         max_camber = std::max(max_camber, std::abs(geom.xpoint(1, i)));
     }
-    EXPECT_GT(max_camber, 0.01);  // Should have some thickness/camber
+    EXPECT_GT(max_camber, 0.01); /* Should have some thickness/camber */
 }
 
 TEST(GeometryTest, SetCoords) {
@@ -75,7 +75,7 @@ TEST(GeometryTest, SetCoords) {
 }
 
 TEST(GeometryTest, TEInfoClosed) {
-    // Create closed airfoil (TE gap = 0)
+    /* Create closed airfoil (TE gap = 0) */
     MatrixXd x(2, 5);
     x << 1.0, 0.5, 0.0, 0.5, 1.0, 0.0, -0.1, 0.0, 0.1, 0.0;
 
@@ -85,7 +85,7 @@ TEST(GeometryTest, TEInfoClosed) {
 }
 
 TEST(GeometryTest, TEInfoBlunt) {
-    // Create blunt TE airfoil
+    /* Create blunt TE airfoil */
     MatrixXd x(2, 5);
     x << 1.0, 0.5, 0.0, 0.5, 1.0, -0.01, -0.1, 0.0, 0.1, 0.01;
 

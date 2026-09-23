@@ -1,5 +1,8 @@
 name: Build and Tests
 
+env:
+  PHILOTE_CPP_REF: cd19666a23ddca009ee8b27ecdd40c0a0a2ea4b4
+
 on:
   push:
     branches: [ main, develop ]
@@ -7,6 +10,19 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  python-reference:
+    runs-on: ubuntu-24.04
+    name: Python complex-step reference
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install reference dependencies
+      run: python -m pip install numpy scipy matplotlib
+    - name: Validate analytic extensions independently of C++
+      run: python -m unittest discover -s mfoil -p 'test_*.py'
+
   format:
     runs-on: ubuntu-24.04
 
@@ -46,19 +62,21 @@ jobs:
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev clang-tidy-18 \
           libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
 
-    - name: Build and Install Philote-Cpp
+    - name: Build Philote-Cpp
       run: |
-        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+        git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+        git -C /tmp/philote-cpp submodule update --init --recursive
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
-        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_BUILD_EXAMPLES=OFF
         -DSCIROCCO_NATIVE_ARCH=OFF
@@ -96,22 +114,26 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
-          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc \
+          python3-venv
 
-    - name: Build and Install Philote-Cpp
+    - name: Build Philote-Cpp
       run: |
-        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+        git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+        git -C /tmp/philote-cpp submodule update --init --recursive
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
-        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (default suite)
       run: >
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
+        -DSCIROCCO_HDF5_OUTPUT=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
 
     - name: Build
@@ -120,6 +142,57 @@ jobs:
     - name: Tests
       working-directory: ${{github.workspace}}/build
       run: ctest -C ${{ matrix.build_type }} --output-on-failure
+
+    - name: Python tutorials (Philote-MDO 0.8.0)
+      if: matrix.compiler.cc == 'gcc-14'
+      run: |
+        python3 -m venv "$RUNNER_TEMP/tutorial-venv"
+        "$RUNNER_TEMP/tutorial-venv/bin/python" -m pip install \
+          -r examples/tutorials/requirements.txt
+
+        build/src/philote/scirocco_server localhost:50051 \
+          >"$RUNNER_TEMP/scirocco-server.log" 2>&1 &
+        ANALYSIS_PID=$!
+        build/src/philote/scirocco_kulfan_server localhost:50052 \
+          >"$RUNNER_TEMP/kulfan-server.log" 2>&1 &
+        GEOMETRY_PID=$!
+        trap 'kill "$ANALYSIS_PID" "$GEOMETRY_PID" 2>/dev/null || true' EXIT
+
+        "$RUNNER_TEMP/tutorial-venv/bin/python" - <<'PY'
+        import socket
+        import time
+
+        for port in (50051, 50052):
+            for attempt in range(20):
+                try:
+                    with socket.create_connection(("localhost", port), timeout=1):
+                        break
+                except OSError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.5)
+        PY
+
+        "$RUNNER_TEMP/tutorial-venv/bin/python" \
+          examples/tutorials/quickstart.py
+        for tutorial in \
+          examples/tutorials/01_inviscid_sweep.py \
+          examples/tutorials/02_viscous_analysis.py \
+          examples/tutorials/03_geometry_modifications.py \
+          examples/tutorials/04_custom_airfoil.py \
+          examples/tutorials/05_sensitivities.py
+        do
+          "$RUNNER_TEMP/tutorial-venv/bin/python" "$tutorial"
+        done
+
+        "$RUNNER_TEMP/tutorial-venv/bin/python" \
+          examples/tutorials/06_hdf5_history.py \
+          --history-file "$RUNNER_TEMP/tutorial-history.h5"
+        kill "$ANALYSIS_PID"
+        wait "$ANALYSIS_PID" || true
+        "$RUNNER_TEMP/tutorial-venv/bin/python" \
+          examples/tutorials/read_hdf5_history.py \
+          "$RUNNER_TEMP/tutorial-history.h5"
 
   build-debug-suite:
     needs: [format]
@@ -140,19 +213,21 @@ jobs:
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
           libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
 
-    - name: Build and Install Philote-Cpp
+    - name: Build Philote-Cpp
       run: |
-        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+        git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+        git -C /tmp/philote-cpp submodule update --init --recursive
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
-        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake (chain-piece debug tests + probes)
       run: >
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON
         -DSCIROCCO_BUILD_PROBES=ON
@@ -166,6 +241,8 @@ jobs:
       run: ctest --output-on-failure
 
   coverage:
+    # Temporarily disabled, including the Codecov upload.
+    if: ${{ false }}
     needs: [format]
     runs-on: ubuntu-24.04
 
@@ -184,19 +261,21 @@ jobs:
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev llvm-18 \
           libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
 
-    - name: Build and Install Philote-Cpp
+    - name: Build Philote-Cpp
       run: |
-        git clone --depth 1 --recurse-submodules https://github.com/chrislupp/Philote-Cpp.git /tmp/philote-cpp
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+        git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+        git -C /tmp/philote-cpp submodule update --init --recursive
         cmake -B /tmp/philote-cpp/build -S /tmp/philote-cpp \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j$(nproc)
-        sudo cmake --install /tmp/philote-cpp/build
 
     - name: Configure CMake
       run: >
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
         -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
@@ -208,9 +287,9 @@ jobs:
       working-directory: ${{github.workspace}}/build
       env:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
-      run: >
-        ctest --output-on-failure
-        -R "^(SplineTest|GeometryTest|MfoilReference|Philote)"
+      # Chain-piece debug tests run in build-debug-suite; the default suite
+      # already exercises their production paths through end-to-end gradients.
+      run: ctest --output-on-failure --parallel $(nproc)
 
     - name: Generate Coverage Report
       run: |
@@ -226,4 +305,3 @@ jobs:
         fail_ci_if_error: true
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-

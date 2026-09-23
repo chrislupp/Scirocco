@@ -1,17 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-# Multi-stage build for the Scirocco and Kulfan gRPC discipline servers.
+# Kulfan geometry discipline gRPC server (port 50052).
 #
-# Build either runtime image by selecting the target:
-#   docker build --target scirocco-server -t scirocco-server:dev .
-#   docker build --target kulfan-server   -t kulfan-server:dev   .
+#   docker build --target kulfan-server -t kulfan-server:dev \
+#     -f docker/kulfan-server/Dockerfile .
 
 ARG DEBIAN_BASE=debian:stable-slim
-ARG PHILOTE_REPO=https://github.com/chrislupp/Philote-Cpp.git
-ARG PHILOTE_REF=v0.5.0
+ARG PHILOTE_REPO=https://github.com/MDO-Standards/Philote-Cpp.git
+ARG PHILOTE_REF=cd19666a23ddca009ee8b27ecdd40c0a0a2ea4b4
 
 # ---------------------------------------------------------------------------
-# builder: compile PhiloteCpp + Scirocco, install binaries to /out
+# builder: compile PhiloteCpp + Scirocco, copy binary to /out
 # ---------------------------------------------------------------------------
 FROM ${DEBIAN_BASE} AS builder
 
@@ -33,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         protobuf-compiler-grpc \
     && rm -rf /var/lib/apt/lists/*
 
-# Build and install PhiloteCpp (not vendored in this repo).
+# Build PhiloteCpp (not vendored in this repo) and consume its build tree.
 RUN git clone --recurse-submodules "${PHILOTE_REPO}" /src/Philote-Cpp \
     && git -C /src/Philote-Cpp checkout "${PHILOTE_REF}" \
     && git -C /src/Philote-Cpp submodule update --init --recursive \
@@ -41,8 +40,7 @@ RUN git clone --recurse-submodules "${PHILOTE_REPO}" /src/Philote-Cpp \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TESTS=OFF \
         -DBUILD_EXAMPLES=OFF \
-    && cmake --build /src/Philote-Cpp/build -j"$(nproc)" \
-    && cmake --install /src/Philote-Cpp/build
+    && cmake --build /src/Philote-Cpp/build -j"$(nproc)"
 
 # Build Scirocco. -DSCIROCCO_NATIVE_ARCH=OFF keeps the image portable across
 # x86-64 hosts (matches CI).
@@ -52,16 +50,16 @@ RUN cmake -S /src/scirocco -B /src/scirocco/build \
         -DSCIROCCO_BUILD_TESTS=OFF \
         -DSCIROCCO_BUILD_EXAMPLES=OFF \
         -DSCIROCCO_NATIVE_ARCH=OFF \
+        -DPhiloteCpp_DIR=/src/Philote-Cpp/build \
     && cmake --build /src/scirocco/build -j"$(nproc)" \
-        --target scirocco_server scirocco_kulfan_server \
+        --target scirocco_kulfan_server \
     && mkdir -p /out/bin \
-    && cp /src/scirocco/build/src/philote/scirocco_server /out/bin/ \
     && cp /src/scirocco/build/src/philote/scirocco_kulfan_server /out/bin/
 
 # ---------------------------------------------------------------------------
-# runtime-base: shared runtime image with only the .so deps the servers need
+# runtime
 # ---------------------------------------------------------------------------
-FROM ${DEBIAN_BASE} AS runtime-base
+FROM ${DEBIAN_BASE} AS kulfan-server
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -72,26 +70,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --shell /usr/sbin/nologin app
 
+COPY --from=builder /out/bin/scirocco_kulfan_server /usr/local/bin/scirocco_kulfan_server
+
 USER app
 WORKDIR /home/app
-
-# ---------------------------------------------------------------------------
-# scirocco-server: Scirocco discipline gRPC server on :50051
-# ---------------------------------------------------------------------------
-FROM runtime-base AS scirocco-server
-
-COPY --from=builder /out/bin/scirocco_server /usr/local/bin/scirocco_server
-
-EXPOSE 50051
-ENTRYPOINT ["/usr/local/bin/scirocco_server"]
-CMD ["0.0.0.0:50051"]
-
-# ---------------------------------------------------------------------------
-# kulfan-server: Kulfan geometry discipline gRPC server on :50052
-# ---------------------------------------------------------------------------
-FROM runtime-base AS kulfan-server
-
-COPY --from=builder /out/bin/scirocco_kulfan_server /usr/local/bin/scirocco_kulfan_server
 
 EXPOSE 50052
 ENTRYPOINT ["/usr/local/bin/scirocco_kulfan_server"]

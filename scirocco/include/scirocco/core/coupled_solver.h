@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,41 +28,72 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_COUPLED_SOLVER_H
-#define SCIROCCO_CORE_COUPLED_SOLVER_H
+#pragma once
 
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
 
 namespace scirocco {
 
-// Solve viscous problem (top-level)
+/**
+ * @brief Solve viscous problem (top-level)
+ * @param state Foil state to solve in place.
+ */
 void SolveViscous(FoilState& state);
 
-// Coupled Newton iteration loop
+/**
+ * @brief Coupled Newton iteration loop
+ * @param state Foil state iterated to convergence.
+ */
 void SolveCoupled(FoilState& state);
 
-// Build global residual system
+/**
+ * @brief Build global residual system
+ * @param state Foil state whose global residual is assembled.
+ */
 void BuildGlobSys(FoilState& state);
 
-// Solve the global linear system
+/**
+ * @brief Solve the global linear system
+ * @param state Foil state whose global linear system is solved.
+ */
 void SolveGlob(FoilState& state);
 
-// Update state with under-relaxation
+/** Try a scaled dogleg step, leaving the iterate unchanged on rejection. */
+bool TakeTrustRegionStep(FoilState& state);
+
+/** Retry on the target's frozen wake using adaptive angle/Cl continuation.
+ * On failure, result's physical state is unchanged. */
+bool SolveContinuation(const FoilState& target, FoilState& result);
+
+/**
+ * @brief Update state with under-relaxation
+ * @param state Foil state updated in place.
+ */
 void UpdateState(FoilState& state);
 
-// Calculate ue sensitivities w.r.t. mass sources
+/**
+ * @brief Calculate ue sensitivities w.r.t. mass sources
+ * @param state Foil state in which ue sensitivities are computed.
+ */
 void CalcUeM(FoilState& state);
 
-// Rebuild ue sensitivities after stagnation point move
+/**
+ * @brief Rebuild ue sensitivities after stagnation point move
+ * @param state Foil state in which ue sensitivities are rebuilt.
+ */
 void RebuildUeM(FoilState& state);
 
-// Rebuild inviscid solution after alpha change
+/**
+ * @brief Rebuild inviscid solution after alpha change
+ * @param state Foil state in which the inviscid solution is rebuilt.
+ */
 void RebuildIsol(FoilState& state);
 
-// Store SparseLU factorization for adjoint solves (post-convergence)
+/**
+ * @brief Store SparseLU factorization for adjoint solves (post-convergence)
+ * @param state Foil state whose R_V factorization is stored.
+ */
 void StoreAdjointFactorization(FoilState& state);
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_COUPLED_SOLVER_H

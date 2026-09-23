@@ -1,0 +1,41 @@
+{
+  "driver_sha256": "7ac05b6ce991b01617990f732e5e0c4303bfcbf854b00df18f58c483d602671f",
+  "strategy": null,
+  "ptc": 1,
+  "cases": 62,
+  "converged": 62,
+  "seconds": 78.71082842088072,
+  "iterations": 3613,
+  "failures": [],
+  "original": {
+    "cases": 30,
+    "converged": 30
+  },
+  "extended": {
+    "cases": 32,
+    "converged": 32
+  },
+  "recovered": [
+    "paper_alpha_1.9975",
+    "paper_alpha_1.995",
+    "extended_0012_a12_r200000_m0.4",
+    "extended_0012_a15_r200000_m0.4",
+    "extended_0012_a12_r1e+06_m0.4",
+    "extended_0012_a15_r1e+06_m0.4",
+    "extended_2412_a8_r200000_m0.4",
+    "extended_2412_a12_r200000_m0.4",
+    "extended_2412_a15_r200000_m0.4",
+    "extended_2412_a8_r1e+06_m0",
+    "extended_2412_a8_r1e+06_m0.4",
+    "extended_2412_a12_r1e+06_m0.4",
+    "extended_2412_a15_r1e+06_m0.4"
+  ],
+  "regressed": [],
+  "max_coefficient_differences": {
+    "cl": 7.926992395823618e-14,
+    "cd": 6.140921104957897e-15,
+    "cm": 5.162537064506978e-15
+  },
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "timing_note": "Sequential single-process runs, baseline then final, after builds and tests finished. One timing sample per solver; includes startup and output."
+}

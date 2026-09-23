@@ -1,5 +1,6 @@
 # Scirocco
 
+[![Build](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml/badge.svg)](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
 A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.
@@ -15,6 +16,7 @@ Key capabilities:
 - Compressibility corrections for subsonic flow
 - NACA 4-digit and 5-digit airfoil generation
 - Geometry modification (flaps, camber, derotation)
+- Philote-Cpp gRPC disciplines with OpenMDAO/Python bindings
 
 ## Requirements
 
@@ -25,6 +27,7 @@ Key capabilities:
 Optional:
 - Google Test (for unit tests)
 - HDF5 (for reference validation tests)
+- Protobuf, gRPC, and Philote-Cpp (for the Python/MDO server interface)
 
 ## Building
 
@@ -64,6 +67,44 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Release \
 
 ## Usage
 
+### Python through Philote
+
+The primary Python interface uses
+`philote_mdo.openmdao.RemoteExplicitComponent` to connect OpenMDAO to the
+compiled Scirocco servers. One server creates parameterized Kulfan/CST
+coordinates and the other analyzes them:
+
+```python
+import grpc
+import openmdao.api as om
+from philote_mdo.openmdao import RemoteExplicitComponent
+
+problem = om.Problem()
+problem.model.add_subsystem(
+    "geometry",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50052"),
+        n_cst_upper=6, n_cst_lower=6, npanel=100,
+    ),
+    promotes_inputs=["cst_upper", "cst_lower"],
+    promotes_outputs=["x"],
+)
+problem.model.add_subsystem(
+    "analysis",
+    RemoteExplicitComponent(
+        channel=grpc.insecure_channel("localhost:50051"),
+        naca="0012", npanel=100,
+    ),
+    promotes_inputs=["x"],
+)
+```
+
+Scirocco does not currently ship an in-process `import scirocco` module. See
+the [Python quickstart](https://chrislupp.github.io/Scirocco/docs/getting-started/quickstart)
+for installation, server launch commands, inputs, and a complete first run.
+
+The C++ library remains available directly for native applications:
+
 ### Basic Inviscid Analysis
 
 ```cpp
@@ -98,7 +139,7 @@ std::cout << "Cdp = " << foil.GetCdp() << std::endl;  // pressure drag
 ### Custom Airfoil Coordinates
 
 ```cpp
-Eigen::MatrixXd coords(n, 2);  // n points, columns are x and z
+Eigen::MatrixXd coords(2, n);  // row 0 is x; row 1 is z
 // ... fill coordinates ...
 
 scirocco::Scirocco foil(coords, 199);
@@ -145,6 +186,19 @@ the previous verbose behavior through the internal state:
 
 ```cpp
 foil.GetState().param.verb = 1;
+```
+
+## Optimization examples
+
+- [Single-point viscous CST optimization](examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py): minimize drag at a prescribed lift with an area constraint.
+- [Multipoint CST optimization](examples/cst_range_optimization/README.rst): minimize equally weighted drag at `Cl = 0.55` and `0.70`, with guards at `0.30` and `0.80`. Includes analytic gradients, independent optimality checks, and geometry and convergence plots.
+
+Run the multipoint example from the repository root:
+
+```bash
+python examples/cst_range_optimization/run.py \
+    --binary scirocco/build-philote/src/philote/scirocco_server \
+    --output pa_output/cst_multipoint
 ```
 
 ## API Reference

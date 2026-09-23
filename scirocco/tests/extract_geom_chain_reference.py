@@ -24,6 +24,7 @@ Test case: NACA 0012, 100 panels, alpha=3 (inviscid solve only — no Re).
 """
 
 import sys
+import hashlib
 import os
 import copy
 import time
@@ -204,6 +205,10 @@ def main():
                   f"(elapsed {time.time()-t0:.1f}s)")
 
     with h5py.File(OUTPUT_FILE, 'w') as f:
+        for source in ('mfoil.py', 'mfoil_cs.py', 'complex_spline.py'):
+            source_path = os.path.join(os.path.dirname(__file__), '../../mfoil', source)
+            with open(source_path, 'rb') as source_file:
+                f.attrs[source+'_sha256'] = hashlib.sha256(source_file.read()).hexdigest()
         g = f.create_group('geom_chain')
         g.create_dataset('foil_x', data=foil_x)
         g.create_dataset('foil_s', data=foil_s)

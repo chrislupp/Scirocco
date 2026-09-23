@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -48,9 +48,10 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// ---------------------------------------------------------------------------
-// HDF5 helpers
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * HDF5 helpers
+ * ---------------------------------------------------------------------------
+ */
 template <typename T>
 static T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
@@ -97,9 +98,10 @@ static std::vector<int> readIntVector(H5::H5File& file,
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// Test fixture
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+ * Test fixture
+ * ---------------------------------------------------------------------------
+ */
 class ForwardReferenceTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -136,15 +138,15 @@ class ForwardReferenceTest : public ::testing::Test {
 H5::H5File* ForwardReferenceTest::file_ = nullptr;
 bool ForwardReferenceTest::file_loaded_ = false;
 
-// ===========================================================================
-// ForwardRxComparison
-//
-// Compares C++ BuildGlobSys output (R, R_x, R_U) with mfoil reference
-// at the SAME state U. This isolates forward-code formula differences
-// from converged-state differences.
-// ===========================================================================
+/**
+ * @brief ForwardRxComparison
+ *
+ * Compares C++ BuildGlobSys output (R, R_x, R_U) with mfoil reference
+ * at the SAME state U. This isolates forward-code formula differences
+ * from converged-state differences.
+ */
 TEST_F(ForwardReferenceTest, ForwardRxComparison) {
-    // ---- Load reference data ----
+    /* ---- Load reference data ---- */
     MatrixXd x_base = readMatrix(getFile(), "forward/foil_x");
     VectorXd s_base = readVector(getFile(), "forward/foil_s");
     MatrixXd U_ref = readMatrix(getFile(), "forward/U");
@@ -164,7 +166,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
     int N_ref = static_cast<int>(x_base.cols());
     int Nsys = static_cast<int>(U_ref.cols());
 
-    // ---- Solve in C++ to set up infrastructure ----
+    /* ---- Solve in C++ to set up infrastructure ---- */
     Scirocco foil("0012", N_ref - 1);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
@@ -180,14 +182,14 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
 
     int N = state.foil.N;
 
-    // ---- Report state differences ----
+    /* ---- Report state differences ---- */
     double max_U_diff = (state.glob.U - U_ref).cwiseAbs().maxCoeff();
     double max_xi_diff = (state.isol.xi - xi_ref).cwiseAbs().maxCoeff();
     std::cout << "State comparison (before injection):" << std::endl;
     std::cout << "  Max |U_cpp - U_mfoil| = " << max_U_diff << std::endl;
     std::cout << "  Max |xi_cpp - xi_mfoil| = " << max_xi_diff << std::endl;
 
-    // ---- Inject mfoil's state for clean formula comparison ----
+    /* ---- Inject mfoil's state for clean formula comparison ---- */
     state.glob.U = U_ref;
     state.isol.xi = xi_ref;
     state.vsol.wgap = wgap_ref;
@@ -203,27 +205,27 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
             state.vsol.turb[i] = (turb_int[i] != 0);
     }
 
-    // ---- Rebuild with mfoil state ----
+    /* ---- Rebuild with mfoil state ---- */
     state.glob.realloc = true;
     BuildGlobSys(state);
 
-    // ---- Compare R (residual values) ----
+    /* ---- Compare R (residual values) ---- */
     double max_R_diff = (state.glob.R - R_ref).cwiseAbs().maxCoeff();
     std::cout << "\nResidual comparison (injected state):" << std::endl;
     std::cout << "  Max |R_cpp - R_mfoil| = " << max_R_diff << std::endl;
 
-    // ---- Compare R_x element-by-element ----
+    /* ---- Compare R_x element-by-element ---- */
     MatrixXd R_x_cpp = MatrixXd(state.glob.R_x);
     constexpr double ATOL =
-        1e-10;  // absolute tolerance (filter mfoil 1e-15 hack noise)
-    // RTOL bumped from 1e-10 to 5e-9 for R_U comparison: 5 entries at turbulent
-    // station 4 (Rshape/Rlag derivatives) sit at ~2.5e-9 rel — the natural FP
-    // noise floor for ~50+ cascaded BL-closure operations
-    // (Hk→Hs→cDi→Upwind→...). Formulas match mfoil exactly when inspected
-    // side-by-side; further tightening would catch nothing but FP-ordering
-    // noise. Adjoint tests already cover correctness with stricter tolerances
-    // (Phase 2: 1e-9 abs on residual partials, Phase 7: 1e-4 rel on end-to-end
-    // sensitivities).
+        1e-10; /* absolute tolerance (filter mfoil 1e-15 hack noise) */
+    /* RTOL bumped from 1e-10 to 5e-9 for R_U comparison: 5 entries at turbulent
+     * station 4 (Rshape/Rlag derivatives) sit at ~2.5e-9 rel — the natural FP
+     * noise floor for ~50+ cascaded BL-closure operations
+     * (Hk→Hs→cDi→Upwind→...). Formulas match mfoil exactly when inspected
+     * side-by-side; further tightening would catch nothing but FP-ordering
+     * noise. Adjoint tests already cover correctness with stricter tolerances
+     * (Phase 2: 1e-9 abs on residual partials, Phase 7: 1e-4 rel on end-to-end
+     * sensitivities). */
     constexpr double RTOL = 5e-9;
 
     int nfail_Rx = 0;
@@ -249,7 +251,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
         }
     }
 
-    // Diagnostic: print R_x at transition stations
+    /* Diagnostic: print R_x at transition stations */
     std::cout << "\nC++ assembled R_x at station 4 (rows 12-14):" << std::endl;
     for (int r = 12; r < 15; ++r) {
         for (int c = 0; c < Nsys; ++c) {
@@ -281,7 +283,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
                   << " rel=" << worst_Rx_rel << std::endl;
     }
 
-    // Print all R_x entries with >0.1% error for detailed debugging
+    /* Print all R_x entries with >0.1% error for detailed debugging */
     if (nfail_Rx > 0) {
         std::cout << "\n  All R_x entries with >0.1% error:" << std::endl;
         for (int i = 0; i < 3 * Nsys; ++i) {
@@ -304,7 +306,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
         }
     }
 
-    // ---- Compare R_U element-by-element ----
+    /* ---- Compare R_U element-by-element ---- */
     MatrixXd R_U_cpp = MatrixXd(state.glob.R_U);
     int nfail_RU = 0;
     double worst_RU_rel = 0;
@@ -334,7 +336,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
     if (worst_RU_row >= 0) {
         int sta = worst_RU_row / 3;
         int eq = worst_RU_row % 3;
-        int var = worst_RU_col % 4;  // 0=th, 1=ds, 2=sa, 3=ue
+        int var = worst_RU_col % 4; /* 0=th, 1=ds, 2=sa, 3=ue */
         int node = worst_RU_col / 4;
         const char* var_names[] = {"th", "ds", "sa", "ue"};
         std::cout << "  Worst: row=" << worst_RU_row << " (sta=" << sta
@@ -345,7 +347,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
                   << " rel=" << worst_RU_rel << std::endl;
     }
 
-    // Print R_U entries with >1% error (limit output)
+    /* Print R_U entries with >1% error (limit output) */
     if (nfail_RU > 0) {
         int printed = 0;
         std::cout << "\n  R_U entries with >1% error (first 50):" << std::endl;
@@ -375,7 +377,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
         }
     }
 
-    // ---- Summary ----
+    /* ---- Summary ---- */
     std::cout << "\n=== Summary ===" << std::endl;
     std::cout << "  R_x mismatches: " << nfail_Rx << std::endl;
     std::cout << "  R_U mismatches: " << nfail_RU << std::endl;
@@ -386,12 +388,12 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
         << "R_U has formula differences between C++ and mfoil";
 }
 
-// ===========================================================================
-// PrimalComparison
-//
-// Compares primal quantities that feed into VJP chains:
-// wake.x, wake.t, ue_sigma, sigma_m, gamref, uewiref
-// ===========================================================================
+/**
+ * @brief PrimalComparison
+ *
+ * Compares primal quantities that feed into VJP chains:
+ * wake.x, wake.t, ue_sigma, sigma_m, gamref, uewiref
+ */
 TEST_F(ForwardReferenceTest, PrimalComparison) {
     MatrixXd x_base = readMatrix(getFile(), "forward/foil_x");
     VectorXd s_base = readVector(getFile(), "forward/foil_s");
@@ -414,7 +416,7 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
     int Nw = state.wake.N;
     int Nsys = state.glob.Nsys;
 
-    // Load mfoil primal reference
+    /* Load mfoil primal reference */
     MatrixXd wake_x_ref = readMatrix(getFile(), "primal/wake_x");
     MatrixXd wake_t_ref = readMatrix(getFile(), "primal/wake_t");
     MatrixXd ue_sigma_ref = readMatrix(getFile(), "primal/ue_sigma");
@@ -422,7 +424,7 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
     MatrixXd gamref_ref = readMatrix(getFile(), "primal/gamref");
     MatrixXd uewiref_ref = readMatrix(getFile(), "primal/uewiref");
 
-    // Compare wake geometry
+    /* Compare wake geometry */
     ASSERT_EQ(state.wake.N, static_cast<int>(wake_x_ref.cols()));
     double max_wx = (state.wake.x - wake_x_ref).cwiseAbs().maxCoeff();
     double max_wt = (state.wake.t - wake_t_ref).cwiseAbs().maxCoeff();
@@ -450,12 +452,12 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
         }
     }
 
-    // Compare gamref
+    /* Compare gamref */
     double max_gamref = (state.isol.gamref - gamref_ref).cwiseAbs().maxCoeff();
     std::cout << "\nInviscid:" << std::endl;
     std::cout << "  Max |gamref diff| = " << max_gamref << std::endl;
 
-    // Compare uewiref
+    /* Compare uewiref */
     double max_uewiref =
         (state.isol.uewiref - uewiref_ref).cwiseAbs().maxCoeff();
     std::cout << "  Max |uewiref diff| = " << max_uewiref << std::endl;
@@ -473,7 +475,7 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
         }
     }
 
-    // Compare ue_sigma
+    /* Compare ue_sigma */
     MatrixXd ue_sigma_cpp = state.vsol.ue_sigma;
     std::cout << "\nViscous coupling:" << std::endl;
     std::cout << "  ue_sigma: cpp=" << ue_sigma_cpp.rows() << "x"
@@ -485,7 +487,7 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
         std::cout << "  Max |ue_sigma diff| = " << max_ues << std::endl;
     }
 
-    // Compare sigma_m
+    /* Compare sigma_m */
     MatrixXd sigma_m_cpp = MatrixXd(state.vsol.sigma_m);
     std::cout << "  sigma_m: cpp=" << sigma_m_cpp.rows() << "x"
               << sigma_m_cpp.cols() << " ref=" << sigma_m_ref.rows() << "x"

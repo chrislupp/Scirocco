@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,21 +28,24 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_DATA_PANEL_H
-#define SCIROCCO_DATA_PANEL_H
+#pragma once
+
+#include <limits>
 
 #include "scirocco/config.h"
 
 namespace scirocco {
 
-// Panel data (used for both airfoil and wake)
+enum class ArcLengthMode { Fixed, Spline, Cumulative };
+
+/** @brief Panel data (used for both airfoil and wake) */
 struct Panel {
-    int N = 0;   // Number of nodes
-    MatrixXd x;  // Node coordinates [2 x N]
-    VectorXd s;  // Arclength values at nodes
-    MatrixXd t;  // Tangent vectors dx/ds, dy/ds [2 x N]
+    ArcLengthMode arc_length_mode = ArcLengthMode::Fixed;
+    double tracing_alpha = std::numeric_limits<double>::quiet_NaN();
+    int N = 0;  /**< Number of nodes */
+    MatrixXd x; /**< Node coordinates [2 x N] */
+    VectorXd s; /**< Arclength values at nodes */
+    MatrixXd t; /**< Tangent vectors dx/ds, dy/ds [2 x N] */
 };
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_DATA_PANEL_H

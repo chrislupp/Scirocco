@@ -26,16 +26,6 @@ const config: Config = {
         locales: ["en"],
     },
 
-    stylesheets: [
-        {
-            href: "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css",
-            type: "text/css",
-            integrity:
-                "sha384-nB0miv6/jRmo5RLHO8BIp/8hwC1slNFDuv3VUgI4A7O/lEKmpRgiuNOQI2bRpFB",
-            crossorigin: "anonymous",
-        },
-    ],
-
     presets: [
         [
             "classic",
@@ -43,10 +33,13 @@ const config: Config = {
                 docs: {
                     sidebarPath: "./sidebars.ts",
                     remarkPlugins: [remarkMath],
-                    rehypePlugins: [rehypeKatex],
+                    // Emit only KaTeX's visual HTML. The default also emits a
+                    // MathML copy, which caused equations to appear twice in
+                    // browsers and text extraction when its CSS was blocked.
+                    rehypePlugins: [[rehypeKatex, { output: "html" }]],
                     editUrl:
                         "https://github.com/chrislupp/Scirocco/tree/develop/docs/",
-                    lastVersion: "0.2.0",
+                    lastVersion: "current",
                     versions: {
                         current: {
                             label: "Next",
@@ -55,7 +48,12 @@ const config: Config = {
                 },
                 blog: false,
                 theme: {
-                    customCss: "./src/css/custom.css",
+                    // Bundle KaTeX locally so visual math styling never
+                    // depends on a CDN stylesheet request.
+                    customCss: [
+                        "./node_modules/katex/dist/katex.min.css",
+                        "./src/css/custom.css",
+                    ],
                 },
             } satisfies Preset.Options,
         ],

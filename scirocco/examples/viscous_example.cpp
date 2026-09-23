@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -34,19 +34,23 @@
 
 #include "scirocco/scirocco.h"
 
+/**
+ * @brief Entry point for the scirocco viscous example: NACA 0012 at Re=1e6.
+ * @return 0 on success.
+ */
 int main() {
     std::cout << "=== scirocco Viscous Example: NACA 0012 at Re=1e6 ==="
               << std::endl;
     std::cout << std::endl;
 
-    // Create a NACA 0012 airfoil with 129 panels
+    /* Create a NACA 0012 airfoil with 129 panels */
     scirocco::Scirocco foil("0012", 129);
 
-    // Set Reynolds number for viscous analysis
+    /* Set Reynolds number for viscous analysis */
     double Re = 1.0e6;
-    double Ma = 0.0;  // Incompressible
+    double Ma = 0.0; /* Incompressible */
 
-    // Analyze at different angles of attack
+    /* Analyze at different angles of attack */
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "  Alpha      CL        CD        CDf       CDp       CM"
               << std::endl;
@@ -54,21 +58,21 @@ int main() {
               << std::endl;
 
     for (double alpha = 0.0; alpha <= 10.0; alpha += 2.0) {
-        // Set operating conditions (viscous)
-        // SetOper(alpha, cl, Re, Ma) - use cl=-1 for given alpha
+        /* Set operating conditions (viscous) */
+        /* SetOper(alpha, cl, Re, Ma) - use cl=-1 for given alpha */
         foil.SetOper(alpha, -1.0, Re, Ma);
 
-        // Solve
+        /* Solve */
         bool converged = foil.Solve();
 
-        // Get results
+        /* Get results */
         double cl = foil.GetCl();
         double cd = foil.GetCd();
         double cdf = foil.GetCdf();
         double cdp = foil.GetCdp();
         double cm = foil.GetCm();
 
-        // Print results
+        /* Print results */
         std::cout << std::setw(7) << alpha << "  " << std::setw(8) << cl << "  "
                   << std::setw(8) << cd << "  " << std::setw(8) << cdf << "  "
                   << std::setw(8) << cdp << "  " << std::setw(8) << cm;
@@ -78,7 +82,7 @@ int main() {
         }
         std::cout << std::endl;
 
-        // Debug: check if BL was computed
+        /* Debug: check if BL was computed */
         if (alpha == 0.0) {
             const auto& state = foil.GetState();
             std::cout << "  Debug: Nsys=" << state.glob.Nsys

@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -37,26 +37,26 @@ namespace scirocco {
 
 SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
                               double TEfac, const VectorXd& stgt) {
-    // Get x range for TE detection
+    /* Get x range for TE detection */
     double xmin = points.row(0).minCoeff();
     double xmax = points.row(0).maxCoeff();
 
-    // Spline the input points
+    /* Spline the input points */
     Spline2D pp = Spline2DCreate(points);
 
-    // Create fine sampling for curvature computation
+    /* Create fine sampling for curvature computation */
     const int nfine = 501;
     double smax = pp.X.s(pp.X.s.size() - 1);
     VectorXd s_fine = VectorXd::LinSpaced(nfine, 0.0, smax);
     MatrixXd xy_fine = SplineEval(pp, s_fine);
 
-    // Re-spline fine points
+    /* Re-spline fine points */
     Spline2D pp_fine = Spline2DCreate(xy_fine);
 
     SpacingResult result;
 
     if (stgt.size() == 0) {
-        // Automatic curvature-based spacing
+        /* Automatic curvature-based spacing */
         VectorXd s = pp_fine.X.s;
         VectorXd sk = VectorXd::Zero(nfine);
 
@@ -66,7 +66,7 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
         for (int i = 0; i < nfine - 1; ++i) {
             double ds = s(i + 1) - s(i);
 
-            // Integrate curvature over segment
+            /* Integrate curvature over segment */
             double skint = 0.0;
             for (int q = 0; q < 5; ++q) {
                 double sq = s(i) + xq(q) * ds;
@@ -76,27 +76,28 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
             }
             skint = 0.01 * Ufac + 0.5 * skint * ds;
 
-            // Force TE resolution
+            /* Force TE resolution */
             double xmid = 0.5 * (xy_fine(0, i) + xy_fine(0, i + 1));
             double xx =
-                (xmid - xmin) / (xmax - xmin);  // Close to 1 means at TE
+                (xmid - xmin) / (xmax - xmin); /* Close to 1 means at TE */
             skint += TEfac * 0.5 * std::exp(-100.0 * (1.0 - xx));
 
             sk(i + 1) = sk(i) + skint;
         }
 
-        // Offset by fraction of average to avoid problems with zero curvature
+        /* Offset by fraction of average to avoid problems with zero curvature
+         */
         double sk_avg = sk.sum() / nfine;
         sk = sk.array() + 2.0 * sk_avg;
 
-        // Interpolate to get arc-length values at uniformly spaced sk
-        // Use cubic spline interpolation (matching mfoil's interp1d cubic)
+        /* Interpolate to get arc-length values at uniformly spaced sk
+         * Use cubic spline interpolation (matching mfoil's interp1d cubic) */
         VectorXd sk_target = VectorXd::LinSpaced(N, sk(0), sk(nfine - 1));
 
-        // Create cubic spline: sk -> s (using our 1D spline)
+        /* Create cubic spline: sk -> s (using our 1D spline) */
         CubicSpline1D sk_to_s = Spline1DCreate(sk, s);
 
-        // Evaluate at target sk values
+        /* Evaluate at target sk values */
         VectorXd s_new(N);
         for (int i = 0; i < N; ++i) {
             s_new(i) = sk_to_s.Eval(sk_target(i));
@@ -107,7 +108,7 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
         result.S = stgt;
     }
 
-    // Evaluate points and tangents at final arc-lengths
+    /* Evaluate points and tangents at final arc-lengths */
     result.X = SplineEval(pp_fine, result.S);
     result.XS = SplineTangent(pp_fine, result.S);
 
@@ -115,17 +116,18 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
 }
 
 void RefreshPanelGeometry(Panel& panel) {
+    panel.arc_length_mode = ArcLengthMode::Spline;
     const int N = panel.N;
     if (N < 2) return;
 
-    // Build a 2-D arc-length-parameterized cubic spline through the current
-    // panel nodes. Spline2DCreate keeps the input nodes exactly and iterates
-    // the s parameter values to true arc length.
+    /* Build a 2-D arc-length-parameterized cubic spline through the current
+     * panel nodes. Spline2DCreate keeps the input nodes exactly and iterates
+     * the s parameter values to true arc length. */
     Spline2D spline = Spline2DCreate(panel.x);
     panel.s = spline.X.s;
     panel.t = SplineTangent(spline, panel.s);
 
-    // Normalize tangents (matching MakePanels convention).
+    /* Normalize tangents (matching MakePanels convention). */
     for (int i = 0; i < N; ++i) {
         const double tnorm = panel.t.col(i).norm();
         if (tnorm > 1e-10) {
@@ -136,20 +138,21 @@ void RefreshPanelGeometry(Panel& panel) {
 
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt) {
-    int N = npanel + 1;  // Number of nodes
+    int N = npanel + 1; /* Number of nodes */
 
-    // Use curvature-based spacing (must match mfoil exactly)
-    double Ufac = 2.0;   // Uniformity factor (higher = more uniform)
-    double TEfac = 0.1;  // TE resolution factor (higher = more TE resolution)
+    /* Use curvature-based spacing (must match mfoil exactly) */
+    double Ufac = 2.0;  /* Uniformity factor (higher = more uniform) */
+    double TEfac = 0.1; /* TE resolution factor (higher = more TE resolution) */
 
     SpacingResult spacing = SplineCurvature(geom.xpoint, N, Ufac, TEfac, stgt);
 
     panel.N = N;
+    panel.arc_length_mode = ArcLengthMode::Fixed;
     panel.x = spacing.X;
     panel.s = spacing.S;
     panel.t = spacing.XS;
 
-    // Normalize tangents
+    /* Normalize tangents */
     for (int i = 0; i < N; ++i) {
         double tnorm = panel.t.col(i).norm();
         if (tnorm > 1e-10) {

@@ -1,7 +1,9 @@
-// Per-station ResidualLin.lin_Ma analytic vs FD on Ma. Identifies WHICH
-// station has the analytic chain bug. Once a station is known to be off,
-// the per-closure suspects can be hunted by varying which closures
-// contribute at that station (laminar/turb/simi branch).
+/**
+ * @brief Per-station ResidualLin.lin_Ma analytic vs FD on Ma. Identifies WHICH
+ * station has the analytic chain bug. Once a station is known to be off,
+ * the per-closure suspects can be hunted by varying which closures
+ * contribute at that station (laminar/turb/simi branch).
+ */
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -17,6 +19,12 @@
 using namespace scirocco;
 using namespace Eigen;
 
+/**
+ * @brief Entry point: iterates over all stations on each surface, computes
+ *        analytic lin_Ma and FD lin_Ma from ResidualStation, and reports the
+ *        worst relative error along with a per-station sample table.
+ * @return 0 on success.
+ */
 int main() {
     Scirocco foil("0012", 100);
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
@@ -31,9 +39,9 @@ int main() {
     double Ma0 = s.oper.Ma;
     double h = std::abs(Ma0) * 1e-4;
 
-    // For each non-first station i = 1..N-1 on each surface, compute
-    // ResidualStation analytic lin_Ma AND FD lin_Ma. The first station
-    // (i=0) uses the similarity-station path; skip for now.
+    /* For each non-first station i = 1..N-1 on each surface, compute
+     * ResidualStation analytic lin_Ma AND FD lin_Ma. The first station
+     * (i=0) uses the similarity-station path; skip for now. */
 
     std::cout << "Per-station lin_Ma vs FD on ResidualStation:\n";
     std::cout << "  (analytic via ResidualLin.lin_Ma; FD via "
@@ -48,10 +56,10 @@ int main() {
         if (Is.empty()) continue;
         int Ns = static_cast<int>(Is.size());
         Param param = BuildParam(s, si);
-        // Skip first point (simi or wake-init); just march
+        /* Skip first point (simi or wake-init); just march */
         for (int i = 1; i < Ns; ++i) {
             int ip = i - 1;
-            // Skip transition stations (different residual call)
+            /* Skip transition stations (different residual call) */
             bool tran = (Is[ip] < static_cast<int>(s.vsol.turb.size())) &&
                         (Is[i] < static_cast<int>(s.vsol.turb.size())) &&
                         (s.vsol.turb[Is[ip]] != s.vsol.turb[Is[i]]);
@@ -68,14 +76,14 @@ int main() {
                 Aux(1) = s.vsol.wgap(i);
             }
 
-            // Analytic from ResidualLin
+            /* Analytic from ResidualLin */
             auto res = ResidualStation(param, x, U, Aux);
-            Vector3d lin_Ma_an = res.lin_Ma;  // already Vector3d·Ma
+            Vector3d lin_Ma_an = res.lin_Ma; /* already Vector3d·Ma */
 
-            // FD: perturb Ma + InitThermo on a copy of state's Param,
-            // then call ResidualStation with the perturbed param.
-            // For the FD we need to update param.{KTb, KTl, H0, mu0, rho0,
-            // Minf, gam, cps, muinf} since those are what closures read.
+            /* FD: perturb Ma + InitThermo on a copy of state's Param,
+             * then call ResidualStation with the perturbed param.
+             * For the FD we need to update param.{KTb, KTl, H0, mu0, rho0,
+             * Minf, gam, cps, muinf} since those are what closures read. */
             auto eval_R = [&](double Ma) {
                 FoilState sp = s;
                 sp.oper.Ma = Ma;
@@ -91,7 +99,7 @@ int main() {
             Vector3d dR_dMa_fd = (-Rp2 + 8 * Rp1 - 8 * Rm1 + Rm2) / (12 * h);
             Vector3d lin_Ma_fd = dR_dMa_fd * Ma0;
 
-            // Compare
+            /* Compare */
             for (int eq = 0; eq < 3; ++eq) {
                 double an = lin_Ma_an(eq);
                 double fd = lin_Ma_fd(eq);
@@ -118,8 +126,8 @@ int main() {
     std::cout << "  analytic: [" << worst_an.transpose() << "]\n";
     std::cout << "  FD:       [" << worst_fd.transpose() << "]\n\n";
 
-    // Per-station table: lin_Ma analytic vs FD for first 20 stations of
-    // each surface
+    /* Per-station table: lin_Ma analytic vs FD for first 20 stations of
+     * each surface */
     std::cout << "Sample stations:\n";
     for (int si = 0; si < 3; ++si) {
         const auto& Is = s.vsol.Is[si];

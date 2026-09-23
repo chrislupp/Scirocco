@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -32,6 +32,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <iostream>
 
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/properties/bl_properties.h"
@@ -39,9 +40,9 @@
 namespace scirocco {
 
 int MarchAmplification(FoilState& state, int si) {
-    // Marches amplification equation on surface si
-    // Returns: index of last laminar station before transition (in Is array)
-    // Also updates state.glob.U[2,:] with amplification at laminar stations
+    /* Marches amplification equation on surface si
+     * Returns: index of last laminar station before transition (in Is array)
+     * Also updates state.glob.U[2,:] with amplification at laminar stations */
 
     const auto& Is = state.vsol.Is[si];
     int N = static_cast<int>(Is.size());
@@ -51,7 +52,7 @@ int MarchAmplification(FoilState& state, int si) {
     param.turb = false;
     param.wake = false;
 
-    // No amplification at first station
+    /* No amplification at first station */
     state.glob.U(2, Is[0]) = 0.0;
 
     int i = 1;
@@ -62,7 +63,7 @@ int MarchAmplification(FoilState& state, int si) {
         Vector4d U1 = state.glob.U.col(ip);
         Vector4d U2 = state.glob.U.col(ii);
 
-        // Initialize amp if currently turbulent
+        /* Initialize amp if currently turbulent */
         if (ii < static_cast<int>(state.vsol.turb.size()) &&
             state.vsol.turb[ii]) {
             U2(2) = U1(2) * 1.01;
@@ -70,10 +71,11 @@ int MarchAmplification(FoilState& state, int si) {
 
         double dx = state.isol.xi(ii) - state.isol.xi(ip);
 
-        // Newton iterations for amplification equation
+        /* Newton iterations for amplification equation */
         int nNewton = 20;
-        for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
-            // Amplification rate, averaged
+        int iNewton = 0;
+        for (; iNewton < nNewton; ++iNewton) {
+            /* Amplification rate, averaged */
             StationParam(state, param, ip);
             auto [damp1, damp1_U1] = GetDamp(U1, param);
             StationParam(state, param, ii);
@@ -83,9 +85,9 @@ int MarchAmplification(FoilState& state, int si) {
 
             double Ramp = U2(2) - U1(2) - damp * dx;
 
-            if (std::abs(Ramp) < 1e-12) break;  // Converged
+            if (std::abs(Ramp) < 1e-12) break; /* Converged */
 
-            // Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx
+            /* Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx */
             double Ramp_U2 = 1.0 - 0.5 * damp2_U2(2) * dx;
             double dU = -Ramp / Ramp_U2;
 
@@ -96,35 +98,41 @@ int MarchAmplification(FoilState& state, int si) {
             }
             U2(2) += omega * dU;
         }
+        /* Match mfoil.march_amplification (mfoil.py:2602): warn if the
+         * station Newton ran the full budget without converging. */
+        if (iNewton >= nNewton && state.param.verb >= 1) {
+            std::cerr << "  march amp Newton unconverged at station " << i
+                      << " (surface " << si << ")\n";
+        }
 
-        // Check for transition
+        /* Check for transition */
         if (U2(2) > param.ncrit) {
-            // Transition found - return last laminar station
+            /* Transition found - return last laminar station */
             return i - 1;
         } else {
-            // Store amplification
+            /* Store amplification */
             state.glob.U(2, ii) = U2(2);
         }
 
         ++i;
     }
 
-    // No transition - return last station as laminar
+    /* No transition - return last station as laminar */
     return N - 1;
 }
 
 void UpdateTransition(FoilState& state) {
-    // Updates transition location using current state
-    // Updates turb flags and U[2,:] (amp/ctau) as needed
+    /* Updates transition location using current state
+     * Updates turb flags and U[2,:] (amp/ctau) as needed */
 
-    for (int si = 0; si < 2; ++si) {  // Lower and upper only
+    for (int si = 0; si < 2; ++si) { /* Lower and upper only */
         const auto& Is = state.vsol.Is[si];
         int N = static_cast<int>(Is.size());
         if (N == 0) continue;
 
         Param param = BuildParam(state, si);
 
-        // Find current last laminar station (ilam0)
+        /* Find current last laminar station (ilam0) */
         int ilam0 = -1;
         for (int idx = 0; idx < N; ++idx) {
             int j = Is[idx];
@@ -134,19 +142,19 @@ void UpdateTransition(FoilState& state) {
                 break;
             }
         }
-        if (ilam0 < 0) ilam0 = N - 1;  // All laminar
+        if (ilam0 < 0) ilam0 = N - 1; /* All laminar */
 
-        // Save current sa values (so we don't change them unnecessarily)
+        /* Save current sa values (so we don't change them unnecessarily) */
         VectorXd sa(N);
         for (int idx = 0; idx < N; ++idx) {
             sa(idx) = state.glob.U(2, Is[idx]);
         }
 
-        // March amplification to get new last laminar station
+        /* March amplification to get new last laminar station */
         int ilam = MarchAmplification(state, si);
 
         if (ilam == ilam0) {
-            // No change - restore original sa
+            /* No change - restore original sa */
             for (int idx = 0; idx < N; ++idx) {
                 state.glob.U(2, Is[idx]) = sa(idx);
             }
@@ -154,7 +162,8 @@ void UpdateTransition(FoilState& state) {
         }
 
         if (ilam < ilam0) {
-            // Transition is now earlier: fill in turb between [ilam+1, ilam0]
+            /* Transition is now earlier: fill in turb between [ilam+1, ilam0]
+             */
             param.turb = true;
             StationParam(state, param, Is[ilam + 1]);
             auto [sa0, temp] = GetCttr(state.glob.U.col(Is[ilam + 1]), param);
@@ -176,9 +185,9 @@ void UpdateTransition(FoilState& state) {
                        "negative ctau in UpdateTransition");
                 state.vsol.turb[Is[idx]] = true;
             }
-        } else {  // ilam > ilam0
-            // Transition is now later: mark stations as laminar
-            // Amplification already filled in by march_amplification
+        } else { /* ilam > ilam0 */
+            /* Transition is now later: mark stations as laminar
+             * Amplification already filled in by march_amplification */
             for (int idx = ilam0; idx <= ilam && idx < N; ++idx) {
                 if (Is[idx] < static_cast<int>(state.vsol.turb.size())) {
                     state.vsol.turb[Is[idx]] = false;
@@ -189,27 +198,27 @@ void UpdateTransition(FoilState& state) {
 }
 
 void StoreTransition(FoilState& state, int si, int i) {
-    // Store xi and x transition locations using current vsol.xt
-    // si: surface index (0=lower, 1=upper)
-    // i: station index in Is array (transition is between i-1 and i)
+    /* Store xi and x transition locations using current vsol.xt
+     * si: surface index (0=lower, 1=upper)
+     * i: station index in Is array (transition is between i-1 and i) */
 
     if (si < 2 && i > 0) {
-        double xt = state.vsol.xt;  // Current transition xi location
+        double xt = state.vsol.xt; /* Current transition xi location */
 
         const auto& Is = state.vsol.Is[si];
-        int i0 = Is[i - 1];  // Pre-transition node
-        int i1 = Is[i];      // Post-transition node
+        int i0 = Is[i - 1]; /* Pre-transition node */
+        int i1 = Is[i];     /* Post-transition node */
 
         double xi0 = state.isol.xi(i0);
         double xi1 = state.isol.xi(i1);
 
-        // Can only store transition on airfoil
+        /* Can only store transition on airfoil */
         if (i0 < state.foil.N && i1 < state.foil.N) {
             double x0 = state.foil.x(0, i0);
             double x1 = state.foil.x(0, i1);
 
-            state.vsol.Xt(si, 0) = xt;  // xi location
-            // Interpolate x location
+            state.vsol.Xt(si, 0) = xt; /* xi location */
+            /* Interpolate x location */
             if (std::abs(xi1 - xi0) > 1e-12) {
                 state.vsol.Xt(si, 1) =
                     x0 + (xt - xi0) / (xi1 - xi0) * (x1 - x0);
@@ -219,7 +228,7 @@ void StoreTransition(FoilState& state, int si, int i) {
         }
     }
 
-    // Mark subsequent stations as turbulent
+    /* Mark subsequent stations as turbulent */
     const auto& Is = state.vsol.Is[si];
     bool found = false;
     for (size_t idx = 0; idx < Is.size(); ++idx) {

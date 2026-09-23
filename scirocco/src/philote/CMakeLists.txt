@@ -41,6 +41,7 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND AND hdf5_FOUND)
     )
     target_compile_definitions(scirocco_philote_tests PRIVATE
         SENSITIVITY_REFERENCE_FILE="${PROJECT_SOURCE_DIR}/tests/sensitivity_reference.h5"
+        GRADIENT_CONTRACT_REFERENCE_FILE="${PROJECT_SOURCE_DIR}/tests/gradient_contract_reference.h5"
     )
     gtest_discover_tests(scirocco_philote_tests)
 endif()

@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,25 +28,22 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_DATA_OPER_H
-#define SCIROCCO_DATA_OPER_H
+#pragma once
 
 namespace scirocco {
 
-// Operating conditions and flags
+/** @brief Operating conditions and flags */
 struct Oper {
-    double Vinf = 1.0;      // Velocity magnitude
-    double alpha = 0.0;     // Angle of attack [degrees]
-    double rho = 1.0;       // Density
-    double cltgt = 0.0;     // Lift coefficient target
-    bool givencl = false;   // True if cl is given instead of alpha
-    bool initbl = true;     // True to initialize the boundary layer
-    bool viscous = false;   // True for viscous analysis
-    bool redowake = false;  // True to rebuild wake after alpha changes
-    double Re = 1e5;        // Reynolds number
-    double Ma = 0.0;        // Mach number
+    double Vinf = 1.0;     /**< Velocity magnitude */
+    double alpha = 0.0;    /**< Angle of attack [degrees] */
+    double rho = 1.0;      /**< Density */
+    double cltgt = 0.0;    /**< Lift coefficient target */
+    bool givencl = false;  /**< True if cl is given instead of alpha */
+    bool initbl = true;    /**< True to initialize the boundary layer */
+    bool viscous = false;  /**< True for viscous analysis */
+    bool redowake = false; /**< True to rebuild wake after alpha changes */
+    double Re = 1e5;       /**< Reynolds number */
+    double Ma = 0.0;       /**< Mach number */
 };
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_DATA_OPER_H

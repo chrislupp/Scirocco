@@ -16,7 +16,7 @@
     limitations under the License.
 
     This work has been cleared for public release, distribution unlimited, case
-    number: AFRL-2026-XXXX.
+    number: AFRL-2026-0405.
 
     The views expressed are those of the authors and do not reflect the
     official guidance or position of the United States Government, the
@@ -28,75 +28,97 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-#ifndef SCIROCCO_CORE_SPLINE_H
-#define SCIROCCO_CORE_SPLINE_H
+#pragma once
 
 #include "scirocco/config.h"
 
 namespace scirocco {
 
-// Cubic spline for one coordinate (x or y)
-// Stores coefficients c[4, N-1] for N data points
-// For segment i: f(t) = c(0,i)*t^3 + c(1,i)*t^2 + c(2,i)*t + c(3,i)
-// where t is local parameter from 0 to ds = s[i+1] - s[i]
+/**
+ * @brief Cubic spline for one coordinate (x or y)
+ *
+ * Stores coefficients c[4, N-1] for N data points
+ * For segment i: f(t) = c(0,i)*t^3 + c(1,i)*t^2 + c(2,i)*t + c(3,i)
+ * where t is local parameter from 0 to ds = s[i+1] - s[i]
+ */
 struct CubicSpline1D {
-    VectorXd s;  // Parameter values at data points [N]
-    MatrixXd c;  // Coefficients [4 x (N-1)]
+    VectorXd s; /* Parameter values at data points [N] */
+    MatrixXd c; /* Coefficients [4 x (N-1)] */
 
-    // Evaluate spline at parameter value
+    /**
+     * @brief Evaluate spline at parameter value
+     * @param sval Parameter value at which to evaluate
+     * @return Spline value at sval
+     */
     [[nodiscard]] double Eval(double sval) const;
 
-    // Evaluate derivative at parameter value
+    /**
+     * @brief Evaluate derivative at parameter value
+     * @param sval Parameter value at which to evaluate
+     * @return First derivative at sval
+     */
     [[nodiscard]] double EvalDeriv(double sval) const;
 
-    // Evaluate second derivative at parameter value
+    /**
+     * @brief Evaluate second derivative at parameter value
+     * @param sval Parameter value at which to evaluate
+     * @return Second derivative at sval
+     */
     [[nodiscard]] double EvalDeriv2(double sval) const;
 };
 
-// 2D spline structure containing x and y splines
+/**
+ * @brief 2D spline structure containing x and y splines
+ */
 struct Spline2D {
-    CubicSpline1D X;  // Spline for x coordinate
-    CubicSpline1D Y;  // Spline for y coordinate
+    CubicSpline1D X; /* Spline for x coordinate */
+    CubicSpline1D Y; /* Spline for y coordinate */
 };
 
-// Create a 2D cubic spline from points with arc-length parameterization
-// INPUT:
-//   points : 2D point coordinates [2 x N]
-// OUTPUT:
-//   Spline2D with arc-length corrected parameterization
+/**
+ * @brief Create a 2D cubic spline from points with arc-length parameterization
+ * @param points 2D point coordinates [2 x N]
+ * @return Spline2D with arc-length corrected parameterization
+ */
 Spline2D Spline2DCreate(const MatrixXd& points);
 
-// Evaluate 2D spline at given parameter values
-// INPUT:
-//   spline : 2D spline structure
-//   s_vals : parameter values at which to evaluate
-// OUTPUT:
-//   Points on spline [2 x len(s_vals)]
+/** @brief Analytic derivative of spline2d arc lengths, [N x 2N].
+ * Column 2*k+d corresponds to points(d,k). Includes the knot, coefficient,
+ * and quadrature-location chains in all ten reintegration passes.
+ */
+MatrixXd SplineArcLengthDeriv(const MatrixXd& points);
+
+/**
+ * @brief Evaluate 2D spline at given parameter values
+ * @param spline 2D spline structure
+ * @param s_vals Parameter values at which to evaluate
+ * @return Points on spline [2 x len(s_vals)]
+ */
 MatrixXd SplineEval(const Spline2D& spline, const VectorXd& s_vals);
 
-// Evaluate 2D spline tangent (not normalized) at given parameter values
-// INPUT:
-//   spline : 2D spline structure
-//   s_vals : parameter values at which to evaluate tangent
-// OUTPUT:
-//   dX/ds and dY/ds values at each point [2 x len(s_vals)]
+/**
+ * @brief Evaluate 2D spline tangent (not normalized) at given parameter values
+ * @param spline 2D spline structure
+ * @param s_vals Parameter values at which to evaluate tangent
+ * @return dX/ds and dY/ds values at each point [2 x len(s_vals)]
+ */
 MatrixXd SplineTangent(const Spline2D& spline, const VectorXd& s_vals);
 
-// Create a 1D cubic spline from x and y data
-// INPUT:
-//   x : independent variable values [N]
-//   y : dependent variable values [N]
-// OUTPUT:
-//   CubicSpline1D with x as parameter
+/**
+ * @brief Create a 1D cubic spline from x and y data
+ * @param x Independent variable values [N]
+ * @param y Dependent variable values [N]
+ * @return CubicSpline1D with x as parameter
+ */
 CubicSpline1D Spline1DCreate(const VectorXd& x, const VectorXd& y);
 
-// Quadrature points and weights for [0,1] segment
-// Used for arc-length integration
-// OUTPUT:
-//   xq : quadrature point coordinates
-//   wq : quadrature weights
+/**
+ * @brief Quadrature points and weights for [0,1] segment
+ *
+ * Used for arc-length integration
+ * @param xq Quadrature point coordinates
+ * @param wq Quadrature weights
+ */
 void QuadSeg(VectorXd& xq, VectorXd& wq);
 
 }  // namespace scirocco
-
-#endif  // SCIROCCO_CORE_SPLINE_H

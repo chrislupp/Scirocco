@@ -26,16 +26,16 @@
 using namespace scirocco;
 using namespace Eigen;
 
-// Same hybrid tolerance reasoning as the Phase 1 chain tests:
-// Tolerance reasoning (measured 2026-05-17):
-//   DRblDFoilX: max abs 3.13e-8 at the stagnation rows, but those entries
-//     have |ref| ~ 8e3 so rel ~ 4e-12 — TOL_REL * |ref| absorbs them. Worst
-//     rel anywhere with |ref|>1e-6 is 3.08e-8. Non-stag rows max abs 4e-10.
-//   DRueDFoilX: max abs 1.22e-9 at foil rows (inviscid AIC noise floor),
-//     9.65e-10 at wake rows, 1.4e-11 at last wake row.
-// Hybrid bound |err| <= TOL_REL*|ref| + TOL_ABS with these values gives
-// 0 failures on both tests. Cannot tighten TOL_REL below ~5e-8 without
-// DRblDFoilX failures at the worst-rel entry.
+/* Same hybrid tolerance reasoning as the Phase 1 chain tests:
+   Tolerance reasoning (measured 2026-05-17):
+     DRblDFoilX: max abs 3.13e-8 at the stagnation rows, but those entries
+       have |ref| ~ 8e3 so rel ~ 4e-12 — TOL_REL * |ref| absorbs them. Worst
+       rel anywhere with |ref|>1e-6 is 3.08e-8. Non-stag rows max abs 4e-10.
+     DRueDFoilX: max abs 1.22e-9 at foil rows (inviscid AIC noise floor),
+       9.65e-10 at wake rows, 1.4e-11 at last wake row.
+   Hybrid bound |err| <= TOL_REL*|ref| + TOL_ABS with these values gives
+   0 failures on both tests. Cannot tighten TOL_REL below ~5e-8 without
+   DRblDFoilX failures at the worst-rel entry. */
 constexpr double TOL_REL = 1e-7;
 constexpr double TOL_ABS = 5e-9;
 
@@ -43,7 +43,8 @@ static bool withinTol(double got, double ref) {
     return std::abs(got - ref) <= TOL_REL * std::abs(ref) + TOL_ABS;
 }
 
-// -------------------- HDF5 helpers ------------------------------------------
+/* -------------------- HDF5 helpers ------------------------------------------
+ */
 namespace {
 template <typename T>
 T readScalar(H5::H5File& f, const std::string& p) {
@@ -72,10 +73,10 @@ MatrixXd readMatrix(H5::H5File& f, const std::string& p) {
     return m;
 }
 
-// Read a [D0, D1, D2] tensor stored as flat 1D, return [D0, D1*D2] matrix
-// flattened in C order so column index = j*D2 + k. Useful when comparing the
-// reference's [3*Nsys, 2, N] tensors to our analytical [3*Nsys, 2N] matrices
-// with column convention 2*k + dim.
+/* Read a [D0, D1, D2] tensor stored as flat 1D, return [D0, D1*D2] matrix
+   flattened in C order so column index = j*D2 + k. Useful when comparing the
+   reference's [3*Nsys, 2, N] tensors to our analytical [3*Nsys, 2N] matrices
+   with column convention 2*k + dim. */
 MatrixXd read3DAsMatrix(H5::H5File& f, const std::string& p) {
     H5::DataSet d = f.openDataSet(p);
     hsize_t dims[3];
@@ -83,9 +84,9 @@ MatrixXd read3DAsMatrix(H5::H5File& f, const std::string& p) {
     size_t total = dims[0] * dims[1] * dims[2];
     std::vector<double> b(total);
     d.read(b.data(), H5::PredType::NATIVE_DOUBLE);
-    // Source layout (C order): index (i, j, k) → i*dims[1]*dims[2] + j*dims[2]
-    // + k Target layout: row = i, col = 2*k + j (i.e. swap j and k in the
-    // column).
+    /* Source layout (C order): index (i, j, k) → i*dims[1]*dims[2] + j*dims[2]
+       + k Target layout: row = i, col = 2*k + j (i.e. swap j and k in the
+       column). */
     MatrixXd m(dims[0], dims[1] * dims[2]);
     for (hsize_t i = 0; i < dims[0]; ++i) {
         for (hsize_t j = 0; j < dims[1]; ++j) {
@@ -96,12 +97,13 @@ MatrixXd read3DAsMatrix(H5::H5File& f, const std::string& p) {
     }
     return m;
 }
-}  // namespace
+} /* namespace */
 
-// ---------------------------------------------------------------------------
-// Fixture: load comprehensive_reference.h5 and rebuild scirocco viscous state
-// to the same point mfoil was at when the CS reference was extracted.
-// ---------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   Fixture: load comprehensive_reference.h5 and rebuild scirocco viscous state
+   to the same point mfoil was at when the CS reference was extracted.
+   ---------------------------------------------------------------------------
+ */
 class ResidualDerivTest : public ::testing::Test {
    protected:
     static H5::H5File* file_;
@@ -143,31 +145,31 @@ class ResidualDerivTest : public ::testing::Test {
         VectorXd wgap_ref = readVector(f(), "comprehensive/wgap");
         N_ = static_cast<int>(foil_x.cols());
 
-        // IMPORTANT: extract_comprehensive_reference uses CUMULATIVE-panel-norm
-        // foil.s during its CS perturbations (via recompute_geom), so the
-        // captured d(R_BL)/d(foil.x) is along that path. The HDF5 base foil.s
-        // is mfoil's SPLINE value, which is ~4e-5 different and leads to
-        // 1e-8 chain mismatches at the TE if used in scirocco. Recompute foil.s
-        // here as cumulative panel norms to match the CS path exactly.
+        /* IMPORTANT: extract_comprehensive_reference uses CUMULATIVE-panel-norm
+           foil.s during its CS perturbations (via recompute_geom), so the
+           captured d(R_BL)/d(foil.x) is along that path. The HDF5 base foil.s
+           is mfoil's SPLINE value, which is ~4e-5 different and leads to
+           1e-8 chain mismatches at the TE if used in scirocco. Recompute foil.s
+           here as cumulative panel norms to match the CS path exactly. */
         foil_.SetOper(3.0, -1.0, 1e6, 0.0);
         auto& s = foil_.GetState();
         s.foil.x = foil_x;
         s.foil.N = N_;
-        RecomputeArcLength(s);  // cumulative panel norms (matches CS chain)
+        RecomputeArcLength(s); /* cumulative panel norms (matches CS chain) */
         s.oper.viscous = true;
         s.oper.initbl = true;
         s.param.verb = 0;
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);
-        SolveViscous(s);  // converges to its own state; we'll override below
+        SolveViscous(s); /* converges to its own state; we'll override below */
         ASSERT_TRUE(s.glob.conv) << "viscous solve did not converge";
 
-        // Override U, wgap to match the HDF5 reference. UE-BASED xi:
-        // after overriding U=U_ref, also run StagPointMove to refresh
-        // sstag/sstag_ue/xi from U_ref's ue values at the current cumulative
-        // foil.s — this mirrors what extract_comprehensive_reference.py does
-        // in solve_base() (mfoil.stagpoint_move after recompute_geom).
+        /* Override U, wgap to match the HDF5 reference. UE-BASED xi:
+           after overriding U=U_ref, also run StagPointMove to refresh
+           sstag/sstag_ue/xi from U_ref's ue values at the current cumulative
+           foil.s — this mirrors what extract_comprehensive_reference.py does
+           in solve_base() (mfoil.stagpoint_move after recompute_geom). */
         ASSERT_EQ(s.glob.U.cols(), U_ref.cols());
         s.glob.U = U_ref;
         ASSERT_EQ(static_cast<int>(wgap_ref.size()),
@@ -180,8 +182,8 @@ class ResidualDerivTest : public ::testing::Test {
         Nw_ = s.wake.N;
         Nsys_ = N_ + Nw_;
 
-        // d(foil.s)/d(foil.x) — closed-form cumulative version matches the
-        // CS perturbation chain in extract_comprehensive_reference.py.
+        /* d(foil.s)/d(foil.x) — closed-form cumulative version matches the
+           CS perturbation chain in extract_comprehensive_reference.py. */
         dfoil_s_dx_ = DFoilSDFoilXCumulative(s.foil);
     }
 
@@ -212,17 +214,17 @@ class ResidualDerivTest : public ::testing::Test {
 H5::H5File* ResidualDerivTest::file_ = nullptr;
 bool ResidualDerivTest::loaded_ = false;
 
-// ============================================================================
-// DRblDFoilX — d(R_BL)/d(foil.x) at fixed U
-// ============================================================================
+/**
+ * @brief DRblDFoilX — d(R_BL)/d(foil.x) at fixed U
+ */
 TEST_F(ResidualDerivTest, DRblDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DRblDFoilX(s, dfoil_s_dx_);
     MatrixXd r = read3DAsMatrix(f(), "comprehensive/dR_BL_dx");
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
-    // Diagnostics: surface the actual max abs at the stagnation row vs.
-    // elsewhere so we can size tolerances against real chain noise.
+    /* Diagnostics: surface the actual max abs at the stagnation row vs.
+       elsewhere so we can size tolerances against real chain noise. */
     double overall_max = 0, stag_row_max = 0, other_max = 0;
     int Istag = s.isol.Istag[0];
     int Ig_stag = 3 * Istag;
@@ -250,7 +252,7 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
               << "] ref=" << worst_ref
               << " rel=" << overall_max / std::max(std::abs(worst_ref), 1e-300)
               << std::endl;
-    // Worst rel over all entries with |ref| > 1e-6
+    /* Worst rel over all entries with |ref| > 1e-6 */
     double worst_rel = 0;
     Eigen::Index wr_i = 0, wr_j = 0;
     for (Eigen::Index i = 0; i < r.rows(); ++i) {
@@ -274,18 +276,18 @@ TEST_F(ResidualDerivTest, DRblDFoilX) {
               << std::endl;
 }
 
-// ============================================================================
-// DRueDFoilX — full analytical (A1, A2, B1, B2a-c, C). Reports per-region
-// max abs error and validates against CS reference using the same hybrid
-// tolerance as DRblDFoilX.
-// ============================================================================
+/**
+ * @brief DRueDFoilX — full analytical (A1, A2, B1, B2a-c, C). Reports
+ * per-region max abs error and validates against CS reference using the same
+ * hybrid tolerance as DRblDFoilX.
+ */
 TEST_F(ResidualDerivTest, DRueDFoilX) {
     auto& s = foil_.GetState();
     MatrixXd a = scirocco::DRueDFoilX(s, dfoil_s_dx_);
     MatrixXd r = read3DAsMatrix(f(), "comprehensive/dR_ue_dx");
     ASSERT_EQ(a.rows(), r.rows());
     ASSERT_EQ(a.cols(), r.cols());
-    // Diagnostic: report per-row max abs error so we see what's missing.
+    /* Diagnostic: report per-row max abs error so we see what's missing. */
     double overall_max = 0, foil_max = 0, wake_max = 0, wake_inner_max = 0;
     int n_foil_above = 0, n_wake_above = 0;
     int last_row = r.rows() - 1;
@@ -313,7 +315,7 @@ TEST_F(ResidualDerivTest, DRueDFoilX) {
               << ", fails(>1e-6)=" << n_foil_above << "/" << N_ << std::endl;
     std::cout << "  Wake rows: max=" << wake_max
               << ", fails(>1e-6)=" << n_wake_above << "/" << Nw_ << std::endl;
-    // Locate worst entry
+    /* Locate worst entry */
     Eigen::Index best_i = 0, best_j = 0;
     double maxabs = 0;
     for (int i = N_; i < r.rows(); ++i) {
