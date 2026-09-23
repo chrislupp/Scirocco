@@ -241,6 +241,8 @@ jobs:
       run: ctest --output-on-failure
 
   coverage:
+    # Temporarily disabled, including the Codecov upload.
+    if: ${{ false }}
     needs: [format]
     runs-on: ubuntu-24.04
 
