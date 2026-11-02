@@ -38,6 +38,7 @@
 #include <string>
 #include <vector>
 
+#include "option_validation.h"
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/paneling.h"
@@ -52,10 +53,19 @@ void SiroccoDiscipline::Initialize() {
 }
 
 void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
+    solver_.reset();
+    nnodes_ = 0;
     const auto& fields = options.fields();
+    if ((fields.count("naca") && !fields.at("naca").has_string_value()) ||
+        (fields.count("coordinates") &&
+         !fields.at("coordinates").has_struct_value()) ||
+        (fields.count("hdf5_file") &&
+         !fields.at("hdf5_file").has_string_value()))
+        throw std::invalid_argument(
+            "Invalid type for naca, coordinates, or hdf5_file");
 
     if (fields.count("npanel")) {
-        npanel_ = static_cast<int>(fields.at("npanel").number_value());
+        npanel_ = IntegerOption(fields.at("npanel"), "npanel", 4, kMaxPanels);
     }
 
     bool has_naca =
@@ -79,14 +89,20 @@ void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
     } else {
         const auto& coord_fields =
             fields.at("coordinates").struct_value().fields();
+        if (!coord_fields.count("x") || !coord_fields.count("z") ||
+            !coord_fields.at("x").has_list_value() ||
+            !coord_fields.at("z").has_list_value())
+            throw std::invalid_argument("coordinates requires x and z lists");
         const auto& x_list = coord_fields.at("x").list_value();
         const auto& z_list = coord_fields.at("z").list_value();
 
         int npts = x_list.values_size();
+        if (npts < 4 || npts != z_list.values_size())
+            throw std::invalid_argument("x and z must have equal lengths >= 4");
         MatrixXd coords(2, npts);
         for (int i = 0; i < npts; ++i) {
-            coords(0, i) = x_list.values(i).number_value();
-            coords(1, i) = z_list.values(i).number_value();
+            coords(0, i) = NumberOption(x_list.values(i), "x coordinate");
+            coords(1, i) = NumberOption(z_list.values(i), "z coordinate");
         }
 
         solver_ = std::make_unique<Scirocco>(coords, npanel_);
@@ -106,6 +122,8 @@ void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
 void SiroccoDiscipline::Configure() {}
 
 void SiroccoDiscipline::Setup() {
+    if (!solver_)
+        throw std::runtime_error("Valid options are required before Setup");
     AddInput("x", {2 * nnodes_}, "m");
     AddInput("alpha", {1}, "deg");
     AddInput("Re", {1}, "");
@@ -129,10 +147,17 @@ void SiroccoDiscipline::SetupPartials() {
 
 void SiroccoDiscipline::Compute(const philote::Variables& inputs,
                                 philote::Variables& outputs) {
+    if (!solver_)
+        throw std::runtime_error("Valid options are required before Compute");
     const auto& x_var = inputs.at("x");
     auto& state = solver_->GetState();
     // Invalidate the previous solution before any geometry update can fail.
     ClearSolution(state);
+    if (x_var.Size() != 2 * static_cast<size_t>(nnodes_) ||
+        inputs.at("alpha").Size() != 1 || inputs.at("Re").Size() != 1 ||
+        inputs.at("Ma").Size() != 1)
+        throw std::invalid_argument(
+            "Input dimensions do not match the configured discipline");
     auto& foil_x = state.foil.x;
     for (int i = 0; i < nnodes_; ++i) {
         foil_x(0, i) = x_var(i);
@@ -168,6 +193,9 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
 
 void SiroccoDiscipline::ComputePartials(const philote::Variables& inputs,
                                         philote::Partials& partials) {
+    if (!solver_)
+        throw std::runtime_error(
+            "Valid options are required before ComputePartials");
     const auto& state = solver_->GetState();
     bool same_inputs = inputs.at("alpha")(0) == state.oper.alpha &&
                        (state.oper.viscous ? inputs.at("Re")(0) == state.oper.Re

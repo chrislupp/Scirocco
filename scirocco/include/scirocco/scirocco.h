@@ -69,7 +69,7 @@ class Scirocco {
 
     /**
      * @brief Solve the current operating point
-     * @return True if converged (always true for inviscid)
+     * @return True if converged with finite outputs; invalid inputs throw
      */
     bool Solve();
 
@@ -82,6 +82,7 @@ class Scirocco {
     [[nodiscard]] double GetAlpha() const { return state_.oper.alpha; }
     [[nodiscard]] bool IsConverged() const { return state_.glob.conv; }
 
+    /* Boundary-layer distributions are empty in inviscid mode. */
     /* Get distributions */
     [[nodiscard]] const VectorXd& GetCp() const { return state_.post.cp; }
     [[nodiscard]] const VectorXd& GetCf() const { return state_.post.cf; }

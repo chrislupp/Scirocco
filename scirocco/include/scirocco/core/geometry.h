@@ -55,6 +55,11 @@ struct TEInfo {
  */
 void NacaPoints(Geom& geom, const std::string& digits);
 
+// Bound dense panel systems before allocating their matrices.
+constexpr int kMaxPanels = 4096;
+void ValidatePanelCount(int npanel);
+void ValidateCoordinates(const MatrixXd& coords);
+
 /** @brief Set coordinates from user-provided points
  *  @param geom   Geom structure to fill
  *  @param coords Point coordinates [2 x N], ordered from TE lower to TE upper

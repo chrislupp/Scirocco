@@ -176,6 +176,10 @@ void BuildGamma(FoilState& state, double alpha) {
     state.isol.AIC = A;
     MatrixXd g = A.partialPivLu().solve(rhs);
 
+    if (!g.allFinite())
+        throw std::runtime_error(
+            "Inviscid linear solve produced nonfinite values");
+
     /* Store reference solutions (excluding streamfunction row) */
     state.isol.gamref = g.topRows(N);
 

@@ -56,3 +56,10 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
     )
     gtest_discover_tests(scirocco_kulfan_discipline_tests)
 endif()
+
+if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
+    add_executable(scirocco_philote_validation_tests
+        ${PROJECT_SOURCE_DIR}/tests/philote_validation_test.cpp)
+    target_link_libraries(scirocco_philote_validation_tests PRIVATE SiroccoPhilote GTest::gtest_main)
+    gtest_discover_tests(scirocco_philote_validation_tests)
+endif()

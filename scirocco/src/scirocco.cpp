@@ -44,13 +44,37 @@
 #include "scirocco/data/state.h"
 
 namespace scirocco {
+namespace {
+void ValidateOperatingConditions(double alpha, double cl, double Re,
+                                 double Ma) {
+    if (!std::isfinite(alpha) || !std::isfinite(cl) || !std::isfinite(Re) ||
+        !std::isfinite(Ma) || Ma < 0.0 || Ma >= 1.0)
+        throw std::invalid_argument(
+            "Operating conditions must be finite with 0 <= Ma < 1");
+    // Finite negative cl/Re values retain their alpha-mode/inviscid meaning.
+}
+
+void ValidateResults(const FoilState& state) {
+    if (!std::isfinite(state.post.cl) || !std::isfinite(state.post.cd) ||
+        !std::isfinite(state.post.cm) || !std::isfinite(state.post.cdf) ||
+        !std::isfinite(state.post.cdp) || !state.post.cp.allFinite() ||
+        !state.isol.gam.allFinite() || !state.post.cf.allFinite() ||
+        !state.post.th.allFinite() || !state.post.ds.allFinite() ||
+        !state.wake.x.allFinite() ||
+        (state.oper.viscous && !state.glob.U.allFinite()))
+        throw std::runtime_error(
+            "Scirocco solution contains nonfinite results");
+}
+}  // namespace
 
 Scirocco::Scirocco(const std::string& naca, int npanel) {
+    ValidatePanelCount(npanel);
     NacaPoints(state_.geom, naca);
     MakePanels(state_.geom, npanel, state_.foil);
 }
 
 Scirocco::Scirocco(const MatrixXd& coords, int npanel) {
+    ValidatePanelCount(npanel);
     SetCoords(state_.geom, coords);
     MakePanels(state_.geom, npanel, state_.foil);
 }
@@ -59,6 +83,9 @@ void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
     sensitivity_valid_ = false;
     state_.glob.conv = false;
     state_.glob.lu_factorization.reset();
+    ValidateOperatingConditions(alpha, cl, Re, Ma);
+    if (state_.oper.viscous && Re <= 0.0) ClearSolution(state_);
+    state_.oper.Re = Re > 0.0 ? Re : 0.0;
     state_.oper.alpha = alpha;
     state_.oper.Ma = Ma;
 
@@ -85,6 +112,11 @@ bool Scirocco::Solve() {
     state_.glob.conv = false;
     state_.glob.lu_factorization.reset();
     try {
+        ValidateOperatingConditions(state_.oper.alpha, state_.oper.cltgt,
+                                    state_.oper.Re, state_.oper.Ma);
+        ValidateCoordinates(state_.foil.x);
+        if (state_.foil.N != state_.foil.x.cols())
+            throw std::runtime_error("Panel count does not match coordinates");
         if (state_.param.verb >= 1) {
             std::cout << "Scirocco::Solve viscous=" << state_.oper.viscous
                       << ", Re=" << state_.oper.Re << '\n';
@@ -121,11 +153,13 @@ bool Scirocco::Solve() {
 
             /* Viscous solver */
             SolveViscous(state_);
+            if (state_.glob.conv) ValidateResults(state_);
             return state_.glob.conv;
         } else {
             /* Inviscid solver */
             SolveInviscid(state_);
             CalcForce(state_);
+            ValidateResults(state_);
             if (state_.oper.givencl) {
                 state_.glob.conv = false;
                 for (int iteration = 0; iteration < state_.param.niglob;
@@ -145,6 +179,7 @@ bool Scirocco::Solve() {
                         std::clamp(residual / slope.dcl_dalpha, -2.0, 2.0);
                     BuildGamma(state_, state_.oper.alpha);
                     CalcForce(state_);
+                    ValidateResults(state_);
                 }
                 return false;
             }

@@ -4,6 +4,7 @@ if(POLICY CMP0144)
 endif()
 
 project(scirocco VERSION 0.1.0 LANGUAGES CXX)
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,9 +48,10 @@ set(SCIROCCO_SOURCES
 add_library(scirocco ${SCIROCCO_SOURCES})
 target_include_directories(scirocco PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(scirocco PUBLIC Eigen3::Eigen)
+target_compile_features(scirocco PUBLIC cxx_std_17)
 target_compile_options(scirocco PRIVATE
     -Wall -Wextra -Wpedantic
     $<$<CONFIG:Release>:-O3>
@@ -74,7 +76,7 @@ if(SCIROCCO_HDF5_OUTPUT)
     add_library(scirocco_hdf5 src/hdf5_writer.cpp)
     target_include_directories(scirocco_hdf5 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     target_link_libraries(scirocco_hdf5 PUBLIC scirocco hdf5_cpp-shared)
     target_compile_options(scirocco_hdf5 PRIVATE
@@ -92,6 +94,12 @@ endif()
 # Tests
 if(SCIROCCO_BUILD_TESTS)
     enable_testing()
+    add_test(NAME InstalledConsumer
+        COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DCONFIG=$<CONFIG>
+            -DEIGEN_DIR=${Eigen3_DIR} -DCXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DEXPECTED_VERSION=${PROJECT_VERSION}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/install_consumer.cmake)
     find_package(GTest QUIET)
     find_package(hdf5 CONFIG QUIET)
     if(NOT hdf5_FOUND)
@@ -109,7 +117,8 @@ if(SCIROCCO_BUILD_TESTS)
     endif()
     if(GTest_FOUND)
         include(GoogleTest)
-        add_executable(scirocco_solver_strategy_tests tests/solver_strategy_test.cpp)
+        add_executable(scirocco_solver_strategy_tests tests/solver_strategy_test.cpp
+            tests/input_validation_test.cpp)
         target_link_libraries(scirocco_solver_strategy_tests scirocco GTest::gtest_main)
         gtest_discover_tests(scirocco_solver_strategy_tests)
     endif()
@@ -312,7 +321,7 @@ if(SCIROCCO_BUILD_EXAMPLES)
 endif()
 
 # Philote-Cpp discipline interface
-option(SCIROCCO_BUILD_PHILOTE "Build Philote-Cpp discipline interface" ON)
+option(SCIROCCO_BUILD_PHILOTE "Build Philote-Cpp discipline interface" OFF)
 
 if(SCIROCCO_BUILD_PHILOTE)
     find_package(Protobuf CONFIG QUIET)
@@ -345,16 +354,26 @@ if(SCIROCCO_BUILD_PHILOTE)
 endif()
 
 # Installation
+include(CMakePackageConfigHelpers)
 install(TARGETS scirocco
     EXPORT sciroccoTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-    INCLUDES DESTINATION include
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT sciroccoTargets
     FILE sciroccoTargets.cmake
     NAMESPACE scirocco::
-    DESTINATION lib/cmake/scirocco
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/scirocco
 )
+
+configure_package_config_file(cmake/sciroccoConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/sciroccoConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/scirocco)
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/sciroccoConfigVersion.cmake
+    VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/sciroccoConfig.cmake
+              ${CMAKE_CURRENT_BINARY_DIR}/sciroccoConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/scirocco)

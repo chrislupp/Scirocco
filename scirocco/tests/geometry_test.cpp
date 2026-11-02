@@ -64,12 +64,12 @@ TEST(GeometryTest, NacaPointsCambered) {
 
 TEST(GeometryTest, SetCoords) {
     Geom geom;
-    MatrixXd coords(2, 3);
-    coords << 1.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    MatrixXd coords(2, 5);
+    coords << 1.0, 0.5, 0.0, 0.5, 1.0, 0.0, -0.1, 0.0, 0.1, 0.0;
 
     SetCoords(geom, coords);
 
-    EXPECT_EQ(geom.npoint, 3);
+    EXPECT_EQ(geom.npoint, 5);
     EXPECT_EQ(geom.name, "custom");
     EXPECT_NEAR(geom.chord, 1.0, 1e-6);
 }

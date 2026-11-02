@@ -50,6 +50,7 @@ RUN cmake -S /src/scirocco -B /src/scirocco/build \
         -DSCIROCCO_BUILD_TESTS=OFF \
         -DSCIROCCO_BUILD_EXAMPLES=OFF \
         -DSCIROCCO_NATIVE_ARCH=OFF \
+        -DSCIROCCO_BUILD_PHILOTE=ON \
         -DPhiloteCpp_DIR=/src/Philote-Cpp/build \
     && cmake --build /src/scirocco/build -j"$(nproc)" \
         --target scirocco_kulfan_server \
