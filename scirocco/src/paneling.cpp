@@ -32,6 +32,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+
+#include "scirocco/core/geometry.h"
 
 namespace scirocco {
 
@@ -116,6 +119,9 @@ SpacingResult SplineCurvature(const MatrixXd& points, int N, double Ufac,
 }
 
 void RefreshPanelGeometry(Panel& panel) {
+    ValidateCoordinates(panel.x);
+    if (panel.x.cols() != panel.N)
+        throw std::invalid_argument("Panel count does not match coordinates");
     panel.arc_length_mode = ArcLengthMode::Spline;
     const int N = panel.N;
     if (N < 2) return;
@@ -138,6 +144,11 @@ void RefreshPanelGeometry(Panel& panel) {
 
 void MakePanels(const Geom& geom, int npanel, Panel& panel,
                 const VectorXd& stgt) {
+    ValidatePanelCount(npanel);
+    ValidateCoordinates(geom.xpoint);
+    if (stgt.size() != 0 && (stgt.size() != npanel + 1 || !stgt.allFinite()))
+        throw std::invalid_argument(
+            "Target panel stations must match npanel + 1 and be finite");
     int N = npanel + 1; /* Number of nodes */
 
     /* Use curvature-based spacing (must match mfoil exactly) */

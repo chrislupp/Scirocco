@@ -24,6 +24,9 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "option_validation.h"
+#include "scirocco/core/geometry.h"
+
 namespace scirocco {
 
 namespace {
@@ -58,36 +61,47 @@ void KulfanDiscipline::Initialize() {
 }
 
 void KulfanDiscipline::SetOptions(const google::protobuf::Struct& options) {
+    int n_cst_upper = n_cst_upper_;
+    int n_cst_lower = n_cst_lower_;
+    int npanel = npanel_;
+    double te_upper = te_upper_;
+    double te_lower = te_lower_;
     const auto& fields = options.fields();
 
     if (fields.count("n_cst_upper")) {
-        n_cst_upper_ =
-            static_cast<int>(fields.at("n_cst_upper").number_value());
+        n_cst_upper =
+            IntegerOption(fields.at("n_cst_upper"), "n_cst_upper", 3, 256);
     }
     if (fields.count("n_cst_lower")) {
-        n_cst_lower_ =
-            static_cast<int>(fields.at("n_cst_lower").number_value());
+        n_cst_lower =
+            IntegerOption(fields.at("n_cst_lower"), "n_cst_lower", 3, 256);
     }
     if (fields.count("npanel")) {
-        npanel_ = static_cast<int>(fields.at("npanel").number_value());
+        npanel = IntegerOption(fields.at("npanel"), "npanel", 4, kMaxPanels);
     }
     if (fields.count("te_upper")) {
-        te_upper_ = fields.at("te_upper").number_value();
+        te_upper = NumberOption(fields.at("te_upper"), "te_upper");
     }
     if (fields.count("te_lower")) {
-        te_lower_ = fields.at("te_lower").number_value();
+        te_lower = NumberOption(fields.at("te_lower"), "te_lower");
     }
 
-    if (npanel_ < 4 || npanel_ % 2 != 0) {
+    if (npanel < 4 || npanel % 2 != 0) {
         throw std::invalid_argument(
             "KulfanDiscipline: npanel must be an even integer >= 4");
     }
-    if (n_cst_upper_ < 3 || n_cst_lower_ < 3) {
+    if (n_cst_upper < 3 || n_cst_lower < 3) {
         /* smoothness output is the second-difference vector of length n-2,
            which requires at least 3 CPs per surface. */
         throw std::invalid_argument(
             "KulfanDiscipline: n_cst_upper / n_cst_lower must be >= 3");
     }
+
+    n_cst_upper_ = n_cst_upper;
+    n_cst_lower_ = n_cst_lower;
+    npanel_ = npanel;
+    te_upper_ = te_upper;
+    te_lower_ = te_lower;
 
     N_per_side_ = npanel_ / 2;
     npoint_ = npanel_ + 1;

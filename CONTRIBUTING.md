@@ -198,3 +198,16 @@ Common categories: `Fix`, `Add`, `Refactor`, `Docs`, `CI`, `Test`.
 
 Do not reference issue numbers in the subject line; put them in the body if
 needed.
+
+## Release version progression
+
+Release PRs require exactly one `release`/`prerelease` label and one
+`major`/`minor`/`patch` label. Prereleases also require exactly one of
+`alpha`, `beta`, or `rc`; stable releases must have none.
+The bump starts a new version cycle. Once that version has prerelease tags,
+subsequent candidates retain it, incrementing the qualifier counter. Moving
+from alpha to beta or RC starts that qualifier at 1; moving backwards is rejected.
+A `release` PR promotes the active version to stable without another bump.
+The bump label applies again after stable publication. Existing stable target
+tags are rejected before any files are changed. Test this logic with
+`python3 -m unittest discover -s scripts -p 'test_*.py'`.

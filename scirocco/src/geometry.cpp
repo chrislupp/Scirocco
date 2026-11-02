@@ -55,6 +55,11 @@ inline double sind(double deg) { return std::sin(deg * DEG2RAD); }
 } /* anonymous namespace */
 
 void NacaPoints(Geom& geom, const std::string& digits) {
+    if ((digits.size() != 4 && digits.size() != 5) ||
+        !std::all_of(digits.begin(), digits.end(),
+                     [](char c) { return c >= '0' && c <= '9'; })) {
+        throw std::invalid_argument("Provide 4 or 5 NACA digits");
+    }
     geom.name = "NACA " + digits;
 
     const int N = 100;     /* Points per side */
@@ -160,7 +165,29 @@ void NacaPoints(Geom& geom, const std::string& digits) {
     geom.chord = geom.xpoint.row(0).maxCoeff() - geom.xpoint.row(0).minCoeff();
 }
 
+void ValidatePanelCount(int npanel) {
+    if (npanel < 4 || npanel > kMaxPanels)
+        throw std::invalid_argument("npanel must be between 4 and 4096");
+}
+
+void ValidateCoordinates(const MatrixXd& coords) {
+    if (coords.rows() != 2 || coords.cols() < 4 || !coords.allFinite())
+        throw std::invalid_argument(
+            "Coordinates must be a finite 2 x N array with N >= 4");
+    const double chord = coords.row(0).maxCoeff() - coords.row(0).minCoeff();
+    if (!std::isfinite(chord) || chord <= 0.0)
+        throw std::invalid_argument(
+            "Coordinates must have positive finite chord");
+    for (Eigen::Index i = 1; i < coords.cols(); ++i) {
+        const double length = (coords.col(i) - coords.col(i - 1)).norm();
+        if (!std::isfinite(length) || length <= 0.0)
+            throw std::invalid_argument(
+                "Adjacent coordinates must be distinct with finite spacing");
+    }
+}
+
 void SetCoords(Geom& geom, const MatrixXd& coords) {
+    ValidateCoordinates(coords);
     geom.npoint = static_cast<int>(coords.cols());
     geom.xpoint = coords;
     geom.chord = coords.row(0).maxCoeff() - coords.row(0).minCoeff();

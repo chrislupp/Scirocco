@@ -22,7 +22,7 @@ Optional, depending on the features you want:
 | --- | --- |
 | HDF5 (CXX) | `SCIROCCO_HDF5_OUTPUT`, reference validation tests |
 | Google Test | The unit and reference test suites |
-| Protobuf, gRPC, [Philote-Cpp](https://github.com/MDO-Standards/Philote-Cpp) | The MDO discipline server (`SCIROCCO_BUILD_PHILOTE`, on by default) |
+| Protobuf, gRPC, [Philote-Cpp](https://github.com/MDO-Standards/Philote-Cpp) | The MDO discipline server (`SCIROCCO_BUILD_PHILOTE`, off by default) |
 | LLVM tools (`llvm-cov`, `llvm-profdata`) | Coverage measurement |
 
 ## Clone
@@ -102,7 +102,7 @@ discovery state ever gets stale, delete the build dir and re-configure.
 | `SCIROCCO_BUILD_TESTS` | `ON` | Default test suite (five gtest executables — primal + Jacobians + end-to-end adjoint vs. complex-step) |
 | `SCIROCCO_BUILD_EXAMPLES` | `ON` | `naca_example`, `viscous_example` |
 | `SCIROCCO_HDF5_OUTPUT` | `OFF` | Builds the `scirocco_hdf5` library and the `hdf5_output_example` |
-| `SCIROCCO_BUILD_PHILOTE` | `ON` | Philote-Cpp gRPC discipline server (requires Protobuf, gRPC, PhiloteCpp) |
+| `SCIROCCO_BUILD_PHILOTE` | `OFF` | Philote-Cpp gRPC discipline server (requires Protobuf, gRPC, PhiloteCpp) |
 | `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Chain-piece sensitivity tests for adjoint debugging |
 | `SCIROCCO_BUILD_PROBES` | `OFF` | 14 `probe_*` diagnostic binaries (no gtest, no `ctest`) |
 | `SCIROCCO_NATIVE_ARCH` | `ON` | `-march=native` on Release builds |

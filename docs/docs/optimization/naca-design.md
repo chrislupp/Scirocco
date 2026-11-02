@@ -30,14 +30,15 @@ The full server build and discipline interface are documented on the
 
 ## Prerequisites
 
-**Build Scirocco with Philote on** (the default). This needs Protobuf,
+**Build Scirocco with Philote enabled**. This needs Protobuf,
 gRPC, and the tested Philote-Cpp 0.8 build tree — see the
 [server reference](./server#build) for the one-time Philote-Cpp build:
 
 ```bash
 cmake -S scirocco -B scirocco/build-philote \
   -DCMAKE_BUILD_TYPE=Release \
-  -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build
+  -DSCIROCCO_BUILD_PHILOTE=ON \
+      -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build
 cmake --build scirocco/build-philote -j
 ```
 
@@ -80,10 +81,11 @@ needed because geometry is built in Python.
 ## Running it
 
 ```bash
-# Build with Philote on (default), if you haven't already
+# Build with Philote enabled, if you haven't already
 cmake -S scirocco -B scirocco/build-philote \
   -DCMAKE_BUILD_TYPE=Release \
-  -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
+  -DSCIROCCO_BUILD_PHILOTE=ON \
+      -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
 cmake --build scirocco/build-philote -j
 
 # Run — the script starts and stops the server itself

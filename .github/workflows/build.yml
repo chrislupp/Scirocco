@@ -10,6 +10,20 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  packaging:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test release version progression
+      run: python3 -m unittest discover -s scripts -p 'test_*.py'
+    - name: Install core dependencies
+      run: sudo apt-get update && sudo apt-get install -y libeigen3-dev
+    - name: Build documented default and test installed consumer
+      run: |
+        cmake -S scirocco -B build-core -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_NATIVE_ARCH=OFF
+        cmake --build build-core -j2
+        ctest --test-dir build-core -R InstalledConsumer --output-on-failure --no-tests=error
+
   python-reference:
     runs-on: ubuntu-24.04
     name: Python complex-step reference
@@ -76,6 +90,7 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DSCIROCCO_BUILD_PHILOTE=ON
         -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_BUILD_EXAMPLES=OFF
@@ -131,6 +146,7 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DSCIROCCO_BUILD_PHILOTE=ON
         -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_HDF5_OUTPUT=ON
@@ -227,6 +243,7 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DSCIROCCO_BUILD_PHILOTE=ON
         -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON
@@ -275,6 +292,7 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -S ${{github.workspace}}/scirocco
         -DCMAKE_BUILD_TYPE=Release
+        -DSCIROCCO_BUILD_PHILOTE=ON
         -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_NATIVE_ARCH=OFF

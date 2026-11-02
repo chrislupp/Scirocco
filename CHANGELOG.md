@@ -6,7 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Release readiness
+- Reject nonfinite operating conditions, invalid panel counts, malformed coordinate
+  options, and nonfinite solver results instead of reporting successful analyses.
+- Clear previous boundary-layer and wake results when switching to inviscid mode.
+- Default the optional Philote interface to OFF; server CI and Docker builds
+  explicitly enable it.
+- Keep prerelease target versions fixed through candidate progression and stable
+  promotion; validate release labels and tags before publishing atomically.
+
 ### Added
+- Relocatable CMake package configuration and an installed-consumer smoke test.
+- Solver input, mode-switch, RPC recovery, and release-version regression tests.
 - Docker multi-stage images for `scirocco-server` (port 50051) and
   `kulfan-server` (port 50052), both running on `debian:stable-slim` as
   a non-root user. A CI workflow validates both builds on every PR/push

@@ -45,6 +45,7 @@ Build options:
 
 | Option | Default | Purpose |
 |---|---|---|
+| `SCIROCCO_BUILD_PHILOTE` | `OFF` | Build gRPC servers; requires Protobuf, gRPC, and Philote-Cpp |
 | `SCIROCCO_BUILD_TESTS` | `ON` | Build the default test suite (4 gtest executables — primal + Jacobian unit + end-to-end adjoint vs CS) |
 | `SCIROCCO_BUILD_EXAMPLES` | `ON` | Build example programs |
 | `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_chain`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
@@ -64,6 +65,21 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Release \
       -DSCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON \
       -DSCIROCCO_BUILD_PROBES=ON
 ```
+
+To build the servers, follow the [Philote dependency instructions](docs/docs/getting-started/installation.md)
+and configure with `-DSCIROCCO_BUILD_PHILOTE=ON -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build`.
+
+Install the core library with `cmake --install scirocco/build-default --prefix /your/prefix`.
+Consumers can use `find_package(scirocco CONFIG REQUIRED)` and link
+`scirocco::scirocco`, with the prefix on `CMAKE_PREFIX_PATH` and Eigen installed.
+
+Operating conditions must be finite, with `0 <= Ma < 1`. Finite negative `cl`
+selects alpha mode, and finite nonpositive `Re` selects inviscid mode. Panel
+counts must be integers from 4 through 4096 (even for Kulfan). Custom coordinates
+must be finite 2-by-N arrays with at least four points, positive chord, and no
+repeated adjacent points. Kulfan accepts 3–256 coefficients per surface.
+Boundary-layer distributions and wake coordinates are empty in inviscid mode.
+Invalid inputs throw exceptions; failed or nonfinite solutions cannot supply gradients.
 
 ## Usage
 
