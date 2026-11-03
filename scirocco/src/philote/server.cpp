@@ -52,6 +52,10 @@ int main(int argc, char* argv[]) {
     discipline->RegisterServices(builder);
 
     std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+    if (!server) {
+        std::cerr << "Failed to start server on " << address << '\n';
+        return 1;
+    }
     std::cout << "Scirocco discipline server listening on " << address << '\n';
     server->Wait();
 
