@@ -304,8 +304,17 @@ void GeomAddCamber(FoilState& state, const MatrixXd& xzcamb) {
 
     /* Ensure xzcamb is [2 x Nc] (if given as [Nc x 2], transpose) */
     MatrixXd camber = xzcamb;
-    if (camber.rows() > camber.cols()) {
+    if (camber.rows() != 2 && camber.cols() == 2) {
         camber.transposeInPlace();
+    }
+
+    if (camber.rows() != 2 || camber.cols() < 2 || !camber.allFinite())
+        throw std::invalid_argument(
+            "Camber must be a finite 2-by-N or N-by-2 array with N >= 2");
+    for (Eigen::Index j = 1; j < camber.cols(); ++j) {
+        if (!(camber(0, j) > camber(0, j - 1)))
+            throw std::invalid_argument(
+                "Camber x coordinates must be strictly increasing");
     }
 
     MatrixXd& X = state.geom.xpoint;

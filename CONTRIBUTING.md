@@ -213,12 +213,41 @@ tags are rejected before any files are changed. Test this logic with
 `python3 -m unittest discover -s scripts -p 'test_*.py'`.
 
 
+### Release validation and publication
+
+The release workflow pins the merged PR commit and requires it to remain the tip
+of `main`. It prepares and commits version/changelog changes locally, then runs
+`scripts/validate_release.sh` against that prepared revision. This gate runs the
+Python tests, full C++ sensitivity and RPC suite, installed-consumer check,
+documentation build/typecheck, and both Docker builds with malformed-request
+recovery and valid-request smoke tests. Any failure stops publication.
+
+Only after validation does the workflow push the release commit/tag and publish
+the already-tested local images, followed by the GitHub release. The atomic Git
+push uses an explicit lease on the original `main` revision to reject concurrent
+changes. Branch/PR Docker workflows validate images but never publish them;
+manual tag pushes do not publish images. Stable releases receive version, minor,
+major, and `latest` image tags; prereleases receive only their full version tag.
+
+For a local validation run without publication, install the dependencies listed
+in `scripts/validate_release.sh`, including a running Docker daemon, then run:
+
+```bash
+PHILOTE_CPP_DIR=/path/to/Philote-Cpp/build bash scripts/validate_release.sh
+```
+
+The workflow uses the existing `RELEASE_TOKEN`, `DOCKERHUB_USERNAME`, and
+`DOCKERHUB_TOKEN` secrets. Repository protection must permit the release token to
+push the validated version commit. GitHub and Docker Hub publication cannot be
+one transaction: if publication fails after validation, inspect the existing tag
+and image tags before retrying. Never rerun version calculation blindly after a
+partially published release.
+
 ## Release qualification
 
 Before promoting `develop` to a stable release:
 
-1. Merge the release crash fixes and publication gates (PR #14) and this release
-   qualification work into `develop`, after their checks pass.
+1. Merge the intended changes into `develop` after their checks pass.
 2. Open a `develop` → `main` prerelease PR with one bump label (`major`, `minor`,
    or `patch`), `prerelease`, and `rc`. Have it reviewed and require all checks.
 3. The release workflow validates the prepared commit and images before
