@@ -178,7 +178,10 @@ class GeomChainTest : public ::testing::Test {
            state ue = sgnue*gam, which matches the gamma-based stagpoint. */
         int Nsys = N_ + Nw_;
         s.glob.U = MatrixXd::Zero(4, Nsys);
+        // Include the wake velocities in this boundary-layer fixture.
+        s.oper.viscous = true;
         VectorXd ueinv = GetUeInv(s);
+        ASSERT_EQ(ueinv.size(), Nsys);
         s.glob.U.row(3).head(Nsys) = ueinv.transpose();
     }
 

@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Release readiness
 - Fix stack overwrites in reference-test scalar readers by converting HDF5
-  storage values to the destination C++ memory type.
+  storage values to the destination C++ memory type. Initialize wake coordinates
+  and wake-inclusive velocities consistently in debug test fixtures.
 - Add ASan/UBSan CI and an opt-in instrumented CMake build, including installed
   consumers and Philote tests.
 - Verify published source archives and full-version container images after

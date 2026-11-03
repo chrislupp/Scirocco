@@ -3120,6 +3120,7 @@ TEST_F(MfoilReferenceTest, RebuildUeM) {
     // bracketing panel. BuildGamma is checked independently above.
     state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
+    ExtendXiToWake(state);
     IdentifySurfaces(state);
     SetWakeGap(state);
 
