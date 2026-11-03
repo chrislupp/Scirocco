@@ -97,6 +97,23 @@ jobs:
         echo "[Unreleased]: ${REPO}/compare/${TAG}...HEAD" >> CHANGELOG.md
         echo "[${HEADER}]: ${REPO}/releases/tag/${TAG}" >> CHANGELOG.md
 
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: docs/package-lock.json
+
+    - name: Install docs snapshot dependencies
+      if: steps.version.outputs.is_prerelease == 'false'
+      run: npm --prefix docs ci
+
+    - name: Prepare docs release snapshot
+      env:
+        RELEASE_VERSION: ${{ steps.version.outputs.new_version }}
+        IS_PRERELEASE: ${{ steps.version.outputs.is_prerelease }}
+      run: python3 scripts/release_docs.py "$RELEASE_VERSION" "$IS_PRERELEASE"
+
+    # Include the snapshot in the exact revision validated before publication.
     # ── Commit and tag ───────────────────────────────────────────────
     - name: Commit release changes
       run: |
@@ -104,17 +121,15 @@ jobs:
         VERSION="${TAG#v}"
 
         git add scirocco/CMakeLists.txt CHANGELOG.md
+        git add docs/docusaurus.config.ts docs/versions.json
+        if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
+          git add docs/versioned_docs docs/versioned_sidebars
+        fi
         git commit -S -m "chore: release version ${VERSION}"
 
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: npm
-        cache-dependency-path: docs/package-lock.json
 
     - name: Install validation dependencies
       run: |

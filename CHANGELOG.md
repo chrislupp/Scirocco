@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   promotion; validate release labels and tags before publishing atomically.
 
 ### Added
+- Automatically snapshot Docusaurus documentation for stable releases, select
+  the release as the default docs version, and validate it before publication.
 - Relocatable CMake package configuration and an installed-consumer smoke test.
 - Solver input, mode-switch, RPC recovery, and release-version regression tests.
 - Docker multi-stage images for `scirocco-server` (port 50051) and
@@ -74,6 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   coordinates, analytic sensitivities, and HDF5 histories.
 
 ### Changed
+- Remove the unreleased 0.2.0 documentation scaffold so its first stable release
+  can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
 - Multipoint Kulfan optimization example switched from OpenMDAO's
   `ScipyOptimizeDriver`/SLSQP to IPOPT via `modopt.OpenMDAOProblem`.

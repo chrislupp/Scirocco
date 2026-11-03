@@ -28,3 +28,11 @@ Pushes to `develop` affecting the site trigger `.github/workflows/docs.yml`,
 which deploys the built site to GitHub Pages. No manual `gh-pages` branch push
 is needed. `versioned_docs/` contains historical snapshots; do not copy current
 API claims into an older version without verifying that version's source.
+
+Stable releases automatically snapshot the current docs and sidebar using
+Docusaurus `docs:version`, select that version as the default, and commit the
+snapshot before release validation. Prereleases do not create snapshots or
+change the default. The release merge back to `develop` triggers deployment;
+if that merge conflicts, deployment of the new snapshot waits for resolution.
+Tutorials remain runnable examples for users; snapshotting copies documentation
+and does not execute tutorials or generate their results.
