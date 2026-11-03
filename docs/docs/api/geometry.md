@@ -33,9 +33,9 @@ scirocco::NacaPoints(geom, "2412");   // NACA 4-digit, m=2%, p=40%, t=12%
 scirocco::NacaPoints(geom, "23012");  // NACA 5-digit
 ```
 
-The output is a `2 × N` matrix at cosine-clustered $x$-stations — fine at
-the leading edge, coarser at the trailing edge. The default panel count
-is 200 segments (201 points).
+The output contains 201 source points in a `2 × N` matrix, using a nonuniform
+spacing law. The constructor subsequently re-panels these to the requested
+count. Supported five-digit designations begin with `2X0`, with `X` from 1 to 5.
 
 ## User-supplied coordinates
 
@@ -44,7 +44,7 @@ void SetCoords(Geom& geom, const Eigen::MatrixXd& coords);
 ```
 
 Loads an arbitrary `2 × N` point cloud, ordered TE-lower → LE → TE-upper
-(standard XFOIL / Selig convention). Internally this just copies the
+(Scirocco ordering; check and reverse imported files if necessary). Internally this just copies the
 matrix into `geom.xpoint`; the paneler that runs later does the actual
 discretization.
 
@@ -142,7 +142,7 @@ chains.
 
 ```cpp
 // After overwriting panel.x with new CST coordinates:
-scirocco::RefreshPanelGeometry(state.panel);
+scirocco::RefreshPanelGeometry(state.foil);
 // Now panel.s and panel.t match panel.x — safe to call the BL solver.
 ```
 

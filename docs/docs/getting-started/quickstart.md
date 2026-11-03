@@ -104,12 +104,15 @@ With `philote-mdo==0.8.0` and the Philote-Cpp build pinned in the installation
 guide, the output is:
 
 ```text
-Cl = 0.48319963
+Cl = 0.48270391
 Cd = 0.000e+00
-Cm = -0.00612678
+Cm = -0.00569190
 ```
 
-The last digits can vary slightly by compiler and platform. You should still
+This reference uses 100 panels, the coefficient vector above, a total
+trailing-edge gap of `0.00126`, `alpha=4` degrees, `Re=0`, and `Ma=0`.
+Changing the gap or panel layout changes the reference result. The last
+digits can vary slightly by compiler and platform. You should still
 get `Cl` between 0.47 and 0.50 and drag below `1e-12`. Inviscid 2-D potential
 flow has no profile drag; the [first tutorial](../tutorials/inviscid-naca)
 turns this one-off model into an angle-of-attack sweep.

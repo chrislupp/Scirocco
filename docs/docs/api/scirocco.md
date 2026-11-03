@@ -35,12 +35,14 @@ void SetOper(double alpha = 0.0,
 | Argument | Notes |
 | --- | --- |
 | `alpha` | Angle of attack, degrees |
-| `cl`    | Target lift coefficient. `-1.0` means "use the supplied $\alpha$ as-is". Any non-negative value triggers an outer secant loop to find the $\alpha$ that yields this $C_l$. |
-| `Re`    | Reynolds number based on chord. `0.0` disables the viscous coupling and runs pure inviscid. |
+| `cl`    | Target lift coefficient. Any finite negative value (conventionally `-1.0`) selects prescribed-angle mode; a non-negative value requests a solve at the target lift. |
+| `Re`    | Reynolds number based on chord. Any finite nonpositive value selects inviscid analysis. |
 | `Ma`    | Freestream Mach. Activates the Kármán–Tsien correction. |
 
-`SetOper` also runs `InitThermo`, refreshing the Kármán–Tsien constants
-and Sutherland-derived viscosity in the `Param` struct.
+`SetOper` validates and stores the operating conditions and invalidates previous
+convergence and sensitivity state. Thermodynamic quantities are initialized
+during the subsequent solve. See [Input and output conventions](./conventions)
+for valid ranges and normalization.
 
 ## Solve
 
@@ -49,8 +51,10 @@ bool Solve();
 ```
 
 Performs the inviscid linear solve, plus (if `Re > 0`) the coupled BL
-Newton iteration. Returns `true` on convergence. Always `true` for pure
-inviscid.
+Newton iteration. Returns `true` on success and `false` if convergence fails,
+including an inviscid lift-target solve that cannot reach its target. Invalid
+inputs and nonfinite results can throw exceptions. Check the return value
+before using results; see [Troubleshooting](../getting-started/troubleshooting).
 
 ## Result accessors — scalars
 
@@ -70,8 +74,16 @@ inviscid.
 | `GetTheta()` | Momentum thickness $\theta$ |
 | `GetDeltaStar()` | Displacement thickness $\delta^*$ |
 
-All four are sized `N + N_w` (airfoil nodes + wake nodes); the airfoil
-portion comes first.
+Here `N = npanel + 1` and `N_w` is the number of wake nodes. After a
+successful solve:
+
+| Method | Inviscid size | Viscous size |
+| --- | --- | --- |
+| `GetCp()` | `N` | `N` |
+| `GetCf()`, `GetTheta()`, `GetDeltaStar()` | Empty | `N + N_w` |
+
+For boundary-layer arrays, airfoil nodes come first, followed by wake nodes.
+Wake coordinates are empty in inviscid mode.
 
 ## Geometry accessors
 

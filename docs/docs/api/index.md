@@ -4,13 +4,14 @@ sidebar_position: 1
 
 # API Reference
 
-Hand-written reference for the public surface of `scirocco::`. Internal
+Reference for the public classes and functions in `scirocco::`. Internal
 solver kernels are summarized in a single index page with links to source.
 
 ## Pages
 
 | Page | Contents |
 | --- | --- |
+| [Conventions](./conventions) | Geometry layout, units, valid ranges, and output sizes |
 | [`Scirocco`](./scirocco) | The user-facing entry-point class |
 | [`FoilState`](./foil-state) | The aggregate state struct + sub-structs (`Panel`, `Post`, `Oper`, `Param`) |
 | [Geometry](./geometry) | `NacaPoints`, `SetCoords`, `GeomFlap`, `GeomAddCamber`, `GeomDerotate` |

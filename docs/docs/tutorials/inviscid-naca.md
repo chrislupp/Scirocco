@@ -67,7 +67,8 @@ both components (`npanel + 1` nodes).
 
 ## Interpret the result
 
-The tested 100-panel result is:
+The result below uses the same 100-panel model and `0.00126` trailing-edge
+gap as the [quickstart](../getting-started/quickstart):
 
 ```text
 alpha       Cl          Cd          Cm

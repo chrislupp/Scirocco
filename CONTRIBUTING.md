@@ -118,7 +118,9 @@ cmake --build scirocco/build -j
 ctest --test-dir scirocco/build --output-on-failure
 ```
 
-Runtime is ~10 s for 90 tests. All tests must pass before a PR is ready for
+Test count and runtime depend on the enabled features and installed
+dependencies. Inspect the configured suite with `ctest --test-dir
+scirocco/build -N`. All configured tests must pass before a PR is ready for
 review.
 
 ### Running a single test case

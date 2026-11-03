@@ -1,14 +1,15 @@
 ---
-draft: true
 sidebar_position: 5
 ---
 
 # Geometry
 
-Scirocco accepts geometry in three forms — NACA digit strings, raw point
-clouds, and a parametric CST/Kulfan basis — and exposes a small set of
+Scirocco accepts geometry in three forms — NACA digit strings, ordered source
+coordinates, and a parametric CST/Kulfan basis — and exposes a small set of
 modifier operations (flap, camber, derotation) that act on whichever form
-you started with.
+you started with. Native modifiers act on source geometry; they are not
+inputs on the remote discipline. For a remote CST model, change the coefficients
+or supply coordinates from a Python geometry component.
 
 This page surveys the **conceptual** picture. For the hands-on usage see
 the tutorials [Custom airfoil](../tutorials/custom-airfoil) and
@@ -24,21 +25,22 @@ generates analytical NACA points and writes them into the
 
 - **4-digit** (e.g. `"2412"`): camber, position of max camber, thickness —
   the classic Jacobs formulas.
-- **5-digit** (e.g. `"23012"`): adds a design lift coefficient and a
-  reflex bit, otherwise the same thickness distribution.
+- **5-digit** (e.g. `"23012"`): the implemented non-reflex family begins
+  with `2X0`, where `X` is 1–5. Other five-digit families are rejected.
 
-Coordinates are evaluated at cosine-clustered $x$-stations so the leading
-edge is naturally well resolved.
+The generator produces 201 source points using a nonuniform spacing law.
+The constructor then re-panels those points to the requested panel count.
 
 ## Raw point clouds
 
 `SetCoords(geom, coords)` ingests a `2 × N` matrix, TE-lower → LE →
 TE-upper. Scirocco does not require regularly-spaced points: the cubic-
-spline paneler `MakePanels` rebuilds the spacing on its own. Bring an
-XFOIL `.dat` file or a CAD export and you're set.
+spline paneler `MakePanels` rebuilds the spacing on its own. Parse imported
+files into the required matrix, check contour order, and normalize the chord
+as described in [Conventions](../api/conventions).
 
-The internal `Geom` struct keeps both the **input** point cloud
-(`geom.xpoint`) and the **paneled** representation (`foil.x`) separate.
+The internal `FoilState` keeps **input** coordinates in `geom.xpoint`
+and **panel-node** coordinates in `foil.x`.
 After any modification — `GeomFlap`, `GeomAddCamber`, `GeomDerotate` — the
 input cloud is mutated and the paneled representation is rebuilt.
 
@@ -57,12 +59,11 @@ leading edge and a sharp trailing edge; the shape function $S(\psi)$ is a
 Bernstein polynomial whose coefficients $A_i$ become the optimization
 design variables.
 
-A useful property of Bernstein bases: the coefficients are non-negative
-multipliers of non-negative basis functions, so requiring $A_i \ge 0$ for
-all $i$ on the upper surface and $A_i \ge 0$ on the lower surface (with
-opposite sign convention) is **sufficient** for the airfoil to be
-non-self-intersecting at every iterate — a cheap and powerful
-constraint.
+Bernstein basis functions are non-negative on the chord. With Scirocco's
+opposite upper/lower sign convention, non-negative coefficients and
+`te_upper >= te_lower` keep the upper surface at or above the lower surface.
+This still allows zero thickness; practical designs need thickness or area
+constraints as well.
 
 Scirocco implements CST as a Philote-Cpp discipline,
 [`KulfanDiscipline`](../api/kulfan-discipline), which takes the per-surface
@@ -78,9 +79,9 @@ $$
 S''(\psi) = n(n-1) \sum_i D_i\, B^{n-2}_i(\psi),
 $$
 
-bounding $|D_i|$ caps the curvature of $S$ (and hence the airfoil) with a
-linear constraint. This is the right knob to stabilize a CST-driven
-viscous optimizer that wants to fluctuate the basis coefficients — see
+bounding $|D_i|$ bounds the second derivative of the shape polynomial and
+discourages coefficient oscillations. This is not a direct surface-curvature
+bound, because the class function also contributes derivatives. See
 [Optimization → CST design](../optimization/cst-design).
 
 ## Modifier operations

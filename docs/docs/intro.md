@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Scirocco
 
-A modern C++ library for inviscid and viscous aerodynamic analysis of 2D
+A C++17 library for inviscid and viscous aerodynamic analysis of 2D
 airfoils, with Philote servers and Python bindings for scripted analysis and
 optimization.
 
@@ -37,9 +37,9 @@ inside MDO frameworks.
 ## Where to next
 
 - [Install Scirocco](./getting-started/installation) and confirm a clean build
-- Run the 5-minute [Python quickstart](./getting-started/quickstart) through
+- Run the [Python quickstart](./getting-started/quickstart) through
   the Philote-MDO bindings
-- Browse the [API Reference](./api) for the public surface
+- Browse the [API Reference](./api) for classes, methods, and input requirements
 
 
 ## License & attribution

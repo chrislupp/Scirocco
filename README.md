@@ -3,7 +3,7 @@
 [![Build](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml/badge.svg)](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
-A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.
+A C++17 library for inviscid and viscous aerodynamic analysis of airfoils.
 
 ## Overview
 
@@ -80,6 +80,10 @@ must be finite 2-by-N arrays with at least four points, positive chord, and no
 repeated adjacent points. Kulfan accepts 3–256 coefficients per surface.
 Boundary-layer distributions and wake coordinates are empty in inviscid mode.
 Invalid inputs throw exceptions; failed or nonfinite solutions cannot supply gradients.
+
+See the [input and output conventions](docs/docs/api/conventions.md) for
+normalization and array layouts, and [troubleshooting](docs/docs/getting-started/troubleshooting.md)
+for convergence and gradient failures.
 
 ## Usage
 

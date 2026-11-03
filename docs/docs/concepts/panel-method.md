@@ -1,99 +1,56 @@
 ---
-draft: true
 sidebar_position: 1
 ---
 
 # Panel method
 
-The inviscid backbone of Scirocco is a 2D linear-vortex panel method. This
-page describes what `Solve()` does on an inviscid call ($Re = 0$): paneling,
-the AIC matrix, the Kutta condition, and how forces are integrated. The
-implementation lives in
-[`core/inviscid.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/inviscid.h),
-[`core/panel_influence.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/panel_influence.h),
-and
-[`core/paneling.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/paneling.h).
+Scirocco represents two-dimensional potential flow with a linear vortex sheet
+on straight panels. It provides the inviscid solution and the outer-flow part
+of the viscous analysis.
 
-## Discretization
+## Geometry and unknowns
 
-The airfoil contour $\mathbf{x}(s)$ is approximated by $N$ panel nodes,
-ordered TE-lower → LE → TE-upper. Between consecutive nodes lies a flat
-panel; on each panel, a vortex sheet of strength $\gamma$ varies linearly
-between the two end-node values.
+An airfoil with `npanel` panels has `N = npanel + 1` nodes, ordered lower
+trailing edge → leading edge → upper trailing edge. Vortex strength varies
+linearly between nodes. The C++ constructors use a curvature-based paneler;
+the remote `x` input replaces panel nodes directly. See
+[Input and output conventions](../api/conventions).
 
-Panel placement is **curvature-graded** by `MakePanels`: the cubic spline of
-the input geometry is reparameterized by an arc-length-plus-curvature metric,
-so the leading edge and other tight curves get extra nodes automatically.
-You ask for a node count; the paneler decides where to put them.
-
-## Influence coefficients
-
-The disturbance velocity at any point $\mathbf{x}$ produced by a unit
-linear-vortex panel between nodes $j$ and $j+1$ has a closed-form
-expression. Summing across all $N$ panels, the tangential velocity at panel
-node $i$ is a linear combination of the $N$ unknown nodal vortex strengths
-$\gamma_j$, plus a contribution from the freestream:
+`BuildGamma` assembles the streamfunction influence matrix. The unknowns are
+`N` nodal vortex strengths and one common surface streamfunction. Requiring a
+constant streamfunction along the airfoil enforces flow tangency. The trailing
+edge adds the Kutta condition:
 
 $$
-u_t(\mathbf{x}_i) = \sum_{j=1}^{N} A_{ij}\, \gamma_j
-                  + (U_\infty \cos\alpha,\, U_\infty \sin\alpha) \cdot \hat{\mathbf{t}}_i
+\gamma_0 + \gamma_{N-1} = 0.
 $$
 
-The matrix $\mathbf{A}$ is the **aerodynamic influence-coefficient (AIC)**
-matrix. It depends only on geometry, so for a fixed shape it's built once
-per call.
+The implementation includes trailing-edge source/vortex contributions and a
+special extrapolation equation for a closed trailing edge. It solves the dense
+system for two freestream directions and combines them for the requested angle.
+See [`inviscid.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/inviscid.cpp)
+for the assembly and treatment of the trailing edge.
 
-## Boundary condition and Kutta closure
+## Pressure and forces
 
-Inviscid flow tangency at every node gives $N$ equations. Linear-vortex
-panels share end-node strengths, so the unknowns are also $N$. That's
-exactly square — and singular: any constant $\gamma_j \equiv c$ produces
-zero net tangential velocity, so the system has a one-dimensional null
-space.
-
-The **Kutta condition** closes it: at the trailing edge, the upper and
-lower-surface vortex strengths must be equal and opposite,
+In incompressible flow, surface edge velocity gives
 
 $$
-\gamma_1 + \gamma_N = 0,
+C_p = 1 - (u_e / V_\infty)^2.
 $$
 
-which is added as one extra equation and one extra (Lagrange-multiplier-like)
-unknown. The resulting square non-singular system is solved with a dense LU
-factorization.
+At nonzero Mach number, Scirocco applies the
+[Kármán–Tsien correction](./compressibility). Pressure integration provides
+lift and moment; the default moment reference is `(0.25, 0)` for unit chord.
 
-In code, this is the work of `BuildGamma` in
-[`core/inviscid.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/inviscid.h);
-`SolveInviscid` is the top-level wrapper that initializes thermodynamics,
-builds the system, solves, and computes edge velocities $u_e$ at every
-panel node and wake node.
+Inviscid total `Cd` and its derivatives are zero by convention. The separate
+near-field pressure-drag quantity `cdpi` can contain discretization effects.
+An inviscid run has no boundary-layer distributions or wake coordinates.
+For profile drag and wake results, use [viscous analysis](./viscous-coupling).
 
-## Force integration
+## Practical limits
 
-With $u_e$ known at every node, the local pressure coefficient comes from
-Bernoulli with the Kármán–Tsien correction at non-zero Mach (see
-[Compressibility](./compressibility)):
-
-$$
-C_p = 1 - (u_e / U_\infty)^2 \quad \text{(incompressible form)}
-$$
-
-Pressure is integrated around the contour to give force coefficients. The
-moment is computed about the quarter-chord. The implementation lives in
-[`core/forces.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/forces.h).
-
-## What's *not* in the inviscid solve
-
-A pure inviscid run does **not** march any boundary-layer state, never
-solves a wake system, and produces $C_d \equiv 0$ — that's D'Alembert's
-paradox showing up in the discrete formulation. To get real drag you need
-the viscous coupling described in [Viscous coupling](./viscous-coupling).
-
-## Wake
-
-Even for inviscid runs Scirocco builds a discrete wake centerline
-downstream of the trailing edge — it's needed as soon as you turn on
-viscosity to march the BL through the wake. For inviscid use the wake is
-present but its only role is to support sensible far-field velocity
-distributions. See
-[`core/wake.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/wake.h).
+The inviscid model cannot predict viscous separation or stall. A nearly linear
+lift curve at large angles is not evidence that the real airfoil remains
+attached. Check panel-count sensitivity and use a model appropriate to the
+flow regime before interpreting results.

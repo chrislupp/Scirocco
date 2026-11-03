@@ -1,5 +1,4 @@
 ---
-draft: true
 sidebar_position: 4
 ---
 
@@ -23,23 +22,22 @@ C_p = \frac{C_{p,0}}{\sqrt{1 - M_\infty^2} + \tfrac{1}{2} M_\infty^2 \,
               \big( 1 + \sqrt{1 - M_\infty^2} \big)^{-1}\, C_{p,0} }
 $$
 
-This is equivalent to a Prandtl–Glauert correction with a quadratic
-nonlinear term — better than pure PG near the suction-peak, fast to apply
-once per integration. The implementation precomputes two scalars
+The denominator includes a pressure-dependent term in addition to the
+Prandtl–Glauert factor. The implementation precomputes two scalars
 
 $$
 \beta = \sqrt{1 - M_\infty^2}, \qquad \lambda = \frac{M_\infty^2}{(1 + \beta)^2}
 $$
 
-stored as `Param::KTb` and `Param::KTl` and updated whenever `Ma` changes.
+stored as `Param::KTb` and `Param::KTl` and initialized during solving.
 
 ### Range of validity
 
-Kármán–Tsien is solid through approximately $M_\infty \le 0.7$ on
-attached flow. Above that, shock formation breaks the underlying linearized
-assumption and you should use a code that resolves compressibility properly
-(Euler, RANS). Scirocco will run at higher Mach but the results stop being
-physically defensible.
+The correction does not resolve shocks. The input contract permits
+`0 <= Ma < 1`, but that is not a guarantee of physical validity throughout the
+range. Local sonic conditions depend on geometry and angle of attack as well
+as freestream Mach number. Use an appropriate compressible-flow model when
+shocks or transonic effects matter.
 
 A **sonic $C_p$** is precomputed and stored as `Param::cps`. If the
 corrected $C_p$ at any node goes below this, you're crossing the sonic line
@@ -75,5 +73,5 @@ specific working fluid, override it manually:
 
 ```cpp
 foil.GetState().param.Tsrat = 0.4;
-foil.SetOper(alpha, -1.0, Re, Ma);   // SetOper recomputes thermo with the new ratio
+foil.SetOper(alpha, -1.0, Re, Ma);   // stores operating conditions; solve afterward
 ```

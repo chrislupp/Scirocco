@@ -14,11 +14,16 @@ and
 ## Calling
 
 ```cpp
+#include <stdexcept>
+#include <scirocco/core/paneling.h>
+
 // Optional: reconstruct spline arc lengths when panel nodes are the inputs.
 scirocco::RefreshPanelGeometry(foil.GetState().foil);
 foil.SetOper(α, -1.0, Re, Ma);
-foil.Solve();                          // must converge first
-Sensitivity sens = foil.ComputeSensitivities();
+if (!foil.Solve()) {
+    throw std::runtime_error("Airfoil analysis did not converge");
+}
+auto sens = foil.ComputeSensitivities();
 ```
 
 `ComputeSensitivities` runs the reverse-mode adjoint against the converged
@@ -26,7 +31,10 @@ primal in `foil.GetState()` and populates the returned struct. It also
 caches the result internally so the direct accessors on `Scirocco` work
 without re-running the adjoint.
 
-## The `Sensitivity` struct
+## Common `Sensitivity` fields
+
+This excerpt shows the primary force gradients; the header also declares
+near-field drag, lift-target, and solved-angle derivatives discussed below.
 
 ```cpp
 struct Sensitivity {
@@ -143,4 +151,4 @@ comparisons use `2e-11 + 2e-8*abs(reference)` for both unit and nonunit chord.
 - Tutorial: [Check analytic sensitivities](../tutorials/sensitivities) — use
   the Philote Python binding and verify component and total derivatives
 
-- Theory: [adjoint.md](https://github.com/chrislupp/Scirocco/blob/develop/theory/adjoint.md) — full derivation
+- Theory: [Discrete adjoint](../theory) — residual formulation and derivative chain

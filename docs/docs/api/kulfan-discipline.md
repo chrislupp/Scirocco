@@ -13,7 +13,7 @@ discipline. Header:
 
 This is also the discipline implemented by the `scirocco_kulfan_server`
 binary — see [Optimization → Server](../optimization/server) for the
-runtime story.
+build and launch commands.
 
 ## Class shape
 
@@ -40,9 +40,9 @@ S(\psi) = \sum_{i=0}^{n} A_i \binom{n}{i} \psi^i (1-\psi)^{n-i}.
 $$
 
 The Bernstein coefficients $A_i$ are the design variables. With the sign
-convention above, $A_i \ge 0$ on both surfaces gives a non-self-
-intersecting airfoil **everywhere** on $[0, 1]$, not just at sample
-points.
+convention above, non-negative coefficients and `te_upper >= te_lower` keep
+the upper surface at or above the lower one. This allows zero thickness;
+use thickness or area constraints to exclude degenerate designs.
 
 ## Options
 
@@ -71,9 +71,9 @@ Set at discipline construction.
 | `smoothness_upper` | `n_cst_upper − 2` | Second differences $D_i = A_{i+2} - 2A_{i+1} + A_i$ for the upper-surface coefficients |
 | `smoothness_lower` | `n_cst_lower − 2` | Same, lower surface |
 
-The smoothness outputs are the right knob for stabilizing a CST viscous
-optimizer — bounding $|D_i|$ caps the second derivative of $S(\psi)$, and
-hence the airfoil-surface curvature, with a linear constraint. See
+Bounding the smoothness outputs limits the second derivative of the shape
+polynomial $S(\psi)$ and discourages coefficient oscillations. This linear
+constraint is not a direct bound on the curvature of the complete surface. See
 [CST design](../optimization/cst-design) for the recipe.
 
 ## C++ class

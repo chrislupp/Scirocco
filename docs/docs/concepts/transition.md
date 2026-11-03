@@ -1,86 +1,54 @@
 ---
-draft: true
 sidebar_position: 3
 ---
 
 # Transition
 
-Scirocco predicts laminar-to-turbulent transition with the $e^N$ method.
-This page describes the model, the one knob you typically care about
-($n_\text{crit}$), and what the solver does internally with the result.
-Implementation in
-[`core/transition.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/transition.h).
+Scirocco uses an amplification model to predict laminar-to-turbulent transition
+in its integral boundary layer. The default threshold is `ncrit = 9`.
 
-## The $e^N$ method in one paragraph
+## Amplification threshold
 
-Small perturbations of a laminar boundary layer amplify according to local
-linear stability theory. The integrated growth rate from the neutral point
-along a streamwise station $s$ is the amplification factor
+The laminar state tracks an amplification quantity along each airfoil surface.
+`MarchAmplification` integrates its growth using the local boundary-layer
+state. `UpdateTransition` updates the laminar/turbulent station classification
+as the coupled solution changes.
 
-$$
-\tilde n(s) = \int_{s_\text{neutral}}^{s} \frac{d\tilde n}{ds}\, ds'
-$$
+Lower `ncrit` values generally trigger earlier transition; higher values allow
+more amplification before transition. Select the threshold to represent the
+flow environment and compare against appropriate validation data. It is not a
+universal material property or a direct turbulence-intensity input.
 
-Tollmien–Schlichting waves are observed to break down to turbulence when
-$\tilde n$ reaches a problem-dependent threshold $n_\text{crit}$. The
-classical mfoil/XFOIL closure gives $d\tilde n / ds$ as a function of
-shape factor $H$ and momentum-thickness Reynolds number $Re_\theta$.
-
-That's it: march $\tilde n$ from the stagnation point downstream; wherever
-$\tilde n$ first crosses $n_\text{crit}$, declare the transition station
-and hand off to the turbulent closure for the rest of the surface.
-
-## The one knob: $n_\text{crit}$
+In C++, set it before solving:
 
 ```cpp
-foil.GetState().param.ncrit = 9.0;   // default
+foil.GetState().param.ncrit = 9.0;
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
+bool converged = foil.Solve();
 ```
 
-Rule of thumb:
+The current Philote discipline does not expose `ncrit` as an option, and the
+public sensitivity interface does not provide derivatives with respect to it.
 
-| Environment | $n_\text{crit}$ |
-| --- | --- |
-| Very clean wind tunnel (sailplane, low Tu) | 13 – 14 |
-| Average wind tunnel | 9 (default) |
-| Dirty free flight | 7 – 8 |
-| Heavy free-stream turbulence (helicopter rotor) | 4 – 5 |
+## Transition and convergence
 
-Lower values transition earlier (more turbulent surface, higher friction
-drag, less laminar-bucket performance). Higher values transition later.
-For sensitivity studies, $n_\text{crit}$ is a meaningful design knob — but
-it is not a coordinate, so adjoint w.r.t. $n_\text{crit}$ is not exposed
-in the current API.
+A change in the transition station changes the equations used at that station.
+This can complicate convergence and finite-difference gradient checks near a
+transition change. Start gradient verification from a converged, repeatable
+operating point; see [Troubleshooting](../getting-started/troubleshooting).
 
-## What `MarchAmplification` does
-
-For each surface (upper, lower, and each wake side), `MarchAmplification`:
-
-1. Initializes $\tilde n = 0$ at the stagnation point.
-2. Steps station-by-station along the laminar segment, computing
-   $d\tilde n / ds$ from the local $H$ and $Re_\theta$.
-3. Returns the index of the **last laminar station** before $\tilde n$
-   exceeds $n_\text{crit}$.
-
-That index then drives `StoreTransition` and `UpdateTransition`, which
-mark the transition location for the coupled Newton system.
+The initial turbulent shear state is computed by `GetCttr` from the local
+boundary-layer state and the `CtauC` and `CtauE` closure constants. It is not a
+log-linear function of the accumulated amplification.
 
 ## Forced transition
 
-To pin transition to a specific location (e.g. simulating a boundary-layer
-trip), set the transition index directly via `StoreTransition` before
-calling `SolveCoupled`. This bypasses the $e^N$ march on that surface.
-This is intentionally a lower-level intervention: the public `Solve()`
-path leaves $e^N$ in charge.
+There is no supported forced-transition input on the public `Solve()` or
+Philote interface. `StoreTransition` records internal transition information;
+calling it does not establish a persistent trip constraint, because the solver
+updates transition during iteration.
 
-## Initial $C_\tau$ after transition
+Implementation references:
 
-The first turbulent station inherits a finite shear-stress coefficient
-seeded from the $C_\tau$ closure:
-
-$$
-\log_{10} C_\tau\big|_{0,\text{turb}} = C_{\tau,C} + C_{\tau,E} \,\tilde n_\text{trans}
-$$
-
-The constants `CtauC = 1.8` and `CtauE = 3.3` (see
-[`data/param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h))
-give the standard mfoil seed.
+- [`transition.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/transition.cpp)
+- [`bl_properties.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/bl_properties.cpp)

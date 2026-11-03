@@ -54,10 +54,11 @@ Jacobian.
 
 ## Reading the report
 
-On the tested environment, the largest finite relative error in a nonzero row
-is about `3e-6`. The inviscid `Cd` rows have zero analytic magnitude, so judge
-them by absolute error; the maximum is about `6e-5` with this forward-difference
-step.
+A local run with the pinned client and the quickstart geometry gave maximum
+absolute error of about `5e-5` and maximum finite relative error of about
+`4.4e-6` across the report. The script accepts each maximum up to `1e-4`.
+Inviscid `Cd` rows have zero analytic magnitude, so judge those rows by
+absolute error rather than relative error.
 
 Finite differences are only the check. Optimization drivers receive the
 analytic values returned by `SiroccoDiscipline::ComputePartials`. Investigate
