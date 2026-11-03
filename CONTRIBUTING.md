@@ -211,3 +211,48 @@ A `release` PR promotes the active version to stable without another bump.
 The bump label applies again after stable publication. Existing stable target
 tags are rejected before any files are changed. Test this logic with
 `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+
+
+## Release qualification
+
+Before promoting `develop` to a stable release:
+
+1. Merge the release crash fixes and publication gates (PR #14) and this release
+   qualification work into `develop`, after their checks pass.
+2. Open a `develop` → `main` prerelease PR with one bump label (`major`, `minor`,
+   or `patch`), `prerelease`, and `rc`. Have it reviewed and require all checks.
+3. The release workflow validates the prepared commit and images before
+   publishing. The **Published release artifacts** workflow then downloads the
+   tagged source archive, tests a relocated CMake install, pulls both full-version
+   Docker images, and exercises them through the Python Philote client.
+4. Require that artifact workflow to pass before opening a stable-release PR.
+   Its `workflow_dispatch` input allows an existing release tag to be rechecked;
+   it does not publish anything. Inspect recorded image digests when diagnosing
+   a failed run. A post-publication failure must block promotion, even though it
+   cannot undo an already-published prerelease.
+
+The **ASan and UBSan** job runs the default core and Philote suites, including
+installed-consumer and RPC checks, in an instrumented build. Release builds
+remain uninstrumented. Coverage CI is disabled; do not quote historical coverage
+numbers as a current release guarantee.
+
+### Main branch protection
+
+`.github/main-protection.json` records the protection configuration. It requires
+one approving review, dismissal of stale reviews, resolved conversations, an
+up-to-date branch, and the listed CI checks. Force pushes and deletion are
+blocked for ordinary contributors. An administrator can apply it with:
+
+```bash
+gh api --method PUT repos/chrislupp/Scirocco/branches/main/protection \
+    --input .github/main-protection.json
+```
+
+Administrator enforcement is deliberately disabled because `RELEASE_TOKEN` is
+owned by the repository owner, `chrislupp`, and the release workflow pushes the
+validated version commit directly. This exception also permits administrators'
+manual pushes; a personal token cannot be distinguished from its owner's other
+Git operations. Personal repositories do not support per-user PR bypass lists.
+For an automation-only exception, migrate release authentication to a dedicated
+GitHub App and use rulesets with that App as the bypass actor. Never broaden the
+exception to ordinary contributors or disable checks to publish a release.

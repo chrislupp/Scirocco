@@ -47,6 +47,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -65,7 +66,13 @@ template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
     T value;
-    dataset.read(&value, dataset.getDataType());
+    // Use the destination memory type, not the on-disk storage width.
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, double>);
+    if constexpr (std::is_same_v<T, int>) {
+        dataset.read(&value, H5::PredType::NATIVE_INT);
+    } else {
+        dataset.read(&value, H5::PredType::NATIVE_DOUBLE);
+    }
     return value;
 }
 

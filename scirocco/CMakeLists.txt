@@ -18,6 +18,7 @@ option(SCIROCCO_BUILD_PROBES
        "Build standalone probe diagnostic binaries" OFF)
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
+option(SCIROCCO_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
 # Find Eigen3 (3.4+ or 5.x)
 find_package(Eigen3 REQUIRED)
@@ -57,6 +58,16 @@ target_compile_options(scirocco PRIVATE
     $<$<CONFIG:Release>:-O3>
     $<$<AND:$<CONFIG:Release>,$<BOOL:${SCIROCCO_NATIVE_ARCH}>>:-march=native>
 )
+
+# Propagate instrumentation and runtime linkage to tests and installed consumers.
+if(SCIROCCO_SANITIZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "SCIROCCO_SANITIZERS requires GCC or Clang")
+    endif()
+    target_compile_options(scirocco PUBLIC
+        -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(scirocco PUBLIC -fsanitize=address,undefined)
+endif()
 
 # HDF5 output writer (optional separate library)
 if(SCIROCCO_HDF5_OUTPUT)

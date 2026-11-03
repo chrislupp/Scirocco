@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Release readiness
+- Fix stack overwrites in reference-test scalar readers by converting HDF5
+  storage values to the destination C++ memory type.
+- Add ASan/UBSan CI and an opt-in instrumented CMake build, including installed
+  consumers and Philote tests.
+- Verify published source archives and full-version container images after
+  release, with manual rechecks of existing tags.
+- Correct test-suite and coverage documentation and record main branch
+  protection requirements and the release-token administrator exception.
 - Reject nonfinite operating conditions, invalid panel counts, malformed coordinate
   options, and nonfinite solver results instead of reporting successful analyses.
 - Clear previous boundary-layer and wake results when switching to inviscid mode.

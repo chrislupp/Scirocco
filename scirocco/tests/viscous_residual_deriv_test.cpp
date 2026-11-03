@@ -15,6 +15,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "scirocco/core/coupled_solver.h"
@@ -50,7 +51,13 @@ template <typename T>
 T readScalar(H5::H5File& f, const std::string& p) {
     H5::DataSet d = f.openDataSet(p);
     T v;
-    d.read(&v, d.getDataType());
+    // Use the destination memory type, not the on-disk storage width.
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, double>);
+    if constexpr (std::is_same_v<T, int>) {
+        d.read(&v, H5::PredType::NATIVE_INT);
+    } else {
+        d.read(&v, H5::PredType::NATIVE_DOUBLE);
+    }
     return v;
 }
 VectorXd readVector(H5::H5File& f, const std::string& p) {

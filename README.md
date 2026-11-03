@@ -46,11 +46,11 @@ Build options:
 | Option | Default | Purpose |
 |---|---|---|
 | `SCIROCCO_BUILD_PHILOTE` | `OFF` | Build gRPC servers; requires Protobuf, gRPC, and Philote-Cpp |
-| `SCIROCCO_BUILD_TESTS` | `ON` | Build the default test suite (4 gtest executables — primal + Jacobian unit + end-to-end adjoint vs CS) |
+| `SCIROCCO_BUILD_TESTS` | `ON` | Build unit, solver, reference, and gradient tests (requires GTest; reference tests also require HDF5) |
 | `SCIROCCO_BUILD_EXAMPLES` | `ON` | Build example programs |
-| `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_chain`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
+| `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Build chain-piece sensitivity tests (`sensitivity_ping`, `viscous_residual_deriv`, `viscous_output_ping`) — useful for localizing adjoint regressions; otherwise redundant with the end-to-end test |
 | `SCIROCCO_BUILD_PROBES` | `OFF` | Build the 14 standalone `probe_*` diagnostic binaries |
-| `SCIROCCO_COVERAGE` | `OFF` | Instrument library + tests with `-fprofile-instr-generate -fcoverage-mapping` for `llvm-cov` |
+| `SCIROCCO_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer with GCC or Clang |
 | `SCIROCCO_NATIVE_ARCH` | `ON` | Pass `-march=native` in Release builds |
 
 Example — lean default build:
@@ -266,14 +266,21 @@ scirocco/
 
 ## Testing
 
-The default suite (`SCIROCCO_BUILD_TESTS=ON`, all other test flags off) builds four gtest executables that together cover every `src/*.cpp` file:
+With GTest and HDF5 installed, the default suite builds the following test
+executables, plus an installed-consumer check. Without HDF5, reference tests
+are omitted; without GTest, only the installed-consumer check is registered.
+Enable Philote explicitly to include its discipline and RPC tests.
 
 | Executable | Purpose |
 |---|---|
+| `scirocco_solver_strategy_tests` | Solver strategies, input validation, and solver reuse |
 | `scirocco_tests` | Spline, geometry, and the mfoil primal reference suite |
 | `scirocco_forward_ref_tests` | Forward `R_x` / `R_U` partials vs mfoil |
 | `scirocco_ping_tests` | Analytic Jacobians vs mfoil-CS references (BL, residuals, BuildGlobSys, WakeSys, forces) |
 | `scirocco_sensitivity_ref_tests` | End-to-end adjoint `dJ/d{x, α, Ma, Re}` vs complex-step references |
+| `scirocco_gradient_contract_tests` | Gradient API contracts against references |
+| `scirocco_remaining_gradient_tests` | Additional and high-precision gradient references |
+| `scirocco_viscous_chain_tests` | Geometric derivative chains against complex-step references |
 
 Run it:
 ```bash
@@ -282,7 +289,9 @@ cmake --build scirocco/build-default -j
 ctest --test-dir scirocco/build-default --output-on-failure
 ```
 
-Release-mode runtime is ~10 s for 90 tests. The default suite is measured at **93.4% line / 94.0% function** coverage (see `SCIROCCO_COVERAGE` below).
+Test counts and runtime depend on enabled features and dependencies. Use
+`ctest --test-dir scirocco/build-default -N` to inspect the configured suite.
+Coverage CI is currently disabled; no current coverage percentage is claimed.
 
 ### Static analysis
 
@@ -295,7 +304,23 @@ run-clang-tidy -p scirocco/build-default -header-filter='scirocco/include/' 'sci
 
 ### Sensitivity-debug suite (opt-in)
 
-When the end-to-end `sensitivity_ref` tests regress, turn on `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` to build four chain-piece test executables that isolate which link is broken: `scirocco_sensitivity_tests` (per-panel influence derivs), `scirocco_viscous_chain_tests` (geometric chain), `scirocco_viscous_residual_tests` (residual partials), `scirocco_viscous_output_ping_tests` (force output partials). These exercise the same source files as the end-to-end test, so they don't add coverage — they add diagnostic resolution.
+Enable `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` to add three diagnostic suites:
+`scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, and
+`scirocco_viscous_output_ping_tests`. The geometric chain tests already run in
+the default suite.
+
+### Memory and undefined-behavior checks
+
+```bash
+cmake -S scirocco -B scirocco/build-sanitized -DCMAKE_BUILD_TYPE=Debug \
+    -DSCIROCCO_SANITIZERS=ON -DSCIROCCO_NATIVE_ARCH=OFF
+cmake --build scirocco/build-sanitized -j2
+ASAN_OPTIONS=halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+    ctest --test-dir scirocco/build-sanitized --output-on-failure
+```
+
+The sanitizer CI job also enables Philote and HDF5 output to exercise RPC and
+writer paths. Sanitized builds are diagnostic builds, not release artifacts.
 
 ### Probe binaries (opt-in)
 
@@ -303,19 +328,34 @@ When the end-to-end `sensitivity_ref` tests regress, turn on `SCIROCCO_BUILD_SEN
 
 ### Coverage measurement
 
+Coverage uses Clang compiler flags directly; there is no `SCIROCCO_COVERAGE`
+CMake option. With Clang and matching LLVM tools on PATH:
+
 ```bash
-cmake -S scirocco -B scirocco/build-cov -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_COVERAGE=ON
-cmake --build scirocco/build-cov -j
-cd scirocco/build-cov && LLVM_PROFILE_FILE="cov-%p.profraw" ctest
-xcrun llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
-xcrun llvm-cov report \
-    scirocco_tests \
-    -object scirocco_forward_ref_tests \
-    -object scirocco_sensitivity_ref_tests \
-    -object scirocco_ping_tests \
-    -instr-profile=cov.profdata \
-    $(ls ../src/*.cpp)
+CC=clang CXX=clang++ cmake -S scirocco -B scirocco/build-cov \
+    -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_NATIVE_ARCH=OFF \
+    -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+cmake --build scirocco/build-cov -j2
+(
+    cd scirocco/build-cov
+    LLVM_PROFILE_FILE="cov-%p.profraw" ctest --output-on-failure -E '^InstalledConsumer$'
+    llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
+    llvm-cov report scirocco_tests \
+        -object scirocco_solver_strategy_tests \
+        -object scirocco_forward_ref_tests \
+        -object scirocco_sensitivity_ref_tests \
+        -object scirocco_gradient_contract_tests \
+        -object scirocco_remaining_gradient_tests \
+        -object scirocco_viscous_chain_tests \
+        -object scirocco_ping_tests \
+        -instr-profile=cov.profdata ../src/*.cpp
+)
 ```
+
+This command assumes GTest and HDF5 are installed. The installed-consumer
+packaging check is excluded from this coverage-only build because its separate
+build does not inherit the global coverage flags. Use `xcrun llvm-profdata` and
+`xcrun llvm-cov` when using Apple's bundled Clang tools.
 
 ## Solver Details
 
