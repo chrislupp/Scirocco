@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Release readiness
+- Reject empty, malformed, nonfinite, or unordered camber data before changing
+  geometry, and handle server startup failures without dereferencing null.
+- Validate the prepared release commit, installed consumer, Python references,
+  documentation, and both container images before publication. Publish the tested
+  images without rebuilding; refuse publication if `main` advances.
 - Reject nonfinite operating conditions, invalid panel counts, malformed coordinate
   options, and nonfinite solver results instead of reporting successful analyses.
 - Clear previous boundary-layer and wake results when switching to inviscid mode.
@@ -22,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `kulfan-server` (port 50052), both running on `debian:stable-slim` as
   a non-root user. A CI workflow validates both builds on every PR/push
   and publishes to Docker Hub as `chrislupp/scirocco` and
-  `chrislupp/scirocco-kulfan` on `v*` tag pushes.
+  `chrislupp/scirocco-kulfan` through the validated release workflow.
 - Docusaurus 3 documentation site scaffolded at `docs/` with KaTeX math
   support, versioned docs, and a GitHub Actions workflow that deploys to
   GitHub Pages on push to `develop`.

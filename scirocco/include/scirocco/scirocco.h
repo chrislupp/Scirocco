@@ -108,7 +108,9 @@ class Scirocco {
 
     /**
      * @brief Add camber to airfoil from given camber line increment
-     * @param xzcamb Camber increment points [2 x Nc] (x, z coords)
+     * @param xzcamb Finite camber points [2 x Nc] or [Nc x 2], Nc >= 2,
+     * with strictly increasing x coordinates (2 x 2 uses rows for x and z).
+     * @throws std::invalid_argument for malformed camber data
      */
     void GeomAddCamber(const MatrixXd& xzcamb);
 

@@ -63,3 +63,11 @@ if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
     target_link_libraries(scirocco_philote_validation_tests PRIVATE SiroccoPhilote GTest::gtest_main)
     gtest_discover_tests(scirocco_philote_validation_tests)
 endif()
+
+if(SCIROCCO_BUILD_TESTS)
+    foreach(server scirocco_server scirocco_kulfan_server)
+        add_test(NAME ${server}_startup_failure
+            COMMAND ${CMAKE_COMMAND} -DSERVER=$<TARGET_FILE:${server}>
+                -P ${PROJECT_SOURCE_DIR}/tests/server_startup.cmake)
+    endforeach()
+endif()

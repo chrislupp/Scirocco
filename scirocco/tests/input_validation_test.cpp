@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <limits>
+#include <vector>
 
 #include "scirocco/scirocco.h"
 
@@ -88,4 +89,46 @@ TEST(SolverReuse, ViscousInviscidViscousMatchesFreshSolvers) {
     EXPECT_NEAR(reused.GetCl(), fresh.GetCl(), 1e-12);
     EXPECT_NEAR(reused.GetCd(), fresh.GetCd(), 1e-12);
     EXPECT_LT((reused.GetCf() - fresh.GetCf()).norm(), 1e-12);
+}
+
+TEST(InputValidation, CamberRejectsMalformedDataWithoutChangingGeometry) {
+    Scirocco foil("0012", 60);
+    foil.SetOper(3);
+    ASSERT_TRUE(foil.Solve());
+    const MatrixXd before = foil.GetFoilCoords();
+    const MatrixXd source = foil.GetState().geom.xpoint;
+    std::vector<MatrixXd> invalid = {MatrixXd(2, 0), MatrixXd(0, 2),
+                                     MatrixXd::Zero(3, 3), MatrixXd::Zero(2, 1),
+                                     MatrixXd::Zero(1, 2)};
+    MatrixXd camber(2, 3);
+    camber << 0, 0.5, 1, 0, 0.02, 0;
+    for (double bad : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+                       std::numeric_limits<double>::quiet_NaN()}) {
+        MatrixXd data = camber;
+        data(0, 1) = bad;
+        invalid.push_back(data);
+    }
+    camber(1, 1) = std::numeric_limits<double>::quiet_NaN();
+    invalid.push_back(camber);
+    for (const auto& data : invalid) {
+        EXPECT_THROW(foil.GeomAddCamber(data), std::invalid_argument);
+        EXPECT_EQ(foil.GetFoilCoords(), before);
+        EXPECT_EQ(foil.GetState().geom.xpoint, source);
+    }
+}
+
+TEST(InputValidation, CamberAcceptsBothLayoutsAndTwoPointInput) {
+    Scirocco rows("0012", 60), columns("0012", 60);
+    MatrixXd camber(2, 3);
+    camber << 0, 0.5, 1, 0, 0.02, 0;
+    rows.GeomAddCamber(camber);
+    columns.GeomAddCamber(camber.transpose());
+    EXPECT_EQ(rows.GetFoilCoords(), columns.GetFoilCoords());
+    rows.SetOper(3);
+    EXPECT_TRUE(rows.Solve());
+    MatrixXd two(2, 2);
+    two << 0, 1, 0, 0.01;
+    EXPECT_NO_THROW(columns.GeomAddCamber(two));
+    columns.SetOper(3);
+    EXPECT_TRUE(columns.Solve());
 }
