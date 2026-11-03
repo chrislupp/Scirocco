@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Release readiness
+- Break Philote RPC service ownership cycles so server shutdown and startup
+  failures release the discipline and its solver state.
+- Fix stack overwrites in reference-test scalar readers by converting HDF5
+  storage values to the destination C++ memory type. Initialize wake coordinates
+  and wake-inclusive velocities consistently in debug test fixtures.
+- Add ASan/UBSan CI and an opt-in instrumented CMake build, including installed
+  consumers and Philote tests.
+- Verify published source archives and full-version container images after
+  release, with manual rechecks of existing tags.
+- Correct test-suite and coverage documentation and record main branch
+  protection requirements and the release-token administrator exception.
 - Reject empty, malformed, nonfinite, or unordered camber data before changing
   geometry, and handle server startup failures without dereferencing null.
 - Validate the prepared release commit, installed consumer, Python references,

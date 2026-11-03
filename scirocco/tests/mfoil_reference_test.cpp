@@ -36,6 +36,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "scirocco/core/boundary_layer.h"
@@ -71,7 +72,18 @@ template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet dataset = file.openDataSet(path);
     T value;
-    dataset.read(&value, dataset.getDataType());
+    // Use the destination memory type, not the on-disk storage width.
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, double> ||
+                  std::is_same_v<T, bool>);
+    if constexpr (std::is_same_v<T, bool>) {
+        int stored;
+        dataset.read(&stored, H5::PredType::NATIVE_INT);
+        value = stored != 0;
+    } else if constexpr (std::is_same_v<T, int>) {
+        dataset.read(&value, H5::PredType::NATIVE_INT);
+    } else {
+        dataset.read(&value, H5::PredType::NATIVE_DOUBLE);
+    }
     return value;
 }
 
@@ -3108,6 +3120,7 @@ TEST_F(MfoilReferenceTest, RebuildUeM) {
     // bracketing panel. BuildGamma is checked independently above.
     state.isol.gam = readVector(getFile(), "inviscid/gam");
     StagPointFind(state);
+    ExtendXiToWake(state);
     IdentifySurfaces(state);
     SetWakeGap(state);
 

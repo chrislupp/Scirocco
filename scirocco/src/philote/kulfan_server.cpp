@@ -20,13 +20,15 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <string>
 
 #include "scirocco/kulfan_discipline.h"
+#include "scirocco/philote_services.h"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     std::string address = "localhost:50052";
     if (argc > 1) {
         address = argv[1];
@@ -36,7 +38,7 @@ int main(int argc, char* argv[]) {
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(address, grpc::InsecureServerCredentials());
-    discipline->RegisterServices(builder);
+    scirocco::PhiloteServices services(builder, discipline);
 
     std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
     if (!server) {
@@ -48,4 +50,7 @@ int main(int argc, char* argv[]) {
     server->Wait();
 
     return 0;
+} catch (const std::exception& error) {
+    std::cerr << "Failed to start server: " << error.what() << '\n';
+    return 1;
 }

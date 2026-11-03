@@ -23,6 +23,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "scirocco/core/inviscid.h"
@@ -63,7 +64,13 @@ template <typename T>
 T readScalar(H5::H5File& file, const std::string& path) {
     H5::DataSet ds = file.openDataSet(path);
     T value;
-    ds.read(&value, ds.getDataType());
+    // Use the destination memory type, not the on-disk storage width.
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, double>);
+    if constexpr (std::is_same_v<T, int>) {
+        ds.read(&value, H5::PredType::NATIVE_INT);
+    } else {
+        ds.read(&value, H5::PredType::NATIVE_DOUBLE);
+    }
     return value;
 }
 
@@ -171,7 +178,10 @@ class GeomChainTest : public ::testing::Test {
            state ue = sgnue*gam, which matches the gamma-based stagpoint. */
         int Nsys = N_ + Nw_;
         s.glob.U = MatrixXd::Zero(4, Nsys);
+        // Include the wake velocities in this boundary-layer fixture.
+        s.oper.viscous = true;
         VectorXd ueinv = GetUeInv(s);
+        ASSERT_EQ(ueinv.size(), Nsys);
         s.glob.U.row(3).head(Nsys) = ueinv.transpose();
     }
 

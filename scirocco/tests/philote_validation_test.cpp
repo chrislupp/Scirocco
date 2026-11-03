@@ -7,6 +7,7 @@
 
 #include "scirocco/kulfan_discipline.h"
 #include "scirocco/philote_discipline.h"
+#include "scirocco/philote_services.h"
 
 namespace {
 google::protobuf::Struct NacaOptions() {
@@ -24,7 +25,8 @@ class RpcServer {
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0",
                                  grpc::InsecureServerCredentials(), &port);
-        discipline->RegisterServices(builder);
+        services =
+            std::make_unique<scirocco::PhiloteServices>(builder, discipline);
         server = builder.BuildAndStart();
         if (!server) throw std::runtime_error("Test server failed to start");
         client.ConnectChannel(
@@ -47,6 +49,7 @@ class RpcServer {
                 inputs.emplace(meta.name(), philote::Variable(meta));
         return inputs;
     }
+    std::unique_ptr<scirocco::PhiloteServices> services;
     philote::ExplicitClient client;
     std::unique_ptr<grpc::Server> server;
 };
@@ -132,4 +135,37 @@ TEST(PhiloteRpc, KulfanRecoversFromInvalidPanelOption) {
     EXPECT_EQ(outputs.at("x").Size(), 122);
     for (size_t i = 0; i < outputs.at("x").Size(); ++i)
         EXPECT_TRUE(std::isfinite(outputs.at("x")(i)));
+}
+
+TEST(PhiloteRpc, ShutdownReleasesBothDisciplineTypes) {
+    for (bool analysis : {true, false}) {
+        std::shared_ptr<philote::ExplicitDiscipline> discipline;
+        if (analysis)
+            discipline = std::make_shared<scirocco::SiroccoDiscipline>();
+        else
+            discipline = std::make_shared<scirocco::KulfanDiscipline>();
+        std::weak_ptr<philote::ExplicitDiscipline> observer = discipline;
+        {
+            RpcServer rpc(discipline);
+            discipline.reset();
+            ASSERT_FALSE(observer.expired());
+            rpc.Options(NacaOptions());
+            EXPECT_FALSE(rpc.Setup().empty());
+        }
+        EXPECT_TRUE(observer.expired());
+    }
+}
+
+TEST(PhiloteRpc, UnstartedServicesReleaseDiscipline) {
+    std::weak_ptr<philote::ExplicitDiscipline> observer;
+    {
+        grpc::ServerBuilder builder;
+        auto discipline = std::make_shared<scirocco::SiroccoDiscipline>();
+        observer = discipline;
+        scirocco::PhiloteServices services(builder, discipline);
+        discipline.reset();
+        EXPECT_FALSE(observer.expired());
+        // Simulate leaving before a server is started (e.g. bind failure).
+    }
+    EXPECT_TRUE(observer.expired());
 }
