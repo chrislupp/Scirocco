@@ -66,7 +66,7 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Release \
       -DSCIROCCO_BUILD_PROBES=ON
 ```
 
-To build the servers, follow the [Philote dependency instructions](docs/docs/getting-started/installation.md)
+To build the servers, follow the [Philote dependency instructions](docs/docs/getting-started/installation.md#philote-servers-for-python)
 and configure with `-DSCIROCCO_BUILD_PHILOTE=ON -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build`.
 
 Install the core library with `cmake --install scirocco/build-default --prefix /your/prefix`.
@@ -120,7 +120,7 @@ problem.model.add_subsystem(
 ```
 
 Scirocco does not currently ship an in-process `import scirocco` module. See
-the [Python quickstart](https://chrislupp.github.io/Scirocco/docs/getting-started/quickstart)
+the [Python overview](https://chrislupp.github.io/Scirocco/docs/python)
 for installation, server launch commands, inputs, and a complete first run.
 
 The C++ library remains available directly for native applications:

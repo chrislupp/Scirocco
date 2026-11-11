@@ -4,16 +4,11 @@ sidebar_position: 7
 
 # `KulfanDiscipline`
 
-A Philote-Cpp explicit discipline that maps Kulfan / CST Bernstein
-coefficients to panel-node coordinates with analytic partials. Used
-inside MDO frameworks (OpenMDAO via `philote-mdo`) to expose CST
-parameterization as an upstream component to the Scirocco analysis
-discipline. Header:
+The Philote discipline that turns CST coefficients into panel nodes, with
+exact partials. `scirocco_kulfan_server` runs it. Header:
 [`scirocco/kulfan_discipline.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/kulfan_discipline.h).
 
-This is also the discipline implemented by the `scirocco_kulfan_server`
-binary — see [Optimization → Server](../optimization/server) for the
-build and launch commands.
+See [Server reference](../python/servers) to launch it.
 
 ## Class shape
 
@@ -103,9 +98,8 @@ public:
 };
 ```
 
-You typically don't instantiate `KulfanDiscipline` directly from C++ —
-you launch the `scirocco_kulfan_server` binary and talk to it via gRPC
-from Python (`RemoteExplicitComponent`).
+You normally use it through `scirocco_kulfan_server` from Python rather
+than constructing it in C++.
 
 ## Evaluation stations
 
@@ -116,9 +110,7 @@ exposes the half-chord $\psi$ vector for testing.
 
 ## Building, launching, using
 
-See [Optimization → Server](../optimization/server) for the build
-recipe and gRPC launch commands. Once the server is up, use it from
-OpenMDAO as a `RemoteExplicitComponent`:
+With the server running, connect from OpenMDAO:
 
 ```python
 from philote_mdo.openmdao import RemoteExplicitComponent
@@ -134,8 +126,6 @@ geometry = RemoteExplicitComponent(
 
 ## See also
 
-- [Python quickstart](../getting-started/quickstart) — connect the Kulfan and
-  analysis disciplines for the first time
-- [Parameterized geometry tutorial](../tutorials/geometry-mods) — change CST
-  coefficients and inspect coordinates from Python
-- [CST design](../optimization/cst-design) — inviscid and viscous optimization
+- [Python overview](../python): connect the geometry and analysis servers
+- [Change the shape](../python/geometry): CST coefficients from Python
+- [CST design](../optimization/cst-design): inviscid and viscous optimization

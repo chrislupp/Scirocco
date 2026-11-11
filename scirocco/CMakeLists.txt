@@ -329,6 +329,15 @@ if(SCIROCCO_BUILD_EXAMPLES)
 
     add_executable(viscous_example examples/viscous_example.cpp)
     target_link_libraries(viscous_example scirocco)
+
+    add_executable(quickstart examples/quickstart.cpp)
+    target_link_libraries(quickstart scirocco)
+
+    add_executable(bench examples/bench.cpp)
+    target_link_libraries(bench scirocco)
+
+    add_executable(docs_figure_data examples/docs_figure_data.cpp)
+    target_link_libraries(docs_figure_data scirocco)
 endif()
 
 # Philote-Cpp discipline interface

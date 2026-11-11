@@ -1,64 +1,68 @@
 ---
-sidebar_position: 2
+title: Viscous coupling
+description: How the boundary layer, wake, and potential flow are solved together.
 ---
 
 # Viscous coupling
 
-A positive Reynolds number enables the integral boundary-layer model on both
-airfoil surfaces and in the wake. Boundary-layer displacement changes the outer
-flow; the outer-flow edge velocity, in turn, changes the boundary layer.
-Scirocco solves this interaction as a coupled nonlinear system.
+With `Re > 0`, Scirocco adds a boundary layer on both surfaces and a wake
+behind the trailing edge. The boundary layer displaces the outer flow, and
+the outer flow drives the boundary layer, so both are solved together as one
+nonlinear system with Newton's method.
 
-## State and coupling
+<CpPlot />
 
-The global viscous state has four values at each airfoil or wake station:
+## The state
 
-| State | Meaning |
+Each station on the airfoil and in the wake carries four unknowns:
+
+| Unknown | Meaning |
 | --- | --- |
-| `theta` | Momentum thickness |
-| `delta_star` | Displacement thickness |
-| Amplification / shear state | Laminar amplification or turbulent shear-stress variable |
-| `ue` | Edge velocity |
+| $\theta$ | Momentum thickness |
+| $\delta^*$ | Displacement thickness |
+| $\tilde n$ or $C_\tau^{1/2}$ | Amplification factor where the flow is laminar, shear-stress coefficient where it is turbulent |
+| $u_e$ | Edge velocity |
 
-The displacement effect enters through the mass-source quantity
-$m = u_e\delta^*$. An influence matrix maps changes in this quantity to changes
-in edge velocity. Nodal vortex strengths belong to the inviscid solution; they
-are not additional rows in the four-row viscous state array.
+The residual combines the integral momentum and shape-parameter equations,
+an amplification or shear-lag equation, and the coupling to the outer flow.
+The outer flow sees the boundary layer through the mass defect
+$m = u_e \delta^*$: a precomputed influence matrix maps changes in $m$ to
+changes in $u_e$.
 
-Initialization builds an inviscid solution, wake geometry, stagnation/surface
-indexing, and a boundary-layer starting state. Coupled iterations assemble the
-residual and Jacobian, update the state, and track changes in stagnation and
-transition. They do not restart the entire boundary-layer march on every step.
+## The solve
 
-## Convergence
+1. Solve potential flow and lay out the wake along a streamline.
+2. Find the stagnation point and march a first guess for the boundary layer
+   down each surface.
+3. Run Newton iterations on the full coupled system, updating the
+   stagnation point and the transition location as they move.
 
-The solver uses a sparse coupled linear system with scaling and step control.
-[Pseudo-transient continuation](./ptc) adds damping when needed; continuation
-retries can help recover failed cold starts. Success requires the residual to
-meet the configured tolerance. Inspect the return value from `Solve()` before
-using forces or sensitivities.
+The Jacobian is exact, so a well-posed case converges in a handful of steps:
 
-The converged, unregularized Jacobian is used by the
-[adjoint](../theory). A failed primal or adjoint does not provide usable
-gradients. See [Troubleshooting](../getting-started/troubleshooting).
+<ConvergencePlot variant="typical" />
+
+Newton steps are damped with
+[pseudo-transient continuation](./ptc) when the residual grows. If a cold
+start still fails, Scirocco retries along a continuation path in angle of
+attack. `Solve()` returns `true` only when the residual meets the
+tolerance.
 
 ## Outputs
 
-| Quantity | Source |
+| Quantity | Where it comes from |
 | --- | --- |
 | `cl`, `cm` | Surface pressure integration |
-| `cd` | Far-wake momentum deficit with Squire–Young extrapolation |
-| `cdf` | Integrated skin-friction contribution |
-| `cdp` | `cd - cdf` |
-| `cdpi` | Separate near-field pressure integration |
+| `cd` | Momentum deficit at the end of the wake, extrapolated to infinity (Squire–Young) |
+| `cdf` | Integrated skin friction |
+| `cdp` | `cd − cdf` |
 
-Boundary-layer distributions include airfoil and wake nodes; pressure contains
-only airfoil nodes. See [Conventions](../api/conventions) for sizes and reference
-quantities. Integral boundary-layer modeling has limits in strongly separated
-flow; numerical convergence alone does not establish physical accuracy.
+## Limits
 
-Implementation references:
+Integral boundary-layer models are reliable for attached flow and small
+separation bubbles. Near and past stall, the solve may still converge, but
+the answer is less trustworthy. Converging is not the same as being right;
+compare against data for your regime.
 
-- [`boundary_layer.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/boundary_layer.cpp)
-- [`coupled_solver.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/coupled_solver.cpp)
-- [`forces.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/forces.cpp)
+Source: [`boundary_layer.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/boundary_layer.cpp),
+[`coupled_solver.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/coupled_solver.cpp),
+[`forces.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/forces.cpp).

@@ -4,18 +4,13 @@ sidebar_position: 5
 
 # Multipoint design
 
-A single CST geometry optimized against three operating points
-(low-, mid-, high-Cl) with a weighted-drag objective. This is the
-showcase example for "real" airfoil design: the same wing has to perform
-across a flight envelope, not just at one point.
+One CST shape, three operating points: low, mid, and high lift. The
+objective is a weighted average of their drag. This builds on
+[CST design](./cst-design); what's new is one analysis server per operating
+point, all fed by one geometry server.
 
-This builds on the [CST design tutorial](./cst-design) — the geometry
-discipline and constraints are identical. What's new is running **N
-analysis servers**, one per operating point, against a single shared
-geometry server, and aggregating their drag into one weighted objective.
-
-Mirrors
-[`examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py).
+This is
+[`kulfan_multipoint_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py).
 
 ## Problem
 
@@ -28,22 +23,20 @@ Mirrors
 | Objective | $\sum_i w_i\, C_{d,i}$ (weighted drag) |
 | Constraints | $C_{l,i} = C_{l,\text{tgt}_i}$ for each point; area floor; CST smoothness |
 
-The shape is single-valued — same panel coordinates feeding every analysis
-— so the geometry component drives one Kulfan server. Each operating point
-needs its own analysis state, so the script launches **N independent
-analysis servers**, one per design point.
+All points share one shape, so there's one geometry server. Each point keeps
+its own solver state, so each gets its own analysis server.
 
-## Architecture
+## How it fits together
 
-```
+```text
                        ┌──→ [Analysis @ 50061] ──cl_0, cd_0──→
 [Kulfan geometry] ──x──┼──→ [Analysis @ 50062] ──cl_1, cd_1──→  [IPOPT]
    (50060)             └──→ [Analysis @ 50063] ──cl_2, cd_2──→
 ```
 
-One geometry server (50060), N analysis servers (50061 … 50060+N by
-default — N is whatever `len(DESIGN_POINTS)` evaluates to). The script
-starts all of them, runs the optimization, and tears them down.
+The geometry server listens on 50060 and the analysis servers on 50061
+upward, one per entry in `DESIGN_POINTS`. The script starts and stops all
+of them.
 
 ## Design-point configuration
 
@@ -61,17 +54,15 @@ DESIGN_POINTS = [
 The script normalizes the raw weights, giving
 `[0.285714, 0.428571, 0.285714]` for this configuration.
 
-Editing this list changes the entire optimization shape — add a point and
-you get another analysis server, another $\alpha$ DV, another lift-equality
-constraint, and an extra term in the weighted drag objective.
+Add a point to the list and you get another server, another $\alpha$
+variable, another lift constraint, and another drag term.
 
-Before constructing the ModOpt wrapper, the script uses the analytic
-$dC_l/d\alpha$ from each analysis discipline to Newton-match the initial
-angles of attack to their lift targets. For the default shape this gives
-approximately `[2.8988°, 4.5334°, 6.7619°]`. This changes only the starting
-point, not the optimization problem.
+Before optimizing, the script uses each server's analytic $dC_l/d\alpha$ to
+Newton-iterate the starting angles onto their lift targets: about
+`[2.8988°, 4.5334°, 6.7619°]` for the default shape. That only improves the
+starting point.
 
-## OpenMDAO wiring (sketch)
+## The model
 
 ```python
 geometry_channel = grpc.insecure_channel("localhost:50060")
@@ -112,8 +103,7 @@ for i in range(N_POINTS):
 model.add_objective("cd_aggregator.cd_total", ref=1e-2)
 ```
 
-This excerpt shows the component connections; see the complete script for
-setup and cleanup.
+The full script adds setup and cleanup.
 
 ## Per-point HDF5
 
@@ -125,12 +115,10 @@ kulfan_multipoint_optimization_history_mid_cl.h5
 kulfan_multipoint_optimization_history_high_cl.h5
 ```
 
-Each file contains the evaluation history seen by **that point's** analysis
-server. The records contain successful primal evaluations; derivative-only calls do
-not append records. Line searches can evaluate several trial points, so these
-records do not correspond one-to-one with IPOPT's iteration number. The
-three files receive calls in the same order and can be stacked to compare
-per-point drag across model evaluations:
+Each file holds the solves of one point's server. Derivative calls aren't
+recorded, but line-search trials are, so record counts don't match IPOPT's
+iteration count. All three files are written in step, so you can plot them
+together:
 
 ```python
 import h5py, matplotlib.pyplot as plt
@@ -146,18 +134,15 @@ for name in ("low_cl", "mid_cl", "high_cl"):
 plt.xlabel("model evaluation"); plt.ylabel("Cd"); plt.legend(); plt.show()
 ```
 
-The classical multipoint trade is visible here: the optimizer can't pull
-$C_d$ down at every point simultaneously. With normalized weights of about
-$[0.286, 0.429, 0.286]$, the mid-Cl point has the largest influence; the
-low-Cl point might even see slightly worse drag than a single-point design.
+This shows the multipoint trade: drag can't fall at every point at once.
+The mid-lift point has the largest weight, so it gets the most attention.
 
 ## Running it
 
 Build the servers with `SCIROCCO_HDF5_OUTPUT=ON` to produce the histories
-described above; see the [HDF5 tutorial](../tutorials/hdf5-output).
+described above; see the [HDF5 tutorial](../python/hdf5-history).
 
-This example adds IPOPT through the exact ModOpt revision used for release
-validation. Install the system IPOPT library first:
+This example uses IPOPT through ModOpt. Install IPOPT first:
 
 ```bash
 # macOS (Homebrew)
@@ -167,7 +152,7 @@ brew install ipopt pkg-config
 sudo apt install coinor-libipopt-dev pkg-config
 ```
 
-Then install its separate pinned environment:
+Then its own pinned Python environment:
 
 ```bash
 python3 -m venv .venv
@@ -181,14 +166,11 @@ Then launch the optimization:
 python examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py
 ```
 
-This is intentionally much larger than the single-point examples. The cost
-grows approximately linearly in `N_POINTS` because each point adds an
-independent viscous primal and adjoint evaluation.
+Each point adds a viscous solve and an adjoint per iteration, so the run
+time grows with the number of points. The reference run took 222 IPOPT
+iterations, about 13.5 minutes:
 
-The Philote 0.8 release-validation run completed in 222 IPOPT iterations
-(about 13.5 minutes on the validation machine):
-
-```text
+```output
 Return status: Solve_Succeeded
 low_cl:   alpha=-0.988°  Cl=0.3000  Cd=0.00432
 mid_cl:   alpha=+0.363°  Cl=0.5000  Cd=0.00447
@@ -197,15 +179,12 @@ high_cl:  alpha=+3.098°  Cl=0.8000  Cd=0.00508
 constraint violation = 2.2e-11
 ```
 
-This differs from results produced through Philote-Cpp v0.5.0. That release
-silently truncated streamed arrays after each complete 1,000-value chunk; a
-`202 × 8` Kulfan geometry Jacobian therefore lost its final 616 values.
-Philote-Cpp 0.8 includes the chunking fix and sends the complete Jacobian, so
-the old objective is not a valid regression reference.
+Results from before Philote-Cpp 0.8 differ: older versions silently
+truncated large Jacobians, so they aren't a valid comparison.
 
-## Sensitivity to the weight vector
+## Exploring the weights
 
-If you want to see the Pareto front, sweep `weights` along a simplex:
+To map the trade-off, rerun with different weights:
 
 ```python
 for w in [(1, 0, 0), (0.5, 0.5, 0), (0.33, 0.33, 0.33), ...]:
@@ -213,9 +192,5 @@ for w in [(1, 0, 0), (0.5, 0.5, 0), (0.33, 0.33, 0.33), ...]:
     # ... rerun optimization, save (cd_low, cd_mid, cd_high) ...
 ```
 
-Each weight choice is a separate optimization, so plan for an overnight run
-if you want a smooth surface.
-
-## Full source
-
-[`examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py).
+Each weight vector is a separate optimization, so a dense sweep is an
+overnight job.

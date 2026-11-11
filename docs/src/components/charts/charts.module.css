@@ -1,0 +1,197 @@
+.figure {
+    margin: 1.75rem 0 2rem;
+}
+
+.plot {
+    position: relative;
+}
+
+.svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    touch-action: pan-y;
+}
+
+.grid {
+    stroke: var(--sc-grid);
+    stroke-width: 1;
+}
+
+.axis {
+    stroke: var(--sc-axis);
+    stroke-width: 1;
+}
+
+.tick {
+    fill: var(--sc-ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.axisLabel {
+    fill: var(--sc-ink-2);
+    font-size: 12.5px;
+    font-weight: 500;
+}
+
+.line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.role1 {
+    stroke: var(--sc-series-1);
+    --mark: var(--sc-series-1);
+}
+
+.role2 {
+    stroke: var(--sc-series-2);
+    --mark: var(--sc-series-2);
+}
+
+.roleRef {
+    stroke: var(--sc-series-ref);
+    --mark: var(--sc-series-ref);
+}
+
+.marker {
+    fill: var(--mark);
+    stroke: var(--sc-bg);
+    stroke-width: 2;
+}
+
+.focus {
+    fill: var(--mark);
+    stroke: var(--sc-bg);
+    stroke-width: 2.5;
+}
+
+.crosshair {
+    stroke: var(--sc-line-strong);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+}
+
+.tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--sc-bg);
+    border: 1px solid var(--sc-line-strong);
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--sc-ink-2);
+    white-space: nowrap;
+    box-shadow: 0 6px 24px rgba(1, 5, 15, 0.12);
+    font-variant-numeric: tabular-nums;
+    z-index: 2;
+}
+
+.tooltip b {
+    color: var(--sc-ink);
+    font-weight: 600;
+}
+
+.ttLabel {
+    color: var(--sc-ink);
+    font-weight: 600;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.25rem;
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    font-size: 0.85rem;
+    color: var(--sc-ink-2);
+}
+
+.legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+}
+
+.caption {
+    margin-top: 0.6rem;
+    font-size: 0.875rem;
+    color: var(--sc-ink-3);
+    line-height: 1.5;
+}
+
+.data {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.data summary {
+    cursor: pointer;
+    color: var(--sc-ink-3);
+    width: max-content;
+}
+
+.data summary:hover {
+    color: var(--sc-ink);
+}
+
+.tableWrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    max-height: 22rem;
+    overflow: auto;
+    margin-top: 0.5rem;
+}
+
+.tableWrap table {
+    display: table !important;
+    width: auto !important;
+    font-variant-numeric: tabular-nums;
+}
+
+.tableWrap caption {
+    text-align: left;
+    font-weight: 600;
+    color: var(--sc-ink);
+    padding-bottom: 0.25rem;
+}
+
+.pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.pair .figure {
+    margin: 0;
+}
+
+@media (max-width: 720px) {
+    .pair {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.foilFill {
+    fill: var(--sc-surface-2);
+    stroke: var(--sc-ink-3);
+    stroke-width: 1;
+}
+
+.panelLine {
+    fill: none;
+    stroke: var(--sc-ink-3);
+    stroke-width: 1;
+}
+
+.node {
+    fill: var(--sc-series-1);
+}

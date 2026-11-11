@@ -1,135 +1,97 @@
 ---
-sidebar_position: 3
+title: Quickstart
+description: Build Scirocco and solve a viscous airfoil in C++.
 ---
 
-# Python quickstart
+# Quickstart
 
-This is the shortest path from a build to an aerodynamic result. Scirocco runs
-in two Philote-Cpp gRPC servers and Python uses the Philote-MDO bindings to
-present them as OpenMDAO components:
+Build the library and run a viscous analysis of a NACA 2412. You need CMake
+3.18+, a C++17 compiler, and Eigen 3.4+.
 
-```text
-Cl = 0.48270391
-Cd = 0.000e+00
-Cm = -0.00569190
-```
+## 1. Install the dependencies
 
-Scirocco does not currently install an in-process `import scirocco` module.
-In these tutorials, **Python bindings** means
-`philote_mdo.openmdao.RemoteExplicitComponent`, the Python binding for a
-remote Philote discipline.
-
-## Start the servers
-
-Build the Philote targets as described in [Installation](./installation), then
-run these in two terminals from the repository root:
+<Tabs groupId="os">
+<TabItem value="mac" label="macOS">
 
 ```bash
-scirocco/build-philote/src/philote/scirocco_kulfan_server localhost:50052
+brew install cmake eigen
 ```
+
+</TabItem>
+<TabItem value="ubuntu" label="Ubuntu">
 
 ```bash
-scirocco/build-philote/src/philote/scirocco_server localhost:50051
+sudo apt-get install -y build-essential cmake git libeigen3-dev
 ```
 
-The first server creates a Kulfan/CST airfoil with a 0.00126-chord trailing-edge gap. The second analyzes the panel
-coordinates it receives.
+</TabItem>
+</Tabs>
 
-## Run one analysis
-
-The complete, tested file is
-[`examples/tutorials/quickstart.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/tutorials/quickstart.py).
-Run it from the repository root:
+## 2. Build
 
 ```bash
-python examples/tutorials/quickstart.py
+git clone https://github.com/chrislupp/Scirocco.git
+cd Scirocco
+cmake -S scirocco -B scirocco/build -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build -j --target quickstart
 ```
 
-Its full model is shown below so the wiring is visible:
+## 3. Run
 
-```python
-import grpc
-import numpy as np
-import openmdao.api as om
-from philote_mdo.openmdao import RemoteExplicitComponent
+The `quickstart` target is this program:
 
-npanel = 100
+<QuickstartSource />
 
-problem = om.Problem()
-problem.model.add_subsystem(
-    "geometry",
-    RemoteExplicitComponent(
-        channel=grpc.insecure_channel("localhost:50052"),
-        n_cst_upper=6,
-        n_cst_lower=6,
-        te_upper=0.00063,
-        te_lower=-0.00063,
-        npanel=npanel,
-    ),
-    promotes_inputs=["cst_upper", "cst_lower"],
-    promotes_outputs=["x"],
-)
-problem.model.add_subsystem(
-    "analysis",
-    RemoteExplicitComponent(
-        channel=grpc.insecure_channel("localhost:50051"),
-        naca="0012",       # initializes the remote solver
-        npanel=npanel,
-    ),
-    promotes_inputs=["x"],
-)
-
-problem.setup()
-
-# Symmetric NACA 0012 CST fit (also used by the multipoint example). Positive coefficients produce
-# positive thickness; use the same values on the upper and lower surfaces.
-cst_0012 = np.array([
-    0.1706635358053721, 0.15626369325824663, 0.1546327069833401,
-    0.14462202838023833, 0.13318428664336585, 0.15537328876198608,
-])
-problem.set_val("cst_upper", cst_0012)
-problem.set_val("cst_lower", cst_0012)
-problem.set_val("analysis.alpha", 4.0, units="deg")
-problem.set_val("analysis.Re", 0.0)  # zero selects inviscid analysis
-problem.set_val("analysis.Ma", 0.0)
-
-problem.run_model()
-
-print("Cl =", problem.get_val("analysis.cl")[0])
-print("Cd =", problem.get_val("analysis.cd")[0])
-print("Cm =", problem.get_val("analysis.cm")[0])
+```bash
+scirocco/build/quickstart
 ```
 
-With `philote-mdo==0.8.0` and the Philote-Cpp build pinned in the installation
-guide, the output is:
-
-```text
-Cl = 0.48270391
-Cd = 0.000e+00
-Cm = -0.00569190
+```output
+Cl = 0.720173
+Cd = 0.00693199
+Cm = -0.0585055
 ```
 
-This reference uses 100 panels, the coefficient vector above, a total
-trailing-edge gap of `0.00126`, `alpha=4` degrees, `Re=0`, and `Ma=0`.
-Changing the gap or panel layout changes the reference result. The last
-digits can vary slightly by compiler and platform. You should still
-get `Cl` between 0.47 and 0.50 and drag below `1e-12`. Inviscid 2-D potential
-flow has no profile drag; the [first tutorial](../tutorials/inviscid-naca)
-turns this one-off model into an angle-of-attack sweep.
+That's a full viscous solve, with boundary layer, transition, and wake, in
+about a quarter of a second. Your last digits may differ slightly with a
+different compiler.
 
-## Why both disciplines?
+`SetOper(alpha, cl, Re, Ma)` sets the operating point:
 
-`SiroccoDiscipline` takes panel coordinates as its `x` input. Its `naca`
-option establishes the solver and expected panel count, but an upstream
-component still supplies the coordinates on every evaluation. Starting with
-`KulfanDiscipline` makes that data flow explicit and gives us a parameterized
-geometry with analytic derivatives that later tutorials can optimize.
-
-## If the quickstart fails
-
-| Error | Check |
+| Argument | Meaning |
 | --- | --- |
-| `Option 'n_cst_upper' ... has not been declared` | The server is linked to an older Philote-Cpp. Install the pinned 0.8 implementation, which initializes disciplines during service registration, then rebuild Scirocco. |
-| `Exception deserializing response` or invalid UTF-8 | The C++ server is using the Philote 0.7 wire schema. Reinstall the pinned Philote-Cpp 0.8 implementation, then rebuild Scirocco. |
-| `UNAVAILABLE` or connection refused | Confirm both server processes are running on ports 50051 and 50052. |
-| Results differ substantially from the reference | Confirm `philote-mdo==0.8.0`, `npanel=100`, and `Re=0`. |
+| `alpha` | Angle of attack in degrees |
+| `cl` | Target lift coefficient. Pass `-1.0` to solve at the given `alpha` instead. |
+| `Re` | Chord Reynolds number. `0` gives an inviscid solve. |
+| `Ma` | Freestream Mach number |
+
+## Use it in your own project
+
+Install the library, then link it with CMake:
+
+```bash
+cmake --install scirocco/build --prefix "$PWD/install"
+```
+
+```cmake title="CMakeLists.txt"
+cmake_minimum_required(VERSION 3.18)
+project(my_app LANGUAGES CXX)
+find_package(scirocco CONFIG REQUIRED)
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE scirocco::scirocco)
+```
+
+Point CMake at the install prefix when you configure:
+
+```bash
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/Scirocco/install
+```
+
+[Installation](./installation) covers the other ways to build, including
+the optional HDF5 and Philote components.
+
+<Next items={[
+  { to: "/docs/guides/analysis", title: "Run an analysis", body: "Sweeps, lift targets, Mach number, and surface distributions." },
+  { to: "/docs/guides/gradients", title: "Compute gradients", body: "Derivatives of Cl, Cd, and Cm for optimization." },
+  { to: "/docs/python", title: "Use it from Python", body: "OpenMDAO components through Philote." },
+]} />

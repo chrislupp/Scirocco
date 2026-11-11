@@ -1,48 +1,56 @@
 ---
-sidebar_position: 2
+title: Scirocco
+description: Reference for the scirocco::Scirocco class.
 ---
 
-# `Scirocco` class
-
-`scirocco::Scirocco` is the single user-facing entry point. It wraps an
-internal `FoilState` and exposes the most common operations as members.
-Header:
-[`scirocco/scirocco.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/scirocco.h).
+# `Scirocco`
 
 ```cpp
 #include <scirocco/scirocco.h>
 ```
 
-## Construction
+The one class you need. It holds the geometry, the operating point, and the
+solution. Header:
+[`scirocco/scirocco.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/scirocco.h).
 
-| Constructor | Use it when |
+```cpp
+scirocco::Scirocco foil("2412", 160);
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
+if (foil.Solve()) {
+    std::cout << foil.GetCl() << ' ' << foil.GetCd() << '\n';
+}
+```
+
+## Constructors
+
+```cpp
+explicit Scirocco(const std::string& naca = "0012", int npanel = 199);
+explicit Scirocco(const Eigen::MatrixXd& coords, int npanel = 199);
+```
+
+| Argument | |
 | --- | --- |
-| `Scirocco(const std::string& naca = "0012", int npanel = 199)` | Generating a NACA 4- or 5-digit airfoil |
-| `Scirocco(const Eigen::MatrixXd& coords, int npanel = 199)` | Bringing your own `2 × N` point cloud (TE-lower → LE → TE-upper) |
+| `naca` | A 4-digit or `2X0YY` 5-digit NACA designation |
+| `coords` | `2 × M` points, lower trailing edge → leading edge → upper trailing edge |
+| `npanel` | Panel count, 4 to 4096. The section gets `npanel + 1` nodes. |
 
-Both constructors run the curvature-graded paneler immediately, so after
-construction `foil.GetFoilCoords()` is populated.
+Both constructors panel the section straight away. See
+[Define the geometry](../guides/geometry).
 
 ## Operating point
 
 ```cpp
-void SetOper(double alpha = 0.0,
-             double cl    = -1.0,
-             double Re    = 0.0,
-             double Ma    = 0.0);
+void SetOper(double alpha = 0.0, double cl = -1.0, double Re = 0.0, double Ma = 0.0);
 ```
 
-| Argument | Notes |
+| Argument | |
 | --- | --- |
-| `alpha` | Angle of attack, degrees |
-| `cl`    | Target lift coefficient. Any finite negative value (conventionally `-1.0`) selects prescribed-angle mode; a non-negative value requests a solve at the target lift. |
-| `Re`    | Reynolds number based on chord. Any finite nonpositive value selects inviscid analysis. |
-| `Ma`    | Freestream Mach. Activates the Kármán–Tsien correction. |
+| `alpha` | Angle of attack in degrees. With a lift target, the starting guess. |
+| `cl` | Negative: solve at `alpha`. Zero or positive: find the `alpha` that gives this lift coefficient. |
+| `Re` | Chord Reynolds number. Positive: viscous. Zero or negative: inviscid. |
+| `Ma` | Freestream Mach number, `0 <= Ma < 1` |
 
-`SetOper` validates and stores the operating conditions and invalidates previous
-convergence and sensitivity state. Thermodynamic quantities are initialized
-during the subsequent solve. See [Input and output conventions](./conventions)
-for valid ranges and normalization.
+`SetOper` checks the inputs and clears any previous solution and gradients.
 
 ## Solve
 
@@ -50,111 +58,76 @@ for valid ranges and normalization.
 bool Solve();
 ```
 
-Performs the inviscid linear solve, plus (if `Re > 0`) the coupled BL
-Newton iteration. Returns `true` on success and `false` if convergence fails,
-including an inviscid lift-target solve that cannot reach its target. Invalid
-inputs and nonfinite results can throw exceptions. Check the return value
-before using results; see [Troubleshooting](../getting-started/troubleshooting).
+Runs the inviscid solve and, when `Re > 0`, the coupled viscous Newton
+iteration. Returns `false` if it doesn't converge or a lift target can't be
+reached; then the results are not valid. Throws on invalid inputs or
+non-finite results.
 
-## Result accessors — scalars
+## Results
 
-| Method | Returns |
+| Getter | Returns |
 | --- | --- |
-| `GetCl()`, `GetCd()`, `GetCm()` | Force coefficients |
-| `GetCdf()`, `GetCdp()` | Friction- and pressure-drag components |
-| `GetAlpha()` | The $\alpha$ that produced these results (relevant in Cl-mode) |
-| `IsConverged()` | Mirrors the `Solve()` return value |
+| `GetCl()`, `GetCd()`, `GetCm()` | Force and moment coefficients; moment about (0.25, 0) |
+| `GetCdf()`, `GetCdp()` | Friction and pressure parts of `Cd` |
+| `GetAlpha()` | Angle of attack of the solution, useful in lift-target mode |
+| `IsConverged()` | Same as the last `Solve()` return |
+| `GetCp()` | `VectorXd`, `N`: pressure coefficient at each node |
+| `GetCf()` | `VectorXd`, `N + Nw`: skin friction, airfoil then wake |
+| `GetTheta()` | `VectorXd`, `N + Nw`: momentum thickness |
+| `GetDeltaStar()` | `VectorXd`, `N + Nw`: displacement thickness |
+| `GetFoilCoords()` | `MatrixXd`, `2 × N`: panel nodes |
+| `GetWakeCoords()` | `MatrixXd`, `2 × Nw`: wake nodes |
 
-## Result accessors — distributions (`const Eigen::VectorXd&`)
+In an inviscid solve, `GetCd()` is zero and the boundary-layer and wake
+arrays are empty.
 
-| Method | Quantity |
-| --- | --- |
-| `GetCp()` | Pressure coefficient (Kármán–Tsien-corrected at $M_\infty > 0$) |
-| `GetCf()` | Skin friction coefficient |
-| `GetTheta()` | Momentum thickness $\theta$ |
-| `GetDeltaStar()` | Displacement thickness $\delta^*$ |
-
-Here `N = npanel + 1` and `N_w` is the number of wake nodes. After a
-successful solve:
-
-| Method | Inviscid size | Viscous size |
-| --- | --- | --- |
-| `GetCp()` | `N` | `N` |
-| `GetCf()`, `GetTheta()`, `GetDeltaStar()` | Empty | `N + N_w` |
-
-For boundary-layer arrays, airfoil nodes come first, followed by wake nodes.
-Wake coordinates are empty in inviscid mode.
-
-## Geometry accessors
-
-| Method | Returns |
-| --- | --- |
-| `GetFoilCoords()` | `2 × N` airfoil panel-node coordinates |
-| `GetWakeCoords()` | `2 × N_w` wake-node coordinates |
-
-## Geometry modification
+## Geometry changes
 
 | Method | Effect |
 | --- | --- |
-| `GeomFlap(const Vector2d& hinge, double eta)` | Deflect everything aft of `hinge` by `eta` degrees |
-| `GeomAddCamber(const MatrixXd& xzcamb)` | Add a $(x, z)$ camber increment, preserving thickness |
-| `GeomDerotate()` | Re-align LE–TE with the $x$-axis |
+| `GeomFlap(const Vector2d& hinge, double eta)` | Deflect everything aft of `hinge` by `eta` degrees, positive down |
+| `GeomAddCamber(const MatrixXd& xzcamb)` | Add a camber-line increment, keeping thickness |
+| `GeomDerotate()` | Rotate so the chord line is horizontal |
 
-All three re-panel automatically. The
-[parameterized geometry tutorial](../tutorials/geometry-mods) demonstrates
-the corresponding Python/Philote workflow; the methods above are the direct
-C++ path.
+Each one re-panels the section. Call `SetOper` and `Solve` again afterwards.
 
-## Sensitivities
+## Gradients
 
 ```cpp
 Sensitivity ComputeSensitivities();
 ```
 
-Call after `Solve()`. Returns the [`Sensitivity`](./sensitivity) struct
-and caches it internally so the per-output getters work:
+Call after a successful `Solve()`. Returns the
+[`Sensitivity`](./sensitivity) struct and caches it for these getters:
 
-| Method | Returns |
+| Getter | Returns |
 | --- | --- |
-| `GetDclDx()`, `GetDcdDx()`, `GetDcmDx()` | `2 × N` matrices — derivative w.r.t. each panel-node coordinate |
-| `GetDclDalpha()`, `GetDcdDalpha()`, `GetDcmDalpha()` | per-degree derivatives |
-| `GetDclDMa()`, `GetDcdDMa()`, `GetDcmDMa()` | derivatives w.r.t. Mach |
-| `GetDclDRe()`, `GetDcdDRe()`, `GetDcmDRe()` | derivatives w.r.t. Reynolds |
+| `GetDclDx()`, `GetDcdDx()`, `GetDcmDx()` | `2 × N` derivatives with respect to node x and z |
+| `GetDclDalpha()`, `GetDcdDalpha()`, `GetDcmDalpha()` | Per degree |
+| `GetDclDRe()`, `GetDcdDRe()`, `GetDcmDRe()` | Per unit Reynolds number |
+| `GetDclDMa()`, `GetDcdDMa()`, `GetDcmDMa()` | Per unit Mach number |
 
-See the [sensitivities tutorial](../tutorials/sensitivities) for the
-Python/Philote derivative interface and a finite-difference verification
-recipe.
+The getters throw if there's no valid cached gradient. See
+[Compute gradients](../guides/gradients).
 
-## Reaching the internal state
-
-```cpp
-FoilState&        GetState();
-const FoilState&  GetState() const;
-```
-
-Use this to set fields like `param.verb`, `param.ncrit`, `param.use_ptc`,
-or to read deeper distributions (`post.Ret`, `post.Hk`, etc.) that aren't
-exposed as direct accessors.
+## Solver state
 
 ```cpp
-foil.GetState().param.verb   = 1;     // print solver progress
-foil.GetState().param.ncrit  = 11.0;  // cleaner tunnel
+FoilState&       GetState();
+const FoilState& GetState() const;
 ```
 
-See [`FoilState`](./foil-state) for the full struct layout.
-
-## Minimal example
+Use it to set [solver parameters](./solver-params) before solving, or to read
+quantities without a getter:
 
 ```cpp
-#include <iostream>
-#include <scirocco/scirocco.h>
+foil.GetState().param.verb  = 1;      // print the residual each step
+foil.GetState().param.ncrit = 11.0;   // later transition
 
-int main() {
-    scirocco::Scirocco foil("0012", 199);
-    foil.SetOper(5.0, -1.0, 1.0e6, 0.0);
-    if (foil.Solve()) {
-        std::cout << "Cl = " << foil.GetCl()
-                  << "  Cd = " << foil.GetCd() << "\n";
-    }
-}
+const scirocco::Scirocco& solved = foil;
+const Eigen::VectorXd& hk = solved.GetState().post.Hk;   // shape factor
 ```
+
+The non-const overload clears cached gradients, since you might change the
+state through it. Read through a `const` reference to keep them. See
+[`FoilState`](./foil-state) for the layout.

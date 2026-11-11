@@ -12,6 +12,42 @@ Edit current content in `docs/` (repository path `docs/docs/`), navigation in
 `sidebars.ts`, and site settings in `docusaurus.config.ts`. API pages are
 handwritten; verify signatures and behavior against the C++ source.
 
+## Writing style
+
+Write for someone who wants to get something done:
+
+- Lead with the result: code, then its output, then the explanation.
+- Second person, active voice, short sentences. No "This page explains…"
+  preamble and no closing recap.
+- State each limitation once, in a "Limits" section on the concept page it
+  belongs to, and link to it instead of repeating it.
+- One canonical place per piece of setup; other pages link there.
+- Every number on the site comes from a real run. Show program output in
+  `output` fences, which render as results rather than code.
+
+Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
+`<Next>`, `<CpPlot>`, `<PolarPlot>`, `<ConvergencePlot>`, `<PanelPlot>`,
+`<BenchTable>`, and `<QuickstartSource>` (which shows
+`scirocco/examples/quickstart.cpp` as built by CI).
+
+## Figures and timings
+
+Plots read `src/data/*.json`, written by the `docs_figure_data` example.
+Timings in `src/data/bench.json` come from the `bench` example. Regenerate
+both after a change to solver results or performance:
+
+```bash
+cmake --build scirocco/build -j --target docs_figure_data bench
+scirocco/build/docs_figure_data docs/src/data
+scirocco/build/bench        # copy the table into docs/src/data/bench.json
+```
+
+Record the machine in `bench.json`. Chart colours are validated for
+colour-vision deficiency in both themes; keep series to the `--sc-series-*`
+roles in `src/css/custom.css`.
+
+## Checks
+
 Before submitting a change:
 
 ```bash

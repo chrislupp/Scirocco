@@ -1,0 +1,160 @@
+/**
+ * Documentation figures. Every number comes from src/data/*.json, written by
+ * the `docs_figure_data` example program (see docs/README.md).
+ */
+import React from "react";
+import Chart from "./Chart";
+import styles from "./charts.module.css";
+import cp from "@site/src/data/cp.json";
+import polar from "@site/src/data/polar.json";
+import convergence from "@site/src/data/convergence.json";
+import panels from "@site/src/data/panels.json";
+
+const f4 = (v: number) => v.toFixed(4);
+const f3 = (v: number) => v.toFixed(3);
+
+function foilPath(x: number[], z: number[], px: (v: number) => number, pz: (v: number) => number) {
+    return x.map((xv, i) => `${i ? "L" : "M"}${px(xv).toFixed(1)} ${pz(z[i]).toFixed(1)}`).join("") + "Z";
+}
+
+/** Surface pressure on NACA 2412, viscous vs inviscid, with the section drawn in. */
+export function CpPlot() {
+    const { x, z } = cp.coords;
+    const neg = (a: number[]) => a.map((v) => -v);
+    return (
+        <Chart
+            title={`Pressure coefficient on ${cp.airfoil} at ${cp.alpha} degrees, Re 1e6`}
+            series={[
+                { id: "visc", label: "Viscous, Re = 10⁶", x, y: neg(cp.cp), role: "1" },
+                { id: "inv", label: "Inviscid", x, y: neg(cp.cpi), role: "ref", dashed: true },
+            ]}
+            x={{ domain: [0, 1], ticks: [0, 0.2, 0.4, 0.6, 0.8, 1], label: "x/c" }}
+            y={{ domain: [-1.1, 1.5], ticks: [-1, -0.5, 0, 0.5, 1, 1.5], label: "−Cp" }}
+            fx={f4}
+            fy={f3}
+            underlay={(sx, sy) => (
+                <path className={styles.foilFill} d={foilPath(x, z, sx, (v) => sy(-0.8 + 2.4 * v))} />
+            )}
+            caption={
+                <>
+                    {cp.airfoil} at α = {cp.alpha}°, 160 panels. Viscous: Cl = {cp.cl.toFixed(3)}, Cd ={" "}
+                    {cp.cd.toFixed(5)}. The boundary layer lowers the suction peak and relieves the
+                    trailing-edge pressure recovery. Section shape drawn to scale in x only.
+                </>
+            }
+            noTable
+        />
+    );
+}
+
+/** Lift curve and drag polar for NACA 2412 at Re 1e6. */
+export function PolarPlot() {
+    const pts = polar.points.filter((p) => p.converged);
+    const alpha = pts.map((p) => p.alpha);
+    return (
+        <div className={styles.pair}>
+            <Chart
+                title={`Lift curve for ${polar.airfoil}, Re 1e6, viscous and inviscid`}
+                width={360}
+                height={300}
+                series={[
+                    { id: "v", label: "Viscous", x: alpha, y: pts.map((p) => p.cl!), role: "1", markers: true },
+                    {
+                        id: "i",
+                        label: "Inviscid",
+                        x: polar.points.map((p) => p.alpha),
+                        y: polar.points.map((p) => p.cl_inviscid),
+                        role: "ref",
+                        dashed: true,
+                    },
+                ]}
+                x={{ domain: [-4, 14], ticks: [-4, 0, 4, 8, 12], label: "α (deg)" }}
+                y={{ domain: [-0.5, 1.9], ticks: [-0.5, 0, 0.5, 1, 1.5], label: "Cl" }}
+                fy={f4}
+            />
+            <Chart
+                title={`Drag polar for ${polar.airfoil}, Re 1e6`}
+                width={360}
+                height={300}
+                series={[{ id: "p", label: "Viscous", x: pts.map((p) => p.cd!), y: pts.map((p) => p.cl!), role: "1", markers: true }]}
+                x={{
+                    domain: [0.004, 0.028],
+                    ticks: [0.005, 0.01, 0.015, 0.02, 0.025],
+                    label: "Cd",
+                    format: (v) => v.toFixed(3),
+                }}
+                y={{ domain: [-0.5, 1.9], ticks: [-0.5, 0, 0.5, 1, 1.5], label: "Cl" }}
+                fx={(v) => v.toFixed(5)}
+                fy={f4}
+            />
+        </div>
+    );
+}
+
+/** Residual history of the coupled Newton solve. */
+export function ConvergencePlot({ variant = "typical" }: { variant?: "typical" | "hard" }) {
+    const idx = (a: number[]) => a.map((_, i) => i);
+    const fmt = (v: number) => v.toExponential(2);
+    if (variant === "typical") {
+        const r = convergence.ptc.residual;
+        return (
+            <Chart
+                title="Residual history, NACA 2412 at 4 degrees, Re 1e6"
+                width={640}
+                height={300}
+                series={[{ id: "r", label: "Residual", x: idx(r), y: r, role: "1", markers: true }]}
+                x={{ domain: [0, r.length - 1], ticks: idx(r), label: "Newton iteration" }}
+                y={{ domain: [1e-13, 1e2], ticks: [1e-12, 1e-9, 1e-6, 1e-3, 1], label: "‖R‖", log: true }}
+                fx={(v) => `${v}`}
+                fy={fmt}
+                caption={`NACA 2412, α = 4°, Re = 10⁶, 160 panels. From a cold start the residual falls twelve orders of magnitude in ${r.length - 1} Newton steps.`}
+            />
+        );
+    }
+    const a = convergence.hard_ptc.residual;
+    const b = convergence.hard_newton.residual;
+    const n = Math.max(a.length, b.length);
+    return (
+        <Chart
+            title="Residual history for a difficult start, with and without PTC"
+            width={640}
+            height={320}
+            series={[
+                { id: "ptc", label: `PTC (default), ${a.length - 1} steps`, x: idx(a), y: a, role: "1" },
+                { id: "newton", label: `Plain Newton, ${b.length - 1} steps`, x: idx(b), y: b, role: "2", dashed: true },
+            ]}
+            x={{ domain: [0, n - 1], ticks: [0, 10, 20, 30, 40, 50].filter((t) => t < n), label: "Newton iteration" }}
+            y={{ domain: [1e-13, 1e2], ticks: [1e-12, 1e-9, 1e-6, 1e-3, 1], label: "‖R‖", log: true }}
+            fx={(v) => `${v}`}
+            fy={fmt}
+            caption="NACA 0012, α = 5°, Re = 10⁶, 199 panels. The residual stalls near 1 while the amplification march struggles at one station, then Newton takes over. PTC reaches 10⁻¹¹ first, then hovers just above the tolerance for ten more steps."
+        />
+    );
+}
+
+/** Panel nodes on NACA 2412 at 60 panels, drawn to scale. */
+export function PanelPlot() {
+    const { x, z } = panels.coords;
+    const W = 640;
+    const pad = 14;
+    const scale = (W - 2 * pad) / 1.0;
+    const zmax = Math.max(...z) + 0.01;
+    const zmin = Math.min(...z) - 0.01;
+    const H = Math.round((zmax - zmin) * scale + 2 * pad);
+    const px = (v: number) => pad + v * scale;
+    const pz = (v: number) => pad + (zmax - v) * scale;
+    return (
+        <figure className={styles.figure}>
+            <svg viewBox={`0 0 ${W} ${H}`} className={styles.svg} role="img" aria-label="NACA 2412 paneled with 60 panels; nodes cluster at the leading and trailing edges">
+                <path className={styles.panelLine} d={x.map((xv, i) => `${i ? "L" : "M"}${px(xv).toFixed(1)} ${pz(z[i]).toFixed(1)}`).join("")} />
+                {x.map((xv, i) => (
+                    <circle key={i} className={styles.node} cx={px(xv)} cy={pz(z[i])} r={2.6} />
+                ))}
+            </svg>
+            <figcaption className={styles.caption}>
+                NACA 2412 with 60 panels ({x.length} nodes). The paneler clusters nodes where curvature is high,
+                at the leading and trailing edges.
+            </figcaption>
+        </figure>
+    );
+}

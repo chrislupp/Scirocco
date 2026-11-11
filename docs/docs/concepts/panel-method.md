@@ -1,56 +1,61 @@
 ---
-sidebar_position: 1
+title: Panel method
+description: The linear-vortex panel method behind every Scirocco solve.
 ---
 
 # Panel method
 
-Scirocco represents two-dimensional potential flow with a linear vortex sheet
-on straight panels. It provides the inviscid solution and the outer-flow part
-of the viscous analysis.
+Every solve starts with potential flow around the airfoil. Scirocco covers
+the surface with straight panels and places a vortex sheet on them whose
+strength varies linearly from node to node.
 
-## Geometry and unknowns
+<PanelPlot />
 
-An airfoil with `npanel` panels has `N = npanel + 1` nodes, ordered lower
-trailing edge → leading edge → upper trailing edge. Vortex strength varies
-linearly between nodes. The C++ constructors use a curvature-based paneler;
-the remote `x` input replaces panel nodes directly. See
-[Input and output conventions](../api/conventions).
+## The equations
 
-`BuildGamma` assembles the streamfunction influence matrix. The unknowns are
-`N` nodal vortex strengths and one common surface streamfunction. Requiring a
-constant streamfunction along the airfoil enforces flow tangency. The trailing
-edge adds the Kutta condition:
+An airfoil with `npanel` panels has $N = \text{npanel} + 1$ nodes, numbered
+from the lower trailing edge, around the leading edge, to the upper trailing
+edge. The unknowns are the $N$ nodal vortex strengths $\gamma_i$ and one
+constant, the streamfunction value $\Psi_0$ on the surface.
 
-$$
-\gamma_0 + \gamma_{N-1} = 0.
-$$
-
-The implementation includes trailing-edge source/vortex contributions and a
-special extrapolation equation for a closed trailing edge. It solves the dense
-system for two freestream directions and combines them for the requested angle.
-See [`inviscid.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/inviscid.cpp)
-for the assembly and treatment of the trailing edge.
-
-## Pressure and forces
-
-In incompressible flow, surface edge velocity gives
+Flow can't cross the surface, so the streamfunction must equal $\Psi_0$ at
+every node. That gives $N$ equations. The **Kutta condition** closes the
+system by making the flow leave the trailing edge smoothly:
 
 $$
-C_p = 1 - (u_e / V_\infty)^2.
+\gamma_0 + \gamma_{N-1} = 0
 $$
 
-At nonzero Mach number, Scirocco applies the
-[Kármán–Tsien correction](./compressibility). Pressure integration provides
-lift and moment; the default moment reference is `(0.25, 0)` for unit chord.
+A finite trailing-edge gap is modelled with an extra source and vortex panel
+across the gap. Scirocco factors the dense $(N+1) \times (N+1)$ system once
+and solves it for freestream at 0° and 90°. Any angle of attack is then a
+weighted sum of the two, which is why an inviscid solve takes about a
+millisecond once the airfoil is paneled.
 
-Inviscid total `Cd` and its derivatives are zero by convention. The separate
-near-field pressure-drag quantity `cdpi` can contain discretization effects.
-An inviscid run has no boundary-layer distributions or wake coordinates.
-For profile drag and wake results, use [viscous analysis](./viscous-coupling).
+## From vortex strength to forces
 
-## Practical limits
+On the surface, the edge velocity equals the vortex strength, so the
+pressure coefficient is
 
-The inviscid model cannot predict viscous separation or stall. A nearly linear
-lift curve at large angles is not evidence that the real airfoil remains
-attached. Check panel-count sensitivity and use a model appropriate to the
-flow regime before interpreting results.
+$$
+C_p = 1 - \left(\frac{u_e}{V_\infty}\right)^2 .
+$$
+
+At nonzero Mach number, the [Kármán–Tsien correction](./compressibility) is
+applied to this. Integrating pressure around the surface gives $C_l$ and
+$C_m$; the moment is taken about the quarter chord, $(0.25, 0)$.
+
+In potential flow, the drag of a 2D body is zero (d'Alembert's paradox), so
+inviscid `Cd` is reported as exactly zero. A separate near-field pressure
+drag, `cdpi`, is available in `GetState().post` and contains only
+discretization error.
+
+## Limits
+
+Potential flow knows nothing about the boundary layer, so it can't predict
+drag, separation, or stall. An inviscid lift curve stays straight long after
+the real airfoil has stalled. Use a [viscous solve](./viscous-coupling) for
+anything that depends on the boundary layer.
+
+Source: [`inviscid.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/inviscid.cpp),
+[`panel_influence.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/panel_influence.cpp).
