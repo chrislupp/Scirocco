@@ -79,6 +79,32 @@ On an Apple M1 Pro, the full gradient takes about 10 ms at 99 panels and
 differences over the same inputs would take about 24 s and 29 s. See
 [Performance](../concepts/performance) for the full table.
 
+## Where the shape gradient is rough
+
+On the same case, the drag gradient along the upper surface is smooth except
+for a few panels near the leading edge, where it jumps and alternates in sign:
+
+<ShapeGradientPlot />
+
+This is the exact derivative of the discrete model, not an adjoint error.
+Complex step through mfoil gives the same values at every node, and the
+test suite checks this case. The spike sits where the
+[amplification factor](../concepts/transition#limits) starts to grow. The
+model switches growth on over a narrow band of $Re_\theta$, which here
+spans about three panels. Moving one node there changes how much the
+disturbance grows downstream, and so where transition happens at
+$x/c \approx 0.39$.
+
+Other panel counts, airfoils, and operating points put the onset at
+different nodes, so the spike moves with them. For gradient-based shape
+optimization:
+
+- Parameterize the shape with smooth design variables, such as CST
+  coefficients. A smooth parameterization averages the gradient over many
+  nodes, so single-node spikes don't dominate it.
+- Don't read node-by-node gradients near the onset as physical design
+  guidance.
+
 ## Rules
 
 - **Solve first.** Gradients are taken at the converged state. A failed

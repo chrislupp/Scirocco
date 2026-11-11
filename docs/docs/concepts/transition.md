@@ -40,6 +40,12 @@ local boundary-layer state through the closure constants `CtauC` and `CtauE`.
 
 ## Limits
 
+The model turns amplification on smoothly, but over a narrow band of
+$Re_\theta$ that may span only two or three panels. Shape gradients are exact
+for the discrete model, but they can spike from node to node where the
+amplification starts to grow. See
+[where the shape gradient is rough](../guides/gradients#where-the-shape-gradient-is-rough).
+
 There is no way to force transition (a trip strip) through the public API
 or the Philote server. The amplification model is the standard one from
 XFOIL and mfoil, with the same strengths and weaknesses: it is good for
