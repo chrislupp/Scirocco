@@ -90,14 +90,15 @@ This is the exact derivative of the discrete model, not an adjoint error.
 Complex step through mfoil gives the same values at every node, and the
 test suite checks this case. The spike sits where the
 [amplification factor](../concepts/transition#limits) starts to grow. The
-model switches growth on over a narrow band of $Re_\theta$, which here
-spans about three panels. Moving one node there changes how much the
-disturbance grows downstream, and so where transition happens at
-$x/c \approx 0.39$.
+model switches growth on over a narrow band of $Re_\theta$, so near that
+point the growth rate is very sensitive to the local boundary-layer state.
+Moving one node there changes how much the disturbance grows downstream,
+and so where transition happens at $x/c \approx 0.39$.
 
-Other panel counts, airfoils, and operating points put the onset at
-different nodes, so the spike moves with them. For gradient-based shape
-optimization:
+The spike comes from how sharply the model switches growth on, not from the
+panel count: refining the paneling moves it but does not smooth it away.
+Other airfoils and operating points put the onset elsewhere. For
+gradient-based shape optimization:
 
 - Parameterize the shape with smooth design variables, such as CST
   coefficients. A smooth parameterization averages the gradient over many

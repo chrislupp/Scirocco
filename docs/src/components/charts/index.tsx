@@ -130,7 +130,7 @@ export function ShapeGradientPlot() {
                         with respect to moving each node along its outward normal. Right: the amplification
                         factor ñ, which is zero up to x/c ≈ 0.027 and then starts to grow; it reaches ncrit ={" "}
                         {gradient.ncrit} near x/c ≈ {xt.toFixed(2)}. The gradient spikes and alternates in sign
-                        across the three panels where growth switches on. Complex step through mfoil gives the
+                        where growth switches on. Complex step through mfoil gives the
                         same values to about 10⁻¹¹.
                     </>
                 }

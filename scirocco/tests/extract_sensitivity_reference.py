@@ -296,8 +296,9 @@ def write_viscous_shape_group(f, name, M, test_nodes, dcl_dx, dcd_dx, dcm_dx):
 
 # Issue #22: on NACA 2412 at alpha=4, Re=1e6, 160 panels, the upper-surface
 # amplification starts growing between nodes 89 and 90. The onset ramp in
-# the damping rate spans about three panels, so the shape gradient swings in
-# sign from node to node there. CS shows the same spike, so it belongs to the
+# the damping rate is narrow in Re_theta, so the shape gradient swings in
+# sign from node to node there; refining the paneling does not smooth it.
+# CS shows the same spike, so it belongs to the
 # discrete model; these nodes pin the adjoint to it.
 ONSET_CASE = dict(naca='2412', npanel=160, alpha=4.0, Re=1e6, Ma=0.0)
 ONSET_NODES = list(range(85, 94))

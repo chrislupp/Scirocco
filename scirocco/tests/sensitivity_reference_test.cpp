@@ -415,8 +415,9 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
  *   NACA 2412, 160 panels, alpha=4, Re=1e6, upper-surface nodes 85-93.
  *
  * The upper-surface amplification starts growing between nodes 89 and 90.
- * The damping-rate onset ramp spans about three panels, so dCd/dn swings in
- * sign from node to node there, with node 89 about 5x its neighbours. mfoil
+ * The damping-rate onset ramp is narrow in Re_theta, so dCd/dn swings in
+ * sign from node to node there, with node 89 about 5x its neighbours.
+ * Refining the paneling does not smooth it; widening the ramp does. mfoil
  * CS shows the same spike: it is a property of the discrete e^N model, not an
  * adjoint error. This test pins the adjoint to CS through that region and
  * checks the spike is still there, so a change that smooths the onset updates
