@@ -20,8 +20,12 @@ int main() {
         foil.SetOper(alpha, -1.0, Re, Ma);
         bool converged = foil.Solve();
 
-        auto sens = foil.ComputeSensitivities();
-        writer.WriteIteration(foil, &sens);
+        if (converged) {
+            auto sens = foil.ComputeSensitivities();
+            writer.WriteIteration(foil, &sens);
+        } else {
+            writer.WriteIteration(foil);
+        }
 
         std::printf("alpha=%5.1f  cl=%7.4f  cd=%8.5f  cm=%7.4f  %s\n", alpha,
                     foil.GetCl(), foil.GetCd(), foil.GetCm(),

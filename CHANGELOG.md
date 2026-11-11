@@ -126,6 +126,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- `hdf5_output_example` now records non-converged sweep points without
+  requesting unavailable sensitivities, so the sweep continues and the
+  output file retains every attempted operating condition.
 - Preserve HDF5 reference-test discovery when the output writer has already
   created its library target.
 - Use the multipoint example's NACA 0012 CST fit and finite trailing-edge gap
