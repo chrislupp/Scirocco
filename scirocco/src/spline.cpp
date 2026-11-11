@@ -85,37 +85,57 @@ MatrixXd BuildCubicSpline(const VectorXd& s, const VectorXd& y) {
         d2y(1) = d2;
         d2y(2) = d2;
     } else {
-        /* Not-a-knot: solve full system with boundary conditions
-         * The third derivative is continuous at x[1] and x[n-2] */
+        /* Not-a-knot: the endpoint equations only couple three adjacent
+         * second derivatives. Eliminate d2y[0] and d2y[n-1] from the first
+         * and last interior equations, leaving a tridiagonal system for
+         * d2y[1..n-2]. This is algebraically equivalent to the former dense
+         * solve, but costs O(n) rather than O(n^3). */
+        const int m = n - 2;
+        VectorXd lower = VectorXd::Zero(m);
+        VectorXd diagonal = VectorXd::Zero(m);
+        VectorXd upper = VectorXd::Zero(m);
+        VectorXd rhs = VectorXd::Zero(m);
 
-        /* Build full n x n system (almost tridiagonal with extra entries) */
-        MatrixXd A = MatrixXd::Zero(n, n);
-        VectorXd rhs = VectorXd::Zero(n);
-
-        /* Interior equations (i = 1 to n-2): continuity of first derivative */
         for (int i = 1; i < n - 1; ++i) {
-            A(i, i - 1) = h(i - 1);
-            A(i, i) = 2.0 * (h(i - 1) + h(i));
-            A(i, i + 1) = h(i);
-            rhs(i) =
+            rhs(i - 1) =
                 6.0 * ((y(i + 1) - y(i)) / h(i) - (y(i) - y(i - 1)) / h(i - 1));
         }
 
-        /* Not-a-knot at left: third derivative continuous at s[1]
-         * d2y[0] * (1/h0) - d2y[1] * (1/h0 + 1/h1) + d2y[2] * (1/h1) = 0 */
-        A(0, 0) = h(1);
-        A(0, 1) = -(h(0) + h(1));
-        A(0, 2) = h(0);
-        rhs(0) = 0.0;
+        /* First row after eliminating d2y[0]. */
+        diagonal(0) = (h(0) + h(1)) * (h(0) + 2.0 * h(1)) / h(1);
+        upper(0) = h(1) - h(0) * h(0) / h(1);
 
-        /* Not-a-knot at right: third derivative continuous at s[n-2] */
-        A(n - 1, n - 3) = h(n - 2);
-        A(n - 1, n - 2) = -(h(n - 3) + h(n - 2));
-        A(n - 1, n - 1) = h(n - 3);
-        rhs(n - 1) = 0.0;
+        /* Unmodified interior rows. */
+        for (int i = 2; i < n - 2; ++i) {
+            const int row = i - 1;
+            lower(row) = h(i - 1);
+            diagonal(row) = 2.0 * (h(i - 1) + h(i));
+            upper(row) = h(i);
+        }
 
-        /* Solve the system */
-        d2y = A.partialPivLu().solve(rhs);
+        /* Last row after eliminating d2y[n-1]. */
+        lower(m - 1) = h(n - 3) - h(n - 2) * h(n - 2) / h(n - 3);
+        diagonal(m - 1) =
+            (h(n - 3) + h(n - 2)) * (2.0 * h(n - 3) + h(n - 2)) / h(n - 3);
+
+        /* Thomas algorithm. The system is nonsingular for strictly increasing
+         * knots, as required by the spline interpolation problem. */
+        for (int i = 1; i < m; ++i) {
+            const double factor = lower(i) / diagonal(i - 1);
+            diagonal(i) -= factor * upper(i - 1);
+            rhs(i) -= factor * rhs(i - 1);
+        }
+        VectorXd interior(m);
+        interior(m - 1) = rhs(m - 1) / diagonal(m - 1);
+        for (int i = m - 2; i >= 0; --i) {
+            interior(i) = (rhs(i) - upper(i) * interior(i + 1)) / diagonal(i);
+        }
+
+        d2y.segment(1, m) = interior;
+        d2y(0) = ((h(0) + h(1)) * d2y(1) - h(0) * d2y(2)) / h(1);
+        d2y(n - 1) =
+            ((h(n - 3) + h(n - 2)) * d2y(n - 2) - h(n - 2) * d2y(n - 3)) /
+            h(n - 3);
     }
 
     /* Compute coefficients for each segment
@@ -188,7 +208,9 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
     QuadSeg(xq, wq);
 
     VectorXd s_new = VectorXd::Zero(n);
-    for (int pass = 0; pass < 10; ++pass) {
+    constexpr int kMaxArcLengthPasses = 10;
+    constexpr double kArcLengthTolerance = 1e-12;
+    for (int pass = 0; pass < kMaxArcLengthPasses; ++pass) {
         double serr = 0.0;
         s_new(0) = s(0);
 
@@ -214,6 +236,8 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
         spline.X.c = BuildCubicSpline(s, points.row(0));
         spline.Y.s = s;
         spline.Y.c = BuildCubicSpline(s, points.row(1));
+
+        if (serr <= kArcLengthTolerance * std::max(1.0, s(n - 1))) break;
     }
 
     return spline;
