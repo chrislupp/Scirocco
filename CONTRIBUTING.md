@@ -118,7 +118,9 @@ cmake --build scirocco/build -j
 ctest --test-dir scirocco/build --output-on-failure
 ```
 
-Runtime is ~10 s for 90 tests. All tests must pass before a PR is ready for
+Test count and runtime depend on the enabled features and installed
+dependencies. Inspect the configured suite with `ctest --test-dir
+scirocco/build -N`. All configured tests must pass before a PR is ready for
 review.
 
 ### Running a single test case
@@ -216,7 +218,13 @@ tags are rejected before any files are changed. Test this logic with
 ### Release validation and publication
 
 The release workflow pins the merged PR commit and requires it to remain the tip
-of `main`. It prepares and commits version/changelog changes locally, then runs
+of `main`. Stable releases also run Docusaurus `docs:version`, set the snapshot
+as the default docs version, and include the generated docs, sidebar, version
+list, and config in the release commit. Prereleases leave snapshots and the
+default docs version unchanged. An existing snapshot is never overwritten;
+snapshot-generation failures stop the release before publication.
+
+It prepares and commits these changes locally, then runs
 `scripts/validate_release.sh` against that prepared revision. This gate runs the
 Python tests, full C++ sensitivity and RPC suite, installed-consumer check,
 documentation build/typecheck, and both Docker builds with malformed-request

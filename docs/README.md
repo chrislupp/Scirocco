@@ -1,41 +1,38 @@
-# Website
+# Scirocco documentation
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
-
-## Installation
-
-```bash
-yarn
-```
-
-## Local Development
+The site uses Docusaurus 3, React, TypeScript, and Markdown, with KaTeX for math.
+Run these commands from `docs/` with Node.js 20 or newer:
 
 ```bash
-yarn start
+npm ci
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Edit current content in `docs/` (repository path `docs/docs/`), navigation in
+`sidebars.ts`, and site settings in `docusaurus.config.ts`. API pages are
+handwritten; verify signatures and behavior against the C++ source.
 
-## Build
+Before submitting a change:
 
 ```bash
-yarn build
+npm run typecheck
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+The production build checks internal links and writes `build/`. Draft pages
+are excluded from production; publish a page only after checking its content
+and adding an appropriate navigation entry. Keep runnable examples and their
+documented inputs and expected results together when updating tutorials.
 
-## Deployment
+Pushes to `develop` affecting the site trigger `.github/workflows/docs.yml`,
+which deploys the built site to GitHub Pages. No manual `gh-pages` branch push
+is needed. `versioned_docs/` contains historical snapshots; do not copy current
+API claims into an older version without verifying that version's source.
 
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Stable releases automatically snapshot the current docs and sidebar using
+Docusaurus `docs:version`, select that version as the default, and commit the
+snapshot before release validation. Prereleases do not create snapshots or
+change the default. The release merge back to `develop` triggers deployment;
+if that merge conflicts, deployment of the new snapshot waits for resolution.
+Tutorials remain runnable examples for users; snapshotting copies documentation
+and does not execute tutorials or generate their results.

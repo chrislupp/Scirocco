@@ -1,5 +1,4 @@
 ---
-draft: true
 sidebar_position: 6
 ---
 
@@ -11,9 +10,9 @@ nearby root with a different transition location, the residual jumps from
 $10^{-3}$ to $10^{15}$, and the next step blows up.
 
 **Pseudo-transient continuation (PTC)** is a small modification of Newton
-that suppresses exactly this pathology: it adds a damping term that
-shrinks aggressively when the residual increases, then relaxes back to
-pure Newton as the solution converges. The converged answer is unchanged.
+that can reduce this instability: it adds a damping term that increases when
+the residual increases, then relaxes back toward pure Newton as the solution
+converges. The target residual equations are unchanged.
 
 PTC is **on by default** in Scirocco. This page explains what it's doing,
 when it kicks in, and how to retune it if you need to.
@@ -35,12 +34,14 @@ $$
 
 Adding $1/\tau \cdot \mathbf{I}$ to the diagonal regularizes the Jacobian.
 In the limit $\tau \to \infty$ it's pure Newton. In the limit $\tau \to 0$
-it's a steepest-descent step with timestep $\tau$. PTC starts at large
+the step approaches $-\tau R$, a residual-directed pseudo-time step.
+PTC starts at large
 $\tau$ (essentially Newton), shrinks $\tau$ whenever the residual jumps,
 and grows $\tau$ when the residual decreases.
 
 The converged residual is $\mathbf{R} = 0$ regardless of $\tau$, so PTC
-**does not change** the solution it converges to — only the path.
+does not change the target equations. Different paths can still reach
+different roots when the nonlinear system has multiple solutions.
 
 ## The SER schedule
 
@@ -74,27 +75,27 @@ step.
 ## When you should care
 
 For well-behaved cases (clean airfoil, attached flow, modest $\alpha$),
-PTC sits near `tau_max` for the whole solve and adds nothing to the cost.
+PTC introduces little damping. Its convergence benefit and cost depend on
+the operating point.
 
 For rough cases — high $\alpha$, separation, transition jumping between
-panels, intermediate CST iterates in an optimizer — PTC routinely converts
-divergence into convergence. The cost is a handful of extra Newton steps.
+panels, intermediate CST iterates in an optimizer — PTC can improve
+convergence, but it does not guarantee success.
 
 ### Common adjustments
 
 | Symptom | Try |
 | --- | --- |
 | Newton diverges immediately at iter 1–2 | Lower `tau_init` (e.g. `1e2`); start damped from the get-go |
-| Residual stalls at $10^{-6}$ | Raise `niglob` to 400, lower `rtol` floor if you can tolerate it |
+| Residual stalls at $10^{-6}$ | Check geometry and scaling; increase `niglob` if the residual is still falling |
 | Residual oscillates between two values | Lower `tau_grow_clamp` to 2.0 to slow the relaxation back to Newton |
 | You want to compare to a non-PTC baseline | `param.use_ptc = false` |
 
 ## Adjoint considerations
 
 PTC adds $1/\tau \cdot \mathbf{I}$ to the Jacobian **only** during the
-forward Newton iteration. At convergence ($\tau$ at `tau_max` and $r \to 1$
-trivially), the stored adjoint Jacobian is the unmodified $\mathbf{R}_U$,
-so sensitivities are unaffected.
+forward Newton iteration. The stored adjoint Jacobian is the unmodified
+$\mathbf{R}_U$ at the converged state, regardless of the final pseudo-time step.
 
-If you turn `use_ptc = false` and the solve still converges, you should get
-identical gradients to a PTC-on run within numerical noise.
+If both PTC-on and PTC-off runs converge to the same state, you should get
+matching gradients within numerical noise.

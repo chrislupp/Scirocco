@@ -38,6 +38,7 @@ gRPC, and the tested Philote-Cpp 0.8 build tree — see the
 cmake -S scirocco -B scirocco/build-philote \
   -DCMAKE_BUILD_TYPE=Release \
   -DSCIROCCO_BUILD_PHILOTE=ON \
+  -DSCIROCCO_HDF5_OUTPUT=ON \
       -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build
 cmake --build scirocco/build-philote -j
 ```
@@ -85,6 +86,7 @@ needed because geometry is built in Python.
 cmake -S scirocco -B scirocco/build-philote \
   -DCMAKE_BUILD_TYPE=Release \
   -DSCIROCCO_BUILD_PHILOTE=ON \
+  -DSCIROCCO_HDF5_OUTPUT=ON \
       -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
 cmake --build scirocco/build-philote -j
 
@@ -116,8 +118,8 @@ dominated drag at this $Re$.
 ## OpenMDAO wiring (annotated)
 
 The script does three passes — a single-point evaluation, a derivative
-check, and the actual optimization. The optimization function is the
-load-bearing part:
+check, and the actual optimization. The optimization function defines the design variables, objective, and
+constraints:
 
 ```python
 model.add_subsystem(
@@ -155,7 +157,7 @@ A handful of things worth understanding:
 | --- | --- |
 | `promotes_outputs=["x"]`, `promotes_inputs=["x"]` | Lets `x` flow between geometry, area, and analysis without naming collisions. |
 | `RemoteExplicitComponent(..., naca="0012", npanel=npanel)` | The `naca` option seeds the analysis with a 0012 baseline at start-up. Once the optimizer is running, `x` is overridden every iteration, so the seed never matters for results — but `npanel` does, because it sets the discipline's expected input shape. |
-| `hdf5_file=hdf5_path` | Records every primal + sensitivity call to disk for post-analysis. |
+| `hdf5_file=hdf5_path` | Records successful primal evaluations for post-analysis; derivative calls do not append records. |
 | `ref=...` scaling | SLSQP works better in $O(1)$ — these scale the internal representation to roughly unit magnitude without changing the math. |
 
 ## Verifying derivatives

@@ -43,8 +43,8 @@ public:
 | `Close()` | Optional — destructor closes too. Call explicitly to flush. |
 | `NumIterations()` | Number of `WriteIteration` calls so far. |
 
-The writer is **move-only** (deleted copy semantics) — pass by reference
-or `std::move`.
+The writer is neither copyable nor movable. Pass it by reference, or keep it
+in a `std::unique_ptr` when ownership must be transferred.
 
 ## File layout
 
@@ -91,12 +91,16 @@ The HDF5 datatypes are the natural ones for Eigen: scalar doubles,
 ## Typical usage
 
 ```cpp
+#include <stdexcept>
+
 scirocco::Scirocco foil("2412", 199);
 scirocco::Hdf5Writer writer("alpha_sweep.h5");
 
 for (double a = -2.0; a <= 10.0; a += 1.0) {
     foil.SetOper(a, -1.0, 1.0e6, 0.0);
-    foil.Solve();
+    if (!foil.Solve()) {
+        throw std::runtime_error("Airfoil analysis did not converge");
+    }
 
     auto sens = foil.ComputeSensitivities();
     writer.WriteIteration(foil, &sens);

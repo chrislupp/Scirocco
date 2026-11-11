@@ -6,8 +6,9 @@ sidebar_position: 4
 
 The Kulfan / class-shape transformation (CST) parameterization replaces
 NACA's 3 design variables with 16 (8 upper + 8 lower Bernstein coefficients
-by default) — enough freedom to do real design, while still cheap enough
-that the adjoint is the only sensible way to compute gradients.
+by default). The extra coefficients give finer control of the shape, while
+adjoint derivatives keep the number of linear solves independent of the
+number of design variables.
 
 This builds directly on the [NACA 4-digit tutorial](./naca-design) — read
 that first for the server build, Python dependencies, OpenMDAO wiring, and
@@ -18,7 +19,7 @@ chains gradients through two analytic Jacobians.
 
 This page covers both the **inviscid** ($Re = 0$) and **viscous** ($Re > 0$)
 variants. They share architecture; the viscous one adds a smoothness
-constraint to keep the BL solver happy on intermediate iterates.
+constraint to discourage oscillatory shapes during optimization.
 
 Sources:
 - [`examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py)
@@ -114,8 +115,10 @@ $$
 S''(\psi) = n(n-1) \sum_i D_i\, B^{n-2}_i(\psi),
 $$
 
-bounding $|D_i| \le 0.05$ directly caps the curvature of the surface. In
-the viscous optimization that's the constraint:
+bounding $|D_i| \le 0.05$ bounds the second derivative of the shape
+polynomial and discourages oscillatory shapes. It does not directly bound
+surface curvature: the surface also includes the class function and its
+derivatives. The viscous optimization uses this linear constraint:
 
 ```python
 prob.model.add_constraint("smoothness_upper",

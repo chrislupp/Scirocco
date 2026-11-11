@@ -24,12 +24,12 @@ cmake --build scirocco/build-debug -j
 ```
 
 ### Build options
-- `SCIROCCO_BUILD_TESTS=ON` (default) — 5 gtest executables: `scirocco_tests`, `scirocco_forward_ref_tests`, `scirocco_ping_tests`, `scirocco_sensitivity_ref_tests`, `scirocco_viscous_chain_tests`
+- `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see README.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
-- `SCIROCCO_BUILD_PHILOTE=ON` (default) — Philote-Cpp gRPC discipline interface for multidisciplinary optimization frameworks
+- `SCIROCCO_BUILD_PHILOTE=OFF` (default) — Philote-Cpp gRPC discipline interface for multidisciplinary optimization frameworks
 - `SCIROCCO_BUILD_PROBES=ON` (opt-in) — 14 diagnostic binaries for ad-hoc adjoint debugging
 - `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `naca_example`, `viscous_example`
-- `SCIROCCO_COVERAGE=OFF` — `-fprofile-instr-generate -fcoverage-mapping` for `llvm-cov` reporting
+- Coverage uses compiler flags; there is no `SCIROCCO_COVERAGE` option.
 - `SCIROCCO_NATIVE_ARCH=ON` (default) — `-march=native` in Release builds
 
 Build directories are local and disposable; delete and regenerate if CMake cache or test discovery state gets stale.
@@ -42,7 +42,8 @@ cmake -S scirocco -B scirocco/build -DCMAKE_BUILD_TYPE=Release
 cmake --build scirocco/build -j
 ctest --test-dir scirocco/build --output-on-failure
 ```
-Runtime ~10 s for 90 tests. Achieves **93.4% line / 94.0% function** coverage (see coverage command below).
+Test counts and runtime depend on features and dependencies. Inspect the suite
+with `ctest --test-dir scirocco/build -N`. Coverage CI is disabled.
 
 ### Test categories
 
@@ -76,7 +77,8 @@ run-clang-tidy -p scirocco/build -header-filter='scirocco/include/' 'scirocco/sr
 
 ### Coverage measurement
 
-Configure with `SCIROCCO_COVERAGE=ON`, run ctest with `LLVM_PROFILE_FILE="cov-%p.profraw"`, then merge and report with `llvm-profdata` / `llvm-cov`. Platform-specific invocation (e.g. `xcrun` on macOS) goes in `CLAUDE.local.md`.
+Use the compiler flags and measurement commands in README.md. There is no
+CMake coverage option.
 
 ## Code Architecture
 

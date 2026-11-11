@@ -62,29 +62,38 @@ scirocco/build-philote/src/philote/scirocco_kulfan_server localhost:50052
 
 The processes stay in the foreground and log accepted connections to
 stdout. In practice you start them in the background from your driver
-script — every example under `/examples/` does this:
+script. Optimization examples manage their own servers; analysis tutorials
+expect servers already running. For a script that owns its server:
 
 ```python
-import subprocess, time
+import subprocess
+import grpc
 
-proc = subprocess.Popen(
-    ["scirocco/build-philote/src/philote/scirocco_server", "localhost:50051"],
-    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-)
-time.sleep(2.0)   # give gRPC time to start listening
-
-# ... run your OpenMDAO problem against the channel ...
-
-proc.terminate()
-proc.wait()
+proc = subprocess.Popen([
+    "scirocco/build-philote/src/philote/scirocco_server", "localhost:50051"
+])
+try:
+    with grpc.insecure_channel("localhost:50051") as channel:
+        grpc.channel_ready_future(channel).result(timeout=15)
+        # Build and run your OpenMDAO problem with this channel.
+finally:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 ```
 
 ## Discipline interfaces
 
+See [Input and output conventions](../api/conventions) for valid ranges,
+normalization, and geometry layout.
+
 ### Analysis (`SiroccoDiscipline`)
 
-Configured at instantiation with two options: `naca` (digit string for the
-initial geometry) and `npanel` (panel count). The CST workflow overrides
+Configure `npanel` (panel count) and exactly one seed option: `naca` (digit
+string) or `coordinates` (a dictionary containing `x` and `z` lists). The CST workflow overrides
 `x` on every evaluation so the `naca` option only seeds the panel-count
 metadata.
 
@@ -112,13 +121,12 @@ pass `hdf5_file=...` to the `RemoteExplicitComponent`.
 
 Full details on the [`KulfanDiscipline` API page](../api/kulfan-discipline).
 
-## Common pitfalls
+## Failures and diagnostics
 
-| Symptom | Likely cause |
-| --- | --- |
-| `Address already in use` | A previous server didn't terminate cleanly. Find and kill it: `lsof -i :50051`. |
-| Client connects but every call returns `UNAVAILABLE` | gRPC bound to `localhost` but client tried `0.0.0.0` (or vice versa). Match exactly. |
-| `RuntimeError: server failed to start` in driver script | Server binary path wrong, or Philote-Cpp not installed. Try running the binary by hand to see the error. |
-| Optimizer iterates produce NaN `cl` | A bad CST iterate produced self-intersecting coordinates. Confirm CST coefficient bounds are correct (see [CST design](./cst-design)). |
+See [Troubleshooting](../getting-started/troubleshooting) for port conflicts,
+protocol mismatches, failed solves, and unavailable gradients. The analysis
+discipline reports nonconvergence as an error rather than returning NaN force
+coefficients. HDF5 recording requires a server built with
+`SCIROCCO_HDF5_OUTPUT=ON`.
 
 ## Next: [NACA 4-digit optimization](./naca-design)

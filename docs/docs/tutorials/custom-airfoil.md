@@ -22,6 +22,8 @@ The analysis discipline expects `npanel + 1` nodes ordered lower trailing edge
 z-values:
 
 ```python
+import numpy as np
+
 def naca0012_coordinates(npanel=100, thickness=0.12):
     if npanel % 2:
         raise ValueError("use an even panel count for this constructor")
@@ -95,10 +97,14 @@ Cd = 0.00723560
 Cm = 0.00581315
 ```
 
-`naca="0012"` is still required to initialize `SiroccoDiscipline`, but the
-connected `x` array replaces that seed geometry before every solve.
+Here `naca="0012"` initializes `SiroccoDiscipline`; a `coordinates` option
+can also supply the seed. The connected `x` array replaces the seed panel
+geometry before every solve.
 
 ## Coordinate checklist
+
+See [Input and output conventions](../api/conventions) for valid ranges,
+normalization, and geometry layout.
 
 - Supply exactly `npanel + 1` nodes.
 - Order nodes lower TE → LE → upper TE.

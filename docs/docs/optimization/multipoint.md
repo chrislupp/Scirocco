@@ -112,8 +112,8 @@ for i in range(N_POINTS):
 model.add_objective("cd_aggregator.cd_total", ref=1e-2)
 ```
 
-(The actual script is somewhat tidier — see the source — but this is the
-shape.)
+This excerpt shows the component connections; see the complete script for
+setup and cleanup.
 
 ## Per-point HDF5
 
@@ -126,8 +126,9 @@ kulfan_multipoint_optimization_history_high_cl.h5
 ```
 
 Each file contains the evaluation history seen by **that point's** analysis
-server. The records include primal and derivative evaluations, so they do
-not correspond one-to-one with IPOPT's displayed iteration number. The
+server. The records contain successful primal evaluations; derivative-only calls do
+not append records. Line searches can evaluate several trial points, so these
+records do not correspond one-to-one with IPOPT's iteration number. The
 three files receive calls in the same order and can be stacked to compare
 per-point drag across model evaluations:
 
@@ -151,6 +152,9 @@ $[0.286, 0.429, 0.286]$, the mid-Cl point has the largest influence; the
 low-Cl point might even see slightly worse drag than a single-point design.
 
 ## Running it
+
+Build the servers with `SCIROCCO_HDF5_OUTPUT=ON` to produce the histories
+described above; see the [HDF5 tutorial](../tutorials/hdf5-output).
 
 This example adds IPOPT through the exact ModOpt revision used for release
 validation. Install the system IPOPT library first:

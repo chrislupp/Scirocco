@@ -127,11 +127,12 @@ foil.GetState().param.ncrit = 11.0;
 // Turn off PTC for an A/B comparison
 foil.GetState().param.use_ptc = false;
 
-// Read a distribution that's not in the public accessors
-const Eigen::VectorXd& Hk = foil.GetState().post.Hk;
+// After solving, inspect through a const reference to preserve cached gradients.
+const scirocco::Scirocco& solved = foil;
+const Eigen::VectorXd& Hk = solved.GetState().post.Hk;
 
-// Inspect the global Newton residual
-double rnorm = foil.GetState().glob.R.norm();
+// Inspect the stored BL residual (not the complete coupled residual).
+double rnorm = solved.GetState().glob.R.norm();
 ```
 
 For anything more invasive (writing directly into `U`, replacing
