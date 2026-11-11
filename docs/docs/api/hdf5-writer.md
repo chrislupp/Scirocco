@@ -107,8 +107,7 @@ for (double a = -2.0; a <= 10.0; a += 1.0) {
 }
 ```
 
-For more, see the [HDF5 output tutorial](../tutorials/hdf5-output) and the
-canonical example
+See also [Save results to HDF5](../guides/hdf5) and the example
 [`scirocco/examples/hdf5_output_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/hdf5_output_example.cpp).
 
 ## Building with HDF5 enabled

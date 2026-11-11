@@ -1,54 +1,50 @@
 ---
-sidebar_position: 3
+title: Transition
+description: The e^N amplification model and the ncrit parameter.
 ---
 
 # Transition
 
-Scirocco uses an amplification model to predict laminar-to-turbulent transition
-in its integral boundary layer. The default threshold is `ncrit = 9`.
+Scirocco predicts where the laminar boundary layer turns turbulent with the
+$e^N$ method. Along each surface, it tracks the amplification $\tilde n$ of
+the most unstable disturbance. Where $\tilde n$ reaches the critical value
+$n_\text{crit}$, the flow becomes turbulent.
 
-## Amplification threshold
+## Choosing `ncrit`
 
-The laminar state tracks an amplification quantity along each airfoil surface.
-`MarchAmplification` integrates its growth using the local boundary-layer
-state. `UpdateTransition` updates the laminar/turbulent station classification
-as the coupled solution changes.
-
-Lower `ncrit` values generally trigger earlier transition; higher values allow
-more amplification before transition. Select the threshold to represent the
-flow environment and compare against appropriate validation data. It is not a
-universal material property or a direct turbulence-intensity input.
-
-In C++, set it before solving:
+The default is `ncrit = 9`, the standard value for an average wind tunnel.
+Quieter environments, such as clean free flight, call for higher values,
+which move transition back. Noisier ones call for lower values, which move
+it forward.
 
 ```cpp
-foil.GetState().param.ncrit = 9.0;
+foil.GetState().param.ncrit = 9.0;   // set before solving
 foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
-bool converged = foil.Solve();
+foil.Solve();
 ```
 
-The current Philote discipline does not expose `ncrit` as an option, and the
-public sensitivity interface does not provide derivatives with respect to it.
+`ncrit` is a modelling choice, not a measured property. Pick it to match
+your flow environment, and validate against data where you can. It isn't an
+option on the Philote server, and there are no derivatives with respect to it.
 
-## Transition and convergence
+## How transition moves during a solve
 
-A change in the transition station changes the equations used at that station.
-This can complicate convergence and finite-difference gradient checks near a
-transition change. Start gradient verification from a converged, repeatable
-operating point; see [Troubleshooting](../getting-started/troubleshooting).
+Transition is part of the Newton iteration: as the solution changes, the
+transition point can move from one panel to the next. When it does, the
+equations at that station switch from laminar to turbulent. This is the
+main source of convergence trouble and of noisy finite-difference
+gradients. Check gradients at points where transition sits still.
 
-The initial turbulent shear state is computed by `GetCttr` from the local
-boundary-layer state and the `CtauC` and `CtauE` closure constants. It is not a
-log-linear function of the accumulated amplification.
+At transition, the turbulent shear stress starts from a value set by the
+local boundary-layer state through the closure constants `CtauC` and `CtauE`.
 
-## Forced transition
+## Limits
 
-There is no supported forced-transition input on the public `Solve()` or
-Philote interface. `StoreTransition` records internal transition information;
-calling it does not establish a persistent trip constraint, because the solver
-updates transition during iteration.
+There is no way to force transition (a trip strip) through the public API
+or the Philote server. The amplification model is the standard one from
+XFOIL and mfoil, with the same strengths and weaknesses: it is good for
+smooth airfoils at moderate Reynolds numbers, and does not model bypass
+transition from high free-stream turbulence.
 
-Implementation references:
-
-- [`transition.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/transition.cpp)
-- [`bl_properties.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/bl_properties.cpp)
+Source: [`transition.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/transition.cpp),
+[`bl_properties.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/bl_properties.cpp).

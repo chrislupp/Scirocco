@@ -1,77 +1,53 @@
 ---
-sidebar_position: 4
+title: Compressibility
+description: The Kármán–Tsien correction and Sutherland viscosity.
 ---
 
 # Compressibility
 
-Scirocco extends its incompressible panel method to subsonic flows with the
-**Kármán–Tsien** pressure correction, and accounts for temperature-dependent
-viscosity in the boundary layer with the **Sutherland** model. Both are
-parameterized in
-[`data/param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h)
-and applied by
-[`properties/bl_properties.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/properties/bl_properties.h).
+Set a Mach number in `SetOper` and Scirocco corrects the incompressible
+pressure for compressibility. The boundary layer also uses
+temperature-dependent viscosity. There's nothing else to configure.
+
+```cpp
+foil.SetOper(2.0, -1.0, 3.0e6, 0.5);   // Mach 0.5
+```
 
 ## Kármán–Tsien correction
 
-The incompressible result $C_{p,0}$ from the panel solve is mapped to a
-compressible $C_p$ via
+The panel method gives the incompressible pressure $C_{p,0}$. The
+Kármán–Tsien rule maps it to a compressible value:
 
 $$
-C_p = \frac{C_{p,0}}{\sqrt{1 - M_\infty^2} + \tfrac{1}{2} M_\infty^2 \,
-              \big( 1 + \sqrt{1 - M_\infty^2} \big)^{-1}\, C_{p,0} }
+C_p = \frac{C_{p,0}}{\beta + \dfrac{M_\infty^2}{1 + \beta}\,\dfrac{C_{p,0}}{2}},
+\qquad \beta = \sqrt{1 - M_\infty^2}
 $$
 
-The denominator includes a pressure-dependent term in addition to the
-Prandtl–Glauert factor. The implementation precomputes two scalars
+For small $C_{p,0}$ this reduces to the Prandtl–Glauert factor $1/\beta$.
+The extra term makes suction peaks grow faster than Prandtl–Glauert
+predicts, which matches experiment better at higher Mach numbers.
 
-$$
-\beta = \sqrt{1 - M_\infty^2}, \qquad \lambda = \frac{M_\infty^2}{(1 + \beta)^2}
-$$
-
-stored as `Param::KTb` and `Param::KTl` and initialized during solving.
-
-### Range of validity
-
-The correction does not resolve shocks. The input contract permits
-`0 <= Ma < 1`, but that is not a guarantee of physical validity throughout the
-range. Local sonic conditions depend on geometry and angle of attack as well
-as freestream Mach number. Use an appropriate compressible-flow model when
-shocks or transonic effects matter.
-
-A **sonic $C_p$** is precomputed and stored as `Param::cps`. If the
-corrected $C_p$ at any node goes below this, you're crossing the sonic line
-locally; the solver does not flag this but it's a useful diagnostic.
+The sonic pressure coefficient is stored in `GetState().param.cps`. If the
+surface $C_p$ drops below it, the flow is locally supersonic and the result
+is outside what this model can represent.
 
 ## Sutherland viscosity
 
-The viscous boundary-layer system needs the kinematic viscosity at every
-station. Scirocco evaluates Sutherland's law:
+Viscosity in the boundary layer follows Sutherland's law,
 
 $$
-\mu(T) = \mu_\text{ref} \left(\frac{T}{T_\text{ref}}\right)^{3/2}
-                       \frac{T_\text{ref} + T_s}{T + T_s}
+\mu(T) = \mu_\text{ref}\left(\frac{T}{T_\text{ref}}\right)^{3/2}\frac{T_\text{ref} + T_s}{T + T_s},
 $$
 
-with $T_s / T_\text{ref} = 0.35$ as the default (`Param::Tsrat`). The
-freestream value `Param::muinf` is set at thermodynamic initialization
-(`InitThermo` in `core/inviscid.h`) along with the freestream speed
-`Vinf`, stagnation density `rho0`, and stagnation viscosity `mu0`.
+with $T_s / T_\text{ref} = 0.35$ for air (`param.Tsrat`). Change it only if
+you have a reason to model another gas.
 
-## What the user touches
+## Limits
 
-You never set the Kármán–Tsien constants directly — they're derived from
-`Ma`:
+The correction doesn't capture shocks. It's appropriate for subsonic flow
+where the surface stays below sonic speed. Mach numbers up to just under 1
+are accepted as input, but treat results with supersonic pockets as
+unreliable. For transonic flow, use a solver that resolves shocks.
 
-```cpp
-foil.SetOper(alpha, -1.0, Re, 0.3);   // M_infty = 0.3, KT correction active
-```
-
-If you want to disable compressibility for a comparison run, just pass
-`Ma = 0`. If you want to tune the Sutherland temperature ratio for a
-specific working fluid, override it manually:
-
-```cpp
-foil.GetState().param.Tsrat = 0.4;
-foil.SetOper(alpha, -1.0, Re, Ma);   // stores operating conditions; solve afterward
-```
+Source: [`bl_properties.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/properties/bl_properties.h),
+[`param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h).

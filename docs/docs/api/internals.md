@@ -4,17 +4,10 @@ sidebar_position: 8
 
 # Internals
 
-Index of the internal solver-kernel headers under `scirocco/core/`,
-`scirocco/util/`, and `scirocco/properties/`. These are not part of the
-public stable surface — most users get everything they need from
-[`Scirocco`](./scirocco) and [`FoilState`](./foil-state). They're listed
-here for reference (and because the unit tests probe them).
-
-If you need behavior described below, the recommended path is:
-
-1. Try the public API first (the [`Scirocco`](./scirocco) wrapper).
-2. If not enough, reach `foil.GetState()` for the data structures.
-3. Only if neither suffices, call the free functions below directly.
+The solver kernels under `scirocco/core/`, `scirocco/util/`, and
+`scirocco/properties/`. You can include them, but they aren't a stable API
+and may change between minor versions. Use [`Scirocco`](./scirocco) and
+[`FoilState`](./foil-state) first.
 
 ## Inviscid
 
@@ -61,11 +54,7 @@ If you need behavior described below, the recommended path is:
 | [`philote_discipline.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/philote_discipline.h) | `SiroccoDiscipline` — the analysis discipline that the `scirocco_server` binary serves |
 | [`kulfan_discipline.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/kulfan_discipline.h) | [`KulfanDiscipline`](./kulfan-discipline) — has its own page |
 
-## What's *not* public
+## Missing something?
 
-The headers above are public in the sense that they're under
-`include/scirocco/` and you can `#include` them. They are not part of a
-stable contract — signatures may change between minor versions. If you
-build on top of one of them and find yourself fighting churn, file an
-issue suggesting the API surface for what you need; the recurring
-patterns get promoted into the [`Scirocco`](./scirocco) class.
+If you find yourself depending on one of these, open an issue describing
+what you need. Patterns that come up often get added to `Scirocco`.

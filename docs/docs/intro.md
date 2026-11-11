@@ -1,49 +1,44 @@
 ---
-sidebar_position: 1
+title: Overview
+sidebar_label: Overview
+description: What Scirocco computes, how it works, and where to start.
 ---
 
 # Scirocco
 
-A C++17 library for inviscid and viscous aerodynamic analysis of 2D
-airfoils, with Philote servers and Python bindings for scripted analysis and
-optimization.
+Scirocco is a C++17 library for analyzing 2D airfoils. Give it a shape and an
+operating point, and it returns lift, drag, moment, and the boundary layer.
+One more call returns the derivatives of those results with respect to every
+input, which is what a gradient-based optimizer needs.
 
-Scirocco predicts force coefficients ($C_l$, $C_d$, $C_m$) and boundary-layer
-distributions using a linear-vortex panel method coupled with integral
-boundary-layer equations and $e^N$ transition prediction. It is a C++17 port and
-reformulation of [mfoil](https://websites.umich.edu/~kfid/codes.html), with
-analytic adjoints, HDF5 output, and a Philote-Cpp discipline interface for use
-inside MDO frameworks.
+<CpPlot />
 
-## Capabilities
+## What it does
 
-| Area | What's in the box |
-| --- | --- |
-| Inviscid | Linear-vortex panel method, Kutta condition, AIC formulation |
-| Viscous | Coupled boundary-layer / inviscid Newton solve, wake displacement |
-| Transition | $e^N$ method with configurable $n_\text{crit}$ |
-| Compressibility | Kármán–Tsien correction, Sutherland viscosity |
-| Geometry | NACA 4- and 5-digit generation, CST/Kulfan parameterization, flap, camber, derotation |
-| Sensitivities | Full reverse-mode adjoint w.r.t. coordinates, $\alpha$, $Re$, $M_\infty$ |
-| I/O | HDF5 iteration output (optional) |
-| MDO | Philote-Cpp gRPC discipline; OpenMDAO examples for NACA and CST design |
+- **Inviscid and viscous analysis.** A linear-vortex panel method, coupled by
+  Newton's method to an integral boundary layer and wake when `Re > 0`.
+- **Transition.** $e^N$ amplification, with `ncrit = 9` by default.
+- **Compressibility.** Kármán–Tsien correction for subsonic Mach numbers.
+- **Geometry.** NACA 4- and 5-digit sections, your own coordinates, flaps,
+  camber changes, and a CST (Kulfan) parameterization.
+- **Gradients.** A discrete adjoint for $C_l$, $C_d$, and $C_m$ with respect
+  to node coordinates, $\alpha$, $Re$, and $M_\infty$, tested against
+  complex-step reference data.
+- **Output and integration.** Optional HDF5 history files, and Philote gRPC
+  servers that plug into OpenMDAO.
 
-## Who this is for
+Scirocco is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html)
+by Krzysztof J. Fidkowski, extended with analytic adjoints. The Python mfoil
+implementation is the reference for every result and derivative in the test
+suite.
 
-- Aerodynamicists who want a fast, scriptable 2D analysis tool with derivatives
-- MDO practitioners who need an airfoil discipline with analytic gradients
-- Researchers working on airfoil optimization
+## Pick your path
 
-## Where to next
+<Next items={[
+  { to: "/docs/getting-started/quickstart", title: "C++ quickstart", body: "Build the library and solve your first airfoil in a few minutes." },
+  { to: "/docs/python", title: "Python and OpenMDAO", body: "Drive Scirocco from Python through its Philote servers." },
+  { to: "/docs/concepts/panel-method", title: "How it works", body: "The panel method, boundary layer, transition, and adjoint." },
+]} />
 
-- [Install Scirocco](./getting-started/installation) and confirm a clean build
-- Run the [Python quickstart](./getting-started/quickstart) through
-  the Philote-MDO bindings
-- Browse the [API Reference](./api) for classes, methods, and input requirements
-
-
-## License & attribution
-
-Apache License 2.0. Scirocco is a C++ port of mfoil (MIT) by Krzysztof J.
-Fidkowski; see the project [`NOTICE`](https://github.com/chrislupp/Scirocco/blob/develop/NOTICE)
-for details.
+Scirocco is licensed under Apache 2.0. mfoil is MIT-licensed; see
+[`NOTICE`](https://github.com/chrislupp/Scirocco/blob/develop/NOTICE).

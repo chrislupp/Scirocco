@@ -4,41 +4,31 @@ sidebar_position: 4
 
 # CST design
 
-The Kulfan / class-shape transformation (CST) parameterization replaces
-NACA's 3 design variables with 16 (8 upper + 8 lower Bernstein coefficients
-by default). The extra coefficients give finer control of the shape, while
-adjoint derivatives keep the number of linear solves independent of the
-number of design variables.
+The same kind of problem as the [NACA example](./naca-design), with a CST
+parameterization: 8 coefficients per surface instead of 3 NACA parameters.
+The geometry now runs on its own server, `scirocco_kulfan_server`, so
+OpenMDAO chains two analytic Jacobians. The adjoint's cost doesn't depend on
+how many coefficients there are.
 
-This builds directly on the [NACA 4-digit tutorial](./naca-design) — read
-that first for the server build, Python dependencies, OpenMDAO wiring, and
-derivative-check basics. The new ingredient here is a **second** Philote
-server: instead of a local Python geometry component, the CST geometry is
-its own remote discipline (`scirocco_kulfan_server`), so the optimizer
-chains gradients through two analytic Jacobians.
+There are two variants. The inviscid one trims the pitching moment; the
+viscous one minimizes drag and adds a smoothness constraint.
 
-This page covers both the **inviscid** ($Re = 0$) and **viscous** ($Re > 0$)
-variants. They share architecture; the viscous one adds a smoothness
-constraint to discourage oscillatory shapes during optimization.
+- [`kulfan_inviscid_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py)
+- [`kulfan_viscous_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py)
 
-Sources:
-- [`examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py)
-- [`examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py)
+## How it fits together
 
-## Architecture
+Both scripts start both servers themselves.
 
-Two Philote-Cpp servers, both started by the example script:
-
-```
+```text
 [KulfanDiscipline] --x--> [SiroccoDiscipline] --cl, cd, cm--> [SLSQP]
    (Philote gRPC          (Philote gRPC                ^
     localhost:50052)        localhost:50051)           |
                        +--> [AirfoilArea] -------------+
 ```
 
-The CST coefficients (`cst_upper`, `cst_lower`) are SLSQP design variables;
-they go into the Kulfan server, which emits panel coordinates `x`, which go
-into the analysis server. OpenMDAO chains the analytic Jacobians.
+The coefficients go to the geometry server, its `x` goes to the analysis
+server, and OpenMDAO multiplies the two Jacobians.
 
 ## Inviscid variant
 
@@ -50,34 +40,22 @@ into the analysis server. OpenMDAO chains the analytic Jacobians.
 | Objective | $\min C_m^2$ |
 | Constraints | $C_l = 0.5$, area $\ge 0.8 \times$ (initial area) |
 
-**Why $C_m^2$ and not $C_d$?** In 2-D potential flow $C_d \equiv 0$, so it's
-useless as an objective. Minimizing $C_m^2$ at a target $C_l$ produces a
-naturally pitch-trimmed airfoil — a classical inviscid design problem with
-a real smooth minimum.
+Inviscid drag is zero, so it can't be the objective. Minimizing $C_m^2$ at
+a target $C_l$ gives a section with no pitching moment, a classic inviscid
+design problem with a smooth minimum.
 
 ```bash
 python examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py
 ```
 
-The script:
+It starts from a least-squares CST fit to NACA 0012 and writes
+`kulfan_inviscid_optimization_history.h5` and a plot. A reference run
+converges in 4 SLSQP iterations to `alpha = 4.3204°`, `Cl = 0.500000`,
+`Cm = -1e-6`, and `area = 0.082185`.
 
-1. Fits a NACA-0012-equivalent initial guess to the CST basis via
-   least squares.
-2. Starts both Philote servers.
-3. Runs SLSQP with the design variables and constraints above.
-4. Saves `kulfan_inviscid_optimization_history.h5` and a result plot.
-
-With the pinned Philote 0.8 tutorial environment, a representative run
-converges in 4 SLSQP iterations to approximately `alpha = 4.3204°`,
-`Cl = 0.500000`, `Cm = -1e-6`, and `area = 0.082185`.
-
-### Bernstein non-negativity
-
-A nice property of the CST basis: setting `cst_upper[i] >= 0` and
-`cst_lower[i] >= 0` for all $i$ is **sufficient** to guarantee that the
-airfoil is non-self-intersecting at every intermediate optimizer
-iterate — no per-evaluation thickness constraint needed. This is what
-the `lower=0.0` design-variable bounds are doing.
+The `lower=0.0` bounds on the coefficients keep the upper surface above
+the lower one at every iterate. The area constraint stops the section from
+getting too thin.
 
 
 ## Viscous variant
@@ -94,8 +72,7 @@ the `lower=0.0` design-variable bounds are doing.
 python examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py
 ```
 
-A representative pinned-environment run converges in 86 SLSQP iterations
-to approximately `alpha = 0.9910°`, `Cl = 0.500000`, `Cd = 0.004025`,
+A reference run converges in 86 SLSQP iterations to `alpha = 0.9910°`, `Cl = 0.500000`, `Cd = 0.004025`,
 `Cm = -0.097065`, and `area = 0.065720`.
 
 ### The smoothness constraint
@@ -108,17 +85,15 @@ smoothness_upper[i] = cst_upper[i+2] - 2*cst_upper[i+1] + cst_upper[i]
 smoothness_lower[i] = cst_lower[i+2] - 2*cst_lower[i+1] + cst_lower[i]
 ```
 
-These are the second differences of the coefficient sequences. Because the
-shape function's second derivative
+These are second differences of the coefficients. Because the shape
+function's second derivative is
 
 $$
 S''(\psi) = n(n-1) \sum_i D_i\, B^{n-2}_i(\psi),
 $$
 
-bounding $|D_i| \le 0.05$ bounds the second derivative of the shape
-polynomial and discourages oscillatory shapes. It does not directly bound
-surface curvature: the surface also includes the class function and its
-derivatives. The viscous optimization uses this linear constraint:
+bounding $|D_i| \le 0.05$ keeps the shape function from wiggling. The
+viscous optimization adds it as a linear constraint:
 
 ```python
 prob.model.add_constraint("smoothness_upper",
@@ -127,19 +102,14 @@ prob.model.add_constraint("smoothness_lower",
                           lower=-SMOOTHNESS_MAX, upper=SMOOTHNESS_MAX)
 ```
 
-Why this constraint matters: without it, SLSQP loves to push individual
-coefficients to extreme values to chase tiny drag reductions, producing
-geometry with sharp bumps that destabilize the viscous BL Newton solve
-(or move transition by several panels between iterations, with the same
-effect). The smoothness cap fixes both at once.
+Without it, SLSQP pushes single coefficients to extremes to chase tiny drag
+gains. The bumps that result upset the boundary-layer solve and make
+transition jump between panels. The inviscid variant doesn't need the
+constraint.
 
-For a fully inviscid run the smoothness constraint isn't needed — the
-inviscid solver doesn't care about local curvature beyond the basic
-non-self-intersecting requirement.
+## Optimizer settings
 
-## Optimizer hygiene
-
-Both variants use these settings:
+Both variants use:
 
 ```python
 prob.driver = om.ScipyOptimizeDriver()
@@ -148,20 +118,14 @@ prob.driver.options["tol"]       = 1e-6
 prob.driver.options["maxiter"]   = 200
 ```
 
-With 16 DVs SLSQP runs through quickly — under a minute for the inviscid
-case, a few minutes for the viscous one (limited by primal solve cost,
-not optimizer overhead).
-
-If you see SLSQP make a few rapid improvements then plateau, try
-increasing `maxiter` to 400 — the last bit of polishing on the optimal
-$C_m^2$ or $C_d$ often takes more iterations than you expect.
+The inviscid case finishes in under a minute; the viscous one takes a few
+minutes, almost all of it in the solves. If SLSQP improves quickly and then
+stalls short of convergence, raise `maxiter` to 400.
 
 ## Reading the output
 
-Each run writes an HDF5 history file and a PNG plot. The HDF5 contains
-the per-iteration primal state you can post-process; the PNG
-overlays the initial and optimized airfoils plus the converged CST
-coefficient values.
+Each run writes an HDF5 history and a PNG comparing the initial and final
+sections and coefficients. To plot drag over the run:
 
 ```python
 import h5py
@@ -175,8 +139,9 @@ import matplotlib.pyplot as plt
 plt.semilogy(cds); plt.xlabel("iter"); plt.ylabel("Cd"); plt.show()
 ```
 
-The history records remote model evaluations, including evaluations used for
-derivatives, rather than mapping one-to-one to the optimizer's displayed
-iteration number.
+The history has one record per solve, which includes line-search trials, so
+its count won't match SLSQP's iteration count.
 
-## Next: [Multipoint design](./multipoint) — minimize a weighted-average drag over multiple operating points.
+<Next items={[
+  { to: "/docs/optimization/multipoint", title: "Multipoint design", body: "One shape, three operating points, weighted drag." },
+]} />

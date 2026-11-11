@@ -4,9 +4,9 @@ sidebar_position: 7
 
 # Solver parameters
 
-A field-by-field reference for the `Param` struct
+Every field of the `Param` struct
 ([`data/param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h)).
-Access it through `foil.GetState().param`.
+Set them through `foil.GetState().param` before solving.
 
 ```cpp
 foil.GetState().param.verb = 1;
@@ -14,16 +14,15 @@ foil.GetState().param.ncrit = 11.0;
 foil.GetState().param.use_ptc = false;
 ```
 
-Start with the default solver parameters. Adjust them when diagnosing
-convergence problems. These native state fields are not options on the current
-Philote discipline.
+The defaults work for most cases. These fields aren't available on the
+Philote server.
 
 ## Newton solver
 
 | Field | Default | Notes |
 | --- | --- | --- |
 | `verb` | `0` | `0` silent, `1` summary per iter, `2` very verbose. Set to `1` when convergence trouble starts. |
-| `rtol` | `1e-11` | Newton residual tolerance. Below `1e-12` you start fighting roundoff. |
+| `rtol` | `1e-11` | Newton residual tolerance. Below `1e-12`, round-off gets in the way. |
 | `niglob` | `200` | Maximum iterations for a coupled solve |
 | `scale_coupled_system` | `true` | Equilibrate equations and variables |
 | `use_continuation` | `true` | Retry failed cold starts along an angle/lift path |
@@ -33,7 +32,7 @@ Philote discipline.
 
 ## Pseudo-transient continuation
 
-See [PTC concepts](./ptc) for the algorithm.
+See [PTC concepts](../concepts/ptc) for the algorithm.
 
 | Field | Default | Notes |
 | --- | --- | --- |
@@ -46,19 +45,18 @@ See [PTC concepts](./ptc) for the algorithm.
 
 ## Adjoint
 
-Adjoints use the unregularized converged Jacobian. Factorization failures and
-inaccurate transpose solves are reported as errors. The former
-`adjoint_ridge` option has been removed because a regularized Jacobian does
-not differentiate the Python mfoil equations.
+There's nothing to tune. The adjoint uses the plain converged Jacobian, and
+reports a failed or inaccurate solve as an error. (An older `adjoint_ridge`
+option was removed: regularizing the Jacobian gives the wrong derivatives.)
 
 ## Boundary-layer closures
 
-These shape the Drela/mfoil closure relations. Don't touch them unless you
-are intentionally departing from the standard closure.
+Constants of the Drela/mfoil closure relations. Leave them alone unless you
+mean to change the model.
 
 | Field | Default | Role |
 | --- | --- | --- |
-| `ncrit` | `9.0` | $e^N$ transition threshold (see [Transition](./transition)) |
+| `ncrit` | `9.0` | $e^N$ transition threshold (see [Transition](../concepts/transition)) |
 | `Cuq` | `1.0` | Scales the $u_q$ term in the shear lag equation |
 | `Dlr` | `0.9` | Wall/wake dissipation length ratio |
 | `SlagK` | `5.6` | Shear lag constant |
@@ -68,9 +66,8 @@ are intentionally departing from the standard closure.
 
 ## Thermodynamics
 
-These fields are initialized during solving from the operating conditions.
-`SetOper(..., Ma)` stores the Mach input; it does not refresh thermodynamics
-immediately. Treat derived fields as solver outputs.
+Most of these are computed from the operating point during the solve, so
+treat them as outputs.
 
 | Field | Default | Notes |
 | --- | --- | --- |
@@ -84,14 +81,13 @@ immediately. Treat derived fields as solver outputs.
 | `gam` | `1.4` | Ratio of specific heats — air |
 | `KTb`, `KTl`, `cps` | derived | Kármán–Tsien constants and sonic $C_p$, initialized during solving |
 
-`rho0` is derived and overwritten during initialization. The wrapper uses
-normalized freestream density and speed; these fields are not a general fluid
-input interface. Advanced changes to `gam` or `Tsrat` require separate validation.
+Speed and density are normalized, so these fields aren't a way to describe a
+different fluid. Changing `gam` or `Tsrat` departs from the validated
+model.
 
 ## Station flags
 
-These are bookkeeping fields that mark the current boundary-layer station
-type while the solver iterates. Read-only from a user's perspective.
+Internal flags for the station being evaluated. Don't set them.
 
 | Field | Meaning |
 | --- | --- |

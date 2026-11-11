@@ -1,101 +1,73 @@
 ---
-sidebar_position: 6
+title: Pseudo-transient continuation
+description: The damping Scirocco adds to Newton steps when the residual grows.
 ---
 
 # Pseudo-transient continuation
 
-Pure Newton on a viscous airfoil sometimes diverges. A typical pathology
-is: the residual drops a few orders of magnitude, then a step lands on a
-nearby root with a different transition location, the residual jumps from
-$10^{-3}$ to $10^{15}$, and the next step blows up.
+Newton's method converges fast once it is close to the answer, but a bad
+step far from it can throw the iteration off course. Pseudo-transient
+continuation (PTC) adds damping when the residual grows and removes it as
+the residual falls. It's on by default.
 
-**Pseudo-transient continuation (PTC)** is a small modification of Newton
-that can reduce this instability: it adds a damping term that increases when
-the residual increases, then relaxes back toward pure Newton as the solution
-converges. The target residual equations are unchanged.
+## The step
 
-PTC is **on by default** in Scirocco. This page explains what it's doing,
-when it kicks in, and how to retune it if you need to.
-
-## The modification
-
-Standard Newton step:
+A plain Newton step solves
 
 $$
-\mathbf{R}_U^k \,\Delta \mathbf{U} = -\mathbf{R}^k
+R_U\, \Delta U = -R .
 $$
 
-PTC step:
+A PTC step adds a diagonal term,
 
 $$
-\left(\mathbf{R}_U^k + \frac{1}{\tau^k} \mathbf{I}\right) \Delta \mathbf{U}
-   = -\mathbf{R}^k
+\left(R_U + \frac{1}{\tau} I\right) \Delta U = -R .
 $$
 
-Adding $1/\tau \cdot \mathbf{I}$ to the diagonal regularizes the Jacobian.
-In the limit $\tau \to \infty$ it's pure Newton. In the limit $\tau \to 0$
-the step approaches $-\tau R$, a residual-directed pseudo-time step.
-PTC starts at large
-$\tau$ (essentially Newton), shrinks $\tau$ whenever the residual jumps,
-and grows $\tau$ when the residual decreases.
+Large $\tau$ gives back plain Newton. Small $\tau$ shortens the step towards
+$-\tau R$, a cautious move down the residual. The converged answer,
+$R = 0$, doesn't depend on $\tau$, so PTC changes the path, not the
+destination.
 
-The converged residual is $\mathbf{R} = 0$ regardless of $\tau$, so PTC
-does not change the target equations. Different paths can still reach
-different roots when the nonlinear system has multiple solutions.
+## How τ changes
 
-## The SER schedule
+After each step, Scirocco compares the residual with the previous one,
+$r = \|R^k\| / \|R^{k-1}\|$:
 
-Scirocco updates $\tau$ each iteration with a **switched
-evolution-relaxation** (SER) rule based on the residual ratio
-$r^k = \|\mathbf{R}^k\| / \|\mathbf{R}^{k-1}\|$:
+- If the residual fell ($r < 1$), $\tau$ grows by $1/r$, at most by a
+  factor of `tau_grow_clamp`.
+- If it didn't, $\tau$ shrinks by $1/r$, at most by a factor of
+  `tau_shrink_clamp`.
+- $\tau$ always stays between `tau_min` and `tau_max`.
 
-| Condition | Update |
-| --- | --- |
-| $r^k < 1$ (residual decreased) | grow $\tau$ by $\min(1/r^k,\, \text{tau\_grow\_clamp})$ |
-| $r^k \ge 1$ (residual stagnant or grew) | shrink $\tau$ by $\max(1/r^k,\, \text{tau\_shrink\_clamp})$ |
-| always | clamp to $[\text{tau\_min},\, \text{tau\_max}]$ |
+It starts at `tau_init = 1e6`, which is effectively plain Newton. On an
+easy case PTC never engages.
 
-The default constants in
-[`data/param.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/param.h):
+## What it does in practice
 
-| Field | Default | Role |
-| --- | --- | --- |
-| `use_ptc` | `true` | Master on/off |
-| `tau_init` | `1e6` | Initial value — effectively Newton |
-| `tau_min` | `1e-2` | Floor: maximum damping |
-| `tau_max` | `1e8` | Ceiling: effectively Newton again |
-| `tau_grow_clamp` | `4.0` | Per-iter growth ratio cap |
-| `tau_shrink_clamp` | `0.1` | Per-iter shrink ratio cap |
-| `niglob` | `200` | Newton iteration cap (raised from 50 to give PTC headroom) |
+PTC is a safeguard, not a speed-up. On this difficult start both variants
+spend about 30 steps stalled near $\|R\| \approx 1$ before Newton takes over:
 
-The growth/shrink clamps prevent $\tau$ from oscillating wildly in either
-direction — `tau_grow_clamp = 4.0` means at most a $4\times$ increase per
-step.
+<ConvergencePlot variant="hard" />
 
-## When you should care
+PTC actually reaches $10^{-11}$ first, but then spends ten steps hovering
+just above the default tolerance, `rtol = 1e-11`, which is close to
+round-off for this problem. Its real value is on starts where an undamped
+step would diverge, such as the odd shapes an optimizer tries along the way.
 
-For well-behaved cases (clean airfoil, attached flow, modest $\alpha$),
-PTC introduces little damping. Its convergence benefit and cost depend on
-the operating point.
-
-For rough cases — high $\alpha$, separation, transition jumping between
-panels, intermediate CST iterates in an optimizer — PTC can improve
-convergence, but it does not guarantee success.
-
-### Common adjustments
+## Tuning
 
 | Symptom | Try |
 | --- | --- |
-| Newton diverges immediately at iter 1–2 | Lower `tau_init` (e.g. `1e2`); start damped from the get-go |
-| Residual stalls at $10^{-6}$ | Check geometry and scaling; increase `niglob` if the residual is still falling |
-| Residual oscillates between two values | Lower `tau_grow_clamp` to 2.0 to slow the relaxation back to Newton |
-| You want to compare to a non-PTC baseline | `param.use_ptc = false` |
+| Diverges in the first one or two steps | Start damped: `param.tau_init = 1e2` |
+| Residual oscillates between two levels | Slow the return to Newton: `param.tau_grow_clamp = 2.0` |
+| Still falling when it hits the iteration limit | Raise `param.niglob` |
+| You want a plain-Newton baseline | `param.use_ptc = false` |
 
-## Adjoint considerations
+All fields are listed under [Solver parameters](../api/solver-params#pseudo-transient-continuation).
 
-PTC adds $1/\tau \cdot \mathbf{I}$ to the Jacobian **only** during the
-forward Newton iteration. The stored adjoint Jacobian is the unmodified
-$\mathbf{R}_U$ at the converged state, regardless of the final pseudo-time step.
+## Gradients aren't affected
 
-If both PTC-on and PTC-off runs converge to the same state, you should get
-matching gradients within numerical noise.
+The adjoint uses the plain Jacobian $R_U$ at the converged state, without
+the $1/\tau$ term. If PTC and plain Newton reach the same solution, they
+give the same gradients.

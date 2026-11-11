@@ -12,11 +12,8 @@ and modifying geometry in place. Header:
 #include <scirocco/core/geometry.h>
 ```
 
-All functions live in the `scirocco::` namespace and operate on `Geom`
-or `FoilState` references. The same operations are wrapped as members on
-[`Scirocco`](./scirocco) — use the wrappers for typical work, drop down
-to the free functions when you want fine control without going through
-the `Scirocco` constructor.
+Free functions on `Geom` and `FoilState`. The [`Scirocco`](./scirocco)
+class wraps the useful ones; use these when you work below the class.
 
 ## NACA generation
 
@@ -68,9 +65,8 @@ struct TEInfo {
 TEInfo GetTEInfo(const Eigen::MatrixXd& x);
 ```
 
-Used inside the inviscid solver to set up the Kutta closure and TE
-constant source. Users rarely call it directly, but it's the right way to
-inspect the TE gap and tangent if you need to verify geometry intake.
+The inviscid solver uses this for the trailing-edge panel. Call it yourself
+to check the gap and tangent of a section.
 
 ## Geometry modification
 
@@ -105,13 +101,12 @@ line; the thickness distribution is preserved.
 void GeomDerotate(FoilState& state);
 ```
 
-Rotates the airfoil so the LE–TE line is parallel to the $x$-axis. Useful
-for canonicalizing measured coordinates.
+Rotates the section so the line from leading to trailing edge is
+horizontal. Useful for measured coordinates.
 
 ## Composition
 
-The modifier operations compose in call order — each one re-panels
-afterwards so the next call sees the updated discretization:
+Modifications apply in call order, and each re-panels:
 
 ```cpp
 scirocco::Scirocco foil("0012", 199);
@@ -132,13 +127,10 @@ void RefreshPanelGeometry(Panel& panel);
 Header:
 [`scirocco/core/paneling.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/core/paneling.h).
 
-Rebuilds `panel.s` (arc-length array) and `panel.t` (unit tangent vectors)
-from the current `panel.x` node coordinates without re-spacing the
-panels. Use this after directly overwriting `foil.x` from an upstream
-geometry discipline — for example, after `SiroccoDiscipline::Compute`
-receives new coordinates from a `KulfanDiscipline` — so the boundary-layer
-solver sees consistent geometric state without breaking upstream gradient
-chains.
+Rebuilds arc lengths `panel.s` and tangents `panel.t` from the current
+nodes `panel.x`, without moving any nodes. Call it after writing `foil.x`
+yourself, so the solver sees consistent geometry and gradients stay with
+respect to your nodes.
 
 ```cpp
 // After overwriting panel.x with new CST coordinates:
@@ -146,11 +138,9 @@ scirocco::RefreshPanelGeometry(state.foil);
 // Now panel.s and panel.t match panel.x — safe to call the BL solver.
 ```
 
-`RefreshPanelGeometry` is called automatically by `SiroccoDiscipline::Compute`
-when chained downstream of a geometry discipline; you only need to call
-it directly when manipulating `panel.x` outside the discipline interface.
+The Philote analysis server does this for you.
 
 ## See also
 
-- Tutorial: [Supply coordinates from Python](../tutorials/custom-airfoil)
-- Tutorial: [Modify parameterized geometry](../tutorials/geometry-mods)
+- Guide: [Define the geometry](../guides/geometry)
+- Python: [Your own coordinates](../python/custom-coordinates)

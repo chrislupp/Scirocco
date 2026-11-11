@@ -28,7 +28,7 @@ cmake --build scirocco/build-debug -j
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
 - `SCIROCCO_BUILD_PHILOTE=OFF` (default) — Philote-Cpp gRPC discipline interface for multidisciplinary optimization frameworks
 - `SCIROCCO_BUILD_PROBES=ON` (opt-in) — 14 diagnostic binaries for ad-hoc adjoint debugging
-- `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `naca_example`, `viscous_example`
+- `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `quickstart`, `naca_example`, `viscous_example`, `bench`, `docs_figure_data`
 - Coverage uses compiler flags; there is no `SCIROCCO_COVERAGE` option.
 - `SCIROCCO_NATIVE_ARCH=ON` (default) — `-march=native` in Release builds
 

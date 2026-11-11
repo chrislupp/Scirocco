@@ -4,10 +4,9 @@ sidebar_position: 3
 
 # `FoilState`
 
-The aggregate state container. The [`Scirocco`](./scirocco) class holds
-one `FoilState` and exposes the common subfields through wrapper methods;
-reach into the state directly when you need fields the wrapper does not
-expose. Header
+Everything the solver knows. [`Scirocco`](./scirocco) holds one and
+exposes the common fields through getters; read it directly for the rest.
+Header
 [`scirocco/data/state.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/state.h).
 
 ```cpp
@@ -89,9 +88,8 @@ Distributions (`Eigen::VectorXd`):
 | `ue`, `uei` | Edge velocity, compressible and inviscid |
 | `Ret`, `Hk` | $Re_\theta$ and kinematic shape parameter $H_k$ |
 
-The `Post` struct also stores **partial Jacobians** used by the adjoint
-(e.g. `dcl_dx_partial`, `cl_V`, `cd_V`) — these are bookkeeping for the
-sensitivity machinery, not intended for direct user reading.
+`Post` also holds partial Jacobians for the adjoint, such as
+`dcl_dx_partial`, `cl_V`, and `cd_V`. They're internal.
 
 ### `Param`
 
@@ -109,9 +107,7 @@ Internal bookkeeping structs:
 | `Vsol` | Viscous-station bookkeeping (transition indices, station-type masks) | [`data/vsol.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/vsol.h) |
 | `Glob` | Global Newton state vector $U$, sparse Jacobian $R_U$, residual, convergence flag | [`data/glob.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/glob.h) |
 
-Most users do not touch these directly — they exist for the internal
-solver kernels and the unit tests that probe sub-pieces of the adjoint
-chain.
+These belong to the solver kernels and tests.
 
 ## When to reach below the wrapper
 
@@ -135,6 +131,5 @@ const Eigen::VectorXd& Hk = solved.GetState().post.Hk;
 double rnorm = solved.GetState().glob.R.norm();
 ```
 
-For anything more invasive (writing directly into `U`, replacing
-$\mathbf{R}_U$, etc.), you are leaving the supported public surface —
-look at how the unit tests do it for guidance.
+Writing to `glob.U` or the Jacobian directly is outside the supported API;
+the unit tests show how it's done.

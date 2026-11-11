@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   promotion; validate release labels and tags before publishing atomically.
 
 ### Added
+- `quickstart`, `bench`, and `docs_figure_data` example programs. `bench`
+  times paneling, inviscid and viscous solves, and the full gradient at
+  several panel counts; `docs_figure_data` writes the data plotted on the
+  documentation site.
+- Redesigned documentation site: homepage, C++ quickstart and guides,
+  performance page, local search, and redirects from moved pages.
 - Automatically snapshot Docusaurus documentation for stable releases, select
   the release as the default docs version, and validate it before publication.
 - Relocatable CMake package configuration and an installed-consumer smoke test.

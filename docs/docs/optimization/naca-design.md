@@ -4,53 +4,16 @@ sidebar_position: 3
 
 # NACA 4-digit optimization
 
-This tutorial turns the analysis model from the
-[six-part Python/Philote sequence](../tutorials/inviscid-naca) into an
-optimization: minimize $C_d$ at a target $C_l$ with a section-area floor,
-using a NACA 4-digit parameterization (3 design variables) plus $\alpha$.
-The model reuses the remote analysis, total-derivative, and HDF5 patterns from
-those tutorials. The [CST](./cst-design) and [multipoint](./multipoint)
-tutorials then build on this optimization.
+Minimize drag at a fixed lift coefficient, with an area floor, by changing a
+NACA 4-digit section's camber, camber position, and thickness, plus the
+angle of attack. The geometry is a small Python component; the analysis
+runs on `scirocco_server`.
 
-This mirrors
+This is
 [`examples/naca_optimization/naca_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/naca_optimization/naca_optimization.py).
-
-## How the pieces fit together
-
-Scirocco plugs into [OpenMDAO](https://openmdao.org/) as a discipline over
-gRPC. The library is wrapped in a Philote-Cpp server (`scirocco_server`);
-OpenMDAO talks to it through `philote_mdo.openmdao.RemoteExplicitComponent`,
-which presents the discipline as a standard `ExplicitComponent` with
-analytic partials. For a NACA-parameterized design you only need this one
-analysis server — the geometry is a small local Python component. (The
-CST tutorials add a second server for the geometry.)
-
-The full server build and discipline interface are documented on the
-[Philote gRPC server reference](./server) page; the essentials are below.
-
-## Prerequisites
-
-**Build Scirocco with Philote enabled**. This needs Protobuf,
-gRPC, and the tested Philote-Cpp 0.8 build tree — see the
-[server reference](./server#build) for the one-time Philote-Cpp build:
-
-```bash
-cmake -S scirocco -B scirocco/build-philote \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DSCIROCCO_BUILD_PHILOTE=ON \
-  -DSCIROCCO_HDF5_OUTPUT=ON \
-      -DPhiloteCpp_DIR=/path/to/Philote-Cpp/build
-cmake --build scirocco/build-philote -j
-```
-
-**Install the Python dependencies:**
-
-```bash
-python -m pip install -r examples/tutorials/requirements.txt
-```
-
-You do not need to launch the server by hand — every example script starts
-`scirocco_server` in the background and tears it down on exit.
+It starts and stops its own server. You need the servers built with HDF5
+([Installation](../getting-started/installation#philote-servers-for-python))
+and the [Python environment](../python#set-up).
 
 ## Problem
 
@@ -63,40 +26,29 @@ You do not need to launch the server by hand — every example script starts
 | Constraints | $C_l = 0.5$ (equality), area $\ge 0.8 \times$ (initial area) |
 | Optimizer | SciPy SLSQP, `tol = 1e-6`, `maxiter = 200` |
 
-The geometry component (`NACA4Geometry`) is implemented locally in Python
-because it's only 3 design variables and the analytic partials of the
-4-digit thickness+camber formulas are straightforward.
+The geometry component, `NACA4Geometry`, is plain Python with analytic
+partials of the 4-digit formulas.
 
-## Architecture
+## How it fits together
 
-```
+```text
 [NACA4Geometry] --x--> [Scirocco (Philote)] --cl, cd, cm--> [SLSQP]
    analytical    |        analytical adjoint           ^
    gradients     |          sensitivities              |
                  +--> [AirfoilArea] --area-------------+
 ```
 
-One server (`scirocco_server` on `localhost:50051`); no Kulfan server
-needed because geometry is built in Python.
+Only the analysis server is needed, on `localhost:50051`.
 
-## Running it
+## Run it
 
 ```bash
-# Build with Philote enabled, if you haven't already
-cmake -S scirocco -B scirocco/build-philote \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DSCIROCCO_BUILD_PHILOTE=ON \
-  -DSCIROCCO_HDF5_OUTPUT=ON \
-      -DPhiloteCpp_DIR="$PWD/Philote-Cpp/build"
-cmake --build scirocco/build-philote -j
-
-# Run — the script starts and stops the server itself
 python examples/naca_optimization/naca_optimization.py
 ```
 
-You should see roughly:
+The result:
 
-```text
+```output
 Optimization: minimize Cd, target Cl = 0.5
   ...
 Optimization Results
@@ -110,16 +62,14 @@ Optimization Results
   Area = 0.065725  (min = 0.065725)
 ```
 
-The driver prefers thin, well-cambered airfoils at small $\alpha$ — exactly
-what you'd expect for "minimum drag at fixed lift". The area floor binds
-(area equals its lower bound) because thinner is better for friction-
-dominated drag at this $Re$.
+The optimizer goes for a thinner, more cambered section at a small angle of
+attack. The area floor is active: at this Reynolds number drag is mostly
+friction, and a thinner section has less of it.
 
-## OpenMDAO wiring (annotated)
+## The model
 
-The script does three passes — a single-point evaluation, a derivative
-check, and the actual optimization. The optimization function defines the design variables, objective, and
-constraints:
+The script runs one evaluation, checks the derivatives, then optimizes. The
+optimization sets up the model like this:
 
 ```python
 model.add_subsystem(
@@ -151,21 +101,17 @@ model.add_constraint("analysis.cl",       equals=target_cl, ref=target_cl)
 model.add_constraint("area_comp.area",    lower=0.8 * init_area, ref=init_area)
 ```
 
-A handful of things worth understanding:
-
-| Snippet | Why |
+| Line | Why |
 | --- | --- |
 | `promotes_outputs=["x"]`, `promotes_inputs=["x"]` | Lets `x` flow between geometry, area, and analysis without naming collisions. |
-| `RemoteExplicitComponent(..., naca="0012", npanel=npanel)` | The `naca` option seeds the analysis with a 0012 baseline at start-up. Once the optimizer is running, `x` is overridden every iteration, so the seed never matters for results — but `npanel` does, because it sets the discipline's expected input shape. |
+| `naca="0012", npanel=npanel` | `naca` only initializes the server; `x` replaces the shape on every evaluation. `npanel` fixes the size of `x`. |
 | `hdf5_file=hdf5_path` | Records successful primal evaluations for post-analysis; derivative calls do not append records. |
-| `ref=...` scaling | SLSQP works better in $O(1)$ — these scale the internal representation to roughly unit magnitude without changing the math. |
+| `ref=...` | Scales each variable to order one, which SLSQP needs to behave well |
 
-## Verifying derivatives
+## Check the derivatives first
 
-Before kicking off a long optimization, sanity-check the gradients that
-flow through the discipline. OpenMDAO's `check_totals` runs
-finite-difference perturbations on the inputs and compares them to the
-chained analytic Jacobian:
+Before a long optimization, compare the chained analytic derivatives with
+finite differences:
 
 ```python
 prob.run_model()
@@ -177,16 +123,14 @@ prob.check_totals(
 )
 ```
 
-Expect relative errors around $10^{-5}$–$10^{-7}$ for a smooth converged
-primal. Larger errors usually mean either the primal isn't converged at
-the linearization point, or the design is sitting on a discontinuity
-(transition jumping panels, near-stall). The `naca_optimization.py` script
-runs this check automatically before the optimization pass.
+Expect relative errors of $10^{-5}$ to $10^{-7}$. Larger errors usually mean
+the solve hasn't converged, or the design sits where transition jumps
+between panels or near stall. The script runs this check before it
+optimizes.
 
-## What's actually being differentiated
+## What gets differentiated
 
-Every SLSQP iteration triggers one residual evaluation plus one total-
-derivative computation. The chain that gets differentiated:
+Each SLSQP iteration needs one solve and one total derivative:
 
 $$
 \frac{\partial C_d}{\partial \{m, p, t, \alpha\}}
@@ -196,13 +140,10 @@ $$
    + \frac{\partial C_d}{\partial \alpha}
 $$
 
-OpenMDAO assembles the two pieces. Scirocco delivers the first one in
-constant cost (the adjoint) independent of how many geometry DVs you have.
-Adding more DVs (e.g. trying the [CST workflow](./cst-design) with 16 DVs)
-costs the same single adjoint solve.
+OpenMDAO multiplies the two pieces. Scirocco's adjoint costs the same no
+matter how many geometry variables feed `x`, so moving to the 16 variables
+of the [CST example](./cst-design) doesn't make the gradient more expensive.
 
-## Full source
-
-[`examples/naca_optimization/naca_optimization.py`](https://github.com/chrislupp/Scirocco/blob/develop/examples/naca_optimization/naca_optimization.py).
-
-## Next: [CST design](./cst-design) — same problem structure, richer parameterization.
+<Next items={[
+  { to: "/docs/optimization/cst-design", title: "CST design", body: "The same problem with 16 shape variables." },
+]} />
