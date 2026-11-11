@@ -168,11 +168,11 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  *
  * @param state        Fully assembled foil state.
  * @param lambda_ue    Adjoint vector [Nsys].
- * @param dfoil_s_dx   Sensitivity of foil arc-lengths w.r.t. foil.x [N x 2N].
+ * @param ctx          BuildRueVJPContext(state, dfoil_s_dx).
  * @return VJP result [2N].
  */
 VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
-                       const MatrixXd& dfoil_s_dx) {
+                       const RueVJPContext& ctx) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
@@ -182,6 +182,11 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     if (lambda_ue.size() != Nsys) {
         throw std::runtime_error("ComputeRueVJP: lambda_ue size != Nsys");
     }
+    if (ctx.dgam_dx.cols() != twoN || ctx.dwake_x_dx.rows() != 2 * Nw) {
+        throw std::invalid_argument(
+            "ComputeRueVJP: context was built for a different state");
+    }
+    const MatrixXd& dfoil_s_dx = ctx.dfoil_s_dx;
 
     VectorXd vjp = VectorXd::Zero(twoN);
 
@@ -199,8 +204,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     }
     lambda_g_ext(N - 1) += state.isol.sgnue(N - 1) * lambda_ue(N);
     /* mu = AIC^{-T} * lambda_g_ext */
-    MatrixXd AIC_T = state.isol.AIC.transpose();
-    auto lu = AIC_T.partialPivLu();
+    const Eigen::PartialPivLU<MatrixXd>& lu = ctx.aic_t_lu;
     VectorXd mu = lu.solve(lambda_g_ext);
     /* Contribution: +AICResidualSensVJP(state, mu, alpha)
      *   (derivation: -lambda^T * dueinv_foil = -lambda_g^T * dgam,
@@ -246,7 +250,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
      * where w = k - (N-1) is the wake panel index.
      * Same structure: need d(ds_w)/d(foil.x) = dwake_s_dx.row(w+1) -
      * dwake_s_dx.row(w) */
-    MatrixXd dwake_s_dx = DWakeSDFoilX(state, dfoil_s_dx);
+    const MatrixXd& dwake_s_dx = ctx.dwake_s_dx;
     for (int w = 0; w < Nw - 1; ++w) {
         int k = (N - 1) + w;
         double ds_w = state.wake.s(w + 1) - state.wake.s(w);
@@ -271,9 +275,9 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
      * SKIP j=0: ueinv[N+0] is overwritten by uea[N-1] in get_ueinv (continuity
      * BC), so its chain goes through gam[N-1] in A1, NOT through V at
      * wake.x[0]. */
-    MatrixXd dgam_dx_full = DGammaDFoilX(state, alpha);
-    MatrixXd dwake_x_dx = DWakeXDFoilX(state, dfoil_s_dx); /* [2*Nw x 2N] */
-    MatrixXd dwake_t_dx = DWakeTDFoilX(state, dfoil_s_dx); /* [2*Nw x 2N] */
+    const MatrixXd& dgam_dx_full = ctx.dgam_dx;
+    const MatrixXd& dwake_x_dx = ctx.dwake_x_dx; /* [2*Nw x 2N] */
+    const MatrixXd& dwake_t_dx = ctx.dwake_t_dx; /* [2*Nw x 2N] */
     {
         for (int j = 1; j < Nw; ++j) {
             VelDeriv vd = InviscidVelocityWithDeriv(state, state.wake.x.col(j),
@@ -410,9 +414,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
              * w.r.t. Xj endpoints (4-vector) and xi eval point (2-vector).
              * Chain through wake.x: dXj = (partial dwake.x for left endpoint,
              * 0.5*(dwake.x[j]+dwake.x[j+1]) for Xm endpoint, similar for
-             * right). */
-            MatrixXd dwake_x_dx =
-                DWakeXDFoilX(state, dfoil_s_dx); /* [2*Nw x 2N] */
+             * right). Uses dwake_x_dx from the context (see A2). */
             auto get_dwx = [&](int j) {
                 MatrixXd dwj(2, twoN);
                 dwj.row(0) = dwake_x_dx.row(0 * Nw + j);
@@ -953,6 +955,29 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     return vjp;
 }
 
+RueVJPContext BuildRueVJPContext(const FoilState& state,
+                                 const MatrixXd& dfoil_s_dx) {
+    RueVJPContext ctx;
+    ctx.dfoil_s_dx = dfoil_s_dx;
+    ctx.dgam_dx = DGammaDFoilX(state, state.oper.alpha);
+    /* The wake Jacobians need d(gamma)/d(foil.x) at the tracing alpha. That
+     * is the same matrix unless the wake was traced at another alpha. */
+    const MatrixXd dgam_dx_wake = WakeTracedAtOtherAlpha(state)
+                                      ? DGammaDFoilXForWake(state)
+                                      : ctx.dgam_dx;
+    ctx.dwake_x_dx = DWakeXDFoilX(state, dfoil_s_dx, dgam_dx_wake);
+    ctx.dwake_t_dx = DWakeTDFoilX(state, dfoil_s_dx, dgam_dx_wake);
+    ctx.dwake_s_dx = DWakeSDFoilX(state, dfoil_s_dx);
+    ctx.aic_t_lu.compute(MatrixXd(state.isol.AIC.transpose()));
+    return ctx;
+}
+
+VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
+                       const MatrixXd& dfoil_s_dx) {
+    return ComputeRueVJP(state, lambda_ue,
+                         BuildRueVJPContext(state, dfoil_s_dx));
+}
+
 /**
  * @brief Build DRueDFoilX [Nsys x 2N] by applying ComputeRueVJP with each
  * standard basis vector as lambda. Slow (Nsys VJP calls) — for validation only.
@@ -965,12 +990,13 @@ MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int N = state.foil.N;
     int Nw = state.wake.N;
     int Nsys = N + Nw;
+    const RueVJPContext ctx = BuildRueVJPContext(state, dfoil_s_dx);
     MatrixXd dR_ue = MatrixXd::Zero(Nsys, 2 * N);
     VectorXd e = VectorXd::Zero(Nsys);
     for (int i = 0; i < Nsys; ++i) {
         e.setZero();
         e(i) = 1.0;
-        dR_ue.row(i) = ComputeRueVJP(state, e, dfoil_s_dx).transpose();
+        dR_ue.row(i) = ComputeRueVJP(state, e, ctx).transpose();
     }
     return dR_ue;
 }

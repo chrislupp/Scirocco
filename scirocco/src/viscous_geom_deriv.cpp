@@ -36,11 +36,43 @@ MatrixXd DFoilSDFoilX(const Panel& foil) {
     return MatrixXd::Zero(foil.N, 2 * foil.N);
 }
 
+bool WakeTracedAtOtherAlpha(const FoilState& state) {
+    return std::isfinite(state.wake.tracing_alpha) &&
+           state.oper.alpha != state.wake.tracing_alpha;
+}
+
+namespace {
+
+/* The state as BuildWake saw it: alpha and gamma at the tracing alpha. */
+FoilState WakeTracingState(const FoilState& state) {
+    FoilState traced = state;
+    traced.oper.alpha = state.wake.tracing_alpha;
+    traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
+                      traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
+    return traced;
+}
+
+}  // namespace
+
+MatrixXd DGammaDFoilXForWake(const FoilState& state) {
+    if (WakeTracedAtOtherAlpha(state)) {
+        FoilState traced = WakeTracingState(state);
+        return DGammaDFoilX(traced, traced.oper.alpha);
+    }
+    return DGammaDFoilX(state, state.oper.alpha);
+}
+
 MatrixXd DWakeXDFoilX(const FoilState& state) {
     return DWakeXDFoilX(state, DFoilSDFoilX(state.foil));
 }
 MatrixXd DWakeTDFoilX(const FoilState& state) {
     return DWakeTDFoilX(state, DFoilSDFoilX(state.foil));
+}
+MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
+    return DWakeXDFoilX(state, dfoil_s_dx, DGammaDFoilXForWake(state));
+}
+MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
+    return DWakeTDFoilX(state, dfoil_s_dx, DGammaDFoilXForWake(state));
 }
 
 /**
@@ -673,14 +705,10 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
  * @param state FoilState containing the current solution and geometry.
  * @return MatrixXd of shape [2*Nw x 2N].
  */
-MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
-    if (std::isfinite(state.wake.tracing_alpha) &&
-        state.oper.alpha != state.wake.tracing_alpha) {
-        FoilState traced = state;
-        traced.oper.alpha = state.wake.tracing_alpha;
-        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
-                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
-        return DWakeXDFoilX(traced, dfoil_s_dx);
+MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
+                      const MatrixXd& dgam_dx_wake) {
+    if (WakeTracedAtOtherAlpha(state)) {
+        return DWakeXDFoilX(WakeTracingState(state), dfoil_s_dx, dgam_dx_wake);
     }
 
     int N = state.foil.N;
@@ -690,8 +718,8 @@ MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     double chord = state.geom.chord;
     double wakelen = state.geom.wakelen;
 
-    /* Pre-compute d(gamma)/d(foil.x) and d(foil.s)/d(foil.x). */
-    MatrixXd dgam_dx = DGammaDFoilX(state, alpha);
+    /* d(gamma)/d(foil.x) at the tracing alpha (== alpha here). */
+    const MatrixXd& dgam_dx = dgam_dx_wake;
 
     /* SpaceGeom sensitivities matching scirocco's wake.cpp. */
     double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
@@ -809,14 +837,10 @@ MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  * @param state FoilState containing the current solution and geometry.
  * @return MatrixXd of shape [2*Nw x 2N].
  */
-MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
-    if (std::isfinite(state.wake.tracing_alpha) &&
-        state.oper.alpha != state.wake.tracing_alpha) {
-        FoilState traced = state;
-        traced.oper.alpha = state.wake.tracing_alpha;
-        traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
-                          traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
-        return DWakeTDFoilX(traced, dfoil_s_dx);
+MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
+                      const MatrixXd& dgam_dx_wake) {
+    if (WakeTracedAtOtherAlpha(state)) {
+        return DWakeTDFoilX(WakeTracingState(state), dfoil_s_dx, dgam_dx_wake);
     }
 
     int N = state.foil.N;
@@ -826,7 +850,7 @@ MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     double chord = state.geom.chord;
     double wakelen = state.geom.wakelen;
 
-    MatrixXd dgam_dx = DGammaDFoilX(state, alpha);
+    const MatrixXd& dgam_dx = dgam_dx_wake;
 
     double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
                         (state.foil.s(N - 1) - state.foil.s(N - 2)));

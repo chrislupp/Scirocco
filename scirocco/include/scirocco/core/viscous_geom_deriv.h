@@ -157,6 +157,36 @@ MatrixXd DWakeXDFoilX(const FoilState& state);
 MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 
 /**
+ * @brief DWakeXDFoilX with a precomputed d(gamma)/d(foil.x).
+ *
+ * Building d(gamma)/d(foil.x) dominates the cost of this function. Callers
+ * that need several wake Jacobians for the same state compute it once with
+ * DGammaDFoilXForWake and pass it here.
+ *
+ * @param dgam_dx_wake DGammaDFoilXForWake(state) [N+1 x 2N].
+ */
+MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
+                      const MatrixXd& dgam_dx_wake);
+
+/**
+ * @brief d(gamma)/d(foil.x) at the alpha the wake was traced with.
+ *
+ * Equal to DGammaDFoilX(state, state.oper.alpha) unless the wake was traced
+ * at another alpha (state.wake.tracing_alpha), as in lift-target solves that
+ * keep the wake frozen. The wake Jacobians need this version.
+ *
+ * @return MatrixXd of shape [N+1 x 2N].
+ */
+MatrixXd DGammaDFoilXForWake(const FoilState& state);
+
+/**
+ * @brief True when the wake was traced at a different alpha than
+ * state.oper.alpha (lift-target solves with a frozen wake, or a warm restart
+ * that kept the old wake).
+ */
+bool WakeTracedAtOtherAlpha(const FoilState& state);
+
+/**
  * @brief d(wake.t)/d(foil.x) — wake unit-tangent vectors from BuildWake's
  * predictor- corrector sweep. Returns [2*Nw x 2N], same row layout as
  * DWakeXDFoilX (row d*Nw + j = d(wake.t(d, j))/d(foil.x)).
@@ -174,6 +204,14 @@ MatrixXd DWakeXDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
  */
 MatrixXd DWakeTDFoilX(const FoilState& state);
 MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
+
+/**
+ * @brief DWakeTDFoilX with a precomputed d(gamma)/d(foil.x).
+ *
+ * @param dgam_dx_wake DGammaDFoilXForWake(state) [N+1 x 2N].
+ */
+MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
+                      const MatrixXd& dgam_dx_wake);
 
 /* ----- Alpha-direction (scalar) versions of the above. Used by the analytic
  * DRVDAlpha chain. Each returns a SINGLE-column derivative since α is scalar.
