@@ -36,6 +36,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -487,4 +488,115 @@ TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
     EXPECT_LT(rel(sens.dcl_dRe, dcl_ref), TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(rel(sens.dcd_dRe, dcd_ref), TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(rel(sens.dcm_dRe, dcm_ref), TOL_VISC_SCALAR_ALPHA);
+}
+
+/* ---------------------------------------------------------------------------
+ * Opt-in envelope onset model (OnsetModel::Envelope)
+ *   NACA 2412, 160 panels, alpha=4, Re=1e6. Reference: mfoil_cs with
+ *   param.onset='envelope' (extract_sensitivity_reference.py).
+ * ---------------------------------------------------------------------------
+ */
+TEST_F(SensitivityReferenceTest, EnvelopeOnsetShapeSensitivity) {
+    auto test_nodes = readIntVector(getFile(), "envelope_shape/test_nodes");
+    MatrixXd dcl_ref = readMatrix(getFile(), "envelope_shape/dcl_dx");
+    MatrixXd dcd_ref = readMatrix(getFile(), "envelope_shape/dcd_dx");
+    MatrixXd dcm_ref = readMatrix(getFile(), "envelope_shape/dcm_dx");
+    MatrixXd x_base = readMatrix(getFile(), "envelope_shape/x_base");
+    double cd_ref = readScalar<double>(getFile(), "envelope_shape/cd_base");
+
+    auto N_ref = static_cast<int>(x_base.cols());
+    Scirocco foil("2412", N_ref - 1);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    auto& s = foil.GetState();
+    s.param.onset = OnsetModel::Envelope;
+    s.foil.x = x_base;
+    s.foil.N = N_ref;
+    RecomputeArcLength(s);
+    s.oper.viscous = true;
+    s.oper.initbl = true;
+    s.param.verb = 0;
+    s.isol.AIC.resize(0, 0);
+    s.isol.gamref.resize(0, 0);
+    s.isol.gam.resize(0);
+    SolveViscous(s);
+    ASSERT_TRUE(s.glob.conv) << "viscous solve failed to converge";
+    CalcForce(s);
+    EXPECT_NEAR(s.post.cd, cd_ref, 1e-12 * std::abs(cd_ref));
+
+    Sensitivity sens = ViscousSensitivities(s);
+    for (const auto& [name, got, ref] :
+         {std::tuple<const char*, const MatrixXd&, const MatrixXd&>{
+              "dcl/dx", sens.dcl_dx, dcl_ref},
+          {"dcd/dx", sens.dcd_dx, dcd_ref},
+          {"dcm/dx", sens.dcm_dx, dcm_ref}}) {
+        for (int n : test_nodes) {
+            for (int d = 0; d < 2; ++d) {
+                double err = std::abs(got(d, n) - ref(d, n));
+                double rel = err / std::max(std::abs(ref(d, n)), 1e-30);
+                EXPECT_TRUE(rel < TOL_VISC_SHAPE || err < 1e-10)
+                    << name << " node=" << n << " dim=" << d
+                    << " scirocco=" << got(d, n) << " ref=" << ref(d, n)
+                    << " rel=" << rel;
+            }
+        }
+    }
+}
+
+namespace {
+
+/** Solve NACA 2412 at alpha=4, Re=1e6 with the envelope onset model. */
+Sensitivity EnvelopeScalarSensitivities(double Ma) {
+    Scirocco foil("2412", 160);
+    foil.SetOper(4.0, -1.0, 1e6, Ma);
+    foil.GetState().param.onset = OnsetModel::Envelope;
+    EXPECT_TRUE(foil.Solve());
+    return foil.ComputeSensitivities();
+}
+
+/* d/dRe on this NACA 2412 case misses CS by up to 2e-3 with the default
+ * cubic onset as well (1.9e-3 dcl, 5.5e-4 dcd, 1.5e-3 dcm), so the gap is in
+ * the existing Re chain, not the envelope ramp. Loose until that is fixed. */
+constexpr double TOL_ENVELOPE_RE = 5e-3;
+
+double RelErr(double got, double ref) {
+    return std::abs(got - ref) / std::max(std::abs(ref), 1e-30);
+}
+
+}  // namespace
+
+TEST_F(SensitivityReferenceTest, EnvelopeOnsetAlphaReSensitivity) {
+    const Sensitivity sens = EnvelopeScalarSensitivities(0.0);
+    const std::string g = "envelope_scalar/";
+    EXPECT_LT(RelErr(sens.dcl_dalpha,
+                     readScalar<double>(getFile(), g + "dcl_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcd_dalpha,
+                     readScalar<double>(getFile(), g + "dcd_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcm_dalpha,
+                     readScalar<double>(getFile(), g + "dcm_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(
+        RelErr(sens.dcl_dRe, readScalar<double>(getFile(), g + "dcl_dRe")),
+        TOL_ENVELOPE_RE);
+    EXPECT_LT(
+        RelErr(sens.dcd_dRe, readScalar<double>(getFile(), g + "dcd_dRe")),
+        TOL_ENVELOPE_RE);
+    EXPECT_LT(
+        RelErr(sens.dcm_dRe, readScalar<double>(getFile(), g + "dcm_dRe")),
+        TOL_ENVELOPE_RE);
+}
+
+TEST_F(SensitivityReferenceTest, EnvelopeOnsetMachSensitivity) {
+    const Sensitivity sens = EnvelopeScalarSensitivities(0.3);
+    const std::string g = "envelope_mach/";
+    EXPECT_LT(
+        RelErr(sens.dcl_dMa, readScalar<double>(getFile(), g + "dcl_dMa")),
+        TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(
+        RelErr(sens.dcd_dMa, readScalar<double>(getFile(), g + "dcd_dMa")),
+        TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(
+        RelErr(sens.dcm_dMa, readScalar<double>(getFile(), g + "dcm_dMa")),
+        TOL_VISC_SCALAR_ALPHA);
 }

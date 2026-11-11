@@ -57,6 +57,7 @@ mean to change the model.
 | Field | Default | Role |
 | --- | --- | --- |
 | `ncrit` | `9.0` | $e^N$ transition threshold (see [Transition](../concepts/transition)) |
+| `onset` | `OnsetModel::Cubic` | Amplification onset ramp; `OnsetModel::Envelope` is fitted to stability theory (see [Onset of amplification](../concepts/transition#onset-of-amplification)) |
 | `Cuq` | `1.0` | Scales the $u_q$ term in the shear lag equation |
 | `Dlr` | `0.9` | Wall/wake dissipation length ratio |
 | `SlagK` | `5.6` | Shear lag constant |

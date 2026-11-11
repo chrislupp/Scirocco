@@ -27,6 +27,36 @@ foil.Solve();
 your flow environment, and validate against data where you can. It isn't an
 option on the Philote server, and there are no derivatives with respect to it.
 
+## Onset of amplification
+
+Disturbances only grow above a critical $Re_\theta$, which depends on the
+shape factor. The default model, from XFOIL and mfoil, switches growth on
+with a short cubic ramp around that point. You can opt in to a ramp fitted to
+linear stability theory instead:
+
+```cpp
+foil.GetState().param.onset = scirocco::OnsetModel::Envelope;
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
+foil.Solve();
+```
+
+<OnsetPlot />
+
+The envelope ramp comes from spatial Orr–Sommerfeld analysis of the
+Falkner–Skan profiles, for $H$ from 2.36 to 3.48. Growth starts at the
+critical Reynolds number and then approaches the asymptotic rate slowly. Far
+downstream the asymptote is the same as the default ramp's, so the
+amplification factor there is unchanged. On NACA 2412 at α = 4°,
+Re = 10⁶, $C_d$ changes by 0.06% and transition moves 0.0007c.
+
+The ramp also matters for gradients. The default ramp is sharp, so the drag
+gradient with respect to the shape near the onset is large and oscillates.
+For a smooth bump 0.01c wide, the envelope ramp makes that gradient two to
+four times smaller and removes the oscillation. Use it for shape
+optimization. Leave the default when you need to match XFOIL or mfoil
+results. The data, solver, and fit are in
+[`scirocco/validation/onset_envelope`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/onset_envelope).
+
 ## How transition moves during a solve
 
 Transition is part of the Newton iteration: as the solution changes, the

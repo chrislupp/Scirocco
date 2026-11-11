@@ -32,6 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   promotion; validate release labels and tags before publishing atomically.
 
 ### Added
+- `Param::onset` and `OnsetModel::Envelope`: opt-in amplification onset
+  ramp for the e^N model, fitted to spatial Orr-Sommerfeld envelope N-factor
+  curves of Falkner-Skan profiles (H = 2.36-3.48). Growth starts at the
+  critical Re_theta and keeps the default asymptote, so far-downstream
+  amplification is unchanged. Shape gradients near the onset become two to
+  four times smaller and lose the node-to-node oscillation. The default stays
+  `OnsetModel::Cubic` (XFOIL/mfoil). Adjoint derivatives are validated
+  against mfoil complex step (`param.onset = 'envelope'`); the stability
+  solver, data, and fit are in `scirocco/validation/onset_envelope`.
 - `quickstart`, `bench`, and `docs_figure_data` example programs. `bench`
   times paneling, inviscid and viscous solves, and the full gradient at
   several panel counts; `docs_figure_data` writes the data plotted on the

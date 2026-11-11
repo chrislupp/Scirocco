@@ -146,6 +146,7 @@ class Param:    # parameters
 
         # viscous parameters
         S.ncrit  = 9.0   # critical amplification factor    
+        S.onset  = 'cubic' # amplification onset ramp: 'cubic' or 'envelope'
         S.Cuq    = 1.0   # scales the uq term in the shear lag equation
         S.Dlr    = 0.9   # wall/wake dissipation length ratio
         S.SlagK  = 5.6   # shear lag constant
@@ -3761,6 +3762,37 @@ def get_Us(U, param):
 
 
 #-------------------------------------------------------------------------------
+def onset_envelope(z, z_U, Hmi, Hmi_U):
+    # amplification onset ramp fitted to Orr-Sommerfeld envelope N-factor
+    # curves of Falkner-Skan profiles (opt-in, param.onset = 'envelope')
+    # INPUT
+    #   z, z_U     : log10(Ret) - lrc(Hk) and its linearization w.r.t. U
+    #   Hmi, Hmi_U : 1/(Hk-1) and its linearization w.r.t. U
+    # OUTPUT
+    #   rf, rf_U   : ramp factor in [0,1] and its linearization w.r.t. U
+    # DETAILS
+    #   rf = P(3, u) = 1 - exp(-u)(1 + u + u^2/2), u = k (z - zc(Hk)),
+    #   k = ln10/(1 - 10^(zc/3)) keeps the asymptote n = da (Ret - 10^lrc),
+    #   the same as the cubic ramp; zc = -0.6877 + 0.6797 Hmi, capped below
+    #   -0.05 by a softplus. Matches scirocco OnsetModel::Envelope.
+    ln10 = np.log(10.)
+    c0, c1, zcap, w = -0.6877, 0.6797, -0.05, 0.03
+    zl = c0 + c1*Hmi
+    x = (zcap - zl)/w
+    sp = x if np.real(x) > 30 else np.log1p(np.exp(x))
+    sig = 1./(1. + np.exp(-x))
+    zc = zcap - w*sp; zc_U = sig*c1*Hmi_U
+    q = 10.**(zc/3.)
+    k = ln10/(1. - q); k_U = ln10*(ln10/3.*q)/(1. - q)**2*zc_U
+    u = k*(z - zc); u_U = k_U*(z - zc) + k*(z_U - zc_U)
+    if np.real(u) <= 0: return 0., np.zeros(len(z_U))
+    e = np.exp(-u)
+    rf = 1. - e*(1. + u + 0.5*u**2)
+    rf_U = 0.5*u**2*e*u_U
+    return rf, rf_U
+
+
+#-------------------------------------------------------------------------------
 def get_damp(U, param):
     # calculates the amplification rate, dn/dx, used in predicting transition
     # INPUT
@@ -3785,12 +3817,18 @@ def get_damp(U, param):
     lten = np.log(10); lr = np.log(Ret)/lten; lr_U = (1/Ret)*Ret_U/lten
     dl = .1;  # changed from .08 to make smoother
     damp = 0; damp_U = np.zeros(len(U))  # default no amplification
-    if (lr >= lrc-dl):
-        rn = (lr-(lrc-dl))/(2*dl); rn_U = (lr_U - lrc_U)/(2*dl)
-        if (rn >= 1):
-            rf = 1; rf_U = np.zeros(len(U))
-        else:
-            rf = 3*rn**2-2*rn**3; rf_U = (6*rn-6*rn**2)*rn_U
+    if getattr(param, 'onset', 'cubic') == 'envelope':
+        rf, rf_U = onset_envelope(lr-lrc, lr_U-lrc_U, Hmi, Hmi_U)
+        active = np.real(rf) > 0
+    else:
+        active = (lr >= lrc-dl)
+        if active:
+            rn = (lr-(lrc-dl))/(2*dl); rn_U = (lr_U - lrc_U)/(2*dl)
+            if (rn >= 1):
+                rf = 1; rf_U = np.zeros(len(U))
+            else:
+                rf = 3*rn**2-2*rn**3; rf_U = (6*rn-6*rn**2)*rn_U
+    if active:
         ar = 3.87*Hmi-2.52; ar_U = 3.87*Hmi_U
         ex = np.exp(-ar**2); ex_U = ex*(-2*ar*ar_U)
         da = 0.028*(Hk-1)-0.0345*ex; da_U = 0.028*Hk_U-0.0345*ex_U
