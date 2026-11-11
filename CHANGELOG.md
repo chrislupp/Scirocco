@@ -93,6 +93,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `AICResidualSensVJP` and `AICMatVecVJP` now share this kernel
   (`AICMatVecJacobianX`) instead of two copies of the panel chain. Results
   change at round-off level only (about 1e-14 of the largest entry).
+- `ComputeRueVJP` accumulates adjoints on wake points and applies the wake
+  Jacobians once per call, instead of a dense row update for every foil-point,
+  wake-panel pair. Terms that do not depend on the adjoint vector move into
+  `RueVJPContext`. The viscous gradient drops from 0.21 s to about 0.08 s at
+  199 panels, about 140x faster than before these changes.
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
