@@ -17,6 +17,8 @@
 */
 #pragma once
 
+#include <vector>
+
 #include "scirocco/config.h"
 #include "scirocco/data/state.h"
 
@@ -213,6 +215,64 @@ MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
 MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
                       const MatrixXd& dgam_dx_wake);
 
+/**
+ * @brief Linearization of BuildWake's predictor-corrector sweep.
+ *
+ * Holds what reverse-mode products with d(wake.x)/d(foil.x) and
+ * d(wake.t)/d(foil.x) need: the velocity derivatives at every wake point and
+ * predictor point, split into a fixed-gamma part and a d(V)/d(gamma) part.
+ * Built once per state (O(Nw * N) panel derivatives); each WakeSweepVJP is
+ * then O(Nw * N * K) for K seeds, instead of carrying all 2N directions
+ * forward as DWakeXDFoilX and DWakeTDFoilX do.
+ *
+ * When the wake was traced at another alpha (WakeTracedAtOtherAlpha), the
+ * linearization is taken at the tracing state, and gamma refers to the
+ * vortex strengths at the tracing alpha.
+ */
+struct WakeSweepLinearization {
+    int N = 0;
+    int Nw = 0;
+    bool traced_at_other_alpha = false;
+    MatrixXd D0;       /**< d(wake.x[:, 0])/d(foil.x) [2 x 2N] */
+    VectorXd dds1_dx;  /**< d(ds1)/d(foil.x) [2N] (first wake spacing) */
+    VectorXd ds;       /**< Step lengths sv(i+1) - sv(i) [Nw-1] */
+    VectorXd dds_dds1; /**< d(ds_i)/d(ds1) [Nw-1] */
+    std::vector<Vector2d> v1, v2;     /**< Unit velocities at x_i, x_pred */
+    std::vector<Matrix2d> J1, J2;     /**< (I - v v^T)/|V| at x_i, x_pred */
+    std::vector<Matrix2d> Vxi0, Vxi1; /**< d(V)/d(xi) at x_i, x_pred */
+    std::vector<MatrixXd> P0, P1;   /**< d(V)/d(foil.x), fixed gamma [2 x 2N] */
+    std::vector<MatrixXd> VG0, VG1; /**< d(V)/d(gamma) [2 x N+1] */
+};
+
+/**
+ * @brief Linearize the wake sweep at the current state.
+ *
+ * @param state      FoilState with a built wake.
+ * @param dfoil_s_dx d(foil.s)/d(foil.x) [N x 2N].
+ */
+WakeSweepLinearization LinearizeWakeSweep(const FoilState& state,
+                                          const MatrixXd& dfoil_s_dx);
+
+/**
+ * @brief Reverse-mode product with the wake Jacobians.
+ *
+ * For seeds xbar and tbar ([2*Nw x K], row d*Nw + j as in DWakeXDFoilX),
+ * accumulates
+ *   foil_bar += (d(wake.x)/d(foil.x))^T xbar + (d(wake.t)/d(foil.x))^T tbar
+ * split into the part at fixed gamma (added to foil_bar, [2N x K]) and the
+ * part through gamma (added to gam_bar, [N+1 x K]). The full product is
+ *   foil_bar + (d(gamma)/d(foil.x))^T gam_bar,
+ * with gamma at the tracing alpha when lin.traced_at_other_alpha.
+ */
+void WakeSweepVJP(const WakeSweepLinearization& lin, const MatrixXd& xbar,
+                  const MatrixXd& tbar, MatrixXd& foil_bar, MatrixXd& gam_bar);
+
+/**
+ * @brief The state the wake was traced from: alpha and gamma at
+ * state.wake.tracing_alpha. Equal to state when the wake is not frozen.
+ */
+FoilState WakeTracingState(const FoilState& state);
+
 /* ----- Alpha-direction (scalar) versions of the above. Used by the analytic
  * DRVDAlpha chain. Each returns a SINGLE-column derivative since α is scalar.
  */
@@ -321,12 +381,15 @@ MatrixXd DGammaDFoilX(const FoilState& state, double alpha);
  *   V        : the velocity at xi
  *   V_xi     : d(V)/d(xi) [2x2]
  *   V_xfoil  : combined d(V)/d(foil.x_panels) at fixed xi PLUS V_G * dgam_dx
- *              [2 x 2N]
+ *              [2 x 2N]; without a gamma chain (dgam_dx empty) only the
+ *              fixed-gamma part
+ *   V_G      : d(V)/d(gamma) at fixed geometry [2 x N+1]
  */
 struct VelDeriv {
     Vector2d V;
     Matrix2d V_xi;
     MatrixXd V_xfoil;
+    MatrixXd V_G;
 };
 
 /**
