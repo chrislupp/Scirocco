@@ -171,201 +171,128 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  * @param ctx          BuildRueVJPContext(state, dfoil_s_dx).
  * @return VJP result [2N].
  */
-VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
-                       const RueVJPContext& ctx) {
-    int N = state.foil.N;
-    int Nw = state.wake.N;
-    int Nsys = N + Nw;
-    int twoN = 2 * N;
+MatrixXd ComputeRueVJPBatch(const FoilState& state, const MatrixXd& lambda_ue,
+                            const RueVJPContext& ctx) {
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int Nsys = N + Nw;
+    const int twoN = 2 * N;
+    const long K = lambda_ue.cols();
 
     if (N < 2 || Nw < 1) {
         throw std::invalid_argument("ComputeRueVJP: state has no viscous wake");
     }
-    if (lambda_ue.size() != Nsys) {
+    if (lambda_ue.rows() != Nsys) {
         throw std::runtime_error("ComputeRueVJP: lambda_ue size != Nsys");
     }
-    if (ctx.dgam_dx.cols() != twoN || ctx.dgam_dx.rows() != N + 1 ||
-        ctx.dwake_x_dx.rows() != 2 * Nw) {
+    if (ctx.jac_gam.rows() != N + 1 || ctx.jac_gam.cols() != twoN ||
+        ctx.wake.N != N || ctx.wake.Nw != Nw) {
         throw std::invalid_argument(
             "ComputeRueVJP: context was built for a different state");
     }
-    const MatrixXd& dfoil_s_dx = ctx.dfoil_s_dx;
+    const int AIC_dim = N + 1;
+    const VectorXd& sgnue = state.isol.sgnue;
+    const VectorXd& phi = ctx.phi;
+    const Eigen::PartialPivLU<MatrixXd>& lu = ctx.aic_t_lu; /* of AIC^T */
+    const auto lambda_w = lambda_ue.bottomRows(Nw);
 
-    VectorXd vjp = VectorXd::Zero(twoN);
+    /* Reverse-mode accumulators: foil.x directly, gamma at oper.alpha, and the
+     * wake geometry (rows d*Nw + j). */
+    MatrixXd vjp = MatrixXd::Zero(twoN, K);
+    MatrixXd gam_bar = MatrixXd::Zero(AIC_dim, K);
+    MatrixXd xbar = MatrixXd::Zero(2 * Nw, K);
+    MatrixXd tbar = MatrixXd::Zero(2 * Nw, K);
 
-    /* ---- A1. Foil-side dueinv chain via dgam
-     * --------------------------------- lambda_g (N-vector) = sgnue[0..N) .*
-     * lambda_ue[0..N) PLUS continuity contribution from the first wake row:
-     *   get_ueinv sets ueinv[N+0] = uea[N-1] = sgnue[N-1] * gam[N-1]  (NOT
-     *   uewi[0]). So d(ueinv[N+0]) chains through gam[N-1], same as if we added
-     *   sgnue[N-1] * lambda_ue[N] to lambda_g[N-1].
-     * Extended to N+1 with 0 in the streamfunction slot. */
-    int AIC_dim = static_cast<int>(state.isol.AIC.rows()); /* N + 1 */
-    VectorXd lambda_g_ext = VectorXd::Zero(AIC_dim);
-    for (int i = 0; i < N; ++i) {
-        lambda_g_ext(i) = state.isol.sgnue(i) * lambda_ue(i);
-    }
-    lambda_g_ext(N - 1) += state.isol.sgnue(N - 1) * lambda_ue(N);
-    /* Contribution: -lambda^T * dueinv_foil = -lambda_g^T * dgam, with
-     * dgam = d(gamma)/d(foil.x) from the context. (Equivalently
-     * +AICResidualSensVJP(state, AIC^{-T} lambda_g, alpha).) */
-    vjp -= (lambda_g_ext.transpose() * ctx.dgam_dx).transpose();
-    const Eigen::PartialPivLU<MatrixXd>& lu = ctx.aic_t_lu;
+    /* ---- A1. Foil-side dueinv via gamma: -lambda_g^T dgam, where
+     * lambda_g = sgnue .* lambda_ue[0:N), plus sgnue[N-1] * lambda_ue[N] at
+     * N-1 (get_ueinv sets ueinv[N] = uea[N-1]). Zero streamfunction slot. */
+    for (int i = 0; i < N; ++i) gam_bar.row(i) -= sgnue(i) * lambda_ue.row(i);
+    gam_bar.row(N - 1) -= sgnue(N - 1) * lambda_ue.row(N);
 
-    /* ---- C. dphi chain via dsigma_m ----------------------------------------
-     * beta = ue_sigma^T * (sgue .* lambda_ue),  shape [Npanel = N+Nw-2] */
-    VectorXd sgue_lambda(Nsys);
-    for (int i = 0; i < N; ++i)
-        sgue_lambda(i) = state.isol.sgnue(i) * lambda_ue(i);
-    for (int i = N; i < Nsys; ++i) sgue_lambda(i) = lambda_ue(i);
-    VectorXd beta =
-        state.vsol.ue_sigma.transpose() * sgue_lambda; /* [Npanel] */
-
-    /* phi = sigma_m * mass,  mass[k] = U[1, k] * U[3, k] */
-    const VectorXd& phi = ctx.phi; /* [Npanel] */
-
-    /* Foil panels k = 0 .. N-2: ds_k = foil.s[k+1] - foil.s[k]
-     * dsigma_m[k, i]/d(foil.x) = +sgnue[i]/ds_k^2 * d(ds_k)/d(foil.x)  for i =
-     * k or k+1 sign-flipped dphi[k] = sum_i dsigma_m[k, i] * mass[i] =
-     * -phi[k]/ds_k * d(ds_k) (Mass contribution multiplied through cancels via
-     * -1/ds^2 * (sgnue[k+1]*mass[k+1] - sgnue[k]*mass[k]) = -phi[k]/ds.)
-     *
-     * Total contribution to VJP for panel k:
-     *   -lambda_sg^T * ue_sigma * dphi[k]
-     *     = -beta[k] * dphi[k]
-     *     = -beta[k] * (-phi[k]/ds_k * d(ds_k)/dfoil_x)
-     *     = (beta[k] * phi[k] / ds_k) * d(ds_k)/dfoil_x */
-    for (int k = 0; k < N - 1; ++k) {
-        double ds_k = state.foil.s(k + 1) - state.foil.s(k);
-        if (ds_k < 1e-14) continue;
-        double coef = beta(k) * phi(k) / ds_k;
-        /* d(ds_k)/dfoil_x = dfoil_s_dx.row(k+1) - dfoil_s_dx.row(k) */
-        vjp += coef * (dfoil_s_dx.row(k + 1).transpose() -
-                       dfoil_s_dx.row(k).transpose());
-    }
-    /* Wake panels k = N-1 .. Npanel-1: ds_w = wake.s[w+1] - wake.s[w]
-     * where w = k - (N-1) is the wake panel index.
-     * Same structure: need d(ds_w)/d(foil.x) = dwake_s_dx.row(w+1) -
-     * dwake_s_dx.row(w) */
-    const MatrixXd& dwake_s_dx = ctx.dwake_s_dx;
-    for (int w = 0; w < Nw - 1; ++w) {
-        int k = (N - 1) + w;
-        double ds_w = state.wake.s(w + 1) - state.wake.s(w);
-        if (ds_w < 1e-14) continue;
-        double coef = beta(k) * phi(k) / ds_w;
-        vjp += coef * (dwake_s_dx.row(w + 1).transpose() -
-                       dwake_s_dx.row(w).transpose());
-    }
-
-    /* ---- A2. Wake-side dueinv chain (uewi) ---------------------------------
-     * uewi[j] = V(foil.x, gam, Vinf, alpha, wake.x[j]) . wake.t[j]
-     *
-     *   d(uewi)/dfoil_x = t_wake^T * dV + V^T * dwake.t
-     *
-     * For j < Nw-1, V is aligned with t_wake (BuildWake sets t = V/|V| at the
-     * same point), so V^T * (I - t t^T) = 0 and the V . dwake.t term vanishes.
-     * For j == Nw-1, wake.t is set from the predictor V/|V| at x_pred, NOT at
-     * wake.x[Nw-1] — so V and t are NOT aligned and the V . dwake.t term is
-     * nonzero. DWakeTDFoilX gives the correct dwake.t through the predictor
-     * chain.
-     *
-     * SKIP j=0: ueinv[N+0] is overwritten by uea[N-1] in get_ueinv (continuity
-     * BC), so its chain goes through gam[N-1] in A1, NOT through V at
-     * wake.x[0].
-     *
-     * Row j of d(uewi)/d(foil.x) does not depend on lambda, so the context
-     * holds it (together with B2a below) in ctx.wake_rows. */
-    vjp += (lambda_ue.tail(Nw).transpose() * ctx.wake_rows).transpose();
-
-    /* ---- B. dueisigma chain (panel velocity derivative chain) -------------
-     *
-     * ue_sigma = [Bp; Dw] where Bp = -A^{-1} B (airfoil source-to-ue) and
-     * Dw = Cgam * Bp + Csig (wake source-to-ue) with row 0 overwritten by
-     * Bp[N-1, :] for continuity.
-     *
-     * B1: foil-side dBp = -A^{-1}(dA Bp + dB) chain via AICMatVecVJP + dB
-     *     panel-streamfunction chain. Effective foil-lambda absorbs:
-     *       (i) sgnue * lambda_ue[0:N] (foil rows),
-     *       (ii) lambda_ue[N] at index N-1 (first wake row = Bp[N-1, :]),
-     *       (iii) sum_{j>0} lambda_ue[N+j] * Cgam[j, k] (Cgam*Bp folded in).
-     * B2a: dCgam direct chain for wake rows j>0 — d(V_G*v . wake.t).
-     * B2b: dCsig foil-source-panel chain (V at wake.x[j_eval] from foil panel).
-     * B2c: dCsig wake-source-panel chain (non-self + interior self log term).
-     */
+    /* ---- C. dphi chain via dsigma_m: with beta = ue_sigma^T (sgue .*
+     * lambda_ue), panel k adds (beta[k] * phi[k] / ds_k) * d(ds_k)/d(foil.x),
+     * where ds_k is a foil or wake panel length. */
     {
-        /* Extract Bp from state.vsol.ue_sigma (top N rows). */
-        const MatrixXd& ue_sig = state.vsol.ue_sigma;
-        int Npanel = N + Nw - 2;
-        if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
-            /* Build effective foil lambda including first wake row.
-             * lambda_f_eff[i] = sgnue[i] * lambda_ue[i] (foil-side as before)
-             * Plus lambda_w[0] * Bp[N-1, :] contribution: same as adding
-             * lambda_w[0] * 1 to row N-1 of the foil lambda (since
-             * Dw[0]=Bp[N-1]). Wait — Dw[0] uses lambda_w[0] directly (no sgnue
-             * scaling since sgue[N+0]=1). So we add lambda_w[0]*Bp[N-1, :]
-             * which means we include +lambda_w[0] at index N-1 of the effective
-             * lambda (with sgue=1, no sgnue scaling here). */
-            VectorXd lambda_f_eff(N);
-            for (int i = 0; i < N; ++i) {
-                lambda_f_eff(i) = state.isol.sgnue(i) * lambda_ue(i);
-            }
-            /* Add Dw[0] = Bp[N-1] contribution: lambda_w[0] * 1 * Bp[N-1] */
-            lambda_f_eff(N - 1) += lambda_ue(N); /* sgue at wake = 1 */
-
-            /* For j > 0 wake rows, Dw[j, :] = Cgam[j, :] * Bp + Csig[j, :].
-             * The Cgam*Bp part folds into the foil-side dBp chain via
-             * effective lambda for foil index k:
-             *   lambda_f_eff[k] += sum_{j>0} lambda_ue[N+j] * Cgam[j, k]
-             * Cgam[0, :] is replaced by Bp[N-1, :] in Dw[0], so only j > 0
-             * rows enter. The context rebuilds Cgam, since CalcUeM doesn't
-             * save it. */
-            lambda_f_eff += (lambda_ue.tail(Nw - 1).transpose() *
-                             ctx.cgam.bottomRows(Nw - 1))
-                                .transpose();
-
-            /* mu_f = A^{-T} * [lambda_f_eff; 0] */
-            VectorXd lambda_f_ext = VectorXd::Zero(AIC_dim);
-            lambda_f_ext.head(N) = lambda_f_eff;
-            VectorXd mu_f = lu.solve(lambda_f_ext);
-
-            /* B1a + B1b: mu_f^T * d(A*v + B*phi)/d(foil.x), v = [Bp*phi; 0]. */
-            vjp += (mu_f.head(N).transpose() * ctx.dsrc_dx).transpose();
-
-            /* B1b: mu_f^T * dB * phi, foil and wake source panels. Its rows
-             * do not depend on lambda; the context assembles them together
-             * with B1a into dsrc_dx = d(A*v + B*phi)/d(foil.x). */
+        MatrixXd sgue_lambda = lambda_ue;
+        for (int i = 0; i < N; ++i) sgue_lambda.row(i) *= sgnue(i);
+        const MatrixXd beta = state.vsol.ue_sigma.transpose() * sgue_lambda;
+        MatrixXd cs = MatrixXd::Zero(N, K); /* weights on d(foil.s[k]) */
+        for (int k = 0; k < N - 1; ++k) {
+            double ds_k = state.foil.s(k + 1) - state.foil.s(k);
+            if (ds_k < 1e-14) continue;
+            const Eigen::RowVectorXd coef = beta.row(k) * (phi(k) / ds_k);
+            cs.row(k + 1) += coef;
+            cs.row(k) -= coef;
         }
+        MatrixXd cw = MatrixXd::Zero(Nw, K); /* weights on d(wake.s[w]) */
+        for (int w = 0; w < Nw - 1; ++w) {
+            int k = (N - 1) + w;
+            double ds_w = state.wake.s(w + 1) - state.wake.s(w);
+            if (ds_w < 1e-14) continue;
+            const Eigen::RowVectorXd coef = beta.row(k) * (phi(k) / ds_w);
+            cw.row(w + 1) += coef;
+            cw.row(w) -= coef;
+        }
+        vjp.noalias() += ctx.dfoil_s_dx.transpose() * cs;
+        vjp.noalias() += ctx.dwake_s_dx.transpose() * cw;
     }
-    /* ---- B2a: dCgam direct chain for j > 0 wake rows -----------------------
-     *
-     * For each wake station j > 0:
-     *   contribution = -lambda_w[j] * d(V_for_v . wake.t[j])/dfoil_x
-     * where V_for_v is the gamma-induced velocity at wake.x[j] with vortex
-     * strengths v = Bp * phi held fixed. Row j does not depend on lambda, so
-     * it is folded into ctx.wake_rows (applied with A2 above).
-     *
-     * For j = 0, Cgam[0, :] is replaced by Bp[N-1, :] in Dw[0]; handled in B1.
-     */
-    /* ---- B2b, B2c: dCsig chains for j > 0 wake rows ----------------------
-     * Linear in lambda_w with lambda-independent rows; folded into
-     * ctx.wake_rows by BuildRueVJPContext. */
+
+    /* ---- A2, B2a, B2b, B2c: the wake rows, linear in lambda_w. */
+    vjp.noalias() += ctx.wake_rows.transpose() * lambda_w;
+    gam_bar.noalias() += ctx.wake_gam.transpose() * lambda_w;
+    xbar.noalias() += ctx.wake_wx.transpose() * lambda_w;
+    tbar.noalias() += ctx.wake_wt.transpose() * lambda_w;
+
+    /* ---- B1. Foil-side dBp chain: mu_f^T d(A*v + B*phi)/d(foil.x) with
+     * mu_f = A^{-T} [lambda_f_eff; 0], where lambda_f_eff folds in the first
+     * wake row (Dw[0] = Bp[N-1]) and Cgam[j>0] * Bp. */
+    const MatrixXd& ue_sig = state.vsol.ue_sigma;
+    if (ue_sig.cols() == N + Nw - 2 && ue_sig.rows() == Nsys) {
+        MatrixXd lambda_f_ext = MatrixXd::Zero(AIC_dim, K);
+        for (int i = 0; i < N; ++i)
+            lambda_f_ext.row(i) = sgnue(i) * lambda_ue.row(i);
+        lambda_f_ext.row(N - 1) += lambda_ue.row(N); /* sgue at wake = 1 */
+        lambda_f_ext.topRows(N).noalias() +=
+            ctx.cgam.bottomRows(Nw - 1).transpose() *
+            lambda_w.bottomRows(Nw - 1);
+        const MatrixXd mu_f = lu.solve(lambda_f_ext);
+        vjp.noalias() += ctx.dsrc_dx.transpose() * mu_f.topRows(N);
+        xbar.noalias() += ctx.src_wx.transpose() * mu_f.topRows(N);
+    }
+
+    /* ---- Wake geometry, in reverse through BuildWake's sweep. */
+    MatrixXd gam_bar_wake = MatrixXd::Zero(AIC_dim, K);
+    WakeSweepVJP(ctx.wake, xbar, tbar, vjp, gam_bar_wake);
+    if (!ctx.wake.traced_at_other_alpha) gam_bar += gam_bar_wake;
+
+    /* ---- Close the gamma chains: d(gamma)/d(x)^T g = -jac^T A^{-T} g. */
+    vjp.noalias() -= ctx.jac_gam.transpose() * lu.solve(gam_bar);
+    if (ctx.wake.traced_at_other_alpha) {
+        vjp.noalias() -= ctx.jac_gam_wake.transpose() * lu.solve(gam_bar_wake);
+    }
     return vjp;
+}
+
+VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
+                       const RueVJPContext& ctx) {
+    return ComputeRueVJPBatch(state, lambda_ue, ctx).col(0);
 }
 
 RueVJPContext BuildRueVJPContext(const FoilState& state,
                                  const MatrixXd& dfoil_s_dx) {
     RueVJPContext ctx;
     ctx.dfoil_s_dx = dfoil_s_dx;
-    ctx.dgam_dx = DGammaDFoilX(state, state.oper.alpha);
-    /* The wake Jacobians need d(gamma)/d(foil.x) at the tracing alpha. That
-     * is the same matrix unless the wake was traced at another alpha. */
-    const MatrixXd dgam_dx_wake = WakeTracedAtOtherAlpha(state)
-                                      ? DGammaDFoilXForWake(state)
-                                      : ctx.dgam_dx;
-    ctx.dwake_x_dx = DWakeXDFoilX(state, dfoil_s_dx, dgam_dx_wake);
-    ctx.dwake_t_dx = DWakeTDFoilX(state, dfoil_s_dx, dgam_dx_wake);
     ctx.dwake_s_dx = DWakeSDFoilX(state, dfoil_s_dx);
     ctx.aic_t_lu.compute(MatrixXd(state.isol.AIC.transpose()));
+    /* d(A*gamma - rhs)/d(foil.x): closes every gamma chain via
+     * d(gamma)/d(x)^T g = -jac_gam^T A^{-T} g. The wake was traced with the
+     * gamma of its tracing alpha, which needs its own residual Jacobian. */
+    ctx.jac_gam = AICResidualJacobianX(state, state.oper.alpha);
+    ctx.wake = LinearizeWakeSweep(state, dfoil_s_dx);
+    if (ctx.wake.traced_at_other_alpha) {
+        const FoilState traced = WakeTracingState(state);
+        ctx.jac_gam_wake = AICResidualJacobianX(traced, traced.oper.alpha);
+    }
 
     const int N = state.foil.N;
     const int Nw = state.wake.N;
@@ -380,33 +307,41 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
         mass(i) = state.glob.U(1, i) * state.glob.U(3, i);
     ctx.phi = state.vsol.sigma_m * mass;
 
-    /* wake_rows[j] = d(lambda_w[j] terms)/d(foil.x) for j > 0, applied as
-     * vjp += wake_rows^T lambda_w. A2 and B2a enter with a minus sign.
+    /* The wake rows' contribution, sum_j lambda_w[j] * d(row j)/d(foil.x),
+     * split by what it depends on (row j of each matrix):
+     *   wake_rows : foil.x directly            [Nw x 2N]
+     *   wake_gam  : gamma at oper.alpha        [Nw x N+1]
+     *   wake_wx   : wake.x, column d*Nw + i    [Nw x 2*Nw]
+     *   wake_wt   : wake.t, same layout        [Nw x 2*Nw]
+     * A2 and B2a enter with a minus sign.
      *
-     * A2: row j of d(uewi[j])/d(foil.x) = t^T dV + V^T dwake.t, j > 0. */
+     * A2: row j of d(uewi[j])/d(foil.x) = t^T dV + V^T dwake.t, j > 0, with
+     * dV = V_xfoil + V_G dgam + V_xi dwake.x[j]. */
+    const MatrixXd no_gamma_chain; /* V_xfoil at fixed gamma */
     ctx.wake_rows = MatrixXd::Zero(Nw, twoN);
+    ctx.wake_gam = MatrixXd::Zero(Nw, AIC_dim);
+    ctx.wake_wx = MatrixXd::Zero(Nw, 2 * Nw);
+    ctx.wake_wt = MatrixXd::Zero(Nw, 2 * Nw);
     for (int j = 1; j < Nw; ++j) {
-        VelDeriv vd = InviscidVelocityWithDeriv(state, state.wake.x.col(j),
-                                                ctx.dgam_dx, alpha);
-        MatrixXd dwxj(2, twoN);
-        dwxj.row(0) = ctx.dwake_x_dx.row(0 * Nw + j);
-        dwxj.row(1) = ctx.dwake_x_dx.row(1 * Nw + j);
-        MatrixXd dwt(2, twoN);
-        dwt.row(0) = ctx.dwake_t_dx.row(0 * Nw + j);
-        dwt.row(1) = ctx.dwake_t_dx.row(1 * Nw + j);
-        MatrixXd dV = vd.V_xfoil + vd.V_xi * dwxj; /* [2 x 2N] */
+        VelDeriv vd = InviscidVelocityWithDerivExt(
+            state, state.wake.x.col(j), state.isol.gam, no_gamma_chain, alpha);
         Vector2d t_wake = state.wake.t.col(j);
-        ctx.wake_rows.row(j) -= t_wake.transpose() * dV;
+        ctx.wake_rows.row(j) -= t_wake.transpose() * vd.V_xfoil;
+        ctx.wake_gam.row(j) -= t_wake.transpose() * vd.V_G;
+        const Vector2d gx = vd.V_xi.transpose() * t_wake;
+        ctx.wake_wx(j, j) -= gx(0);
+        ctx.wake_wx(j, Nw + j) -= gx(1);
         /* V^T * dwake.t (zero for j < Nw-1 since V || t). */
-        ctx.wake_rows.row(j) -= vd.V.transpose() * dwt;
+        ctx.wake_wt(j, j) -= vd.V(0);
+        ctx.wake_wt(j, Nw + j) -= vd.V(1);
     }
 
     /* The per-output loops (B1b, B2b, B2c) are linear in lambda with
      * lambda-independent coefficients, so their rows are assembled once here.
      * The loop bodies are those of the lambda form with the lambda weight set
      * to 1: scatters into foil.x go to R(row, :), and chains through wake.x
-     * and wake.t collect 2-vector weights in GX and GT, which multiply the
-     * wake Jacobians at the end. Column d*Nw + j matches their row layout. */
+     * and wake.t collect 2-vector weights in GX and GT (column d*Nw + j),
+     * which the reverse wake sweep consumes per output. */
     const VectorXd& phi = ctx.phi;
     int row = 0;
     MatrixXd R;
@@ -578,7 +513,8 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
                 }
             }
         }
-        ctx.dsrc_dx = daic_v_dx.topRows(N) + R + GX * ctx.dwake_x_dx;
+        ctx.dsrc_dx = daic_v_dx.topRows(N) + R;
+        ctx.src_wx = GX;
 
         /* Cgam[j, k]: gamma_k's induced velocity at wake.x[j] along t[j]. */
         ctx.cgam.resize(Nw, N);
@@ -597,24 +533,21 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
          * V_for_v is the velocity induced by vortex strengths v (held fixed).
          * InviscidVelocityWithDerivExt includes the freestream in .V, so
          * subtract it: Cgam[j, :] * v is gamma-induced only. */
-        const MatrixXd dgam_zero = MatrixXd::Zero(AIC_dim, twoN);
         const Vector2d Vinf_vec(state.oper.Vinf * Cosd(alpha),
                                 state.oper.Vinf * Sind(alpha));
         for (int j = 1; j < Nw; ++j) {
             Vector2d xi_w = state.wake.x.col(j);
             Vector2d t_wake = state.wake.t.col(j);
             VelDeriv vd_v = InviscidVelocityWithDerivExt(state, xi_w, v_ext,
-                                                         dgam_zero, alpha);
+                                                         no_gamma_chain, alpha);
             Vector2d V_G_v = vd_v.V - Vinf_vec;
-            MatrixXd dwxj(2, twoN);
-            dwxj.row(0) = ctx.dwake_x_dx.row(0 * Nw + j);
-            dwxj.row(1) = ctx.dwake_x_dx.row(1 * Nw + j);
-            MatrixXd dwt(2, twoN);
-            dwt.row(0) = ctx.dwake_t_dx.row(0 * Nw + j);
-            dwt.row(1) = ctx.dwake_t_dx.row(1 * Nw + j);
-            MatrixXd dV_for_v = vd_v.V_xfoil + vd_v.V_xi * dwxj;
-            ctx.wake_rows.row(j) -= t_wake.transpose() * dV_for_v;
-            ctx.wake_rows.row(j) -= V_G_v.transpose() * dwt;
+            /* dV_for_v = V_xfoil + V_xi dwake.x[j] (v is held fixed). */
+            ctx.wake_rows.row(j) -= t_wake.transpose() * vd_v.V_xfoil;
+            const Vector2d gx = vd_v.V_xi.transpose() * t_wake;
+            ctx.wake_wx(j, j) -= gx(0);
+            ctx.wake_wx(j, Nw + j) -= gx(1);
+            ctx.wake_wt(j, j) -= V_G_v(0);
+            ctx.wake_wt(j, Nw + j) -= V_G_v(1);
         }
     }
 
@@ -963,7 +896,9 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
         }
     }
 
-    ctx.wake_rows += R + GX * ctx.dwake_x_dx + GT * ctx.dwake_t_dx;
+    ctx.wake_rows += R;
+    ctx.wake_wx += GX;
+    ctx.wake_wt += GT;
     return ctx;
 }
 
@@ -986,13 +921,9 @@ MatrixXd DRueDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     int Nw = state.wake.N;
     int Nsys = N + Nw;
     const RueVJPContext ctx = BuildRueVJPContext(state, dfoil_s_dx);
-    MatrixXd dR_ue = MatrixXd::Zero(Nsys, 2 * N);
-    VectorXd e = VectorXd::Zero(Nsys);
-    for (int i = 0; i < Nsys; ++i) {
-        e.setZero();
-        e(i) = 1.0;
-        dR_ue.row(i) = ComputeRueVJP(state, e, ctx).transpose();
-    }
+    MatrixXd dR_ue =
+        ComputeRueVJPBatch(state, MatrixXd::Identity(Nsys, Nsys), ctx)
+            .transpose();
     return dR_ue;
 }
 

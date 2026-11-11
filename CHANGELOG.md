@@ -97,6 +97,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   derivatives are evaluated once per gradient rather than once per output. Each
   output's VJP is now a few matrix-vector products (0.1 ms). The viscous
   gradient drops from 0.08 s to 0.057 s at 199 panels.
+- The wake-geometry and gamma chains of the viscous adjoint run in reverse
+  mode. `LinearizeWakeSweep` and `WakeSweepVJP` propagate the four outputs back
+  through `BuildWake`'s predictor-corrector sweep, replacing the forward wake
+  Jacobians (which carried all 2N coordinate directions) and the 2N-column
+  `d(gamma)/d(foil.x)` solve. `ComputeRueVJPBatch` takes several adjoint
+  vectors at once. The viscous gradient drops from 57 ms to 36 ms at 199 panels
+  and grows more slowly with panel count. The forward Jacobians remain for
+  validation.
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
