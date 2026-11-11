@@ -98,6 +98,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   wake-panel pair. Terms that do not depend on the adjoint vector move into
   `RueVJPContext`. The viscous gradient drops from 0.21 s to about 0.08 s at
   199 panels, about 140x faster than before these changes.
+- `RueVJPContext` assembles the source-panel rows of `ComputeRueVJP`
+  (`dsrc_dx`, plus the wake-source terms in `wake_rows`) once, so the panel
+  derivatives are evaluated once per gradient rather than once per output. Each
+  output's VJP is now a few matrix-vector products (0.1 ms). The viscous
+  gradient drops from 0.08 s to 0.057 s at 199 panels.
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
