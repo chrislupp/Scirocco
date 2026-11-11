@@ -59,6 +59,10 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
  *
  * Returns a [2N] vector in row-major foil.x layout (col = 2k + d).
  *
+ * This overload builds a RueVJPContext on every call. Callers that apply the
+ * VJP to more than one lambda for the same state should build the context
+ * once and use the overload below.
+ *
  * @param state        Fully assembled foil state.
  * @param lambda_ue    Adjoint vector [Nsys].
  * @param dfoil_s_dx   Sensitivity of foil arc-lengths w.r.t. foil.x [N x 2N].
@@ -66,6 +70,44 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx);
  */
 VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                        const MatrixXd& dfoil_s_dx);
+
+/**
+ * @brief The parts of ComputeRueVJP that depend on the state but not on
+ * lambda_ue.
+ *
+ * Building these (mostly d(gamma)/d(foil.x) and the wake Jacobians) costs far
+ * more than applying the VJP, so a gradient builds them once and reuses them
+ * for every output. Only valid for the state it was built from.
+ */
+struct RueVJPContext {
+    MatrixXd dfoil_s_dx; /**< d(foil.s)/d(foil.x) [N x 2N] */
+    MatrixXd dgam_dx;    /**< d(gamma)/d(foil.x) at oper.alpha [N+1 x 2N] */
+    MatrixXd dwake_x_dx; /**< d(wake.x)/d(foil.x) [2*Nw x 2N] */
+    MatrixXd dwake_t_dx; /**< d(wake.t)/d(foil.x) [2*Nw x 2N] */
+    MatrixXd dwake_s_dx; /**< d(wake.s)/d(foil.x) [Nw x 2N] */
+    Eigen::PartialPivLU<MatrixXd> aic_t_lu; /**< LU of AIC^T */
+};
+
+/**
+ * @brief Build the lambda-independent context for ComputeRueVJP.
+ *
+ * @param state        Fully assembled foil state.
+ * @param dfoil_s_dx   Sensitivity of foil arc-lengths w.r.t. foil.x [N x 2N].
+ */
+RueVJPContext BuildRueVJPContext(const FoilState& state,
+                                 const MatrixXd& dfoil_s_dx);
+
+/**
+ * @brief ComputeRueVJP with a prebuilt context. Same result as the overload
+ * above, without rebuilding the context.
+ *
+ * @param state     The state ctx was built from.
+ * @param lambda_ue Adjoint vector [Nsys].
+ * @param ctx       BuildRueVJPContext(state, dfoil_s_dx).
+ * @return VJP result [2N].
+ */
+VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
+                       const RueVJPContext& ctx);
 
 /**
  * @brief Compute d(R_ue)/d(foil.x) [Nsys x 2N] forward Jacobian (FOR VALIDATION

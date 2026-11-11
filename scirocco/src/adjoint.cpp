@@ -525,12 +525,15 @@ Sensitivity ViscousSensitivities(FoilState& state) {
      *    plus ComputeRueVJP for the wake-side chain. */
     MatrixXd dfoil_s_dx = DFoilSDFoilX(state.foil);
     MatrixXd dRbl_dx = DRblDFoilX(state, dfoil_s_dx); /* [3*Nsys x 2N] */
+    /* The R_ue chain's geometric Jacobians are the same for every output, so
+     * build them once rather than once per VJP. */
+    const RueVJPContext rue_ctx = BuildRueVJPContext(state, dfoil_s_dx);
 
     auto vjp = [&](const VectorXd& lambda) -> VectorXd {
         VectorXd lambda_bl = lambda.head(3 * Nsys);
         VectorXd lambda_ue = lambda.tail(Nsys);
         VectorXd out = (lambda_bl.transpose() * dRbl_dx).transpose(); /* [2N] */
-        out += ComputeRueVJP(state, lambda_ue, dfoil_s_dx);
+        out += ComputeRueVJP(state, lambda_ue, rue_ctx);
         return out;
     };
     VectorXd vjp_cl = vjp(lambda_cl);

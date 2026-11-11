@@ -39,6 +39,8 @@
 #include "scirocco/core/adjoint.h"
 #include "scirocco/core/paneling.h"
 #include "scirocco/core/spline.h"
+#include "scirocco/core/viscous_geom_deriv.h"
+#include "scirocco/core/viscous_residual_deriv.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
@@ -236,5 +238,48 @@ TEST(GradientValidityTest, TrimLiftDerivativesRespectConstraint) {
     EXPECT_DOUBLE_EQ(sens.dcl_dMa, 0);
     EXPECT_DOUBLE_EQ(sens.dcl_dRe, 0);
     EXPECT_DOUBLE_EQ(sens.dcl_dcltarget, 1);
+}
+
+/* A shared RueVJPContext must give exactly what a per-call build gives, for
+ * several lambdas, including when the wake was traced at another alpha. */
+void ExpectContextMatchesPerCallBuild(const FoilState& state) {
+    const MatrixXd dfoil_s_dx = DFoilSDFoilX(state.foil);
+    const RueVJPContext ctx = BuildRueVJPContext(state, dfoil_s_dx);
+    const int Nsys = state.glob.Nsys;
+    for (int k = 0; k < 3; ++k) {
+        VectorXd lambda(Nsys);
+        for (int i = 0; i < Nsys; ++i) lambda(i) = std::sin(1.0 + i * (k + 1));
+        const VectorXd per_call = ComputeRueVJP(state, lambda, dfoil_s_dx);
+        const VectorXd shared = ComputeRueVJP(state, lambda, ctx);
+        ASSERT_EQ(per_call.size(), shared.size());
+        for (int i = 0; i < per_call.size(); ++i)
+            EXPECT_EQ(per_call(i), shared(i)) << "k=" << k << " i=" << i;
+    }
+}
+TEST(RueVJPContextTest, MatchesPerCallBuild) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(4, -1, 1e6, 0);
+    ASSERT_TRUE(foil.Solve());
+    ASSERT_FALSE(WakeTracedAtOtherAlpha(foil.GetState()));
+    ExpectContextMatchesPerCallBuild(foil.GetState());
+}
+TEST(RueVJPContextTest, MatchesPerCallBuildWithFrozenWake) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(3, .5, 1e6, 0);
+    ASSERT_TRUE(foil.Solve());
+    ASSERT_TRUE(WakeTracedAtOtherAlpha(foil.GetState()));
+    ExpectContextMatchesPerCallBuild(foil.GetState());
+}
+TEST(RueVJPContextTest, RejectsContextFromAnotherState) {
+    Scirocco a("2412", 80), b("2412", 100);
+    a.SetOper(4, -1, 1e6, 0);
+    b.SetOper(4, -1, 1e6, 0);
+    ASSERT_TRUE(a.Solve());
+    ASSERT_TRUE(b.Solve());
+    const RueVJPContext ctx =
+        BuildRueVJPContext(a.GetState(), DFoilSDFoilX(a.GetState().foil));
+    const VectorXd lambda = VectorXd::Ones(b.GetState().glob.Nsys);
+    EXPECT_THROW(ComputeRueVJP(b.GetState(), lambda, ctx),
+                 std::invalid_argument);
 }
 }  // namespace

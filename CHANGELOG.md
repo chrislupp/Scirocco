@@ -76,6 +76,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   coordinates, analytic sensitivities, and HDF5 histories.
 
 ### Changed
+- Viscous `ComputeSensitivities()` is about 13x faster (11.2 s to 0.88 s at
+  199 panels on an M1 Pro). The geometric Jacobians in the `R_ue` chain,
+  `d(gamma)/d(foil.x)` and the wake sweeps, were rebuilt 16 times per gradient;
+  they are now built once in a `RueVJPContext` and shared by all four outputs.
+  Results are bitwise identical.
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
