@@ -81,6 +81,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `d(gamma)/d(foil.x)` and the wake sweeps, were rebuilt 16 times per gradient;
   they are now built once in a `RueVJPContext` and shared by all four outputs.
   Results are bitwise identical.
+- `DGammaDFoilX` assembles the AIC residual Jacobian once
+  (`AICResidualJacobianX`) and does one LU solve, instead of one O(N^2) VJP per
+  row. The viscous gradient drops from 0.88 s to 0.21 s at 199 panels.
+  `AICResidualSensVJP` and `AICMatVecVJP` now share this kernel
+  (`AICMatVecJacobianX`) instead of two copies of the panel chain. Results
+  change at round-off level only (about 1e-14 of the largest entry).
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
 - Temporarily disable the CI coverage job and Codecov upload.
