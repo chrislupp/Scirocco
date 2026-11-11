@@ -36,10 +36,36 @@
 namespace scirocco {
 
 /**
+ * @brief d(A*v)/d(foil.x) for a fixed vector v: [N+1 x 2N].
+ *
+ * Row i is the derivative of the i-th row of the AIC system applied to v,
+ * with v held fixed. Evaluates each panel-influence derivative once, so the
+ * cost is O(N^2). This is the kernel behind AICMatVecVJP,
+ * AICResidualSensVJP and DGammaDFoilX.
+ *
+ * @param state FoilState with solved inviscid problem
+ * @param v Vector [N+1] (gamma-like, streamfunction slot in entry N)
+ * @return Jacobian [N+1 x 2N]; the Kutta row N is zero.
+ */
+MatrixXd AICMatVecJacobianX(const FoilState& state, const VectorXd& v);
+
+/**
+ * @brief d(A*gamma - rhs)/d(foil.x) at the current gamma: [N+1 x 2N].
+ *
+ * The inviscid residual's partial derivative with respect to the node
+ * coordinates, at fixed gamma. d(gamma)/d(foil.x) = -A^{-1} times this.
+ *
+ * @param state FoilState with solved inviscid problem (AIC, gam)
+ * @param alpha Angle of attack [degrees]
+ * @return Jacobian [N+1 x 2N]
+ */
+MatrixXd AICResidualJacobianX(const FoilState& state, double alpha);
+
+/**
  * @brief Compute the vector-Jacobian product: lambda^T * d(A*gamma -
  * rhs)/dx_foil
  *
- * This avoids forming the full [N+1 x N+1 x 2N] tensor.
+ * Equal to AICResidualJacobianX(state, alpha)^T * lambda.
  *
  * @param state FoilState with solved inviscid problem (AIC, gam, gamref)
  * @param lambda Adjoint vector [N+1] (solution of A^T * lambda = dJ/dgamma)
