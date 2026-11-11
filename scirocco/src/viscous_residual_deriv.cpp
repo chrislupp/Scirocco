@@ -177,12 +177,15 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     int Nw = state.wake.N;
     int Nsys = N + Nw;
     int twoN = 2 * N;
-    double alpha = state.oper.alpha;
 
+    if (N < 2 || Nw < 1) {
+        throw std::invalid_argument("ComputeRueVJP: state has no viscous wake");
+    }
     if (lambda_ue.size() != Nsys) {
         throw std::runtime_error("ComputeRueVJP: lambda_ue size != Nsys");
     }
-    if (ctx.dgam_dx.cols() != twoN || ctx.dwake_x_dx.rows() != 2 * Nw) {
+    if (ctx.dgam_dx.cols() != twoN || ctx.dgam_dx.rows() != N + 1 ||
+        ctx.dwake_x_dx.rows() != 2 * Nw) {
         throw std::invalid_argument(
             "ComputeRueVJP: context was built for a different state");
     }
@@ -203,14 +206,29 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         lambda_g_ext(i) = state.isol.sgnue(i) * lambda_ue(i);
     }
     lambda_g_ext(N - 1) += state.isol.sgnue(N - 1) * lambda_ue(N);
-    /* mu = AIC^{-T} * lambda_g_ext */
+    /* Contribution: -lambda^T * dueinv_foil = -lambda_g^T * dgam, with
+     * dgam = d(gamma)/d(foil.x) from the context. (Equivalently
+     * +AICResidualSensVJP(state, AIC^{-T} lambda_g, alpha).) */
+    vjp -= (lambda_g_ext.transpose() * ctx.dgam_dx).transpose();
     const Eigen::PartialPivLU<MatrixXd>& lu = ctx.aic_t_lu;
-    VectorXd mu = lu.solve(lambda_g_ext);
-    /* Contribution: +AICResidualSensVJP(state, mu, alpha)
-     *   (derivation: -lambda^T * dueinv_foil = -lambda_g^T * dgam,
-     *    dgam = -(AIC)^{-1} * dR_AIC/dfoil_x, so -lambda_g^T * dgam =
-     *    +(AIC^{-T} lambda_g)^T * dR_AIC = +AICResidualSensVJP.) */
-    vjp += AICResidualSensVJP(state, mu, alpha);
+
+    /* Reverse-mode accumulators for the wake geometry. Every chain through
+     * wake.x[j] or wake.t[j] adds its 2-vector weight here; the products with
+     * dwake_x_dx and dwake_t_dx are applied once at the end. */
+    MatrixXd wx_bar = MatrixXd::Zero(2, Nw);
+    MatrixXd wt_bar = MatrixXd::Zero(2, Nw);
+    auto add_x = [&](int j, const Vector2d& g) { wx_bar.col(j) += g; };
+    auto add_t = [&](int j, const Vector2d& g) { wt_bar.col(j) += g; };
+    /* Weight on the midpoint 0.5*(wake.x[a] + wake.x[b]). */
+    auto add_mid = [&](int a, int b, const Vector2d& g) {
+        add_x(a, 0.5 * g);
+        add_x(b, 0.5 * g);
+    };
+    /* Weight on the ghost point 2*wake.x[b] - 0.5*(wake.x[a] + wake.x[b]). */
+    auto add_ghost = [&](int a, int b, const Vector2d& g) {
+        add_x(b, 1.5 * g);
+        add_x(a, -0.5 * g);
+    };
 
     /* ---- C. dphi chain via dsigma_m ----------------------------------------
      * beta = ue_sigma^T * (sgue .* lambda_ue),  shape [Npanel = N+Nw-2] */
@@ -222,10 +240,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
         state.vsol.ue_sigma.transpose() * sgue_lambda; /* [Npanel] */
 
     /* phi = sigma_m * mass,  mass[k] = U[1, k] * U[3, k] */
-    VectorXd mass(Nsys);
-    for (int i = 0; i < Nsys; ++i)
-        mass(i) = state.glob.U(1, i) * state.glob.U(3, i);
-    VectorXd phi = state.vsol.sigma_m * mass; /* [Npanel] */
+    const VectorXd& phi = ctx.phi; /* [Npanel] */
 
     /* Foil panels k = 0 .. N-2: ds_k = foil.s[k+1] - foil.s[k]
      * dsigma_m[k, i]/d(foil.x) = +sgnue[i]/ds_k^2 * d(ds_k)/d(foil.x)  for i =
@@ -274,28 +289,11 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
      *
      * SKIP j=0: ueinv[N+0] is overwritten by uea[N-1] in get_ueinv (continuity
      * BC), so its chain goes through gam[N-1] in A1, NOT through V at
-     * wake.x[0]. */
-    const MatrixXd& dgam_dx_full = ctx.dgam_dx;
-    const MatrixXd& dwake_x_dx = ctx.dwake_x_dx; /* [2*Nw x 2N] */
-    const MatrixXd& dwake_t_dx = ctx.dwake_t_dx; /* [2*Nw x 2N] */
-    {
-        for (int j = 1; j < Nw; ++j) {
-            VelDeriv vd = InviscidVelocityWithDeriv(state, state.wake.x.col(j),
-                                                    dgam_dx_full, alpha);
-            MatrixXd dwxj(2, twoN);
-            dwxj.row(0) = dwake_x_dx.row(0 * Nw + j);
-            dwxj.row(1) = dwake_x_dx.row(1 * Nw + j);
-            MatrixXd dV = vd.V_xfoil + vd.V_xi * dwxj; /* [2 x 2N] */
-            Vector2d t_wake = state.wake.t.col(j);
-            /* First term: t_wake^T * dV */
-            vjp -= lambda_ue(N + j) * (t_wake.transpose() * dV).transpose();
-            /* Second term: V^T * dwake.t (zero for j < Nw-1 since V || t). */
-            MatrixXd dwt(2, twoN);
-            dwt.row(0) = dwake_t_dx.row(0 * Nw + j);
-            dwt.row(1) = dwake_t_dx.row(1 * Nw + j);
-            vjp -= lambda_ue(N + j) * (vd.V.transpose() * dwt).transpose();
-        }
-    }
+     * wake.x[0].
+     *
+     * Row j of d(uewi)/d(foil.x) does not depend on lambda, so the context
+     * holds it (together with B2a below) in ctx.wake_rows. */
+    vjp -= (lambda_ue.tail(Nw).transpose() * ctx.wake_rows).transpose();
 
     /* ---- B. dueisigma chain (panel velocity derivative chain) -------------
      *
@@ -336,41 +334,22 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
              * The Cgam*Bp part folds into the foil-side dBp chain via
              * effective lambda for foil index k:
              *   lambda_f_eff[k] += sum_{j>0} lambda_ue[N+j] * Cgam[j, k]
-             * (We need to rebuild Cgam here since CalcUeM doesn't save it.) */
-            MatrixXd Cgam(Nw, N);
-            for (int j = 0; j < Nw; ++j) {
-                Vector2d xi_w = state.wake.x.col(j);
-                Vector2d ti_w = state.wake.t.col(j);
-                MatrixXd V_G;
-                InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi_w,
-                                 true, &V_G);
-                for (int k = 0; k < N; ++k) {
-                    Cgam(j, k) = V_G(0, k) * ti_w(0) + V_G(1, k) * ti_w(1);
-                }
-            }
-            /* Cgam[0, :] contribution is replaced by Bp[N-1, :] in Dw[0], so
-             * only j > 0 rows of Cgam enter the dBp chain. */
-            for (int j = 1; j < Nw; ++j) {
-                double lw = lambda_ue(N + j);
-                if (std::abs(lw) < 1e-20) continue;
-                for (int k = 0; k < N; ++k) {
-                    lambda_f_eff(k) += lw * Cgam(j, k);
-                }
-            }
+             * Cgam[0, :] is replaced by Bp[N-1, :] in Dw[0], so only j > 0
+             * rows enter. The context rebuilds Cgam, since CalcUeM doesn't
+             * save it. */
+            lambda_f_eff += (lambda_ue.tail(Nw - 1).transpose() *
+                             ctx.cgam.bottomRows(Nw - 1))
+                                .transpose();
 
             /* mu_f = A^{-T} * [lambda_f_eff; 0] */
             VectorXd lambda_f_ext = VectorXd::Zero(AIC_dim);
             lambda_f_ext.head(N) = lambda_f_eff;
             VectorXd mu_f = lu.solve(lambda_f_ext);
 
-            /* v = Bp * phi (foil columns of ue_sigma * phi gives v)
-             * ue_sigma's top N rows = Bp, so v = ue_sigma.topRows(N) * phi */
-            VectorXd v_foil = ue_sig.topRows(N) * phi; /* [N] */
-            VectorXd v_ext = VectorXd::Zero(AIC_dim);
-            v_ext.head(N) = v_foil;
-
-            /* B1a: mu_f^T * dA * v_ext  via AICMatVecVJP */
-            vjp += AICMatVecVJP(state, mu_f, v_ext);
+            /* B1a: mu_f^T * dA * v_ext with v_ext = [Bp * phi; 0]. The
+             * context holds d(A * v_ext)/d(foil.x); its row N is zero. */
+            vjp += (mu_f.head(N).transpose() * ctx.daic_v_dx.topRows(N))
+                       .transpose();
 
             /* B1b: mu_f^T * dB * phi
              *   B columns 0..N-2: foil constant-source panels (foil.x[k:k+2])
@@ -414,13 +393,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
              * w.r.t. Xj endpoints (4-vector) and xi eval point (2-vector).
              * Chain through wake.x: dXj = (partial dwake.x for left endpoint,
              * 0.5*(dwake.x[j]+dwake.x[j+1]) for Xm endpoint, similar for
-             * right). Uses dwake_x_dx from the context (see A2). */
-            auto get_dwx = [&](int j) {
-                MatrixXd dwj(2, twoN);
-                dwj.row(0) = dwake_x_dx.row(0 * Nw + j);
-                dwj.row(1) = dwake_x_dx.row(1 * Nw + j);
-                return dwj;
-            };
+             * right). Chains through wake.x go to the accumulators. */
             for (int i = 0; i < N; ++i) {
                 double mu_i = mu_f(i);
                 if (std::abs(mu_i) < 1e-20) continue;
@@ -428,24 +401,19 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                 for (int j = 0; j < Nw - 1; ++j) {
                     Vector2d Xm =
                         0.5 * (state.wake.x.col(j) + state.wake.x.col(j + 1));
-                    MatrixXd dXm = 0.5 * (get_dwx(j) + get_dwx(j + 1));
 
                     Vector2d X_right;
-                    MatrixXd dXr(2, twoN);
-                    if (j == Nw - 2) {
+                    const bool ghost_right = (j == Nw - 2);
+                    if (ghost_right) {
                         X_right = 2.0 * state.wake.x.col(j + 1) - Xm;
-                        dXr = 2.0 * get_dwx(j + 1) - dXm;
                     } else {
                         X_right = state.wake.x.col(j + 1);
-                        dXr = get_dwx(j + 1);
                     }
 
                     /* Left half panel */
                     Matrix2d Xj_L;
                     Xj_L.col(0) = state.wake.x.col(j);
                     Xj_L.col(1) = Xm;
-                    MatrixXd dXjL_0 = get_dwx(j);
-                    MatrixXd dXjL_1 = dXm;
                     LinSourceStreamDeriv dL =
                         PanelLinSourceStreamDeriv(Xj_L, xi);
                     /* Mapping a_left/b_left to B columns matches the +=
@@ -480,19 +448,14 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                     /* Xj chain — Xj cols 0,1 = first endpoint (wake.x[j]),
                      * cols 2,3 = second endpoint (Xm). */
                     Vector4d dab = w_a * dL.a_Xj + w_b * dL.b_Xj;
-                    /* First endpoint = wake.x[j]: dXj rows = dXjL_0 */
-                    vjp += dab(0) * dXjL_0.row(0).transpose() +
-                           dab(1) * dXjL_0.row(1).transpose();
-                    /* Second endpoint = Xm: dXj rows = dXjL_1 */
-                    vjp += dab(2) * dXjL_1.row(0).transpose() +
-                           dab(3) * dXjL_1.row(1).transpose();
+                    /* First endpoint = wake.x[j], second = Xm. */
+                    add_x(j, dab.head<2>());
+                    add_mid(j, j + 1, dab.tail<2>());
 
                     /* Right half panel */
                     Matrix2d Xj_R;
                     Xj_R.col(0) = Xm;
                     Xj_R.col(1) = X_right;
-                    MatrixXd dXjR_0 = dXm;
-                    MatrixXd dXjR_1 = dXr;
                     LinSourceStreamDeriv dR =
                         PanelLinSourceStreamDeriv(Xj_R, xi);
                     /* B[i, N-1+j] += a_right + 0.5*b_right
@@ -518,12 +481,13 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                     vjp(2 * i) += w_a * dR.a_xi(0) + w_b * dR.b_xi(0);
                     vjp(2 * i + 1) += w_a * dR.a_xi(1) + w_b * dR.b_xi(1);
                     dab = w_a * dR.a_Xj + w_b * dR.b_Xj;
-                    /* First endpoint = Xm */
-                    vjp += dab(0) * dXjR_0.row(0).transpose() +
-                           dab(1) * dXjR_0.row(1).transpose();
-                    /* Second endpoint = X_right */
-                    vjp += dab(2) * dXjR_1.row(0).transpose() +
-                           dab(3) * dXjR_1.row(1).transpose();
+                    /* First endpoint = Xm, second = X_right. */
+                    add_mid(j, j + 1, dab.head<2>());
+                    if (ghost_right) {
+                        add_ghost(j, j + 1, dab.tail<2>());
+                    } else {
+                        add_x(j + 1, dab.tail<2>());
+                    }
                 }
             }
         }
@@ -531,58 +495,13 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
     /* ---- B2a: dCgam direct chain for j > 0 wake rows -----------------------
      *
      * For each wake station j > 0:
-     *   contribution = -lambda_w[j] * d(Cgam[j, :] * v)/dfoil_x
-     *                = -lambda_w[j] * d(V_for_v . wake.t[j])/dfoil_x
-     *                = -lambda_w[j] * (dV_for_v . wake.t[j] + V_for_v .
-     *                dwake.t[j])
-     * where V_for_v is the velocity at wake.x[j] computed with vortex
-     * strengths = v (held fixed for this chain piece). dwake.t comes from the
-     * REAL velocity chain (same as A2).
+     *   contribution = -lambda_w[j] * d(V_for_v . wake.t[j])/dfoil_x
+     * where V_for_v is the gamma-induced velocity at wake.x[j] with vortex
+     * strengths v = Bp * phi held fixed. Row j does not depend on lambda, so
+     * it is folded into ctx.wake_rows (applied with A2 above).
      *
      * For j = 0, Cgam[0, :] is replaced by Bp[N-1, :] in Dw[0]; handled in B1.
      */
-    {
-        const MatrixXd& ue_sig = state.vsol.ue_sigma;
-        int Npanel = N + Nw - 2;
-        if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
-            VectorXd v_foil = ue_sig.topRows(N) * phi; /* [N] */
-            VectorXd v_padded(AIC_dim);
-            v_padded.head(N) = v_foil;
-            v_padded(AIC_dim - 1) = 0;
-            MatrixXd dgam_zero = MatrixXd::Zero(AIC_dim, twoN);
-
-            for (int j = 1; j < Nw; ++j) {
-                double lw = lambda_ue(N + j);
-                if (std::abs(lw) < 1e-20) continue;
-                Vector2d xi_w = state.wake.x.col(j);
-                Vector2d t_wake = state.wake.t.col(j);
-
-                /* V_for_v at wake.x[j] (vortex strengths = v, dvortex = 0).
-                 * NOTE: vd_v.V from InviscidVelocityWithDerivExt INCLUDES the
-                 * freestream Vinf*(cos α, sin α). Cgam[j, :] * v =
-                 * (V_G * v).t_w which is gamma-induced only — no freestream.
-                 * Subtract Vinf before using vd_v.V in the dwake.t chain. */
-                VelDeriv vd_v = InviscidVelocityWithDerivExt(
-                    state, xi_w, v_padded, dgam_zero, alpha);
-                Vector2d Vinf_vec(state.oper.Vinf * Cosd(alpha),
-                                  state.oper.Vinf * Sind(alpha));
-                Vector2d V_G_v = vd_v.V - Vinf_vec;
-                MatrixXd dwxj(2, twoN);
-                dwxj.row(0) = dwake_x_dx.row(0 * Nw + j);
-                dwxj.row(1) = dwake_x_dx.row(1 * Nw + j);
-                MatrixXd dV_for_v = vd_v.V_xfoil + vd_v.V_xi * dwxj;
-
-                vjp -= lw * (t_wake.transpose() * dV_for_v).transpose();
-
-                /* dwake.t[j] chain via DWakeTDFoilX (exact predictor chain). */
-                MatrixXd dwt(2, twoN);
-                dwt.row(0) = dwake_t_dx.row(0 * Nw + j);
-                dwt.row(1) = dwake_t_dx.row(1 * Nw + j);
-                vjp -= lw * (V_G_v.transpose() * dwt).transpose();
-            }
-        }
-    }
-
     /* ---- B2b: dCsig direct chain for j > 0 wake rows (foil-source part) ---
      *
      * Csig[j, k] = V_at_wake_j(from panel k) . wake.t[j]
@@ -602,15 +521,6 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                 if (std::abs(lw) < 1e-20) continue;
                 Vector2d xi_w = state.wake.x.col(j);
                 Vector2d t_w = state.wake.t.col(j);
-
-                MatrixXd dwxj(2, twoN);
-                dwxj.row(0) = dwake_x_dx.row(0 * Nw + j);
-                dwxj.row(1) = dwake_x_dx.row(1 * Nw + j);
-
-                /* dwake.t[j] via DWakeTDFoilX (predictor-aware). */
-                MatrixXd dwt(2, twoN);
-                dwt.row(0) = dwake_t_dx.row(0 * Nw + j);
-                dwt.row(1) = dwake_t_dx.row(1 * Nw + j);
 
                 /* Iterate over foil source panels (k = 0..N-2) */
                 for (int k = 0; k < N - 1; ++k) {
@@ -643,10 +553,10 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                     Vector2d dprojdxi(
                         csv.val_xi(0, 0) * t_w(0) + csv.val_xi(1, 0) * t_w(1),
                         csv.val_xi(0, 1) * t_w(0) + csv.val_xi(1, 1) * t_w(1));
-                    vjp += w * (dprojdxi.transpose() * dwxj).transpose();
+                    add_x(j, w * dprojdxi);
 
-                    /* Chain 3: V_panel . dwake.t[j] = V_panel^T * dwt */
-                    vjp += w * (V_panel.transpose() * dwt).transpose();
+                    /* Chain 3: V_panel . dwake.t[j] */
+                    add_t(j, w * V_panel);
                 }
             }
         }
@@ -674,30 +584,17 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
      *   non-self wp == Nw-1 (last wake panel): const-source full panel.
      *   non-self interior: left + right half panels.
      *
-     * Chain through wake.x (panel coords + midpoint coords) and wake.t (dwt).
+     * Chain through wake.x (panel coords + midpoint coords) and wake.t.
      */
     {
         const MatrixXd& ue_sig = state.vsol.ue_sigma;
         int Npanel = N + Nw - 2;
         if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
-            auto get_dwx2 = [&](int j) -> MatrixXd {
-                MatrixXd dwj(2, twoN);
-                dwj.row(0) = dwake_x_dx.row(0 * Nw + j);
-                dwj.row(1) = dwake_x_dx.row(1 * Nw + j);
-                return dwj;
-            };
-
             for (int j_eval = 1; j_eval < Nw; ++j_eval) {
                 double lw = lambda_ue(N + j_eval);
                 if (std::abs(lw) < 1e-20) continue;
                 Vector2d xi_w = state.wake.x.col(j_eval);
                 Vector2d t_w = state.wake.t.col(j_eval);
-
-                MatrixXd dwxj = get_dwx2(j_eval);
-                /* dwake.t[j_eval] via DWakeTDFoilX (predictor-aware) */
-                MatrixXd dwt(2, twoN);
-                dwt.row(0) = dwake_t_dx.row(0 * Nw + j_eval);
-                dwt.row(1) = dwake_t_dx.row(1 * Nw + j_eval);
 
                 /* Self-influence: interior wp == j_eval case (skipped for
                  * endpoints). */
@@ -708,9 +605,6 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                     Vector2d Xm = state.wake.x.col(wp);
                     Vector2d Xr =
                         0.5 * (state.wake.x.col(wp) + state.wake.x.col(wp + 1));
-                    MatrixXd dXl = 0.5 * (get_dwx2(wp - 1) + get_dwx2(wp));
-                    MatrixXd dXm = get_dwx2(wp);
-                    MatrixXd dXr = 0.5 * (get_dwx2(wp) + get_dwx2(wp + 1));
                     Vector2d e1 = Xm - Xl;
                     Vector2d e2 = Xr - Xm;
                     double d1 = e1.norm();
@@ -718,16 +612,17 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                     if (d1 > 1e-14 && d2 > 1e-14) {
                         Vector2d e1u = e1 / d1;
                         Vector2d e2u = e2 / d2;
-                        MatrixXd de1 = dXm - dXl;
-                        MatrixXd de2 = dXr - dXm;
-                        VectorXd dd1_dx = (e1u.transpose() * de1).transpose();
-                        VectorXd dd2_dx = (e2u.transpose() * de2).transpose();
-                        VectorXd daa_dx =
-                            (0.25 / kPi) * (dd1_dx / d1 - dd2_dx / d2);
+                        /* aa = (0.25/pi) * (log-term), with
+                         *   d(aa) = (0.25/pi) * (e1u.de1/d1 - e2u.de2/d2),
+                         *   de1 = dXm - dXl, de2 = dXr - dXm. */
                         int col_prev = N - 1 + wp - 1;
                         int col_curr = N - 1 + wp;
                         double w = -lw * (phi(col_prev) + phi(col_curr));
-                        vjp += w * daa_dx;
+                        const Vector2d g1 = (w * 0.25 / kPi / d1) * e1u;
+                        const Vector2d g2 = (-w * 0.25 / kPi / d2) * e2u;
+                        add_x(wp, g1 - g2);       /* Xm */
+                        add_mid(wp - 1, wp, -g1); /* Xl */
+                        add_mid(wp, wp + 1, g2);  /* Xr */
                     }
                 }
 
@@ -744,12 +639,9 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                          * += a.dot(ti) */
                         Vector2d Xm0 =
                             0.5 * (state.wake.x.col(0) + state.wake.x.col(1));
-                        MatrixXd dXm0 = 0.5 * (get_dwx2(0) + get_dwx2(1));
                         Matrix2d Xj;
                         Xj.col(0) = state.wake.x.col(0);
                         Xj.col(1) = Xm0;
-                        MatrixXd dXj0 = get_dwx2(0);
-                        const MatrixXd& dXj1 = dXm0;
                         LinSourceVelocityDeriv lvd =
                             PanelLinSourceVelocityDeriv(Xj, xi_w);
                         /* Csig coefficients on (a, b) for the 3 affected cols:
@@ -767,26 +659,26 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                         /* Project a, b onto t for VJP weights */
                         auto add_velocity_chain =
                             [&](double wa, double wb,
-                                const LinSourceVelocityDeriv& d,
-                                const MatrixXd& dXj0_, const MatrixXd& dXj1_) {
-                                /* Chain 1: Xj derivatives */
+                                const LinSourceVelocityDeriv& d) {
+                                /* Chain 1: Xj derivatives. First endpoint is
+                                 * wake.x[0], second is Xm0. */
+                                Vector2d g0, g1;
                                 for (int c = 0; c < 2; ++c) {
                                     double pa = wa * (d.a_Xj(0, c) * t_w(0) +
                                                       d.a_Xj(1, c) * t_w(1));
                                     double pb = wb * (d.b_Xj(0, c) * t_w(0) +
                                                       d.b_Xj(1, c) * t_w(1));
-                                    /* Map to first endpoint (dXj0) */
-                                    vjp += pa * dXj0_.row(c).transpose();
-                                    vjp += pb * dXj0_.row(c).transpose();
+                                    g0(c) = pa + pb;
                                 }
                                 for (int c = 2; c < 4; ++c) {
                                     double pa = wa * (d.a_Xj(0, c) * t_w(0) +
                                                       d.a_Xj(1, c) * t_w(1));
                                     double pb = wb * (d.b_Xj(0, c) * t_w(0) +
                                                       d.b_Xj(1, c) * t_w(1));
-                                    vjp += pa * dXj1_.row(c - 2).transpose();
-                                    vjp += pb * dXj1_.row(c - 2).transpose();
+                                    g1(c - 2) = pa + pb;
                                 }
+                                add_x(0, g0);
+                                add_mid(0, 1, g1);
                                 /* Chain 2: xi derivatives via dwake.x[j_eval]
                                  */
                                 Vector2d dpa_dxi(wa * (d.a_xi(0, 0) * t_w(0) +
@@ -797,10 +689,9 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                                                        d.b_xi(1, 0) * t_w(1)),
                                                  wb * (d.b_xi(0, 1) * t_w(0) +
                                                        d.b_xi(1, 1) * t_w(1)));
-                                vjp += (dpa_dxi.transpose() * dwxj).transpose();
-                                vjp += (dpb_dxi.transpose() * dwxj).transpose();
+                                add_x(j_eval, dpa_dxi + dpb_dxi);
                             };
-                        add_velocity_chain(w_a, w_b, lvd, dXj0, dXj1);
+                        add_velocity_chain(w_a, w_b, lvd);
                         /* V_panel . dwake.t[j_eval] chain.
                          * V contributions to Csig cols:
                          *   col(N-1): b   col(0): a   col(N-2): a
@@ -808,8 +699,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                         {
                             Vector2d V_total = phi(N - 1) * lvd.b +
                                                (phi(0) + phi(N - 2)) * lvd.a;
-                            vjp +=
-                                -lw * (V_total.transpose() * dwt).transpose();
+                            add_t(j_eval, -lw * V_total);
                         }
                     } else if (wp == Nw - 1) {
                         /* Last wake panel: full constant-source from [Xl, Xr]
@@ -818,9 +708,6 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                                              state.wake.x.col(wp));
                         Vector2d Xm = state.wake.x.col(wp);
                         Vector2d Xr = 2.0 * Xm - Xl;
-                        MatrixXd dXl = 0.5 * (get_dwx2(wp - 1) + get_dwx2(wp));
-                        MatrixXd dXm = get_dwx2(wp);
-                        MatrixXd dXr = 2.0 * dXm - dXl;
                         Matrix2d Xj;
                         Xj.col(0) = Xl;
                         Xj.col(1) = Xr;
@@ -828,26 +715,27 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                             PanelConstSourceVelocityDeriv(Xj, xi_w);
                         int col_last = Npanel - 1;
                         double w = -lw * phi(col_last);
-                        /* Chain 1: Xj derivatives (Xl and Xr; map their
-                         * dXj0/dXj1 via dXl/dXr) */
+                        /* Chain 1: Xj derivatives. Xl is a midpoint, Xr
+                         * the ghost point 2*Xm - Xl. */
+                        Vector2d gl, gr;
                         for (int c = 0; c < 2; ++c) {
-                            double d_proj = csv.val_Xj(0, c) * t_w(0) +
-                                            csv.val_Xj(1, c) * t_w(1);
-                            vjp += w * d_proj * dXl.row(c).transpose();
+                            gl(c) = w * (csv.val_Xj(0, c) * t_w(0) +
+                                         csv.val_Xj(1, c) * t_w(1));
                         }
                         for (int c = 2; c < 4; ++c) {
-                            double d_proj = csv.val_Xj(0, c) * t_w(0) +
-                                            csv.val_Xj(1, c) * t_w(1);
-                            vjp += w * d_proj * dXr.row(c - 2).transpose();
+                            gr(c - 2) = w * (csv.val_Xj(0, c) * t_w(0) +
+                                             csv.val_Xj(1, c) * t_w(1));
                         }
-                        /* Chain 2: xi via dwxj */
+                        add_mid(wp - 1, wp, gl);
+                        add_ghost(wp - 1, wp, gr);
+                        /* Chain 2: xi via wake.x[j_eval] */
                         Vector2d d_proj_xi(csv.val_xi(0, 0) * t_w(0) +
                                                csv.val_xi(1, 0) * t_w(1),
                                            csv.val_xi(0, 1) * t_w(0) +
                                                csv.val_xi(1, 1) * t_w(1));
-                        vjp += w * (d_proj_xi.transpose() * dwxj).transpose();
+                        add_x(j_eval, w * d_proj_xi);
                         /* Chain 3: V_panel . dwake.t[j_eval] */
-                        vjp += w * (csv.val.transpose() * dwt).transpose();
+                        add_t(j_eval, w * csv.val);
                     } else {
                         /* Interior wake panel wp: left half [Xl, Xm] + right
                          * half [Xm, Xr] */
@@ -856,9 +744,6 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                         Vector2d Xm = state.wake.x.col(wp);
                         Vector2d Xr = 0.5 * (state.wake.x.col(wp) +
                                              state.wake.x.col(wp + 1));
-                        MatrixXd dXl = 0.5 * (get_dwx2(wp - 1) + get_dwx2(wp));
-                        MatrixXd dXm = get_dwx2(wp);
-                        MatrixXd dXr = 0.5 * (get_dwx2(wp) + get_dwx2(wp + 1));
 
                         /* Csig accumulation per CalcUeM (lines 893-908):
                          *   Csig(j_eval, N-1+wp-1) += a1.dot(ti) + 0.5 *
@@ -883,20 +768,23 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                             PanelLinSourceVelocityDeriv(Xj_L, xi_w);
                         /* Xj endpoints: 0,1 = Xl (via dXl), 2,3 = Xm (via dXm)
                          */
+                        Vector2d gl, gm;
                         for (int c = 0; c < 2; ++c) {
                             double pa = w_a1 * (dL.a_Xj(0, c) * t_w(0) +
                                                 dL.a_Xj(1, c) * t_w(1));
                             double pb = w_b1 * (dL.b_Xj(0, c) * t_w(0) +
                                                 dL.b_Xj(1, c) * t_w(1));
-                            vjp += (pa + pb) * dXl.row(c).transpose();
+                            gl(c) = pa + pb;
                         }
                         for (int c = 2; c < 4; ++c) {
                             double pa = w_a1 * (dL.a_Xj(0, c) * t_w(0) +
                                                 dL.a_Xj(1, c) * t_w(1));
                             double pb = w_b1 * (dL.b_Xj(0, c) * t_w(0) +
                                                 dL.b_Xj(1, c) * t_w(1));
-                            vjp += (pa + pb) * dXm.row(c - 2).transpose();
+                            gm(c - 2) = pa + pb;
                         }
+                        add_mid(wp - 1, wp, gl);
+                        add_x(wp, gm);
                         Vector2d dxi_L(w_a1 * (dL.a_xi(0, 0) * t_w(0) +
                                                dL.a_xi(1, 0) * t_w(1)) +
                                            w_b1 * (dL.b_xi(0, 0) * t_w(0) +
@@ -905,7 +793,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                                                dL.a_xi(1, 1) * t_w(1)) +
                                            w_b1 * (dL.b_xi(0, 1) * t_w(0) +
                                                    dL.b_xi(1, 1) * t_w(1)));
-                        vjp += (dxi_L.transpose() * dwxj).transpose();
+                        add_x(j_eval, dxi_L);
 
                         /* Right half [Xm, Xr] */
                         Matrix2d Xj_R;
@@ -913,20 +801,23 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                         Xj_R.col(1) = Xr;
                         LinSourceVelocityDeriv dR =
                             PanelLinSourceVelocityDeriv(Xj_R, xi_w);
+                        Vector2d gm2, gr;
                         for (int c = 0; c < 2; ++c) {
                             double pa = w_a2 * (dR.a_Xj(0, c) * t_w(0) +
                                                 dR.a_Xj(1, c) * t_w(1));
                             double pb = w_b2 * (dR.b_Xj(0, c) * t_w(0) +
                                                 dR.b_Xj(1, c) * t_w(1));
-                            vjp += (pa + pb) * dXm.row(c).transpose();
+                            gm2(c) = pa + pb;
                         }
                         for (int c = 2; c < 4; ++c) {
                             double pa = w_a2 * (dR.a_Xj(0, c) * t_w(0) +
                                                 dR.a_Xj(1, c) * t_w(1));
                             double pb = w_b2 * (dR.b_Xj(0, c) * t_w(0) +
                                                 dR.b_Xj(1, c) * t_w(1));
-                            vjp += (pa + pb) * dXr.row(c - 2).transpose();
+                            gr(c - 2) = pa + pb;
                         }
+                        add_x(wp, gm2);
+                        add_mid(wp, wp + 1, gr);
                         Vector2d dxi_R(w_a2 * (dR.a_xi(0, 0) * t_w(0) +
                                                dR.a_xi(1, 0) * t_w(1)) +
                                            w_b2 * (dR.b_xi(0, 0) * t_w(0) +
@@ -935,7 +826,7 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                                                dR.a_xi(1, 1) * t_w(1)) +
                                            w_b2 * (dR.b_xi(0, 1) * t_w(0) +
                                                    dR.b_xi(1, 1) * t_w(1)));
-                        vjp += (dxi_R.transpose() * dwxj).transpose();
+                        add_x(j_eval, dxi_R);
                         /* V_panel . dwake.t[j_eval] chain (left + right half).
                          */
                         {
@@ -944,14 +835,24 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                             Vector2d V_right =
                                 0.5 * phi_curr * dR.a + phi_curr * dR.b;
                             Vector2d V_total = V_left + V_right;
-                            vjp +=
-                                -lw * (V_total.transpose() * dwt).transpose();
+                            add_t(j_eval, -lw * V_total);
                         }
                     }
                 }
             }
         }
     }
+
+    /* Apply the accumulated wake-geometry adjoints. Rows of dwake_x_dx and
+     * dwake_t_dx are laid out d*Nw + j. */
+    VectorXd wx_flat(2 * Nw), wt_flat(2 * Nw);
+    for (int d = 0; d < 2; ++d)
+        for (int j = 0; j < Nw; ++j) {
+            wx_flat(d * Nw + j) = wx_bar(d, j);
+            wt_flat(d * Nw + j) = wt_bar(d, j);
+        }
+    vjp += (wx_flat.transpose() * ctx.dwake_x_dx).transpose();
+    vjp += (wt_flat.transpose() * ctx.dwake_t_dx).transpose();
     return vjp;
 }
 
@@ -969,6 +870,83 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
     ctx.dwake_t_dx = DWakeTDFoilX(state, dfoil_s_dx, dgam_dx_wake);
     ctx.dwake_s_dx = DWakeSDFoilX(state, dfoil_s_dx);
     ctx.aic_t_lu.compute(MatrixXd(state.isol.AIC.transpose()));
+
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int Nsys = N + Nw;
+    const int twoN = 2 * N;
+    const int AIC_dim = static_cast<int>(state.isol.AIC.rows());
+    const double alpha = state.oper.alpha;
+
+    /* phi = sigma_m * mass,  mass[k] = U[1, k] * U[3, k] */
+    VectorXd mass(Nsys);
+    for (int i = 0; i < Nsys; ++i)
+        mass(i) = state.glob.U(1, i) * state.glob.U(3, i);
+    ctx.phi = state.vsol.sigma_m * mass;
+
+    /* A2: row j of d(uewi[j])/d(foil.x) = t^T dV + V^T dwake.t, j > 0. */
+    ctx.wake_rows = MatrixXd::Zero(Nw, twoN);
+    for (int j = 1; j < Nw; ++j) {
+        VelDeriv vd = InviscidVelocityWithDeriv(state, state.wake.x.col(j),
+                                                ctx.dgam_dx, alpha);
+        MatrixXd dwxj(2, twoN);
+        dwxj.row(0) = ctx.dwake_x_dx.row(0 * Nw + j);
+        dwxj.row(1) = ctx.dwake_x_dx.row(1 * Nw + j);
+        MatrixXd dwt(2, twoN);
+        dwt.row(0) = ctx.dwake_t_dx.row(0 * Nw + j);
+        dwt.row(1) = ctx.dwake_t_dx.row(1 * Nw + j);
+        MatrixXd dV = vd.V_xfoil + vd.V_xi * dwxj; /* [2 x 2N] */
+        Vector2d t_wake = state.wake.t.col(j);
+        ctx.wake_rows.row(j) += t_wake.transpose() * dV;
+        /* V^T * dwake.t (zero for j < Nw-1 since V || t). */
+        ctx.wake_rows.row(j) += vd.V.transpose() * dwt;
+    }
+
+    const MatrixXd& ue_sig = state.vsol.ue_sigma;
+    const int Npanel = N + Nw - 2;
+    if (ue_sig.cols() == Npanel && ue_sig.rows() == Nsys) {
+        /* v = Bp * phi; ue_sigma's top N rows are Bp. */
+        VectorXd v_ext = VectorXd::Zero(AIC_dim);
+        v_ext.head(N) = ue_sig.topRows(N) * ctx.phi;
+        ctx.daic_v_dx = AICMatVecJacobianX(state, v_ext);
+
+        /* Cgam[j, k]: gamma_k's induced velocity at wake.x[j] along t[j]. */
+        ctx.cgam.resize(Nw, N);
+        for (int j = 0; j < Nw; ++j) {
+            Vector2d xi_w = state.wake.x.col(j);
+            Vector2d ti_w = state.wake.t.col(j);
+            MatrixXd V_G;
+            InviscidVelocity(state.foil.x, state.isol.gam, 0.0, 0.0, xi_w, true,
+                             &V_G);
+            for (int k = 0; k < N; ++k) {
+                ctx.cgam(j, k) = V_G(0, k) * ti_w(0) + V_G(1, k) * ti_w(1);
+            }
+        }
+
+        /* B2a: row j of d(V_for_v . wake.t[j])/d(foil.x), j > 0, where
+         * V_for_v is the velocity induced by vortex strengths v (held fixed).
+         * InviscidVelocityWithDerivExt includes the freestream in .V, so
+         * subtract it: Cgam[j, :] * v is gamma-induced only. */
+        const MatrixXd dgam_zero = MatrixXd::Zero(AIC_dim, twoN);
+        const Vector2d Vinf_vec(state.oper.Vinf * Cosd(alpha),
+                                state.oper.Vinf * Sind(alpha));
+        for (int j = 1; j < Nw; ++j) {
+            Vector2d xi_w = state.wake.x.col(j);
+            Vector2d t_wake = state.wake.t.col(j);
+            VelDeriv vd_v = InviscidVelocityWithDerivExt(state, xi_w, v_ext,
+                                                         dgam_zero, alpha);
+            Vector2d V_G_v = vd_v.V - Vinf_vec;
+            MatrixXd dwxj(2, twoN);
+            dwxj.row(0) = ctx.dwake_x_dx.row(0 * Nw + j);
+            dwxj.row(1) = ctx.dwake_x_dx.row(1 * Nw + j);
+            MatrixXd dwt(2, twoN);
+            dwt.row(0) = ctx.dwake_t_dx.row(0 * Nw + j);
+            dwt.row(1) = ctx.dwake_t_dx.row(1 * Nw + j);
+            MatrixXd dV_for_v = vd_v.V_xfoil + vd_v.V_xi * dwxj;
+            ctx.wake_rows.row(j) += t_wake.transpose() * dV_for_v;
+            ctx.wake_rows.row(j) += V_G_v.transpose() * dwt;
+        }
+    }
     return ctx;
 }
 

@@ -86,6 +86,10 @@ struct RueVJPContext {
     MatrixXd dwake_t_dx; /**< d(wake.t)/d(foil.x) [2*Nw x 2N] */
     MatrixXd dwake_s_dx; /**< d(wake.s)/d(foil.x) [Nw x 2N] */
     Eigen::PartialPivLU<MatrixXd> aic_t_lu; /**< LU of AIC^T */
+    VectorXd phi;       /**< Source strengths sigma_m * mass [Npanel] */
+    MatrixXd wake_rows; /**< Wake-row terms linear in lambda [Nw x 2N] */
+    MatrixXd daic_v_dx; /**< d(A * [Bp*phi; 0])/d(foil.x) [N+1 x 2N] */
+    MatrixXd cgam;      /**< Wake gamma-influence Cgam [Nw x N] */
 };
 
 /**
