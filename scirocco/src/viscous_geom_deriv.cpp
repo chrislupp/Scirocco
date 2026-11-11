@@ -531,31 +531,16 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  *
  * gamma satisfies A(foil.x) * gamma = rhs(alpha, foil.x), so
  *   d(gamma)/d(foil.x) = -A^{-1} * dR/d(foil.x) where R = A*gamma - rhs.
- * Each row i of d(gamma)/d(foil.x) equals
- *   -e_i^T * A^{-1} * dR/d(foil.x) = -(A^{-T} e_i)^T * dR/d(foil.x)
- * which is the existing reverse-mode AICResidualSensVJP. We call it once per
- * gamma index using a shared LU factorisation of A^T.
+ * dR/d(foil.x) is assembled once (O(N^2) panel derivatives), then one LU
+ * solve with 2N right-hand sides gives all of d(gamma)/d(foil.x).
  *
  * @param state FoilState containing the current solution and geometry.
  * @param alpha Angle of attack in degrees.
  * @return MatrixXd of shape [N+1 x 2N].
  */
 MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
-    const MatrixXd& AIC = state.isol.AIC;
-    int dim = static_cast<int>(AIC.rows());
-    int twoN = 2 * state.foil.N;
-    MatrixXd AIC_T = AIC.transpose();
-    auto lu = AIC_T.partialPivLu();
-    MatrixXd dgam(dim, twoN);
-    VectorXd e = VectorXd::Zero(dim);
-    for (int i = 0; i < dim; ++i) {
-        e.setZero();
-        e(i) = 1.0;
-        VectorXd lambda = lu.solve(e);
-        VectorXd vjp = AICResidualSensVJP(state, lambda, alpha);
-        dgam.row(i) = -vjp.transpose();
-    }
-    return dgam;
+    return -state.isol.AIC.partialPivLu().solve(
+        AICResidualJacobianX(state, alpha));
 }
 
 /**
