@@ -17,6 +17,7 @@
 */
 #include "scirocco/core/viscous_geom_deriv.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -41,18 +42,15 @@ bool WakeTracedAtOtherAlpha(const FoilState& state) {
            state.oper.alpha != state.wake.tracing_alpha;
 }
 
-namespace {
-
 /* The state as BuildWake saw it: alpha and gamma at the tracing alpha. */
 FoilState WakeTracingState(const FoilState& state) {
     FoilState traced = state;
+    if (!WakeTracedAtOtherAlpha(state)) return traced;
     traced.oper.alpha = state.wake.tracing_alpha;
     traced.isol.gam = traced.isol.gamref.col(0) * Cosd(traced.oper.alpha) +
                       traced.isol.gamref.col(1) * Sind(traced.oper.alpha);
     return traced;
 }
-
-}  // namespace
 
 MatrixXd DGammaDFoilXForWake(const FoilState& state) {
     if (WakeTracedAtOtherAlpha(state)) {
@@ -578,6 +576,7 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     out.V.setZero();
     out.V_xi.setZero();
     out.V_xfoil = MatrixXd::Zero(2, twoN);
+    out.V_G = MatrixXd::Zero(2, N + 1);
 
     bool has_gam_chain = (dgam_dx.cols() == twoN);
 
@@ -602,6 +601,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
         LinVortexVelocityDeriv d = PanelLinVortexVelocityDeriv(Xj, xi);
         out.V += d.a * G(j) + d.b * G(j + 1);
         out.V_xi += d.a_xi * G(j) + d.b_xi * G(j + 1);
+        out.V_G.col(j) += d.a;
+        out.V_G.col(j + 1) += d.b;
         /* Direct panel-geom contribution (G held fixed) */
         add_Xj_block(G(j) * d.a_Xj + G(j + 1) * d.b_Xj, j, j + 1);
         /* Gamma chain: V_G contribution = a * dgam_dx.row(j) + b *
@@ -626,6 +627,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     double sigma_te = 0.5 * tcp * (G(N - 1) - G(0));
     out.V += v_src * sigma_te;
     out.V_xi += ds.val_xi * sigma_te;
+    out.V_G.col(N - 1) += 0.5 * tcp * v_src;
+    out.V_G.col(0) -= 0.5 * tcp * v_src;
     /* Direct geom of THIS panel: d(v_src)/dXj * sigma_te + v_src *
      * d(sigma_te)/dXj_te_nodes d(sigma_te)/dXj of this panel =
      * 0.5*(G(N-1)-G(0)) * d(tcp)/dXj_te_via_GetTEInfo BUT tcp depends on the
@@ -644,6 +647,8 @@ VelDeriv InviscidVelocityWithDerivExt(const FoilState& state,
     double tdp_factor = 0.5 * tdp * (G(0) - G(N - 1));
     out.V += f_vor * tdp_factor;
     out.V_xi += (dv.a_xi + dv.b_xi) * tdp_factor;
+    out.V_G.col(0) += 0.5 * tdp * f_vor;
+    out.V_G.col(N - 1) -= 0.5 * tdp * f_vor;
     /* Direct geom on Xj of this panel (G held fixed) */
     add_Xj_block(tdp_factor * (dv.a_Xj + dv.b_Xj), N - 1, 0);
     /* Gamma chain: f_vor * 0.5*tdp * (dgam[0] - dgam[N-1]) */
@@ -914,6 +919,168 @@ MatrixXd DWakeTDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx,
     }
 
     return dwake_t;
+}
+
+WakeSweepLinearization LinearizeWakeSweep(const FoilState& state,
+                                          const MatrixXd& dfoil_s_dx) {
+    if (WakeTracedAtOtherAlpha(state)) {
+        WakeSweepLinearization lin =
+            LinearizeWakeSweep(WakeTracingState(state), dfoil_s_dx);
+        lin.traced_at_other_alpha = true;
+        return lin;
+    }
+
+    /* Mirrors DWakeXDFoilX / DWakeTDFoilX: same primal sweep, but stores the
+     * local derivatives instead of propagating 2N tangent directions. */
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int twoN = 2 * N;
+    const double alpha = state.oper.alpha;
+    const double chord = state.geom.chord;
+
+    WakeSweepLinearization lin;
+    lin.N = N;
+    lin.Nw = Nw;
+
+    const double ds1 = 0.5 * ((state.foil.s(1) - state.foil.s(0)) +
+                              (state.foil.s(N - 1) - state.foil.s(N - 2)));
+    VectorXd sv, dsv_dds1;
+    SpaceGeomWithDeriv(ds1, state.geom.wakelen * chord, Nw, sv, dsv_dds1);
+    lin.dds1_dx =
+        0.5 *
+        (dfoil_s_dx.row(1).transpose() - dfoil_s_dx.row(0).transpose() +
+         dfoil_s_dx.row(N - 1).transpose() - dfoil_s_dx.row(N - 2).transpose());
+
+    /* wake.x[:, 0] = TE midpoint + 1e-5 * chord * (rotated TE gap), see
+     * DWakeXDFoilX for the derivation. */
+    const Vector2d n_te = state.foil.x.col(N - 1) - state.foil.x.col(0);
+    const double sign = (n_te(1) < 0) ? -1.0 : 1.0; /* t_te_raw(0) = n_te(1) */
+    lin.D0 = MatrixXd::Zero(2, twoN);
+    for (int dim = 0; dim < 2; ++dim) {
+        lin.D0(dim, 2 * 0 + dim) += 0.5;
+        lin.D0(dim, 2 * (N - 1) + dim) += 0.5;
+    }
+    const double factor = 1e-5 * chord * sign;
+    lin.D0(0, 2 * (N - 1) + 1) += factor;
+    lin.D0(0, 2 * 0 + 1) -= factor;
+    lin.D0(1, 2 * (N - 1) + 0) -= factor;
+    lin.D0(1, 2 * 0 + 0) += factor;
+
+    const int nsteps = std::max(Nw - 1, 0);
+    lin.ds.resize(nsteps);
+    lin.dds_dds1.resize(nsteps);
+    lin.v1.resize(nsteps);
+    lin.v2.resize(nsteps);
+    lin.J1.resize(nsteps);
+    lin.J2.resize(nsteps);
+    lin.Vxi0.resize(nsteps);
+    lin.Vxi1.resize(nsteps);
+    lin.P0.resize(nsteps);
+    lin.P1.resize(nsteps);
+    lin.VG0.resize(nsteps);
+    lin.VG1.resize(nsteps);
+
+    const MatrixXd no_gamma_chain; /* empty: V_xfoil is the fixed-gamma part */
+    Vector2d xyw_i = state.wake.x.col(0);
+    for (int i = 0; i < nsteps; ++i) {
+        const double ds_i = sv(i + 1) - sv(i);
+        lin.ds(i) = ds_i;
+        lin.dds_dds1(i) = dsv_dds1(i + 1) - dsv_dds1(i);
+
+        VelDeriv vd0 = InviscidVelocityWithDerivExt(
+            state, xyw_i, state.isol.gam, no_gamma_chain, alpha);
+        double V0n = vd0.V.norm();
+        if (V0n < 1e-12) V0n = 1e-12;
+        const Vector2d v1 = vd0.V / V0n;
+        lin.v1[i] = v1;
+        lin.J1[i] = (Matrix2d::Identity() - v1 * v1.transpose()) / V0n;
+        lin.Vxi0[i] = vd0.V_xi;
+        lin.P0[i] = std::move(vd0.V_xfoil);
+        lin.VG0[i] = std::move(vd0.V_G);
+
+        const Vector2d x_pred = xyw_i + ds_i * v1;
+        VelDeriv vd1 = InviscidVelocityWithDerivExt(
+            state, x_pred, state.isol.gam, no_gamma_chain, alpha);
+        double V1n = vd1.V.norm();
+        if (V1n < 1e-12) V1n = 1e-12;
+        const Vector2d v2 = vd1.V / V1n;
+        lin.v2[i] = v2;
+        lin.J2[i] = (Matrix2d::Identity() - v2 * v2.transpose()) / V1n;
+        lin.Vxi1[i] = vd1.V_xi;
+        lin.P1[i] = std::move(vd1.V_xfoil);
+        lin.VG1[i] = std::move(vd1.V_G);
+
+        xyw_i = xyw_i + ds_i * 0.5 * (v1 + v2);
+    }
+    return lin;
+}
+
+void WakeSweepVJP(const WakeSweepLinearization& lin, const MatrixXd& xbar,
+                  const MatrixXd& tbar, MatrixXd& foil_bar, MatrixXd& gam_bar) {
+    const int N = lin.N;
+    const int Nw = lin.Nw;
+    const long K = xbar.cols();
+    if (xbar.rows() != 2 * Nw || tbar.rows() != 2 * Nw || tbar.cols() != K ||
+        foil_bar.rows() != 2 * N || foil_bar.cols() != K ||
+        gam_bar.rows() != N + 1 || gam_bar.cols() != K) {
+        throw std::invalid_argument("WakeSweepVJP: inconsistent dimensions");
+    }
+
+    /* a.block(2*j) holds the adjoint of wake.x[:, j], starting from the
+     * direct seeds; later points feed earlier ones as the sweep runs back. */
+    MatrixXd a(2 * Nw, K);
+    for (int j = 0; j < Nw; ++j) {
+        a.row(2 * j) = xbar.row(j);
+        a.row(2 * j + 1) = xbar.row(Nw + j);
+    }
+    auto t_seed = [&](int j) {
+        MatrixXd t(2, K);
+        t.row(0) = tbar.row(j);
+        t.row(1) = tbar.row(Nw + j);
+        return t;
+    };
+
+    Eigen::RowVectorXd ds1_bar = Eigen::RowVectorXd::Zero(K);
+    for (int i = Nw - 2; i >= 0; --i) {
+        const double ds_i = lin.ds(i);
+        const Vector2d& v1 = lin.v1[i];
+        const Vector2d& v2 = lin.v2[i];
+        const MatrixXd a_next = a.middleRows(2 * (i + 1), 2);
+
+        /* Corrector: x_{i+1} = x_i + ds_i * 0.5 * (v1 + v2). */
+        MatrixXd v1bar = (0.5 * ds_i) * a_next;
+        MatrixXd v2bar = (0.5 * ds_i) * a_next;
+        Eigen::RowVectorXd dsbar = (0.5 * (v1 + v2)).transpose() * a_next;
+        MatrixXd a_i = a.middleRows(2 * i, 2) + a_next;
+
+        /* wake.t[i] = v1 of step i; wake.t[Nw-1] = v2 of the last step. */
+        v1bar += t_seed(i);
+        if (i == Nw - 2) v2bar += t_seed(Nw - 1);
+
+        /* v2 = V(x_pred)/|V(x_pred)| */
+        const MatrixXd V1bar = lin.J2[i].transpose() * v2bar;
+        foil_bar.noalias() += lin.P1[i].transpose() * V1bar;
+        gam_bar.noalias() += lin.VG1[i].transpose() * V1bar;
+        const MatrixXd xpbar = lin.Vxi1[i].transpose() * V1bar;
+
+        /* Predictor: x_pred = x_i + ds_i * v1. */
+        a_i += xpbar;
+        v1bar += ds_i * xpbar;
+        dsbar += v1.transpose() * xpbar;
+
+        /* v1 = V(x_i)/|V(x_i)| */
+        const MatrixXd V0bar = lin.J1[i].transpose() * v1bar;
+        foil_bar.noalias() += lin.P0[i].transpose() * V0bar;
+        gam_bar.noalias() += lin.VG0[i].transpose() * V0bar;
+        a_i += lin.Vxi0[i].transpose() * V0bar;
+
+        a.middleRows(2 * i, 2) = a_i;
+        /* ds_i depends on foil.x through the first wake spacing ds1. */
+        ds1_bar += lin.dds_dds1(i) * dsbar;
+    }
+
+    foil_bar.noalias() += lin.D0.transpose() * a.middleRows(0, 2);
+    foil_bar.noalias() += lin.dds1_dx * ds1_bar;
 }
 
 /* ============================================================================

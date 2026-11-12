@@ -21,7 +21,7 @@ scirocco/build/bench
 
 ## Reading the numbers
 
-- **Paneling** costs less than a millisecond whatever the panel count. It runs
+- **Paneling** costs about a millisecond whatever the panel count. It runs
   once per geometry, in the constructor and after each geometry change.
   Changing the operating point doesn't re-panel.
 - **Inviscid solves** take a millisecond or two. Sweeping angle of attack
@@ -34,11 +34,11 @@ scirocco/build/bench
   node coordinate, $\alpha$, $Re$, and $M_\infty$. All outputs share one pass:
   the panel-influence derivatives are evaluated once, and the chains through
   the vortex strengths and the wake run in reverse for every output together.
-  Cost grows a little faster than the square of the panel count.
+  Cost grows a little slower than the square of the panel count.
 
 ## Compared with finite differences
 
 A finite-difference gradient needs one extra viscous solve per input, of
 which there are $2N + 3$. At 99 panels that's 203 solves, about 24 s; the
-adjoint takes 134 ms. At 149 panels it's about 29 s against 405 ms. And the
+adjoint takes 11 ms. At 149 panels it's about 29 s against 21 ms. And the
 adjoint result is exact, with no step size to choose.

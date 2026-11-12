@@ -270,6 +270,66 @@ TEST(RueVJPContextTest, MatchesPerCallBuildWithFrozenWake) {
     ASSERT_TRUE(WakeTracedAtOtherAlpha(foil.GetState()));
     ExpectContextMatchesPerCallBuild(foil.GetState());
 }
+/* The reverse wake sweep must reproduce the forward wake Jacobians, which
+ * viscous_chain_test validates against mfoil complex step:
+ *   foil_bar + dgam^T gam_bar == dwake_x^T xbar + dwake_t^T tbar. */
+void ExpectWakeSweepVJPMatchesForward(const FoilState& state) {
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int K = 3;
+    const MatrixXd dfoil_s_dx = DFoilSDFoilX(state.foil);
+    MatrixXd xbar(2 * Nw, K), tbar(2 * Nw, K);
+    for (int r = 0; r < 2 * Nw; ++r)
+        for (int k = 0; k < K; ++k) {
+            xbar(r, k) = std::sin(1.3 * r + 0.7 * k + 0.1);
+            tbar(r, k) = std::cos(0.9 * r - 1.1 * k);
+        }
+    const WakeSweepLinearization lin = LinearizeWakeSweep(state, dfoil_s_dx);
+    MatrixXd foil_bar = MatrixXd::Zero(2 * N, K);
+    MatrixXd gam_bar = MatrixXd::Zero(N + 1, K);
+    WakeSweepVJP(lin, xbar, tbar, foil_bar, gam_bar);
+    const MatrixXd reverse =
+        foil_bar + DGammaDFoilXForWake(state).transpose() * gam_bar;
+    const MatrixXd forward =
+        DWakeXDFoilX(state, dfoil_s_dx).transpose() * xbar +
+        DWakeTDFoilX(state, dfoil_s_dx).transpose() * tbar;
+    const double scale = forward.cwiseAbs().maxCoeff();
+    EXPECT_LT((reverse - forward).cwiseAbs().maxCoeff(), 1e-12 * scale);
+}
+TEST(WakeSweepVJPTest, MatchesForwardJacobians) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(4, -1, 1e6, 0);
+    ASSERT_TRUE(foil.Solve());
+    ExpectWakeSweepVJPMatchesForward(foil.GetState());
+}
+TEST(WakeSweepVJPTest, MatchesForwardJacobiansWithFrozenWake) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(3, .5, 1e6, 0);
+    ASSERT_TRUE(foil.Solve());
+    ASSERT_TRUE(
+        LinearizeWakeSweep(foil.GetState(), DFoilSDFoilX(foil.GetState().foil))
+            .traced_at_other_alpha);
+    ExpectWakeSweepVJPMatchesForward(foil.GetState());
+}
+TEST(RueVJPContextTest, BatchColumnsMatchSingleVJPs) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(4, -1, 1e6, 0);
+    ASSERT_TRUE(foil.Solve());
+    const FoilState& state = foil.GetState();
+    const RueVJPContext ctx =
+        BuildRueVJPContext(state, DFoilSDFoilX(state.foil));
+    const int Nsys = state.glob.Nsys;
+    MatrixXd lambdas(Nsys, 3);
+    for (int i = 0; i < Nsys; ++i)
+        for (int k = 0; k < 3; ++k) lambdas(i, k) = std::sin(0.3 + i * (k + 2));
+    const MatrixXd batch = ComputeRueVJPBatch(state, lambdas, ctx);
+    for (int k = 0; k < 3; ++k) {
+        const VectorXd single =
+            ComputeRueVJP(state, VectorXd(lambdas.col(k)), ctx);
+        const double scale = single.cwiseAbs().maxCoeff();
+        EXPECT_LT((batch.col(k) - single).cwiseAbs().maxCoeff(), 1e-13 * scale);
+    }
+}
 TEST(RueVJPContextTest, RejectsContextFromAnotherState) {
     Scirocco a("2412", 80), b("2412", 100);
     a.SetOper(4, -1, 1e6, 0);
