@@ -38,6 +38,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "scirocco/core/adjoint.h"
@@ -311,23 +312,25 @@ TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
 }
 
 /**
- * @brief Viscous Shape Sensitivity
- *   NACA 0012, 100 panels, alpha=3, Re=1e6
- *   Reference: complex-step from mfoil_cs (extract_sensitivity_reference.py)
+ * @brief Solve one viscous_shape-style group and compare the adjoint shape
+ * partials against its CS reference at the stored test nodes.
+ * @return The adjoint sensitivities and the solved state, for extra checks.
  */
-TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
-    auto test_nodes = readIntVector(getFile(), "viscous_shape/test_nodes");
-    MatrixXd dcl_ref = readMatrix(getFile(), "viscous_shape/dcl_dx");
-    MatrixXd dcd_ref = readMatrix(getFile(), "viscous_shape/dcd_dx");
-    MatrixXd dcm_ref = readMatrix(getFile(), "viscous_shape/dcm_dx");
-    MatrixXd x_base = readMatrix(getFile(), "viscous_shape/x_base");
-    double cl_ref = readScalar<double>(getFile(), "viscous_shape/cl_base");
-    double cd_ref = readScalar<double>(getFile(), "viscous_shape/cd_base");
-    double cm_ref = readScalar<double>(getFile(), "viscous_shape/cm_base");
+static std::pair<Sensitivity, MatrixXd> CheckViscousShapeGroup(
+    H5::H5File& file, const std::string& group, const std::string& naca,
+    double alpha, double Re) {
+    auto test_nodes = readIntVector(file, group + "/test_nodes");
+    MatrixXd dcl_ref = readMatrix(file, group + "/dcl_dx");
+    MatrixXd dcd_ref = readMatrix(file, group + "/dcd_dx");
+    MatrixXd dcm_ref = readMatrix(file, group + "/dcm_dx");
+    MatrixXd x_base = readMatrix(file, group + "/x_base");
+    double cl_ref = readScalar<double>(file, group + "/cl_base");
+    double cd_ref = readScalar<double>(file, group + "/cd_base");
+    double cm_ref = readScalar<double>(file, group + "/cm_base");
 
     int N_ref = x_base.cols();
-    Scirocco foil("0012", N_ref - 1);
-    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    Scirocco foil(naca, N_ref - 1);
+    foil.SetOper(alpha, -1.0, Re, 0.0);
     auto& s = foil.GetState();
     s.foil.x = x_base;
     s.foil.N = N_ref;
@@ -339,7 +342,8 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     s.isol.gamref.resize(0, 0);
     s.isol.gam.resize(0);
     SolveViscous(s);
-    ASSERT_TRUE(s.glob.conv) << "viscous solve failed to converge";
+    EXPECT_TRUE(s.glob.conv) << group << ": viscous solve failed to converge";
+    if (!s.glob.conv) return {Sensitivity{}, x_base};
     CalcForce(s);
 
     Sensitivity sens = ViscousSensitivities(s);
@@ -350,7 +354,7 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
         std::abs(s.post.cd - cd_ref) / std::max(std::abs(cd_ref), 1e-10);
     double rel_cm =
         std::abs(s.post.cm - cm_ref) / std::max(std::abs(cm_ref), 1e-10);
-    std::cout << "ViscousShape primal: cl=" << s.post.cl << " ref=" << cl_ref
+    std::cout << group << " primal: cl=" << s.post.cl << " ref=" << cl_ref
               << " rel=" << rel_cl << std::endl;
     std::cout << "                     cd=" << s.post.cd << " ref=" << cd_ref
               << " rel=" << rel_cd << std::endl;
@@ -380,7 +384,7 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
                 if (!pass) {
                     nfail++;
                     ADD_FAILURE()
-                        << name << " node=" << n << " dim=" << d
+                        << group << " " << name << " node=" << n << " dim=" << d
                         << " scirocco=" << g << " ref=" << r << " rel=" << rel;
                 }
             }
@@ -393,9 +397,55 @@ TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     std::cout << "Failures: dcl=" << fail_cl << " dcd=" << fail_cd
               << " dcm=" << fail_cm << " (TOL_VISC_SHAPE=" << TOL_VISC_SHAPE
               << ")" << std::endl;
+    return {sens, x_base};
+}
 
+/**
+ * @brief Viscous Shape Sensitivity
+ *   NACA 0012, 100 panels, alpha=3, Re=1e6
+ *   Reference: complex-step from mfoil_cs (extract_sensitivity_reference.py)
+ */
+TEST_F(SensitivityReferenceTest, ViscousShapeSensitivity) {
     /* Test compares scirocco's analytic adjoint output against the mfoil_cs
      * CS reference loaded from HDF5. No internal FD probe. */
+    CheckViscousShapeGroup(getFile(), "viscous_shape", "0012", 3.0, 1e6);
+}
+
+/**
+ * @brief Viscous shape sensitivity across the amplification onset (issue #22)
+ *   NACA 2412, 160 panels, alpha=4, Re=1e6, upper-surface nodes 85-93.
+ *
+ * The upper-surface amplification starts growing between nodes 89 and 90.
+ * The damping-rate onset ramp is narrow in Re_theta, so dCd/dn swings in
+ * sign from node to node there, with node 89 about 5x its neighbours.
+ * Refining the paneling does not smooth it; widening the ramp does. mfoil
+ * CS shows the same spike: it is a property of the discrete e^N model, not an
+ * adjoint error. This test pins the adjoint to CS through that region and
+ * checks the spike is still there, so a change that smooths the onset updates
+ * the reference and the docs deliberately.
+ */
+TEST_F(SensitivityReferenceTest, ViscousShapeAmplificationOnset) {
+    const auto result = CheckViscousShapeGroup(getFile(), "viscous_shape_onset",
+                                               "2412", 4.0, 1e6);
+    const Sensitivity& sens = result.first;
+    const MatrixXd& x = result.second;
+    if (sens.dcd_dx.cols() == 0) return;
+
+    /* Project onto the outward normal from central-difference tangents. */
+    auto dcd_dn = [&](int k) {
+        Vector2d t = x.col(k + 1) - x.col(k - 1);
+        t.normalize();
+        Vector2d n(-t(1), t(0));
+        return sens.dcd_dx.col(k).dot(n);
+    };
+    double spike = dcd_dn(89);
+    std::cout << "dCd/dn: node 88=" << dcd_dn(88) << " 89=" << spike
+              << " 90=" << dcd_dn(90) << '\n';
+    EXPECT_GT(spike, 0.0);
+    EXPECT_LT(dcd_dn(88), 0.0);
+    EXPECT_LT(dcd_dn(90), 0.0);
+    EXPECT_GT(std::abs(spike), 4.0 * std::abs(dcd_dn(88)));
+    EXPECT_GT(std::abs(spike), 4.0 * std::abs(dcd_dn(90)));
 }
 
 /**

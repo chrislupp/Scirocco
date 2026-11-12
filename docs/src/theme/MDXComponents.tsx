@@ -11,6 +11,7 @@ import {
     OnsetPlot,
     PanelPlot,
     PolarPlot,
+    ShapeGradientPlot,
     TransitionSweepPlot,
 } from "@site/src/components/charts";
 
@@ -28,4 +29,5 @@ export default {
     OnsetPlot,
     TransitionSweepPlot,
     E387DragPlot,
+    ShapeGradientPlot,
 };

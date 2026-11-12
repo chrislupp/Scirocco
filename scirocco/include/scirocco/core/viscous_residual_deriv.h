@@ -8,6 +8,7 @@
 #pragma once
 
 #include "scirocco/config.h"
+#include "scirocco/core/viscous_geom_deriv.h"
 #include "scirocco/data/state.h"
 
 namespace scirocco {
@@ -75,17 +76,27 @@ VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
  * @brief The parts of ComputeRueVJP that depend on the state but not on
  * lambda_ue.
  *
- * Building these (mostly d(gamma)/d(foil.x) and the wake Jacobians) costs far
- * more than applying the VJP, so a gradient builds them once and reuses them
- * for every output. Only valid for the state it was built from.
+ * Building these (panel derivatives, the AIC residual Jacobian, the wake-sweep
+ * linearization) costs far more than applying the VJP, so a gradient builds
+ * them once and reuses them for every output. Only valid for the state it was
+ * built from.
  */
 struct RueVJPContext {
     MatrixXd dfoil_s_dx; /**< d(foil.s)/d(foil.x) [N x 2N] */
-    MatrixXd dgam_dx;    /**< d(gamma)/d(foil.x) at oper.alpha [N+1 x 2N] */
-    MatrixXd dwake_x_dx; /**< d(wake.x)/d(foil.x) [2*Nw x 2N] */
-    MatrixXd dwake_t_dx; /**< d(wake.t)/d(foil.x) [2*Nw x 2N] */
     MatrixXd dwake_s_dx; /**< d(wake.s)/d(foil.x) [Nw x 2N] */
     Eigen::PartialPivLU<MatrixXd> aic_t_lu; /**< LU of AIC^T */
+    MatrixXd jac_gam;      /**< d(A*gamma - rhs)/d(foil.x) [N+1 x 2N] */
+    MatrixXd jac_gam_wake; /**< Same at the wake-tracing alpha, if frozen */
+    WakeSweepLinearization wake; /**< For reverse products with wake.x/t */
+    VectorXd phi;  /**< Source strengths sigma_m * mass [Npanel] */
+    MatrixXd cgam; /**< Wake gamma-influence Cgam [Nw x N] */
+    MatrixXd
+        dsrc_dx;     /**< d(A*[Bp*phi; 0] + B*phi)/d(foil.x), direct [N x 2N] */
+    MatrixXd src_wx; /**< Same rows' dependence on wake.x [N x 2*Nw] */
+    MatrixXd wake_rows; /**< Wake rows' direct foil.x dependence [Nw x 2N] */
+    MatrixXd wake_gam;  /**< Wake rows' gamma dependence [Nw x N+1] */
+    MatrixXd wake_wx;   /**< Wake rows' wake.x dependence [Nw x 2*Nw] */
+    MatrixXd wake_wt;   /**< Wake rows' wake.t dependence [Nw x 2*Nw] */
 };
 
 /**
@@ -108,6 +119,21 @@ RueVJPContext BuildRueVJPContext(const FoilState& state,
  */
 VectorXd ComputeRueVJP(const FoilState& state, const VectorXd& lambda_ue,
                        const RueVJPContext& ctx);
+
+/**
+ * @brief ComputeRueVJP for K adjoint vectors at once.
+ *
+ * The geometric chains (gamma and the wake sweep) are propagated in reverse
+ * for all K columns together, so a gradient with several outputs pays for
+ * one wake sweep and one gamma solve.
+ *
+ * @param state     The state ctx was built from.
+ * @param lambda_ue Adjoint vectors [Nsys x K].
+ * @param ctx       BuildRueVJPContext(state, dfoil_s_dx).
+ * @return VJP results [2N x K].
+ */
+MatrixXd ComputeRueVJPBatch(const FoilState& state, const MatrixXd& lambda_ue,
+                            const RueVJPContext& ctx);
 
 /**
  * @brief Compute d(R_ue)/d(foil.x) [Nsys x 2N] forward Jacobian (FOR VALIDATION

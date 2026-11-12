@@ -10,6 +10,8 @@ HDF5 structure:
   viscous_alpha/     same base case
   viscous_mach/      NACA 0012, 100 panels, alpha=3, Re=1e6, Ma=0.3
   viscous_re/        NACA 0012, 100 panels, alpha=3, Re=1e6
+  viscous_shape_onset/  NACA 2412, 160 panels, alpha=4, Re=1e6, upper-surface
+                     nodes 85-93 around the amplification onset (issue #22)
   inviscid_shape/    NACA 2412, 80 panels, alpha=5
   inviscid_alpha/    NACA 2412, 80 panels, alpha=5
   inviscid_mach/     NACA 0012, 100 panels, alpha=3, Ma=0.3
@@ -24,9 +26,11 @@ HDF5 structure:
 Usage:
   cd mfoil
   python ../scirocco/tests/extract_sensitivity_reference.py
+  python ../scirocco/tests/extract_sensitivity_reference.py --onset-only
   python ../scirocco/tests/extract_sensitivity_reference.py --envelope-only
 
---envelope-only (re)writes just the envelope_* groups into the existing file.
+--onset-only (re)writes just viscous_shape_onset/ and --envelope-only just the
+envelope_* groups into the existing file; the two can be combined.
 --captured-only (re)writes just captured_primal/.
 --captured-cs-only (re)writes just captured_shape/ and captured_scalar/.
 """
@@ -291,6 +295,40 @@ def validate_viscous():
 # ---------------------------------------------------------------------------
 # Main: generate reference data
 # ---------------------------------------------------------------------------
+def write_viscous_shape_group(f, name, M, test_nodes, dcl_dx, dcd_dx, dcm_dx):
+    """Write one viscous shape-sensitivity group (base state + CS partials)."""
+    g = f.create_group(name)
+    g.create_dataset('x_base', data=np.real(M.foil.x[:, :M.foil.N]))
+    g.create_dataset('cl_base', data=float(np.real(M.post.cl)))
+    g.create_dataset('cd_base', data=float(np.real(M.post.cd)))
+    g.create_dataset('cm_base', data=float(np.real(M.post.cm)))
+    g.create_dataset('test_nodes', data=np.array(test_nodes, dtype=np.int64))
+    g.create_dataset('dcl_dx', data=dcl_dx)
+    g.create_dataset('dcd_dx', data=dcd_dx)
+    g.create_dataset('dcm_dx', data=dcm_dx)
+
+
+# Issue #22: on NACA 2412 at alpha=4, Re=1e6, 160 panels, the upper-surface
+# amplification starts growing between nodes 89 and 90. The onset ramp in
+# the damping rate is narrow in Re_theta, so the shape gradient swings in
+# sign from node to node there; refining the paneling does not smooth it.
+# CS shows the same spike, so it belongs to the
+# discrete model; these nodes pin the adjoint to it.
+ONSET_CASE = dict(naca='2412', npanel=160, alpha=4.0, Re=1e6, Ma=0.0)
+ONSET_NODES = list(range(85, 94))
+
+
+def write_onset_group(f):
+    """CS shape sensitivities around the upper-surface amplification onset."""
+    c = ONSET_CASE
+    print(f"\n--- viscous_shape_onset (NACA {c['naca']}, {c['npanel']} panels, "
+          f"alpha={c['alpha']}, Re={c['Re']:.0e}) ---")
+    M, dcl_dx, dcd_dx, dcm_dx = cs_viscous_shape(
+        c['naca'], c['npanel'], c['alpha'], c['Re'], c['Ma'], ONSET_NODES)
+    write_viscous_shape_group(f, 'viscous_shape_onset', M, ONSET_NODES,
+                              dcl_dx, dcd_dx, dcm_dx)
+
+
 # Opt-in envelope onset model (OnsetModel::Envelope / param.onset='envelope').
 # Shape nodes straddle the upper-surface amplification onset (85-93) plus one
 # lower- and one upper-surface node away from it.
@@ -305,15 +343,8 @@ def write_envelope_groups(f):
     M, dcl_dx, dcd_dx, dcm_dx = cs_viscous_shape(
         c['naca'], c['npanel'], c['alpha'], c['Re'], 0.0, ENVELOPE_NODES,
         onset='envelope')
-    g = f.create_group('envelope_shape')
-    g.create_dataset('x_base', data=np.real(M.foil.x[:, :M.foil.N]))
-    g.create_dataset('cl_base', data=float(np.real(M.post.cl)))
-    g.create_dataset('cd_base', data=float(np.real(M.post.cd)))
-    g.create_dataset('cm_base', data=float(np.real(M.post.cm)))
-    g.create_dataset('test_nodes', data=np.array(ENVELOPE_NODES, dtype=np.int64))
-    g.create_dataset('dcl_dx', data=dcl_dx)
-    g.create_dataset('dcd_dx', data=dcd_dx)
-    g.create_dataset('dcm_dx', data=dcm_dx)
+    write_viscous_shape_group(f, 'envelope_shape', M, ENVELOPE_NODES,
+                              dcl_dx, dcd_dx, dcm_dx)
 
     print("\n--- envelope_scalar (alpha, Re) ---")
     g = f.create_group('envelope_scalar')
@@ -459,13 +490,21 @@ def main():
         print(f"Wrote captured_primal/ to {OUTPUT_FILE}")
         return
 
-    if '--envelope-only' in sys.argv[1:]:
+    args = sys.argv[1:]
+    if '--onset-only' in args or '--envelope-only' in args:
         with h5py.File(OUTPUT_FILE, 'a') as f:
-            for name in ('envelope_shape', 'envelope_scalar', 'envelope_mach'):
-                if name in f:
-                    del f[name]
-            write_envelope_groups(f)
-        print(f"Wrote envelope_* groups to {OUTPUT_FILE}")
+            if '--onset-only' in args:
+                if 'viscous_shape_onset' in f:
+                    del f['viscous_shape_onset']
+                write_onset_group(f)
+                print(f"Wrote viscous_shape_onset/ to {OUTPUT_FILE}")
+            if '--envelope-only' in args:
+                for name in ('envelope_shape', 'envelope_scalar',
+                             'envelope_mach'):
+                    if name in f:
+                        del f[name]
+                write_envelope_groups(f)
+                print(f"Wrote envelope_* groups to {OUTPUT_FILE}")
         return
 
     t0 = time.time()
@@ -528,15 +567,10 @@ def main():
         M_visc, dcl_dx_visc, dcd_dx_visc, dcm_dx_visc = cs_viscous_shape(
             '0012', 100, 3.0, 1e6, 0.0, visc_test_nodes)
 
-        g = f.create_group('viscous_shape')
-        g.create_dataset('x_base', data=np.real(M_visc.foil.x[:, :M_visc.foil.N]))
-        g.create_dataset('cl_base', data=float(np.real(M_visc.post.cl)))
-        g.create_dataset('cd_base', data=float(np.real(M_visc.post.cd)))
-        g.create_dataset('cm_base', data=float(np.real(M_visc.post.cm)))
-        g.create_dataset('test_nodes', data=np.array(visc_test_nodes, dtype=np.int64))
-        g.create_dataset('dcl_dx', data=dcl_dx_visc)
-        g.create_dataset('dcd_dx', data=dcd_dx_visc)
-        g.create_dataset('dcm_dx', data=dcm_dx_visc)
+        write_viscous_shape_group(f, 'viscous_shape', M_visc, visc_test_nodes,
+                                  dcl_dx_visc, dcd_dx_visc, dcm_dx_visc)
+
+        write_onset_group(f)
 
         # ----- viscous_alpha -----
         print("\n--- viscous_alpha (NACA 0012, 100 panels, alpha=3, Re=1e6) ---")

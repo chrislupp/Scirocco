@@ -27,8 +27,8 @@ Write for someone who wants to get something done:
 
 Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
 `<Next>`, `<CpPlot>`, `<PolarPlot>`, `<ConvergencePlot>`, `<PanelPlot>`,
-`<OnsetPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`, `<BenchTable>`, and
-`<QuickstartSource>` (which shows
+`<OnsetPlot>`, `<ShapeGradientPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`,
+`<BenchTable>`, and `<QuickstartSource>` (which shows
 `scirocco/examples/quickstart.cpp` as built by CI).
 
 ## Figures and timings
