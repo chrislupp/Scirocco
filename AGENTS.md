@@ -204,6 +204,12 @@ Only the `[Unreleased]` section is edited during development. On release, it is 
 Keep branches focused — one logical change per PR. If a fix requires a
 refactor, split them into separate PRs.
 
+Stacked PRs (one PR based on another's branch) land one at a time, bottom
+first, and every layer lands in `develop`: merge the bottom PR into
+`develop`, retarget the next PR to `develop`, update its branch, and repeat.
+Merging a PR into the branch below it leaves its commits outside `develop`;
+that is how the gradient speedups from #26–#28 were lost.
+
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
 
