@@ -83,7 +83,7 @@ foil.Solve();
   should span several panels; at high Reynolds numbers, use more panels.
 - **Gradients:** `ComputeSensitivities()` works as usual: shape, angle of
   attack, Reynolds and Mach number derivatives all match complex step
-  through the mfoil prototype to 1e-8.
+  through the mfoil prototype: shape to 1e-8, the scalars to 1e-10.
 - **Limits:** prescribed angle of attack only; a lift target throws.
 
 The formulation, the test matrix and the dead ends are in

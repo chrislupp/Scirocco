@@ -707,7 +707,7 @@ TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
           {"dcd_dRe", s0.dcd_dRe},
           {"dcm_dRe", s0.dcm_dRe}}) {
         auto ref = readScalar<double>(getFile(), g + name);
-        EXPECT_LT(RelErr(got, ref), TOL_VISC_SHAPE)
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
             << name << " scirocco=" << got << " ref=" << ref;
     }
     Sensitivity sm = CapturedSensitivities(getFile(), 4.0, 1e6, 0.3);
@@ -716,7 +716,7 @@ TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
           {"dcd_dMa", sm.dcd_dMa},
           {"dcm_dMa", sm.dcm_dMa}}) {
         auto ref = readScalar<double>(getFile(), g + name);
-        EXPECT_LT(RelErr(got, ref), TOL_VISC_SHAPE)
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
             << name << " scirocco=" << got << " ref=" << ref;
     }
 }

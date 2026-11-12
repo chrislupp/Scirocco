@@ -88,8 +88,9 @@ SparseMatrixd CapturedJacobian(const FoilState& state,
 MatrixXd CapturedDRblDFoilX(const FoilState& state, const CapturedSystem& sys,
                             const MatrixXd& dfoil_s_dx);
 
-/** @brief dR/dRe and dR/dMa at fixed state [5 Nsys] (BL rows only), by a
- *  4th-order central difference on the thermodynamic parameters. */
+/** @brief dR/dRe and dR/dMa at fixed state [5 Nsys] (BL rows only),
+ *  analytic: the closures' *_dRet / *_dMa partials chained through the
+ *  captured residual, as ComputeStationLinRet / ComputeStationLinMa do. */
 VectorXd CapturedDRVDRe(const FoilState& state);
 VectorXd CapturedDRVDMa(const FoilState& state);
 

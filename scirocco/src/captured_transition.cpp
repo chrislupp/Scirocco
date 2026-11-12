@@ -398,6 +398,322 @@ CapturedResidual CapturedIntervalResidual(const Param& param,
 
 namespace {
 
+/* Direction of the parameter tangent: Re or Ma at fixed state. */
+struct ParamDir {
+    bool mach = false;
+    double Re = 1.0;
+    detail::ThermoMaDeriv d;
+};
+
+/* d(closure)/dp at fixed U: Re enters only through Ret (dRet/dRe = Ret/Re),
+ * Ma through the thermodynamic reference quantities in d. */
+template <typename FRe, typename FMa>
+double Tan(const ParamDir& dir, FRe f_dRet, FMa f_dMa, const Vector4d& U,
+           const Param& p) {
+    if (dir.mach) return f_dMa(U, p, dir.d);
+    return f_dRet(U, p) * GetRet(U, p).value / dir.Re;
+}
+
+double RetTan(const ParamDir& dir, const Vector4d& U, const Param& p) {
+    return dir.mach ? detail::GetRet_dMa(U, p, dir.d)
+                    : GetRet(U, p).value / dir.Re;
+}
+double HkTan(const ParamDir& dir, const Vector4d& U, const Param& p) {
+    return dir.mach ? detail::GetHk_dMa(U, p, dir.d) : 0.0;
+}
+
+/* GetDe at fixed U: de = th (3.15 + 1.72/(Hk-1)) + ds, capped at 12 th. */
+double DeTan(const ParamDir& dir, const Vector4d& U, const Param& p) {
+    if (!dir.mach) return 0.0;
+    double Hk = GetHk(U, p).value;
+    double th = std::max(U(0), 1e-12);
+    double aa = 3.15 + 1.72 / (Hk - 1.0);
+    if (th * aa + U(1) > 12.0 * th) return 0.0;
+    return th * (-1.72 / ((Hk - 1.0) * (Hk - 1.0))) * HkTan(dir, U, p);
+}
+
+/* GetUpw tangent: upw = 1 - exp(-Hls Huc)/2 (Hk-only). */
+double UpwTan(const ParamDir& dir, const Vector4d& U1, const Vector4d& U2,
+              const Param& p) {
+    if (!dir.mach) return 0.0;
+    double Hk1 = GetHk(U1, p).value, Hk2 = GetHk(U2, p).value;
+    double Hk1_p = HkTan(dir, U1, p), Hk2_p = HkTan(dir, U2, p);
+    double C = p.wake ? 1.0 : 5.0;
+    double Huc = C / (Hk2 * Hk2);
+    double Huc_p = -2.0 * C / (Hk2 * Hk2 * Hk2) * Hk2_p;
+    double aa = (Hk2 - 1.0) / (Hk1 - 1.0);
+    double la = std::log((aa >= 0 ? 1.0 : -1.0) * aa);
+    double la_p = Hk2_p / (Hk2 - 1.0) - Hk1_p / (Hk1 - 1.0);
+    double Hls = la * la, Hls_p = 2.0 * la * la_p;
+    if (Hls > 15.0) {
+        Hls = 15.0;
+        Hls_p = 0.0;
+    }
+    return -0.5 * std::exp(-Hls * Huc) * (-Hls_p * Huc - Hls * Huc_p);
+}
+
+/* GetUq tangent from the tangents of its arguments. */
+double UqTan(double ds, double cf_p, double Hk, double Hk_p, double Ret,
+             double Ret_p, const Param& p) {
+    double A = p.GA, C = p.GC;
+    if (p.wake) {
+        A *= p.Dlr;
+        C = 0.0;
+    }
+    double Hk_lim = p.wake ? 1.00005 : 1.05;
+    if (Hk < Hk_lim) {
+        Hk = Hk_lim;
+        Hk_p = 0.0;
+    }
+    double Hkc = Hk - 1.0 - C / std::max(Ret, 1e-10);
+    double Hkc_p = Hk_p + C / (Ret * Ret) * Ret_p;
+    if (Hkc < 0.01) {
+        Hkc = 0.01;
+        Hkc_p = 0.0;
+    }
+    double AHk = A * Hk;
+    double ut_p = 0.5 * cf_p - 2.0 * (Hkc / AHk) *
+                                   (Hkc_p / AHk - Hkc / (A * Hk * Hk) * Hk_p);
+    return ut_p / (p.GB * std::max(ds, 1e-12));
+}
+
+/* Tangent of a blended closure (Hs, cf or cDi) at one station. */
+template <typename FRe, typename FMa, typename F>
+double BlendedTan(const ParamDir& dir, F f, FRe f_dRet, FMa f_dMa,
+                  const Vector5d& U, const Param& param, double* value) {
+    Param pt = param;
+    pt.turb = true;
+    double ft = f(View(U, kTurb), pt).value;
+    double ft_p = Tan(dir, f_dRet, f_dMa, View(U, kTurb), pt);
+    if (param.wake) {
+        if (value) *value = ft;
+        return ft_p;
+    }
+    Param pl = param;
+    pl.turb = false;
+    double fl = f(View(U, kLam), pl).value;
+    double fl_p = Tan(dir, f_dRet, f_dMa, View(U, kLam), pl);
+    double g = Gamma(U(AMP), param).first;
+    if (value) *value = (1.0 - g) * fl + g * ft;
+    return (1.0 - g) * fl_p + g * ft_p;
+}
+
+/* dR/dp of one captured interval at fixed U (p = Re or Ma). Mirrors
+ * CapturedIntervalResidual term by term. */
+Vector4d CapturedIntervalParamPartial(const Param& param,
+                                      const Eigen::Vector2d& x,
+                                      const Matrix52d& Uin,
+                                      const Eigen::Vector2d& Aux,
+                                      const ParamDir& dir) {
+    using namespace detail;
+    Matrix52d U = Uin;
+    U.row(DS) -= Aux.transpose();
+    const Vector5d U1 = U.col(0), U2 = U.col(1);
+    const Vector5d Um = 0.5 * (U1 + U2);
+    const Vector4d Ut1 = View(U1, kTurb), Ut2 = View(U2, kTurb);
+    Param pt = param;
+    pt.turb = true;
+    Param pl = param;
+    pl.turb = false;
+    pl.wake = false;
+
+    auto hs = [](const Vector4d& u, const Param& p) { return GetHs(u, p); };
+    auto cf = [](const Vector4d& u, const Param& p) { return GetCf(u, p); };
+    auto cdi = [](const Vector4d& u, const Param& p) { return GetCDi(u, p); };
+    auto hs_r = [](const Vector4d& u, const Param& p) {
+        return GetHs_dRet(u, p);
+    };
+    auto cf_r = [](const Vector4d& u, const Param& p) {
+        return GetCf_dRet(u, p);
+    };
+    auto cdi_r = [](const Vector4d& u, const Param& p) {
+        return GetCDi_dRet(u, p);
+    };
+    auto hs_m = [](const Vector4d& u, const Param& p, const ThermoMaDeriv& d) {
+        return GetHs_dMa(u, p, d);
+    };
+    auto cf_m = [](const Vector4d& u, const Param& p, const ThermoMaDeriv& d) {
+        return GetCf_dMa(u, p, d);
+    };
+    auto cdi_m = [](const Vector4d& u, const Param& p, const ThermoMaDeriv& d) {
+        return GetCDi_dMa(u, p, d);
+    };
+
+    double uelog = 1.0, uelog_p = 0.0;
+    double xlog = 1.0, dx = 0.5 * (x(0) + x(1));
+    if (!param.simi) {
+        double uk1 = GetUk(U1(UE), param).value,
+               uk2 = GetUk(U2(UE), param).value;
+        uelog = std::log(uk2 / uk1);
+        if (dir.mach) {
+            uelog_p = GetUk_dMa(U2(UE), param, dir.d) / uk2 -
+                      GetUk_dMa(U1(UE), param, dir.d) / uk1;
+        }
+        xlog = std::log(x(1) / x(0));
+        dx = x(1) - x(0);
+    }
+    double upw = GetUpw(Ut1, Ut2, pt).value;
+    double upw_p = UpwTan(dir, Ut1, Ut2, pt);
+    double H = 0.5 * (GetH(Ut1).value + GetH(Ut2).value);
+    double Hw = 0.5 * (GetHw(Ut1, Aux(0)).value + GetHw(Ut2, Aux(1)).value);
+
+    double Hs1, Hs2;
+    double Hs1_p = BlendedTan(dir, hs, hs_r, hs_m, U1, param, &Hs1);
+    double Hs2_p = BlendedTan(dir, hs, hs_r, hs_m, U2, param, &Hs2);
+    double Hs = 0.5 * (Hs1 + Hs2), Hs_p = 0.5 * (Hs1_p + Hs2_p);
+    double Hslog_p = param.simi ? 0.0 : Hs2_p / Hs2 - Hs1_p / Hs1;
+
+    /* ---- shear lag */
+    double salog = std::log(U2(CT) / U1(CT));
+    double de = 0.5 * (GetDe(Ut1, pt).value + GetDe(Ut2, pt).value);
+    double de_p = 0.5 * (DeTan(dir, Ut1, pt) + DeTan(dir, Ut2, pt));
+    auto us_r = [](const Vector4d& u, const Param& p) {
+        return GetUs_dRet(u, p);
+    };
+    auto us_m = [](const Vector4d& u, const Param& p, const ThermoMaDeriv& d) {
+        return GetUs_dMa(u, p, d);
+    };
+    double Us = 0.5 * (GetUs(Ut1, pt).value + GetUs(Ut2, pt).value);
+    double Us_p =
+        0.5 * (Tan(dir, us_r, us_m, Ut1, pt) + Tan(dir, us_r, us_m, Ut2, pt));
+    double Hk1 = GetHk(Ut1, pt).value, Hk2 = GetHk(Ut2, pt).value;
+    double Hk = (1.0 - upw) * Hk1 + upw * Hk2;
+    double Hk_p = upw_p * (Hk2 - Hk1) + (1.0 - upw) * HkTan(dir, Ut1, pt) +
+                  upw * HkTan(dir, Ut2, pt);
+    double Rt1 = GetRet(Ut1, pt).value, Rt2 = GetRet(Ut2, pt).value;
+    double Ret = 0.5 * (Rt1 + Rt2);
+    double Ret_p = 0.5 * (RetTan(dir, Ut1, pt) + RetTan(dir, Ut2, pt));
+    double cft1 = GetCf(Ut1, pt).value, cft2 = GetCf(Ut2, pt).value;
+    double cft = (1.0 - upw) * cft1 + upw * cft2;
+    double cft_p = upw_p * (cft2 - cft1) +
+                   (1.0 - upw) * Tan(dir, cf_r, cf_m, Ut1, pt) +
+                   upw * Tan(dir, cf_r, cf_m, Ut2, pt);
+    double dsa = 0.5 * (U(DS, 0) + U(DS, 1));
+    Vector8d z8 = Vector8d::Zero();
+    double uq = GetUq(dsa, z8, cft, z8, Hk, z8, Ret, z8, pt).value;
+    double uq_p = UqTan(dsa, cft_p, Hk, Hk_p, Ret, Ret_p, pt);
+
+    std::array<double, 2> tg{}, tg_p{};
+    for (int k = 0; k < 2; ++k) {
+        const Vector4d Uk = k == 0 ? Ut1 : Ut2;
+        double ceq = GetCteq(Uk, pt).value;
+        double ceq_p =
+            dir.mach ? GetCteq_dMa(Uk, pt, dir.d)
+                     : GetCteq_dRet(Uk, pt) * GetRet(Uk, pt).value / dir.Re;
+        if (param.wake) {
+            tg[k] = ceq;
+            tg_p[k] = ceq_p;
+            continue;
+        }
+        /* cttr = c(Hk) cteq(wake = false); c does not depend on Ret */
+        Param pn = pt;
+        pn.wake = false;
+        double ctr = GetCttr(Uk, pt).value;
+        double ctr_p = dir.mach ? GetCttr_dMa(Uk, pn, dir.d)
+                                : ctr / GetCteq(Uk, pn).value *
+                                      GetCteq_dRet(Uk, pn) *
+                                      GetRet(Uk, pn).value / dir.Re;
+        double r = Release((k == 0 ? U1 : U2)(AMP), param).first;
+        tg[k] = (1.0 - r) * ctr + r * ceq;
+        tg_p[k] = (1.0 - r) * ctr_p + r * ceq_p;
+    }
+    double tgt = (1.0 - upw) * tg[0] + upw * tg[1];
+    double tgt_p =
+        upw_p * (tg[1] - tg[0]) + (1.0 - upw) * tg_p[0] + upw * tg_p[1];
+    double saa = (1.0 - upw) * U1(CT) + upw * U2(CT);
+    double saa_p = upw_p * (U2(CT) - U1(CT));
+    double rb = param.wake ? 1.0
+                           : 0.5 * (Release(U1(AMP), param).first +
+                                    Release(U2(AMP), param).first);
+    double Clag = param.SlagK / param.GB / (1.0 + Us);
+    double Clag_p = -Clag / (1.0 + Us) * Us_p;
+    double ald = param.wake ? param.Dlr : 1.0;
+    double pg_p = 2.0 * de_p * (uq * dx - uelog) * param.Cuq +
+                  2.0 * de * (uq_p * dx - uelog_p) * param.Cuq;
+    double Rlag_p = Clag_p * (tgt - ald * saa) * dx +
+                    Clag * (tgt_p - ald * saa_p) * dx - 2.0 * de_p * salog +
+                    rb * pg_p;
+    if (param.simi) {
+        /* Rlag = 2 de ln(ct2 / tg2) */
+        Rlag_p =
+            2.0 * de_p * std::log(U2(CT) / tg[1]) - 2.0 * de * tg_p[1] / tg[1];
+    }
+
+    /* ---- amplification: d/dp of the laminar rate through the smooth max */
+    double Ramp_p = 0.0;
+    if (!param.wake && !param.simi) {
+        auto dm_r = [](const Vector4d& u, const Param& p) {
+            return GetDamp_dRet(u, p);
+        };
+        auto dm_m = [](const Vector4d& u, const Param& p,
+                       const ThermoMaDeriv& d) { return GetDamp_dMa(u, p, d); };
+        double C = RateC(param);
+        double q_p = 0.0;
+        for (int k = 0; k < 2; ++k) {
+            const Vector5d& Uk = k == 0 ? U1 : U2;
+            Vector4d Ul = View(Uk, kLam);
+            double dk = GetDamp(Ul, pl).value;
+            double dk_p = Tan(dir, dm_r, dm_m, Ul, pl);
+            double s = Growth(Uk(AMP), param).first;
+            double c = C / Uk(TH);
+            double rr = std::sqrt((dk - c) * (dk - c) + 0.01 * c * c);
+            double m_d = 0.5 * (1.0 + (dk - c) / rr);
+            q_p += 0.5 * ((1.0 - s) + s * m_d) * dk_p;
+        }
+        Ramp_p = -q_p * dx;
+    }
+
+    /* ---- momentum (blended cf) */
+    double Ms_p = 0.0;
+    if (dir.mach) {
+        Ms_p = 0.5 * (GetMach2_dMa(Ut1, param, dir.d) +
+                      GetMach2_dMa(Ut2, param, dir.d));
+    }
+    double Ms = 0.5 * (GetMach2(Ut1, param).value + GetMach2(Ut2, param).value);
+    auto cfxt = [&](const Vector5d& Uk, double xk, double* v) {
+        double f;
+        double f_p = BlendedTan(dir, cf, cf_r, cf_m, Uk, param, &f);
+        if (v) *v = f * xk / Uk(TH);
+        return f_p * xk / Uk(TH);
+    };
+    double c1, c2;
+    double c1_p = cfxt(U1, x(0), &c1);
+    double c2_p = cfxt(U2, x(1), &c2);
+    double cm_p = cfxt(Um, 0.5 * (x(0) + x(1)), nullptr);
+    double cfxt_p = 0.25 * c1_p + 0.5 * cm_p + 0.25 * c2_p;
+    double Rmom_p =
+        -Ms_p * uelog + (2.0 + H + Hw - Ms) * uelog_p - 0.5 * xlog * cfxt_p;
+
+    /* ---- shape (blended Hs, cf, cDi) */
+    auto cdixt = [&](const Vector5d& Uk, double xk, double* v) {
+        double f;
+        double f_p = BlendedTan(dir, cdi, cdi_r, cdi_m, Uk, param, &f);
+        *v = f * xk / Uk(TH);
+        return f_p * xk / Uk(TH);
+    };
+    double D1, D2;
+    double D1_p = cdixt(U1, x(0), &D1);
+    double D2_p = cdixt(U2, x(1), &D2);
+    double cDixt_p = upw_p * (D2 - D1) + (1.0 - upw) * D1_p + upw * D2_p;
+    double cfxtu_p = upw_p * (c2 - c1) + (1.0 - upw) * c1_p + upw * c2_p;
+    double Hss1 = GetHss(Ut1, param).value, Hss2 = GetHss(Ut2, param).value;
+    double Hss = 0.5 * (Hss1 + Hss2);
+    double Hss_p = 0.0;
+    if (dir.mach) {
+        Hss_p = 0.5 *
+                (GetHss_dMa(Ut1, param, dir.d) + GetHss_dMa(Ut2, param, dir.d));
+    }
+    double Rshape_p =
+        Hslog_p + (2.0 * Hss_p / Hs - 2.0 * Hss / (Hs * Hs) * Hs_p) * uelog +
+        (2.0 * Hss / Hs + 1.0 - H - Hw) * uelog_p +
+        xlog * (0.5 * cfxtu_p - cDixt_p);
+    return {Rmom_p, Rshape_p, Ramp_p, Rlag_p};
+}
+
+}  // namespace
+
+namespace {
+
 struct Stagnation5 {
     Vector5d Ust;
     Eigen::Matrix<double, 5, 10> Ust_U;
@@ -657,23 +973,55 @@ MatrixXd CapturedDRblDFoilX(const FoilState& state, const CapturedSystem& a,
 
 namespace {
 
-/* d(R_BL)/dp at fixed U by a 4th-order central difference in oper.Re or
- * oper.Ma, rebuilding the thermodynamic parameters each time. */
+/* d(R_BL)/dp at fixed U, assembled like BuildCapturedSystem. The
+ * stagnation extrapolation and the wake initialization do not depend on Re
+ * or Ma at fixed U, so only the interval residuals contribute. */
 VectorXd CapturedThermoPartial(const FoilState& state, bool mach) {
     const int Nsys = state.glob.Nsys;
     VectorXd dR = VectorXd::Zero(5 * Nsys);
-    double p0 = mach ? state.oper.Ma : state.oper.Re;
-    if (p0 <= 0.0) return dR; /* even in Ma: zero at Ma = 0 */
-    double h = 1e-3 * p0;
-    const std::array<double, 4> step = {-2.0, -1.0, 1.0, 2.0};
-    const std::array<double, 4> wgt = {1.0, -8.0, 8.0, -1.0};
-    FoilState s = state;
-    for (int k = 0; k < 4; ++k) {
-        (mach ? s.oper.Ma : s.oper.Re) = p0 + step[k] * h;
-        InitThermo(s);
-        dR.head(4 * Nsys) += wgt[k] * BuildCapturedSystem(s).R;
+    ParamDir dir;
+    dir.mach = mach;
+    dir.Re = state.oper.Re;
+    if (mach) {
+        if (state.oper.Ma <= 0.0) return dR; /* even in Ma: zero at Ma = 0 */
+        dir.d =
+            detail::ComputeThermoMaDeriv(state.param, state.param.Vinf, 0.0);
     }
-    dR /= 12.0 * h;
+    for (int si = 0; si < 3; ++si) {
+        const std::vector<int>& Is = state.vsol.Is[si];
+        const int N = static_cast<int>(Is.size());
+        Param param = BuildParam(state, si);
+        auto xi = [&](int i) { return state.isol.xi(Is[i]); };
+        auto aux = [&](int i) { return si == 2 ? state.vsol.wgap(i) : 0.0; };
+        int i0 = (si < 2 && xi(0) < 1e-8 * xi(N - 1)) ? 1 : 0;
+        if (si < 2) {
+            Matrix52d Up2;
+            Up2.col(0) = NodeState(state, Is[i0]);
+            Up2.col(1) = NodeState(state, Is[i0 + 1]);
+            Stagnation5 st =
+                StagnationState5(Up2, Vector2d(xi(i0), xi(i0 + 1)));
+            param.turb = false;
+            param.simi = true;
+            Matrix52d Ust2;
+            Ust2.col(0) = st.Ust;
+            Ust2.col(1) = st.Ust;
+            dR.segment<4>(4 * Is[i0]) += CapturedIntervalParamPartial(
+                param, Vector2d(st.xst, st.xst), Ust2,
+                Vector2d(aux(i0), aux(i0)), dir);
+            param.simi = false;
+        } else {
+            param.turb = true;
+            param.wake = true;
+        }
+        for (int i = i0 + 1; i < N; ++i) {
+            Matrix52d Ui;
+            Ui.col(0) = NodeState(state, Is[i - 1]);
+            Ui.col(1) = NodeState(state, Is[i]);
+            dR.segment<4>(4 * Is[i]) += CapturedIntervalParamPartial(
+                param, Vector2d(xi(i - 1), xi(i)), Ui,
+                Vector2d(aux(i - 1), aux(i)), dir);
+        }
+    }
     return dR;
 }
 

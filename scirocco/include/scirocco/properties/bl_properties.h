@@ -396,6 +396,38 @@ double GetCfxt_dMa(const Vector4d& U, double x, const Param& param,
 double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
                     const ThermoMaDeriv& d);
 
+/* Partial derivatives at fixed state U, defined in boundary_layer.cpp and
+ * used by the analytic Re and Ma residual chains. *_dRet is d/dRet (Re
+ * enters the closures only through Ret, with dRet/dRe = Ret/Re); *_dMa is
+ * d/dMa through the thermodynamic reference quantities in d. */
+
+/** @brief d(cf)/dRet at fixed U. */
+double GetCf_dRet(const Vector4d& U, const Param& param);
+/** @brief d(Hs)/dRet at fixed U (zero for laminar). */
+double GetHs_dRet(const Vector4d& U, const Param& param);
+/** @brief d(Us)/dRet at fixed U. */
+double GetUs_dRet(const Vector4d& U, const Param& param);
+/** @brief d(cDi)/dRet at fixed U. */
+double GetCDi_dRet(const Vector4d& U, const Param& param);
+/** @brief d(cteq)/dRet at fixed U (zero unless turbulent). */
+double GetCteq_dRet(const Vector4d& U, const Param& param);
+/** @brief d(uq)/d(Ret argument) at fixed ds, cf, Hk. */
+double GetUq_dRet_arg(double cf, double Hk, double Ret, double ds,
+                      const Param& param);
+/** @brief d(uq)/d(cf) at fixed ds, Hk, Ret. */
+double GetUq_dcf(double ds, const Param& param);
+/** @brief d(damp)/dRet at fixed U. */
+double GetDamp_dRet(const Vector4d& U, const Param& param);
+/** @brief d(damp)/dMa at fixed U. */
+double GetDamp_dMa(const Vector4d& U, const Param& param,
+                   const ThermoMaDeriv& d);
+/** @brief d(cteq)/dMa at fixed U. */
+double GetCteq_dMa(const Vector4d& U_in, const Param& p_in,
+                   const ThermoMaDeriv& d);
+/** @brief d(cttr)/dMa at fixed U (param with wake = false). */
+double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
+                   const ThermoMaDeriv& d);
+
 } /* namespace detail */
 
 } /* namespace scirocco */

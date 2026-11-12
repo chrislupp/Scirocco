@@ -131,8 +131,9 @@ These dead ends shaped the formulation:
 - Calibrate L against experiment, ideally together with c_τ,tr, or adopt the
   Narasimha length with a recalibrated c_τ,tr.
 - Only prescribed α is supported (no lift-target mode).
-- C++ port: done as `TransitionModel::Captured`, with the adjoint, which
-  matches mfoil complex step to 1e-8 (`CapturedTransition*` tests). Its Re and
-  Mach residual partials use a 4th-order central difference at fixed state;
-  analytic versions would follow `ComputeStationLinRet` and
-  `ComputeStationLinMa`.
+- C++ port: done as `TransitionModel::Captured`, with a fully analytic adjoint
+  (`CapturedTransition*` tests). Shape sensitivities match mfoil complex step
+  to 1e-8, and alpha, Re and Mach to 2e-11. The Re and Mach residual partials
+  chain the closures' `*_dRet` / `*_dMa` derivatives through the captured
+  residual, as `ComputeStationLinRet` and `ComputeStationLinMa` do for the cut
+  cell.

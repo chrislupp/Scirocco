@@ -39,10 +39,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   NACA 2412 at Re 1e6 the adjoint dCd/dalpha ripple drops from 25% to 1.6%,
   and it converges under panel refinement. Drag stays within 3% of the
   default at Re >= 1e6. The primal matches the mfoil prototype
-  (`mfoil/mfoil_captured.py`) to 1e-10 and the adjoint shape, alpha, Re and
-  Mach sensitivities match its complex step to 1e-8. Prescribed angle of
-  attack only (no lift-target mode); the Re and Mach residual partials use a
-  4th-order central difference at fixed state for now.
+  (`mfoil/mfoil_captured.py`) to 1e-10. The adjoint is fully analytic: shape
+  sensitivities match its complex step to 1e-8, and alpha, Re and Mach to
+  2e-11. Prescribed angle of attack only (no lift-target mode).
 - `Param::onset` and `OnsetModel::Envelope`: opt-in amplification onset
   ramp for the e^N model, fitted to spatial Orr-Sommerfeld envelope N-factor
   curves of Falkner-Skan profiles (H = 2.36-3.48). Growth starts at the
