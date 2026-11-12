@@ -208,10 +208,11 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
     QuadSeg(xq, wq);
 
     VectorXd s_new = VectorXd::Zero(n);
-    constexpr int kMaxArcLengthPasses = 10;
-    constexpr double kArcLengthTolerance = 1e-12;
-    for (int pass = 0; pass < kMaxArcLengthPasses; ++pass) {
-        double serr = 0.0;
+    /* Always ten passes, as in mfoil's spline2d. SplineArcLengthDeriv
+     * differentiates exactly ten passes, so stopping early would leave the
+     * primal and its derivative describing different knots (by ~1e-12). */
+    constexpr int kArcLengthPasses = 10;
+    for (int pass = 0; pass < kArcLengthPasses; ++pass) {
         s_new(0) = s(0);
 
         for (int i = 0; i < n - 1; ++i) {
@@ -227,7 +228,6 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
             }
             sint *= ds;
 
-            serr = std::max(serr, std::abs(sint - ds));
             s_new(i + 1) = s_new(i) + sint;
         }
 
@@ -236,8 +236,6 @@ Spline2D Spline2DCreate(const MatrixXd& points) {
         spline.X.c = BuildCubicSpline(s, points.row(0));
         spline.Y.s = s;
         spline.Y.c = BuildCubicSpline(s, points.row(1));
-
-        if (serr <= kArcLengthTolerance * std::max(1.0, s(n - 1))) break;
     }
 
     return spline;
