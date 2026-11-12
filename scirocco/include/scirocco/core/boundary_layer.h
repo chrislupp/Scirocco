@@ -122,6 +122,9 @@ struct WakeResult {
     /* ∂R/∂Ma · Ma, non-zero only when at least one TE side is laminar
      * (because ctw is then built from GetCttr which is Ma-dependent). */
     Vector3d lin_Ma_times_Ma{Vector3d::Zero()};
+    /* ∂R/∂Re · Re, non-zero only when at least one TE side is laminar
+     * (ctw is then built from GetCttr, whose cteq depends on Ret). */
+    Vector3d lin_Re_times_Re{Vector3d::Zero()};
 };
 
 /**

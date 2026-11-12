@@ -1448,6 +1448,22 @@ double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
 }
 
 /**
+ * @brief ∂GetCttr/∂Ret. GetCttr = c·cteq where c = CtauC·exp(-CtauE/(Hk-1))
+ * depends only on Hk, so Ret enters only through cteq. p must have
+ * wake=false and turb=true (matching GetCttr's internal `param_nowake`).
+ * @param U boundary layer state vector [th, ds, sa, ue]
+ * @param p_nowake boundary layer parameter struct with wake=false, turb=true
+ * @return ∂cttr/∂Ret at fixed U
+ */
+double GetCttr_dRet(const Vector4d& U, const Param& p_nowake) {
+    auto [Hk, unused_h] = GetHk(U, p_nowake);
+    (void)unused_h;
+    if (Hk < 1.05) Hk = 1.05;
+    double c = p_nowake.CtauC * std::exp(-p_nowake.CtauE / (Hk - 1.0));
+    return c * GetCteq_dRet(U, p_nowake);
+}
+
+/**
  * @brief ComputeStationLinRet: Returns Vector3d lin_Ret = sum_k ∂R/∂Ret_k ·
  * Ret_k for the three residual equations (Rmom, Rshape, Rlag) at the station.
  *
@@ -2480,6 +2496,17 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
         double ctw_dMa = (ctl_dMa * Ul(0) + ctu_dMa * Uu(0)) / thsum;
         double Ma_v = param.Minf;
         result.lin_Ma_times_Ma(2) = -ctw_dMa * Ma_v;
+
+        /* ∂R/∂Re · Re through the same laminar-side cttr, with
+         * ∂Ret/∂Re · Re = Ret. A turbulent side carries ctau as state. */
+        auto ct_dRe_Re = [&](const Vector4d& Ut, bool turb) {
+            if (turb) return 0.0;
+            return GetCttr_dRet(Ut, p_cttr) * GetRet(Ut, p_cttr).value;
+        };
+        double ctw_dRe_Re = (ct_dRe_Re(Ul, state.vsol.turb[il]) * Ul(0) +
+                             ct_dRe_Re(Uu, state.vsol.turb[iu]) * Uu(0)) /
+                            thsum;
+        result.lin_Re_times_Re(2) = -ctw_dRe_Re;
     }
 
     return result;
@@ -2766,14 +2793,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         Param p_nowake = param_base;
         p_nowake.wake = false;
         p_nowake.turb = true;
-        auto [Hk_at_Ut, unused_Hk_U] = GetHk(Ut, p_nowake);
-        (void)unused_Hk_U;
-        double Hk_lim = Hk_at_Ut;
-        if (Hk_lim < 1.05) Hk_lim = 1.05;
-        double c =
-            param_base.CtauC * std::exp(-param_base.CtauE / (Hk_lim - 1.0));
-        double cteq_dRet_at_Ut = GetCteq_dRet(Ut, p_nowake);
-        double cttr_dRet_Ret_t = c * cteq_dRet_at_Ut * Rett_v;
+        double cttr_dRet_Ret_t = GetCttr_dRet(Ut, p_nowake) * Rett_v;
         /* ∂R/∂Utt(2) is Rt_Utt.col(2) — apply cttr Ret-chain to it. */
         Vector3d dR_via_cttr = Rt_Utt.col(2) * cttr_dRet_Ret_t;
 

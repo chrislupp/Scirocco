@@ -171,6 +171,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Reynolds-number derivatives were wrong by up to 2e-3 (relative) when
+  either surface stays laminar to the trailing edge, e.g. the lower surface
+  of NACA 2412 at α = 4°, Re = 10⁶. The wake-start shear stress then comes
+  from the transition closure `cttr`, which depends on Re, but `WakeSys` had
+  no analytic Re partial. It now provides one (`lin_Re_times_Re`, via the new
+  `detail::GetCttr_dRet`). `dcl/dcd/dcm_dRe` now match mfoil complex step
+  to about 1e-12 with the default and envelope onset models.
 - `Spline2DCreate` runs all ten arc-length passes again. The early exit
   added with the tridiagonal spline solve stopped after about three, while
   `SplineArcLengthDeriv` differentiates ten, so shape gradients on re-paneled
