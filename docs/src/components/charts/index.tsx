@@ -10,6 +10,7 @@ import polar from "@site/src/data/polar.json";
 import convergence from "@site/src/data/convergence.json";
 import panels from "@site/src/data/panels.json";
 import onset from "@site/src/data/onset.json";
+import gradient from "@site/src/data/gradient.json";
 
 const f4 = (v: number) => v.toFixed(4);
 const f3 = (v: number) => v.toFixed(3);
@@ -121,6 +122,53 @@ export function OnsetPlot() {
                 </>
             }
         />
+    );
+}
+
+/** Upper-surface shape gradient of drag next to the amplification factor. */
+export function ShapeGradientPlot() {
+    const xmax = 0.12;
+    const keep = (xs: number[], ys: number[]) => {
+        const i = xs.map((_, k) => k).filter((k) => xs[k] <= xmax);
+        return { x: i.map((k) => xs[k]), y: i.map((k) => ys[k]) };
+    };
+    const g = keep(gradient.x, gradient.dcd_dn);
+    const a = keep(gradient.ampl_x, gradient.ampl.map((v) => Math.max(v, 0)));
+    const xt = gradient.ampl_x[gradient.ampl_x.length - 1];
+    const xAxis = { domain: [0, xmax] as [number, number], ticks: [0, 0.03, 0.06, 0.09, 0.12], label: "x/c, upper surface" };
+    return (
+        <div className={styles.pair}>
+            <Chart
+                title={`Shape gradient of drag along the upper surface of ${gradient.airfoil}`}
+                width={360}
+                height={300}
+                series={[{ id: "g", label: "dCd/dn", x: g.x, y: g.y, role: "1", markers: true }]}
+                x={xAxis}
+                y={{ domain: [-0.8, 1.2], ticks: [-0.5, 0, 0.5, 1], label: "dCd/dn" }}
+                fx={f4}
+                fy={f4}
+            />
+            <Chart
+                title={`Amplification factor along the upper surface of ${gradient.airfoil}`}
+                width={360}
+                height={300}
+                series={[{ id: "a", label: "ñ", x: a.x, y: a.y, role: "2", markers: true }]}
+                x={xAxis}
+                y={{ domain: [0, 2], ticks: [0, 0.5, 1, 1.5, 2], label: "ñ" }}
+                fx={f4}
+                fy={f3}
+                caption={
+                    <>
+                        {gradient.airfoil}, α = {gradient.alpha}°, Re = 10⁶, 160 panels. Left: derivative of Cd
+                        with respect to moving each node along its outward normal. Right: the amplification
+                        factor ñ, which is zero up to x/c ≈ 0.027 and then starts to grow; it reaches ncrit ={" "}
+                        {gradient.ncrit} near x/c ≈ {xt.toFixed(2)}. The gradient spikes and alternates in sign
+                        where growth switches on. Complex step through mfoil gives the
+                        same values to about 10⁻¹¹.
+                    </>
+                }
+            />
+        </div>
     );
 }
 

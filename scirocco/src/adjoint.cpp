@@ -529,17 +529,16 @@ Sensitivity ViscousSensitivities(FoilState& state) {
      * build them once rather than once per VJP. */
     const RueVJPContext rue_ctx = BuildRueVJPContext(state, dfoil_s_dx);
 
-    auto vjp = [&](const VectorXd& lambda) -> VectorXd {
-        VectorXd lambda_bl = lambda.head(3 * Nsys);
-        VectorXd lambda_ue = lambda.tail(Nsys);
-        VectorXd out = (lambda_bl.transpose() * dRbl_dx).transpose(); /* [2N] */
-        out += ComputeRueVJP(state, lambda_ue, rue_ctx);
-        return out;
-    };
-    VectorXd vjp_cl = vjp(lambda_cl);
-    VectorXd vjp_cm = vjp(lambda_cm);
-    VectorXd vjp_cd = vjp(lambda_cd);
-    VectorXd vjp_cdpi = vjp(lambda_cdpi);
+    /* All four outputs at once: columns cl, cm, cd, cdpi. */
+    MatrixXd lambdas(4 * Nsys, 4);
+    lambdas << lambda_cl, lambda_cm, lambda_cd, lambda_cdpi;
+    MatrixXd vjps =
+        dRbl_dx.transpose() * lambdas.topRows(3 * Nsys); /* [2N x 4] */
+    vjps += ComputeRueVJPBatch(state, lambdas.bottomRows(Nsys), rue_ctx);
+    const VectorXd vjp_cl = vjps.col(0);
+    const VectorXd vjp_cm = vjps.col(1);
+    const VectorXd vjp_cd = vjps.col(2);
+    const VectorXd vjp_cdpi = vjps.col(3);
 
     /* 5. Total dJ/dx = partial - vjp */
     Sensitivity sens;
