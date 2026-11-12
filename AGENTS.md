@@ -169,7 +169,7 @@ The canonical reference for all derivative correctness is **mfoil complex-step (
 ### Changed            ← behaviour changes to existing features
 ### Fixed              ← bug fixes
 
-## [0.2.0] - 2026-05-29
+## [0.1.0] - 2026-03-18
 ...
 ```
 
