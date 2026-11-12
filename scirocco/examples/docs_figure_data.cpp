@@ -22,7 +22,8 @@
  *
  * Usage: docs_figure_data <output-dir>
  *
- * Produces cp.json, polar.json, convergence.json, and panels.json. Regenerate
+ * Produces cp.json, gradient.json, polar.json, convergence.json, and
+ * panels.json. Regenerate
  * them whenever solver results change:
  *
  *   docs_figure_data docs/src/data
@@ -175,6 +176,58 @@ int main(int argc, char** argv) {
                 .Arr("dstar", Eigen::VectorXd(post.ds.head(n)))
                 .Obj("wake", Coords(foil.GetWakeCoords()));
             Write(dir, "cp.json", j);
+        }
+
+        // Shape gradient of drag on the upper surface, same case as cp.json,
+        // with the laminar amplification factor that explains its spike.
+        {
+            Scirocco foil("2412", 160);
+            foil.SetOper(4.0, -1.0, kRe, 0.0);
+            if (!foil.Solve()) {
+                throw std::runtime_error("gradient case did not converge");
+            }
+            const scirocco::Sensitivity sens = foil.ComputeSensitivities();
+            const auto& st = std::as_const(foil).GetState();
+            const Eigen::MatrixXd& x = st.foil.x;
+            const Eigen::Index n = x.cols();
+            Eigen::Index le = 0;
+            x.row(0).minCoeff(&le);
+
+            // Outward normal from central-difference tangents. Nodes run
+            // clockwise from the lower trailing edge, so on the upper
+            // surface the tangent points aft and (-t_z, t_x) points out.
+            std::vector<double> xs;
+            std::vector<double> dcd_dn;
+            std::vector<double> dcl_dn;
+            for (Eigen::Index k = le + 1; k < n - 1; ++k) {
+                Eigen::Vector2d t = x.col(k + 1) - x.col(k - 1);
+                t.normalize();
+                const Eigen::Vector2d nrm(-t(1), t(0));
+                xs.push_back(x(0, k));
+                dcd_dn.push_back(sens.dcd_dx.col(k).dot(nrm));
+                dcl_dn.push_back(sens.dcl_dx.col(k).dot(nrm));
+            }
+
+            // Laminar amplification factor along the upper surface.
+            std::vector<double> ax;
+            std::vector<double> ampl;
+            for (const int k : st.vsol.Is[1]) {
+                if (k < n && !st.vsol.turb[k] && x(0, k) >= 0.0 && k > le) {
+                    ax.push_back(x(0, k));
+                    ampl.push_back(st.glob.U(2, k));
+                }
+            }
+            Json j;
+            j.Str("airfoil", "NACA 2412")
+                .Num("alpha", 4.0)
+                .Num("Re", kRe)
+                .Num("ncrit", st.param.ncrit)
+                .Arr("x", xs)
+                .Arr("dcd_dn", dcd_dn)
+                .Arr("dcl_dn", dcl_dn)
+                .Arr("ampl_x", ax)
+                .Arr("ampl", ampl);
+            Write(dir, "gradient.json", j);
         }
 
         // Polar: NACA 2412, Re 1e6, viscous and inviscid lift.
