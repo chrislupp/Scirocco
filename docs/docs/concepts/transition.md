@@ -57,6 +57,36 @@ optimization. Leave the default when you need to match XFOIL or mfoil
 results. The data, solver, and fit are in
 [`scirocco/validation/onset_envelope`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/onset_envelope).
 
+## Captured transition (experimental)
+
+By default, transition sits inside one panel: stations upstream use laminar
+equations and stations downstream turbulent ones. When transition moves
+across a node, the station switches equations. Outputs stay continuous, but
+their derivatives jump. On NACA 2412 at Re = 10⁶, dCd/dα saw-tooths by
+±25% as α changes.
+
+The captured model avoids the switch. It carries the amplification factor
+and the shear stress at every node and blends the laminar and turbulent
+closures over a transition length:
+
+```cpp
+foil.GetState().param.transition = scirocco::TransitionModel::Captured;
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
+foil.Solve();
+```
+
+- **Smoothness:** dCd/dα becomes smooth, with a residual ripple of 0.2–4%
+  that shrinks under panel refinement. The cut-cell ripple stays at 20–30%.
+- **Drag:** within 3% of the default model at Re ≥ 10⁶. In laminar
+  separation bubbles at Re = 2×10⁵ it is up to 9% higher.
+- **Transition length:** set by `capt_L`, in momentum thicknesses. The zone
+  should span several panels; at high Reynolds numbers, use more panels.
+- **Limits:** primal only. `ComputeSensitivities()` throws for this model
+  until its adjoint is implemented.
+
+The formulation, the test matrix and the dead ends are in
+[`scirocco/validation/captured_transition`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/captured_transition).
+
 ## How transition moves during a solve
 
 Transition is part of the Newton iteration: as the solution changes, the

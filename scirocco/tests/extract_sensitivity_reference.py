@@ -16,6 +16,8 @@ HDF5 structure:
   envelope_shape/    NACA 2412, 160 panels, alpha=4, Re=1e6, onset='envelope'
   envelope_scalar/   same case: d/dalpha and d/dRe
   envelope_mach/     same case at Ma=0.3: d/dMa
+  captured_primal/   NACA 2412, 160 panels, cumulative arc length:
+                     TransitionModel::Captured cl/cd/cm (mfoil_captured)
 
 Usage:
   cd mfoil
@@ -23,6 +25,7 @@ Usage:
   python ../scirocco/tests/extract_sensitivity_reference.py --envelope-only
 
 --envelope-only (re)writes just the envelope_* groups into the existing file.
+--captured-only (re)writes just captured_primal/.
 """
 
 import sys
@@ -331,7 +334,40 @@ def write_envelope_groups(f):
     g.create_dataset('dcm_dMa', data=dcm)
 
 
+CAPTURED_CASES = [(4.0, 1e6), (0.0, 1e6), (4.0, 2e5), (8.0, 2e5), (4.0, 3e6)]
+
+
+def write_captured_group(f):
+    """Captured-transition primal (mfoil_captured) on cumulative-s geometry."""
+    import mfoil_captured
+    print("\n--- captured_primal (NACA 2412, 160 panels) ---")
+    g = f.create_group('captured_primal')
+    out = []
+    for alpha, Re in CAPTURED_CASES:
+        M = mfoil.mfoil(naca='2412', npanel=160)
+        M.param.verb = 0
+        M.param.doplot = False
+        recompute_geom(M)
+        M.setoper(alpha=alpha, Re=Re)
+        if not mfoil_captured.solve_captured(M):
+            raise RuntimeError('captured solve failed at %g, %g' % (alpha, Re))
+        out.append([alpha, Re, M.post.cl, M.post.cd, M.post.cm])
+        print(f"    alpha={alpha} Re={Re:.0e}: cl={M.post.cl:.12f} "
+              f"cd={M.post.cd:.12f} cm={M.post.cm:.12f}")
+        x_base = np.real(M.foil.x[:, :M.foil.N])
+    g.create_dataset('x_base', data=x_base)
+    g.create_dataset('cases', data=np.array(out))  # alpha, Re, cl, cd, cm
+
+
 def main():
+    if '--captured-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            if 'captured_primal' in f:
+                del f['captured_primal']
+            write_captured_group(f)
+        print(f"Wrote captured_primal/ to {OUTPUT_FILE}")
+        return
+
     if '--envelope-only' in sys.argv[1:]:
         with h5py.File(OUTPUT_FILE, 'a') as f:
             for name in ('envelope_shape', 'envelope_scalar', 'envelope_mach'):
@@ -447,6 +483,7 @@ def main():
         g.create_dataset('dcm_dRe', data=dcm_dRe)
 
         write_envelope_groups(f)
+        write_captured_group(f)
 
     elapsed = time.time() - t0
     print(f"\nDone. Wrote {OUTPUT_FILE}")

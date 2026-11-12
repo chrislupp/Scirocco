@@ -35,6 +35,7 @@ set(SCIROCCO_SOURCES
     src/inviscid_deriv.cpp
     src/wake.cpp
     src/boundary_layer.cpp
+    src/captured_transition.cpp
     src/transition.cpp
     src/coupled_solver.cpp
     src/forces.cpp

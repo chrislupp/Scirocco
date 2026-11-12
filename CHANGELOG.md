@@ -32,6 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   promotion; validate release labels and tags before publishing atomically.
 
 ### Added
+- `Param::transition` and `TransitionModel::Captured` (experimental, primal
+  only): the amplification factor and shear stress live at every node and
+  the laminar and turbulent closures are blended smoothly over a transition
+  length (`capt_L`), so no station switches equations when transition moves.
+  On NACA 2412 at Re 1e6 the dCd/dalpha ripple drops from 25% to 1.6%, and it
+  converges under panel refinement. Drag stays within 3% of the default at
+  Re >= 1e6. Matches the mfoil prototype (`mfoil/mfoil_captured.py`) to
+  1e-10. `ComputeSensitivities()` throws for this model until its adjoint
+  lands.
 - `Param::onset` and `OnsetModel::Envelope`: opt-in amplification onset
   ramp for the e^N model, fitted to spatial Orr-Sommerfeld envelope N-factor
   curves of Falkner-Skan profiles (H = 2.36-3.48). Growth starts at the

@@ -600,3 +600,41 @@ TEST_F(SensitivityReferenceTest, EnvelopeOnsetMachSensitivity) {
         RelErr(sens.dcm_dMa, readScalar<double>(getFile(), g + "dcm_dMa")),
         TOL_VISC_SCALAR_ALPHA);
 }
+
+/* ---------------------------------------------------------------------------
+ * Captured transition (TransitionModel::Captured), primal only.
+ *   NACA 2412, 160 panels, cumulative arc length. Reference: cl/cd/cm from
+ *   mfoil_captured.solve_captured (extract_sensitivity_reference.py
+ *   --captured-only), covering a laminar separation bubble (Re 2e5) and
+ *   early transition (Re 3e6).
+ * ---------------------------------------------------------------------------
+ */
+TEST_F(SensitivityReferenceTest, CapturedTransitionPrimal) {
+    MatrixXd x_base = readMatrix(getFile(), "captured_primal/x_base");
+    MatrixXd cases = readMatrix(getFile(), "captured_primal/cases");
+    auto N_ref = static_cast<int>(x_base.cols());
+    for (Index c = 0; c < cases.rows(); ++c) {
+        Scirocco foil("2412", N_ref - 1);
+        foil.SetOper(cases(c, 0), -1.0, cases(c, 1), 0.0);
+        auto& s = foil.GetState();
+        s.param.transition = TransitionModel::Captured;
+        s.foil.x = x_base;
+        s.foil.N = N_ref;
+        RecomputeArcLength(s);
+        s.oper.viscous = true;
+        s.oper.initbl = true;
+        s.param.verb = 0;
+        s.isol.AIC.resize(0, 0);
+        s.isol.gamref.resize(0, 0);
+        s.isol.gam.resize(0);
+        SolveViscous(s);
+        ASSERT_TRUE(s.glob.conv)
+            << "alpha=" << cases(c, 0) << " Re=" << cases(c, 1);
+        CalcForce(s);
+        EXPECT_LT(RelErr(s.post.cl, cases(c, 2)), 1e-10) << "cl, case " << c;
+        EXPECT_LT(RelErr(s.post.cd, cases(c, 3)), 1e-10) << "cd, case " << c;
+        EXPECT_LT(RelErr(s.post.cm, cases(c, 4)), 1e-10) << "cm, case " << c;
+        /* Sensitivities are not implemented for the captured model yet. */
+        EXPECT_THROW(ViscousSensitivities(s), std::runtime_error);
+    }
+}

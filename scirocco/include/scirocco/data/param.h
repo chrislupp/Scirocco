@@ -44,6 +44,17 @@ enum class OnsetModel {
     Envelope
 };
 
+/** Laminar-turbulent transition treatment in the viscous solve. */
+enum class TransitionModel {
+    /** XFOIL/mfoil cut cell: one interval holds the transition point and
+     *  stations switch from laminar to turbulent equations (default). */
+    CutCell,
+    /** Captured: amplification and shear stress at every node, closures
+     *  blended smoothly by the amplification factor; no station switches.
+     *  Primal only for now (no sensitivities). See captured_transition.h. */
+    Captured
+};
+
 /* Parameters */
 struct Param {
     /* Solver parameters */
@@ -88,9 +99,14 @@ struct Param {
     /* Viscous parameters */
     double ncrit = 9.0;                   /**< Critical amplification factor */
     OnsetModel onset = OnsetModel::Cubic; /**< Amplification onset ramp */
-    double Cuq = 1.0;   /**< Scales the uq term in the shear lag equation */
-    double Dlr = 0.9;   /**< Wall/wake dissipation length ratio */
-    double SlagK = 5.6; /**< Shear lag constant */
+    TransitionModel transition = TransitionModel::CutCell; /**< Transition */
+    double capt_L = 80.0; /**< Captured: 10-90% transition length [theta] */
+    double capt_ws = 1.0; /**< Captured: onset switch width in n */
+    double capt_wc = 1.0; /**< Captured: closure blend width in n */
+    double capt_b = 0.0;  /**< Captured: blend start after onset [ws] */
+    double Cuq = 1.0;     /**< Scales the uq term in the shear lag equation */
+    double Dlr = 0.9;     /**< Wall/wake dissipation length ratio */
+    double SlagK = 5.6;   /**< Shear lag constant */
 
     /* Initial Ctau after transition */
     double CtauC = 1.8; /**< Ctau constant */

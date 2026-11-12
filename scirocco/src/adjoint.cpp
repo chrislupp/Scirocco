@@ -502,6 +502,11 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         throw std::runtime_error(
             "ViscousSensitivities: viscous primal not converged");
     }
+    if (state.param.transition == TransitionModel::Captured) {
+        throw std::runtime_error(
+            "ViscousSensitivities: not available yet for "
+            "TransitionModel::Captured");
+    }
 
     /* 1. Force partials */
     CalcForceLin(state);

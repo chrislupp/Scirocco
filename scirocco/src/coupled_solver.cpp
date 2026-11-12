@@ -36,6 +36,7 @@
 #include <limits>
 
 #include "scirocco/core/boundary_layer.h"
+#include "scirocco/core/captured_transition.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/panel_influence.h"
@@ -150,7 +151,12 @@ void SolveViscous(FoilState& state) {
     SolveCoupled(state);
     if (!state.glob.conv && initial) SolveContinuation(*initial, state);
 
-    if (state.glob.conv) {
+    if (state.glob.conv &&
+        state.param.transition == TransitionModel::Captured) {
+        /* Converge the captured system from the cut-cell solution. Its
+         * adjoint is not implemented yet, so no factorization is stored. */
+        SolveCaptured(state);
+    } else if (state.glob.conv) {
         /* Stay at the ue-based xi from Newton convergence — DO NOT swap to
          * gamma-based xi here. The previous code did StagPointFind after
          * Newton to "match mfoil's CS reference", but mfoil_cs's actual
