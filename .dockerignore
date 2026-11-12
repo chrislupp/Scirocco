@@ -34,3 +34,6 @@ mfoil
 # Local notes / plans
 **/*.local
 **/CLAUDE.md
+**/AGENTS.md
+**/AGENTS.local.md
+**/CLAUDE.local.md
