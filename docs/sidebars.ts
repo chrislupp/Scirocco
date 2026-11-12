@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
                 "concepts/panel-method",
                 "concepts/viscous-coupling",
                 "concepts/transition",
+                "concepts/transition-validation",
                 "concepts/compressibility",
                 "concepts/geometry",
                 "concepts/ptc",

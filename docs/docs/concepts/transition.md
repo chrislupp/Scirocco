@@ -54,7 +54,8 @@ gradient with respect to the shape near the onset is large and oscillates.
 For a smooth bump 0.01c wide, the envelope ramp makes that gradient two to
 four times smaller and removes the oscillation. Use it for shape
 optimization. Leave the default when you need to match XFOIL or mfoil
-results. The data, solver, and fit are in
+results. [Transition validation](./transition-validation) compares both
+ramps with the stability results. The data, solver, and fit are in
 [`scirocco/validation/onset_envelope`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/onset_envelope).
 
 ## Captured transition (experimental)
@@ -75,12 +76,13 @@ foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
 foil.Solve();
 ```
 
-- **Smoothness:** dCd/dα becomes smooth, with a residual ripple of 0.2–4%
-  that shrinks under panel refinement. The cut-cell ripple stays at 20–30%.
+- **Smoothness:** dCd/dα becomes smooth. The remaining ripple is 0.2–8% at
+  160 panels and shrinks as the panels are refined. The cut-cell ripple
+  stays at 20–30%.
 - **Drag:** checked against measured Eppler 387 drag (UIUC, Re = 1–4.6×10⁵,
   laminar separation bubbles throughout). The RMS error is 5.3%, against 16%
   for the default model, which under-predicts bubble drag by up to 28%. At
-  Re ≥ 10⁶ the two models agree within 3% on NACA airfoils.
+  Re ≥ 10⁶ the two models agree within 4% on NACA airfoils.
 - **Transition length:** set by `capt_L`, in momentum thicknesses. The
   default of 60 is calibrated on the Eppler 387 data. The zone should span
   several panels; at high Reynolds numbers, use more panels.
@@ -89,7 +91,9 @@ foil.Solve();
   through the mfoil prototype: shape to 1e-8, the scalars to 1e-10.
 - **Limits:** prescribed angle of attack only; a lift target throws.
 
-The formulation, the test matrix and the dead ends are in
+[Transition validation](./transition-validation) has the full comparison
+with the Eppler 387 measurements, the gradient sweeps and the derivative
+checks. The formulation and the dead ends are in
 [`scirocco/validation/captured_transition`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/captured_transition).
 
 ## How transition moves during a solve

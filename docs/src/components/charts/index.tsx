@@ -1,6 +1,8 @@
 /**
  * Documentation figures. Every number comes from src/data/*.json, written by
- * the `docs_figure_data` example program (see docs/README.md).
+ * the `docs_figure_data` example program, except onset.json and
+ * transition.json, which come from scripts under scirocco/validation (see
+ * docs/README.md).
  */
 import React from "react";
 import Chart from "./Chart";
@@ -10,6 +12,7 @@ import polar from "@site/src/data/polar.json";
 import convergence from "@site/src/data/convergence.json";
 import panels from "@site/src/data/panels.json";
 import onset from "@site/src/data/onset.json";
+import transition from "@site/src/data/transition.json";
 
 const f4 = (v: number) => v.toFixed(4);
 const f3 = (v: number) => v.toFixed(3);
@@ -189,5 +192,59 @@ export function PanelPlot() {
                 at the leading and trailing edges.
             </figcaption>
         </figure>
+    );
+}
+
+/** Exact dCd/dalpha over a small alpha sweep, cut-cell vs captured transition. */
+export function TransitionSweepPlot() {
+    const { cutcell, captured } = transition.sweep;
+    const e4 = (a: number[]) => a.map((v) => v * 1e4);
+    return (
+        <Chart
+            title="dCd/dα over a small α sweep, NACA 2412, Re 1e6: cut-cell and captured transition"
+            width={640}
+            height={300}
+            series={[
+                { id: "capt", label: "Captured transition (opt-in)", x: captured.alpha, y: e4(captured.dcd), role: "1", markers: true },
+                { id: "cut", label: "Cut cell (default)", x: cutcell.alpha, y: e4(cutcell.dcd), role: "ref", dashed: true, markers: true },
+            ]}
+            x={{ domain: [3.9, 4.3], ticks: [3.9, 4.0, 4.1, 4.2, 4.3], label: "α (deg)" }}
+            y={{ domain: [3, 10.5], ticks: [4, 6, 8, 10], label: "dCd/dα (10⁻⁴ per degree)" }}
+            fx={(v) => v.toFixed(2)}
+            fy={(v) => v.toFixed(3)}
+            caption={
+                <>
+                    Complex-step derivative through mfoil, 160 panels, 21 angles. With the cut cell the
+                    derivative jumps each time the upper-surface transition point crosses a node. The
+                    captured model, at its default transition length of 60θ, gives a smooth curve.
+                </>
+            }
+        />
+    );
+}
+
+/** Cd error against the UIUC Eppler 387 drag polars at matched Cl. */
+export function E387DragPlot() {
+    const reLabel = (re: number) => `${(re / 1e5).toFixed(re % 1e5 ? 1 : 0)}×10⁵`;
+    return (
+        <div className={styles.pair}>
+            {transition.polars.map((p) => (
+                <Chart
+                    key={p.Re}
+                    title={`Eppler 387 drag error at Re ${reLabel(p.Re)}`}
+                    width={360}
+                    height={260}
+                    series={[
+                        { id: "capt", label: "Captured, L = 60θ", x: p.captured.cl, y: p.captured.err, role: "1", markers: true },
+                        { id: "cut", label: "Cut cell", x: p.cutcell.cl, y: p.cutcell.err, role: "ref", dashed: true, markers: true },
+                        { id: "exp", label: "Measured", x: [0.1, 1.0], y: [0, 0], role: "2" },
+                    ]}
+                    x={{ domain: [0, 1.05], ticks: [0, 0.25, 0.5, 0.75, 1], label: "Cl" }}
+                    y={{ domain: [-40, 15], ticks: [-40, -30, -20, -10, 0, 10], label: `Cd error (%), Re ${reLabel(p.Re)}` }}
+                    fx={(v) => v.toFixed(3)}
+                    fy={(v) => v.toFixed(1)}
+                />
+            ))}
+        </div>
     );
 }

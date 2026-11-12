@@ -27,14 +27,17 @@ Write for someone who wants to get something done:
 
 Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
 `<Next>`, `<CpPlot>`, `<PolarPlot>`, `<ConvergencePlot>`, `<PanelPlot>`,
-`<OnsetPlot>`, `<BenchTable>`, and `<QuickstartSource>` (which shows
+`<OnsetPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`, `<BenchTable>`, and
+`<QuickstartSource>` (which shows
 `scirocco/examples/quickstart.cpp` as built by CI).
 
 ## Figures and timings
 
 Plots read `src/data/*.json`, written by the `docs_figure_data` example,
 except `onset.json`, which comes from
-`scirocco/validation/onset_envelope/fit_onset.py --docs`.
+`scirocco/validation/onset_envelope/fit_onset.py --docs`, and
+`transition.json`, which comes from
+`scirocco/validation/captured_transition/e387_calibrate.py docs`.
 Timings in `src/data/bench.json` come from the `bench` example. Regenerate
 both after a change to solver results or performance:
 
