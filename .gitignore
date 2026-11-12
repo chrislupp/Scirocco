@@ -67,5 +67,6 @@ examples/**/*_result*.png
 # modopt per-run output directories
 *_outputs/
 
-# Local Claude Code configuration (machine-specific, not shared)
+# Local agent instructions and Claude Code configuration (machine-specific)
+AGENTS.local.md
 CLAUDE.local.md
