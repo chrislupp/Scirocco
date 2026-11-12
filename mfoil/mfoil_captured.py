@@ -13,7 +13,8 @@ equations, discretized exactly as mfoil.residual_station:
 
   momentum, shape  with closures Hs, cf, cDi blended per station,
                    f = (1 - g) f_lam + g f_turb,  g = S((n - nc) / wc)
-  amplification    dn/dx = (1 - gs) damp + gs C / th,  gs = S((n - ncrit) / ws)
+  amplification    dn/dx = (1 - gs) damp + gs smax(damp, C / th),
+                   gs = S((n - ncrit) / ws)
   shear lag        mfoil's lag equation for ct, with equilibrium target
                    (1 - r) cttr + r cteq and pressure-gradient term times r,
                    r = S((n - ncrit + 2.5 ws) / ws)
@@ -23,9 +24,12 @@ S(t) = (1 + tanh t) / 2; in the wake g = r = 1 and n2 = n1.
 - Up to ncrit the equations are the standard laminar ones, so onset is where
   the cut cell puts transition. ct tracks cttr (XFOIL's initial value) and
   is released into the lag equation just before onset.
-- After onset n grows at C / th, independent of the profile. Otherwise the
-  blend would lower Hk, the laminar rate would collapse, and n would stall:
-  that feedback produced multiple solutions in earlier versions.
+- After onset n grows at least at C / th, whatever the profile. Otherwise
+  the blend would lower Hk, the laminar rate would collapse, and n would
+  stall; that feedback produced multiple solutions in earlier versions. The
+  smooth max keeps the faster laminar rate where it is larger (laminar
+  separation bubbles); a hard floor alone over-predicted bubble drag by up
+  to 22%.
 - The closures blend as n crosses the band of g: 1% at ncrit + b ws, and
   10-90% over about L momentum thicknesses (C = 2.2 wc / L). b = 0 starts
   intermittency at onset, as in Dhawan & Narasimha (1958).
@@ -33,10 +37,16 @@ S(t) = (1 + tanh t) / 2; in the wake g = r = 1 and n2 = n1.
   discretization telescopes. Blending residuals left a node-dependent source
   term and was rougher than the cut cell.
 - At the stagnation similarity station the lag equation degenerates
-  (dx ~ 1e-6), so ct is pinned there algebraically.
+  (dx ~ 1e-6), so ct is pinned there algebraically, to the first node's ct
+  rather than an extrapolation (which can go negative).
 
-Parameters (on M.param): capt_L (default 80, momentum thicknesses; a
-correlation for it is future work), capt_b (0), capt_ws (1), capt_wc (1).
+Parameters (on M.param): capt_L (default 80, momentum thicknesses),
+capt_b (0), capt_ws (1), capt_wc (1). capt_Lmodel = 'narasimha' takes the
+length from the Dhawan-Narasimha spot-formation-rate correlation instead
+(see transition_rate); it lowers Cd by 3-11% at Re >= 1e6, consistent with
+double-counting the ramp the shear-lag equation already models, so it is
+not the default. The zone should span several panels: at Re 3e6 the
+dCd/dalpha ripple is 4.3% at 160 panels and 1.2% at 320.
 
 Usage:
     M = mfoil.mfoil(naca='2412', npanel=160)
@@ -99,6 +109,84 @@ def release(n, param):
 
 def _C(param):
     return _cfg(param)['C']
+
+
+def _smax(a, a_U, b, b_U, eps, eps_U):
+    """Smooth max(a, b) with rounding scale eps, and its linearization."""
+    r = np.sqrt((a - b)**2 + eps**2)
+    m = 0.5*(a + b + r)
+    m_U = 0.5*(a_U + b_U + ((a - b)*(a_U - b_U) + eps*eps_U)/r)
+    return m, m_U
+
+
+def _rate(d, d_U, s, s_n, C, th, k, E):
+    """Post-onset n rate at one station: (1 - s) d + s smax(d, C / th).
+
+    The floor C / th carries n through the closure blend without feedback
+    from the profile; the max keeps fast growth where the laminar rate is
+    larger (laminar separation bubbles). d_U is 5-state; k is unused.
+    """
+    c = C/th; c_U = -C/th**2*E[TH]
+    ke = 0.1
+    m, m_U = _smax(d, d_U, c, c_U, ke*c, ke*c_U)
+    q = (1 - s)*d + s*m
+    q_U = (1 - s)*d_U + s*m_U + (m - d)*s_n*E[AMP]
+    r = np.sqrt((d - c)**2 + (ke*c)**2)
+    q_C = s*0.5*(1 - (d - c)/r + ke*ke*c/r)/th
+    return q, q_U, q_C
+
+
+def _dN(L):
+    """Increase of the spot formation rate N over its zero-gradient value.
+
+    Dey & Narasimha (1989), as summarized in Narasimha (1990, NASA CR-187487,
+    Fig. 3), against the Thwaites parameter L = th^2/nu dU/dx: 0.25 L^2 for
+    0 <= L <= 0.12; for adverse gradients a fit to the curve through
+    Gostelow's (1989) data, 5.25 L^2 + 25.2 L^3 (-0.07 <= L <= 0).
+    """
+    if np.real(L) >= 0:
+        return 0.25*L**2, 0.5*L
+    return 5.25*L**2 + 25.2*L**3, 10.5*L + 75.6*L**2
+
+
+def transition_rate(param, U1, U2, x):
+    """C such that n crosses the closure band in the transition length.
+
+    Constant (param.capt_L momentum thicknesses) unless
+    param.capt_Lmodel == 'narasimha': then the Dhawan-Narasimha 10-90%
+    length 1.863 lambda, lambda / th = sqrt(0.41 Re_th / N) (Dey et al.
+    1995, eqs. 3, 10), with N = N0 + dN(L) from local Re_th, th and dU/dx;
+    N0 = param.capt_N0 (default 0.7e-3, Narasimha's value for
+    turbulence-driven transition). Returns C, dC/dU (10), dC/dx (2).
+    """
+    cfg = _cfg(param)
+    if getattr(param, 'capt_Lmodel', 'constant') != 'narasimha':
+        return cfg['C'], np.zeros(10), np.zeros(2)
+    wc = cfg['cl'][1]
+    pt = copy.copy(param); pt.turb = False; pt.wake = False
+    R1, R1_U = mf.get_Ret(U1[TURB_ROWS], pt); R2, R2_U = mf.get_Ret(U2[TURB_ROWS], pt)
+    Rt = 0.5*(R1 + R2)
+    Rt_U = 0.5*np.concatenate((_e5(R1_U, TURB_ROWS), _e5(R2_U, TURB_ROWS)))
+    E = np.eye(5)
+    th = 0.5*(U1[TH] + U2[TH]); th_U = 0.5*np.concatenate((E[TH], E[TH]))
+    ue = 0.5*(U1[UE] + U2[UE]); ue_U = 0.5*np.concatenate((E[UE], E[UE]))
+    dx = x[1] - x[0]
+    du = (U2[UE] - U1[UE])/dx
+    du_U = np.concatenate((-E[UE], E[UE]))/dx
+    du_x = -du/dx*np.r_[-1., 1.]
+    # Thwaites parameter th^2/nu dU/dx = Re_th (th/ue) dU/dx, smoothly bounded
+    Lt = Rt*th/ue*du
+    Lt_U = (Rt_U*th/ue + Rt*th_U/ue - Rt*th/ue**2*ue_U)*du + Rt*th/ue*du_U
+    Lt_x = Rt*th/ue*du_x
+    a = 0.1
+    t = np.tanh(Lt/a); Lc = a*t; Lc_L = 1 - t**2
+    dN, dN_L = _dN(Lc)
+    N = getattr(param, 'capt_N0', 0.7e-3) + dN
+    N_U = dN_L*Lc_L*Lt_U; N_x = dN_L*Lc_L*Lt_x
+    Lth = 1.863*np.sqrt(0.41*Rt/N)
+    Lth_U = 0.5*Lth*(Rt_U/Rt - N_U/N); Lth_x = -0.5*Lth*N_x/N
+    C = 2.2*wc/Lth
+    return C, -C/Lth*Lth_U, -C/Lth*Lth_x
 
 
 def _e5(v4, rows):
@@ -260,17 +348,15 @@ def residual_captured(param, x, Uin, Aux):
         damp = 0.5*(d1 + d2)
         damp_U = 0.5*two(_e5(d1_U, LAM_ROWS), _e5(d2_U, LAM_ROWS))
         # rate (1 - gs) damp + gs C / th: profile independent after onset
-        C = _C(param)
+        C, C_U, C_x = transition_rate(param, U1, U2, x)
         s1, s1_n = growth_switch(n[0], param); s2, s2_n = growth_switch(n[1], param)
-        q1 = (1 - s1)*d1 + s1*C/th[0]
-        q1_U = (1 - s1)*_e5(d1_U, LAM_ROWS) - s1*C/th[0]**2*E[TH] + (C/th[0] - d1)*s1_n*E[AMP]
-        q2 = (1 - s2)*d2 + s2*C/th[1]
-        q2_U = (1 - s2)*_e5(d2_U, LAM_ROWS) - s2*C/th[1]**2*E[TH] + (C/th[1] - d2)*s2_n*E[AMP]
-        damp = 0.5*(q1 + q2); damp_U = 0.5*two(q1_U, q2_U)
-        G = 0.0; G_U = 0*damp_U
-        Ramp = n[1] - n[0] - (damp + G)*dx
-        Ramp_U = two(-E[AMP], E[AMP]) - (damp_U + G_U)*dx
-        Ramp_x = -(damp + G)*dx_x
+        q1, q1_U, q1_C = _rate(d1, _e5(d1_U, LAM_ROWS), s1, s1_n, C, th[0], 0, E)
+        q2, q2_U, q2_C = _rate(d2, _e5(d2_U, LAM_ROWS), s2, s2_n, C, th[1], 1, E)
+        damp = 0.5*(q1 + q2)
+        damp_U = 0.5*two(q1_U, q2_U) + 0.5*(q1_C + q2_C)*C_U
+        Ramp = n[1] - n[0] - damp*dx
+        Ramp_U = two(-E[AMP], E[AMP]) - damp_U*dx
+        Ramp_x = -damp*dx_x - 0.5*(q1_C + q2_C)*C_x*dx
 
     # ---- momentum equation (blended cf)
     Ms1, Ms1_U = mf.get_Mach2(Ut1, param); Ms2, Ms2_U = mf.get_Mach2(Ut2, param)
@@ -324,6 +410,11 @@ def stagnation_state(U, x):
     Ust_U[UE, UE] = wk1*xst; Ust_U[UE, 5 + UE] = wk2*xst
     Ust_x = np.outer(U1, w1_x) + np.outer(U2, w2_x)
     Ust_x[UE] = K_x*xst
+    # ct: take the first node's value. Extrapolating can turn it negative
+    # (cteq changes fast at Re_theta ~ 10), and ct is not used there anyway.
+    Ust[CT] = U1[CT]
+    Ust_U[CT] = 0; Ust_U[CT, CT] = 1
+    Ust_x[CT] = 0
     return Ust, Ust_U, Ust_x, xst
 
 
@@ -505,14 +596,17 @@ def convert_state(M):
             Um = U[LAM_ROWS, jm]; Uj = U[LAM_ROWS, j].copy()
             dx = M.isol.xi[j] - M.isol.xi[jm]
             Uj[2] = Um[2]
+            U5m = U[:, jm]; U5j = U[:, j].copy()
+            C = transition_rate(param, U5m, U5j, M.isol.xi[[jm, j]])[0]
             sm = growth_switch(Um[2], M.param)[0]
+            E = np.eye(5)
             d1 = mf.get_damp(Um, p)[0]
-            q1 = (1 - sm)*d1 + sm*C/Um[0]
+            q1 = _rate(d1, np.zeros(5), sm, 0.0, C, Um[0], 0, E)[0]
             for _ in range(60):
                 d2, d2_U = mf.get_damp(Uj, p)
                 s2, s2_n = growth_switch(Uj[2], M.param)
-                q2 = (1 - s2)*d2 + s2*C/Uj[0]
-                q2_n = (1 - s2)*d2_U[2] + (C/Uj[0] - d2)*s2_n
+                q2, q2_U, _ = _rate(d2, _e5(d2_U, LAM_ROWS), s2, s2_n, C, Uj[0], 1, E)
+                q2_n = q2_U[AMP]
                 Ra = Uj[2] - Um[2] - 0.5*(q1 + q2)*dx
                 Uj[2] -= Ra/(1 - 0.5*q2_n*dx)
                 if abs(Ra) < 1e-12:

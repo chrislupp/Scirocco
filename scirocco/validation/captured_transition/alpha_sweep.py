@@ -2,9 +2,9 @@
 
 Usage: python alpha_sweep.py MODE PARAMS A0 A1 N [NPANEL] > out.txt
   MODE   'cutcell' or 'captured'
-  PARAMS JSON dict of M.param attributes, e.g. '{"capt_L": 80, "capt_b": 0}'
-Prints alpha, cd, dcd/dalpha (complex step), cl, converged, for
-NACA 2412 at Re 1e6.
+  PARAMS JSON dict of M.param attributes, e.g. '{"capt_L": 80, "capt_b": 0}',
+         plus optional "naca" (default "2412") and "Re" (default 1e6)
+Prints alpha, cd, dcd/dalpha (complex step), cl, converged.
 """
 import os, sys, warnings
 os.environ['OMP_NUM_THREADS'] = '1'; os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
@@ -17,10 +17,11 @@ def point(args):
     a, mode, cfg, npanel = args
     import mfoil as mf, mfoil_cs, mfoil_captured as mc
     from mfoil_cs import complex_step_mode
-    M = mf.mfoil(naca='2412', npanel=npanel); M.param.verb = 0; M.param.doplot = False
+    cfg = dict(cfg); naca = cfg.pop('naca', '2412'); Re = cfg.pop('Re', 1e6)
+    M = mf.mfoil(naca=naca, npanel=npanel); M.param.verb = 0; M.param.doplot = False
     for k, v in cfg.items(): setattr(M.param, k, v)
     with complex_step_mode():
-        M.setoper(alpha=a + 1j*H, Re=1e6)
+        M.setoper(alpha=a + 1j*H, Re=Re)
         M.solve()
         if mode == 'captured':
             mc.convert_state(M)
