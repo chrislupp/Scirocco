@@ -179,6 +179,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Viscous analysis rejects a closed trailing edge instead of returning wrong
+  results (#18). The wake model is singular when the trailing-edge gap
+  closes: on NACA 0012 a gap of 1e-9 chord or less never converged, and an
+  exactly closed edge could report convergence at a wrong lift (Cl 0.03
+  instead of 0.21). `BuildWake` now calls `CheckViscousTrailingEdge`, which
+  throws `std::invalid_argument` when the trailing-edge thickness is below
+  `kMinViscousTEGap` (1e-6 chord). Inviscid solves on closed trailing edges
+  are unchanged. The `KulfanDiscipline` defaults (`te_upper = te_lower = 0`)
+  give a closed edge; viscous workflows must set a gap, as all examples do.
 - Philote RPC services no longer hold ownership cycles, so server shutdown
   and startup failures release the discipline and its solver state.
 - Server startup failures no longer dereference null.

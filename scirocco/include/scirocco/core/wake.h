@@ -42,8 +42,28 @@ namespace scirocco {
  */
 void RecomputeArcLength(FoilState& state);
 
+/** @brief Smallest trailing-edge thickness, as a fraction of the chord, that
+ * viscous analysis accepts.
+ *
+ * The wake starts at the trailing-edge midpoint, along the normal to the
+ * trailing-edge gap. As the gap closes the wake model degenerates: on NACA
+ * 0012 a gap of 1e-9 chord or less fails to converge, and an exactly closed
+ * trailing edge can report convergence at the wrong lift. Results are smooth
+ * in the gap from 2e-9 chord up, so this limit leaves a factor of 1000.
+ */
+constexpr double kMinViscousTEGap = 1e-6;
+
+/** @brief Reject a trailing edge too thin for the viscous wake model.
+ *  @param state FoilState with paneled geometry (foil.x, geom.chord)
+ *  @throws std::invalid_argument if the trailing-edge thickness hTE is
+ *          below kMinViscousTEGap times the chord
+ */
+void CheckViscousTrailingEdge(const FoilState& state);
+
 /** @brief Build wake grid from inviscid solution
  *  @param state FoilState with inviscid solution
+ *  @throws std::invalid_argument if the trailing edge is closed (see
+ *          CheckViscousTrailingEdge)
  *
  *  On output:
  *  - state.wake is filled with wake panel data

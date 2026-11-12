@@ -27,8 +27,9 @@ them.
   3–256 coefficients per surface.
 - Finite values, positive chord, no repeated neighbouring points, no
   self-intersection, and the leading edge listed once.
-- A finite trailing-edge gap is fine, and recommended: viscous solves on an
-  exactly closed trailing edge can fail (a known issue).
+- A finite trailing-edge gap is fine, and required for viscous analysis:
+  a viscous solve throws if the trailing edge is thinner than 1e-6 chord
+  (a known limitation).
 - For the Philote `x` input, cluster nodes at both edges yourself, since the
   server doesn't re-panel.
 

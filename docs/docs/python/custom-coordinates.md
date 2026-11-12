@@ -98,8 +98,8 @@ Cm = 0.00581315
 - Unit chord. The variable carries length units, but Scirocco treats values
   as fractions of chord and doesn't rescale them.
 - Clustered at the leading and trailing edges.
-- A small trailing-edge gap. An exactly closed trailing edge can make
-  viscous solves fail; see [Troubleshooting](../getting-started/troubleshooting#the-solve-doesnt-converge).
+- A small trailing-edge gap. A viscous solve on a closed trailing edge
+  (thinner than 1e-6 chord) raises an error; see [Troubleshooting](../getting-started/troubleshooting#the-solve-doesnt-converge).
 - No repeated neighbours, no self-intersections. Plot it with equal axes
   before blaming the solver.
 

@@ -33,6 +33,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <sstream>
+#include <stdexcept>
 
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/geometry.h"
@@ -182,7 +184,24 @@ VectorXd SpaceGeom(double dx0, double L, int Np) {
 }
 } /* namespace */
 
+void CheckViscousTrailingEdge(const FoilState& state) {
+    const double hTE = GetTEInfo(state.foil.x).hTE;
+    const double min_gap = kMinViscousTEGap * state.geom.chord;
+    if (!(std::abs(hTE) >= min_gap)) {
+        std::ostringstream msg;
+        msg << "Viscous analysis needs an open trailing edge: the "
+               "trailing-edge thickness is "
+            << std::abs(hTE) / state.geom.chord << " chord, below the minimum "
+            << kMinViscousTEGap
+            << ". The wake model cannot handle a closed trailing edge; give "
+               "it a small gap (e.g. 0.25% chord, as the NACA generator "
+               "does) or run inviscid (Re = 0).";
+        throw std::invalid_argument(msg.str());
+    }
+}
+
 void BuildWake(FoilState& state) {
+    CheckViscousTrailingEdge(state);
     state.wake.tracing_alpha = state.oper.alpha;
     int N = state.foil.N;
     double wakelen = state.geom.wakelen;

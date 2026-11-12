@@ -1,11 +1,34 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
+#include "scirocco/core/wake.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
+
+namespace {
+/* NACA 0012, 161 cosine-spaced points ordered lower TE -> LE -> upper TE,
+ * with the last thickness coefficient set so the total TE gap is `gap`
+ * (chord 1). gap = 0 closes the trailing edge exactly. */
+MatrixXd Naca0012WithGap(double gap) {
+    const int n = 81;
+    const double a4 = -0.1036 + gap / 1.2;
+    auto yt = [a4](double x) {
+        return 0.6 * (0.2969 * std::sqrt(x) - 0.126 * x - 0.3516 * x * x +
+                      0.2843 * x * x * x + a4 * x * x * x * x);
+    };
+    MatrixXd coords(2, 2 * n - 1);
+    for (int i = 0; i < n; ++i) {
+        const double x = 0.5 * (1.0 - std::cos(M_PI * i / (n - 1)));
+        coords.col(n - 1 - i) << x, -yt(x);
+        coords.col(n - 1 + i) << x, yt(x);
+    }
+    return coords;
+}
+}  // namespace
 
 TEST(InputValidation, InvalidOperatingConditionsInvalidateSolution) {
     Scirocco foil("0012", 60);
@@ -131,4 +154,35 @@ TEST(InputValidation, CamberAcceptsBothLayoutsAndTwoPointInput) {
     EXPECT_NO_THROW(columns.GeomAddCamber(two));
     columns.SetOper(3);
     EXPECT_TRUE(columns.Solve());
+}
+
+/* Issue #18: the viscous wake model degenerates on a closed trailing edge.
+ * Without the check these solves fail or, on some coordinates, report
+ * convergence at a wrong Cl (0.03 instead of 0.21 at 199 panels, alpha 2). */
+TEST(InputValidation, ViscousRejectsClosedTrailingEdge) {
+    for (double gap : {0.0, 1e-9, 0.5 * kMinViscousTEGap}) {
+        for (int npanel : {120, 199}) {
+            Scirocco foil(Naca0012WithGap(gap), npanel);
+            foil.SetOper(2.0, -1.0, 1e6, 0.0);
+            EXPECT_THROW(foil.Solve(), std::invalid_argument)
+                << "gap " << gap << ", " << npanel << " panels";
+            EXPECT_FALSE(foil.IsConverged());
+            EXPECT_THROW(foil.ComputeSensitivities(), std::runtime_error);
+        }
+    }
+}
+
+TEST(InputValidation, ClosedTrailingEdgeStillSolvesInviscid) {
+    Scirocco foil(Naca0012WithGap(0.0), 160);
+    foil.SetOper(2.0);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_NEAR(foil.GetCl(), 0.2414, 1e-3);
+}
+
+TEST(InputValidation, ViscousAcceptsSmallTrailingEdgeGap) {
+    /* 1e-5 chord: the resolution of a 5-decimal coordinate file. */
+    Scirocco foil(Naca0012WithGap(1e-5), 160);
+    foil.SetOper(2.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_NEAR(foil.GetCl(), 0.1982, 1e-3);
 }
