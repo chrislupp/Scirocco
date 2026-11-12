@@ -3,8 +3,9 @@
 `mfoil/mfoil_captured.py` prototypes a smooth, "captured" laminar–turbulent
 transition model, as an alternative to the cut cell that XFOIL and mfoil use.
 Its module docstring documents the formulation and the parameters. This
-directory holds the evidence and the scripts that produce it. The model is
-not in the C++ library yet.
+directory holds the evidence and the scripts that produce it. The C++
+library implements the same model, with its adjoint, as
+`TransitionModel::Captured`.
 
 ## The problem
 
@@ -28,49 +29,31 @@ equations. Smooth functions of ñ do three things:
 
 No station ever changes equation type.
 
-## Smoothness
+## Results
 
-`alpha_sweep.py` computes complex-step dCd/dα for α = 3.9–4.3° in 21 points;
-the data are in `data/sweep_*.txt`. Ripple is the RMS (and maximum)
-deviation of dCd/dα from a quadratic fit, relative to its mean. Every point
-converged.
+The validation results are on the documentation page
+[Transition validation](../../../docs/docs/concepts/transition-validation.md):
 
-| case | panels | cut cell | captured (L = 80θ) |
-| --- | --- | --- | --- |
-| NACA 2412, Re = 10⁶ | 160 | 24.6% (max 47.5%) | 1.6% (max 3.4%) |
-| NACA 0012, Re = 2×10⁵ (bubble) | 160 | 29.6% (max 51.1%) | 0.2% (max 0.4%) |
-| NACA 4412, Re = 3×10⁶ | 160 | 21.2% (max 43.1%) | 4.3% (max 9.7%) |
-| NACA 4412, Re = 3×10⁶ | 240 | 20.4% (max 35.9%) | 1.5% (max 2.9%) |
-| NACA 4412, Re = 3×10⁶ | 320 | 85% (max 359%)¹ | 1.2% (max 2.1%) |
+- drag against the UIUC Eppler 387 measurements, which sets `capt_L`;
+- dCd/dα smoothness against the cut cell;
+- the drag test matrix;
+- the complex-step derivative checks.
 
-¹ The sweep script does not check cut-cell convergence, so some of these
-points may be unconverged.
+## Reproducing
 
-- The captured gradient converges under panel refinement; the cut-cell
-  gradient does not.
-- The remaining ripple comes from resolution: the transition zone has to span
-  several panels. At high Re, θ is small, so 80θ covers fewer panels. A
-  longer L also helps: at 160 panels, L = 120θ gives 2.4% here.
+- `alpha_sweep.py MODE PARAMS A0 A1 N [NPANEL]` writes a complex-step
+  dCd/dα sweep (`data/sweep_*.txt`).
+- `test_matrix.py` runs the 27-case drag matrix (`data/matrix.txt`).
+- `e387_calibrate.py fetch WORKDIR` downloads the UIUC data and writes the
+  gapped coordinates. Build `e387_polar.cpp` against the library and run it
+  once per Re and L. The polars go in `data/e387/`, with prefix `pol` for
+  ncrit 9 and `pol8` for ncrit 8.
+- `e387_calibrate.py compare WORKDIR PREFIX L...` prints the error table.
+- `e387_calibrate.py docs WORKDIR ../../../docs/src/data/transition.json`
+  writes the documentation figures.
 
-## Drag against the cut cell
-
-`test_matrix.py` runs NACA 0012, 2412 and 4412 at Re = 2×10⁵, 10⁶ and 3×10⁶
-and α = 0, 4 and 8°, with 160 panels (`data/matrix.txt`). The captured model
-converges in 26 of 27 cases. The failure (2412, 3×10⁶, 8°) also fails with the
-cut cell.
-
-The table shows the Cd difference from the cut cell, for cases where the cut
-cell converged:
-
-| Re | captured, L = 80θ | captured, Narasimha length |
-| --- | --- | --- |
-| 3×10⁶ | +0.6% to +2.7% | −2.8% to −9% |
-| 10⁶ | −0.5% to +2.9% | −0.8% to −11% |
-| 2×10⁵ (laminar separation bubbles) | −1.3% to +8.9% | −2.7% to +9.8% |
-
-The cut cell is not ground truth here. It is XFOIL's calibrated model, and the
-low-Re differences sit in separation bubbles, where neither model has been
-checked against experiment in this study.
+The UIUC data are not stored here: their terms require their notices to
+accompany any copy.
 
 ## Transition length
 
@@ -92,14 +75,13 @@ checked against experiment in this study.
   −0.07 ≤ L ≤ 0. Here L = θ²/ν dU/dx is evaluated locally. The report calls
   this figure "a preliminary proposal".
 
-The resulting lengths are 3–6 times longer than 80θ, and they lower Cd by
-3–11% at Re ≥ 10⁶. The likely reason is double counting. The shear-lag
+The resulting lengths are 3–6 times longer than 80θ (the default before
+calibration), and they lower Cd by 3–11% at Re ≥ 10⁶. The likely reason is double counting. The shear-lag
 equation starts c_τ at XFOIL's c_τ,tr ≈ 0.2 c_τ,eq, so the lag already models
 much of the transition ramp, and the full intermittency length stacks a
 second ramp on top. A consistent physical model would need to recalibrate
-c_τ,tr (XFOIL's CtauC and CtauE) together with L. That is why the default is
-a constant L = 80θ, chosen to stay close to the validated cut-cell drag at
-Re ≥ 10⁶.
+c_τ,tr (XFOIL's CtauC and CtauE) together with L. The default is therefore a
+constant L, calibrated against measured drag (see Results).
 
 ## What did not work
 
@@ -127,9 +109,8 @@ These dead ends shaped the formulation:
 
 ## Open items
 
-- Calibrate L against experiment, ideally together with c_τ,tr, or adopt the
-  Narasimha length with a recalibrated c_τ,tr.
+- L is calibrated on a single airfoil (E387). Measured transition
+  locations, such as the E387 oil-flow data in NASA TM-4062, would tighten
+  it. A joint fit of c_τ,tr and the Narasimha length is the more physical
+  alternative.
 - Only prescribed α is supported (no lift-target mode).
-- The C++ port: a 5-variable boundary-layer state touches the residuals, the
-  Jacobians, the adjoint chains (geometry, α, Re, Mach), the wake, the
-  stagnation handling, and the HDF5 reference data.

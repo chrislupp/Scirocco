@@ -40,6 +40,8 @@ namespace scirocco {
 struct Glob {
     int Nsys = 0;        /**< Number of equations and states */
     MatrixXd U;          /**< Primary states [th, ds, sa, ue] [4 x Nsys] */
+    VectorXd Un;         /**< Captured transition only: amplification n [Nsys];
+                              U row 2 then holds ct at every node */
     MatrixXd dU;         /**< Primary state update [4 x Nsys] */
     double dalpha = 0.0; /**< Angle of attack update */
     bool conv = false;   /**< Converged flag */

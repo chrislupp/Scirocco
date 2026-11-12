@@ -32,6 +32,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   promotion; validate release labels and tags before publishing atomically.
 
 ### Added
+- `Param::transition` and `TransitionModel::Captured` (experimental): the
+  amplification factor and shear stress live at every node and the laminar
+  and turbulent closures are blended smoothly over a transition length
+  (`capt_L`), so no station switches equations when transition moves. On
+  NACA 2412 at Re 1e6 the adjoint dCd/dalpha ripple drops from 25% to 1.6%,
+  and it converges under panel refinement. Against measured Eppler 387 drag
+  (UIUC Vol 5, Re 1e5-4.6e5) the RMS error is 5.3%, against 16% for the cut
+  cell; `capt_L` = 60 momentum thicknesses is calibrated on that data. The
+  primal matches the mfoil prototype
+  (`mfoil/mfoil_captured.py`) to 1e-10. The adjoint is fully analytic: shape
+  sensitivities match its complex step to 1e-8, and alpha, Re and Mach to
+  2e-11. Prescribed angle of attack only (no lift-target mode).
 - `Param::onset` and `OnsetModel::Envelope`: opt-in amplification onset
   ramp for the e^N model, fitted to spatial Orr-Sommerfeld envelope N-factor
   curves of Falkner-Skan profiles (H = 2.36-3.48). Growth starts at the

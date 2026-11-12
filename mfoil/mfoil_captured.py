@@ -40,7 +40,8 @@ S(t) = (1 + tanh t) / 2; in the wake g = r = 1 and n2 = n1.
   (dx ~ 1e-6), so ct is pinned there algebraically, to the first node's ct
   rather than an extrapolation (which can go negative).
 
-Parameters (on M.param): capt_L (default 80, momentum thicknesses),
+Parameters (on M.param): capt_L (default 60, momentum thicknesses; calibrated
+on Eppler 387 drag, see scirocco/validation/captured_transition),
 capt_b (0), capt_ws (1), capt_wc (1). capt_Lmodel = 'narasimha' takes the
 length from the Dhawan-Narasimha spot-formation-rate correlation instead
 (see transition_rate); it lowers Cd by 3-11% at Re >= 1e6, consistent with
@@ -76,7 +77,7 @@ def _cfg(param):
     The post-onset rate Gfull = 2.2 wc / (L th) makes n cross the 10-90%
     band of g in L momentum thicknesses (param.capt_L).
     """
-    L = getattr(param, 'capt_L', 80.0)
+    L = getattr(param, 'capt_L', 60.0)
     ws = getattr(param, 'capt_ws', 1.0)
     wc = getattr(param, 'capt_wc', 1.0)
     b = getattr(param, 'capt_b', 0.0)

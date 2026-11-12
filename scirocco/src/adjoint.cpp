@@ -32,7 +32,9 @@
 
 #include <array>
 #include <cmath>
+#include <functional>
 
+#include "scirocco/core/captured_transition.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/geometry.h"
@@ -48,7 +50,8 @@
 
 namespace scirocco {
 
-static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake);
+static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake,
+                              const SparseMatrixd& R_x);
 
 /**
  * @brief compute partial derivatives of cl, cm, cdpi w.r.t. foil.x
@@ -502,38 +505,82 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         throw std::runtime_error(
             "ViscousSensitivities: viscous primal not converged");
     }
+    const bool captured = state.param.transition == TransitionModel::Captured;
+    if (captured && state.oper.givencl) {
+        throw std::runtime_error(
+            "ViscousSensitivities: TransitionModel::Captured supports a "
+            "prescribed angle of attack only");
+    }
 
     /* 1. Force partials */
     CalcForceLin(state);
 
-    /* 2. Adjoint factorization */
-    StoreAdjointFactorization(state);
-    if (!state.glob.lu_factorization) {
-        throw std::runtime_error(
-            "ViscousSensitivities: adjoint LU factorization failed");
-    }
-
-    /* 3. Solve λ_J = R_V^{-T} ∂J/∂V for J ∈ {cl, cm, cd} */
-    VectorXd lambda_cl = SolveViscousAdjoint(state, state.post.cl_V);
-    VectorXd lambda_cm = SolveViscousAdjoint(state, state.post.cm_V);
-    VectorXd lambda_cd = SolveViscousAdjoint(state, state.post.cd_V);
+    /* 2-3. Adjoint solves λ_J = R_V^{-T} ∂J/∂V for J ∈ {cl, cm, cd, cdpi}.
+     * The cut cell has 3 BL rows and 4 states per node; the captured model 4
+     * and 5 ([th, ds, ct, ue, n]). Output partials are built in the 4-state
+     * layout and mapped (they do not depend on ct or n). */
     VectorXd cdpi_V = VectorXd::Zero(4 * Nsys);
     for (int i = 0; i < N; ++i) cdpi_V(4 * i + 3) = state.post.cdpi_ue(i);
-    VectorXd lambda_cdpi = SolveViscousAdjoint(state, cdpi_V);
+    const int nbl = captured ? 4 : 3;
+    CapturedSystem csys;
+    Eigen::SparseLU<SparseMatrixd> clu;
+    std::function<VectorXd(const VectorXd&)> solve_adjoint;
+    if (captured) {
+        csys = BuildCapturedSystem(state);
+        SparseMatrixd J = CapturedJacobian(state, csys);
+        clu.compute(J);
+        if (clu.info() != Eigen::Success) {
+            throw std::runtime_error(
+                "ViscousSensitivities: captured LU factorization failed");
+        }
+        solve_adjoint = [&, J](const VectorXd& v4) -> VectorXd {
+            VectorXd rhs = VectorXd::Zero(5 * Nsys);
+            for (int i = 0; i < Nsys; ++i)
+                rhs.segment<4>(5 * i) = v4.segment<4>(4 * i);
+            VectorXd lambda = clu.transpose().solve(rhs);
+            VectorXd res = J.transpose() * lambda - rhs;
+            if (!lambda.allFinite() ||
+                res.norm() >
+                    1e-11 * std::max(rhs.norm() + (J.cwiseAbs().transpose() *
+                                                   lambda.cwiseAbs())
+                                                      .norm(),
+                                     1e-30)) {
+                throw std::runtime_error(
+                    "ViscousSensitivities: inaccurate captured transpose "
+                    "solve");
+            }
+            return lambda;
+        };
+    } else {
+        StoreAdjointFactorization(state);
+        if (!state.glob.lu_factorization) {
+            throw std::runtime_error(
+                "ViscousSensitivities: adjoint LU factorization failed");
+        }
+        solve_adjoint = [&](const VectorXd& v4) {
+            return SolveViscousAdjoint(state, v4);
+        };
+    }
+    VectorXd lambda_cl = solve_adjoint(state.post.cl_V);
+    VectorXd lambda_cm = solve_adjoint(state.post.cm_V);
+    VectorXd lambda_cd = solve_adjoint(state.post.cd_V);
+    VectorXd lambda_cdpi = solve_adjoint(cdpi_V);
 
-    /* 4. VJPs — DRbl as dense matrix * lambda_bl (lambda_bl size 3*Nsys),
+    /* 4. VJPs — DRbl as dense matrix * lambda_bl (lambda_bl size nbl*Nsys),
      *    plus ComputeRueVJP for the wake-side chain. */
     MatrixXd dfoil_s_dx = DFoilSDFoilX(state.foil);
-    MatrixXd dRbl_dx = DRblDFoilX(state, dfoil_s_dx); /* [3*Nsys x 2N] */
+    MatrixXd dRbl_dx = captured ? CapturedDRblDFoilX(state, csys, dfoil_s_dx)
+                                : DRblDFoilX(state, dfoil_s_dx);
     /* The R_ue chain's geometric Jacobians are the same for every output, so
      * build them once rather than once per VJP. */
     const RueVJPContext rue_ctx = BuildRueVJPContext(state, dfoil_s_dx);
 
-    /* All four outputs at once: columns cl, cm, cd, cdpi. */
-    MatrixXd lambdas(4 * Nsys, 4);
+    /* All four outputs at once: columns cl, cm, cd, cdpi. Each lambda holds
+     * nbl * Nsys boundary-layer rows followed by Nsys ue rows. */
+    MatrixXd lambdas(lambda_cl.size(), 4);
     lambdas << lambda_cl, lambda_cm, lambda_cd, lambda_cdpi;
     MatrixXd vjps =
-        dRbl_dx.transpose() * lambdas.topRows(3 * Nsys); /* [2N x 4] */
+        dRbl_dx.transpose() * lambdas.topRows(nbl * Nsys); /* [2N x 4] */
     vjps += ComputeRueVJPBatch(state, lambdas.bottomRows(Nsys), rue_ctx);
     const VectorXd vjp_cl = vjps.col(0);
     const VectorXd vjp_cm = vjps.col(1);
@@ -571,7 +618,8 @@ Sensitivity ViscousSensitivities(FoilState& state) {
      * enters the outputs only through the converged state. */
     {
         VectorXd dRV_dalpha = DRVDAlphaImpl(
-            state, true, !state.oper.givencl || state.oper.redowake);
+            state, true, !state.oper.givencl || state.oper.redowake,
+            captured ? csys.R_x : state.glob.R_x);
         sens.dcl_dalpha = state.post.cl_alpha - lambda_cl.dot(dRV_dalpha);
         sens.dcm_dalpha = 0.0 - lambda_cm.dot(dRV_dalpha);
         sens.dcd_dalpha = 0.0 - lambda_cd.dot(dRV_dalpha);
@@ -587,7 +635,7 @@ Sensitivity ViscousSensitivities(FoilState& state) {
      *     p = (5+H)/2. H is Ma-independent at fixed U; uk has Ma dep via
      *     Karman-Tsien lambda. */
     {
-        VectorXd dRV_dMa = DRVDMa(state);
+        VectorXd dRV_dMa = captured ? CapturedDRVDMa(state) : DRVDMa(state);
         double Ma = state.oper.Ma;
         Vector4d dJ_dMa = Vector4d::Zero();
         if (Ma > 0) {
@@ -662,7 +710,7 @@ Sensitivity ViscousSensitivities(FoilState& state) {
 
     /* Re: no explicit J(Re) dependence — only chain through R_V. */
     {
-        VectorXd dRV_dRe = DRVDRe(state);
+        VectorXd dRV_dRe = captured ? CapturedDRVDRe(state) : DRVDRe(state);
         sens.dcl_dRe = -lambda_cl.dot(dRV_dRe);
         sens.dcd_dRe = -lambda_cd.dot(dRV_dRe);
         sens.dcm_dRe = -lambda_cm.dot(dRV_dRe);
@@ -673,7 +721,8 @@ Sensitivity ViscousSensitivities(FoilState& state) {
     if (state.oper.givencl) {
         Vector4d seed = Vector4d::Zero();
         if (!state.oper.redowake) {
-            const VectorXd rw = DRVDAlphaImpl(state, false, true);
+            const VectorXd rw =
+                DRVDAlphaImpl(state, false, true, state.glob.R_x);
             seed << -lambda_cl.dot(rw), -lambda_cd.dot(rw), -lambda_cm.dot(rw),
                 -lambda_cdpi.dot(rw);
         }
@@ -717,10 +766,14 @@ void ApplyLiftConstraint(Sensitivity& sens, const Vector4d& seed) {
 }
 
 VectorXd DRVDAlpha(FoilState& state) {
-    return DRVDAlphaImpl(state, true, true);
+    return DRVDAlphaImpl(state, true, true, state.glob.R_x);
 }
 
-static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake) {
+/* R_x is the boundary-layer residual's xi Jacobian: 3 rows per node for the
+ * cut cell, 4 for the captured model. The result holds R_x.rows() BL rows,
+ * then the Nsys ue rows. */
+static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake,
+                              const SparseMatrixd& R_x) {
     /* Analytic forward-mode chain for ∂R_V/∂α (NO FD).
      *
      * R_V depends on α through several intermediates:
@@ -746,10 +799,11 @@ static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake) {
     MatrixXd dwake_t_dalpha =
         wake ? DWakeTDAlpha(state) : MatrixXd::Zero(2, Nw); /* [2 x Nw] */
 
-    VectorXd dR = VectorXd::Zero(4 * Nsys);
+    const auto nbl = static_cast<int>(R_x.rows());
+    VectorXd dR = VectorXd::Zero(nbl + Nsys);
 
     /* ---- R_BL part: R_x · dxi/dα ---- */
-    dR.head(3 * Nsys) = state.glob.R_x * dxi_dalpha;
+    dR.head(nbl) = R_x * dxi_dalpha;
 
     /* ---- R_ue part: -dueinv/dα - sgue · d(ue_sigma · phi)/dα ----
      *
@@ -1112,10 +1166,9 @@ static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake) {
      *   wake rows N+j j>0:   dR_ue/dα = -dueinv - 1 · (dCgam·v + Cgam·dBphi +
      *   dCsig·phi) */
     for (int i = 0; i < N; ++i) {
-        dR(3 * Nsys + i) = -dueinv(i) - state.isol.sgnue(i) * dBphi_dalpha(i);
+        dR(nbl + i) = -dueinv(i) - state.isol.sgnue(i) * dBphi_dalpha(i);
     }
-    dR(3 * Nsys + N) =
-        -dueinv(N) - dBphi_dalpha(N - 1); /* wake[0] continuity */
+    dR(nbl + N) = -dueinv(N) - dBphi_dalpha(N - 1); /* wake[0] continuity */
     for (int j = 1; j < Nw; ++j) {
         /* Cgam[j,:] · dBphi.head(N): rebuild Cgam[j,:] from stored Cgam? It's
          * not cached. Recompute via InviscidVelocity returning V_G [2 x N]. */
@@ -1131,7 +1184,7 @@ static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake) {
         }
         double d_ue_sigma_phi =
             dCgam_v_dalpha(j) + Cgam_dBphi + dCsig_phi_dalpha(j);
-        dR(3 * Nsys + N + j) = -dueinv(N + j) - d_ue_sigma_phi;
+        dR(nbl + N + j) = -dueinv(N + j) - d_ue_sigma_phi;
     }
     return dR;
 }

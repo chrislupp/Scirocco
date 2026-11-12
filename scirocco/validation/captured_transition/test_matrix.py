@@ -1,7 +1,7 @@
 """Cut cell vs captured transition over airfoils, Reynolds numbers, angles.
 
 Usage: python test_matrix.py > data/matrix.txt
-Columns: airfoil Re alpha | cut cl cd xt_up | captured-L80 conv cl cd |
+Columns: airfoil Re alpha | cut cl cd xt_up | captured-L60 conv cl cd |
 captured-Narasimha conv cl cd zone10-90(upper, x/c)
 """
 import os, sys, warnings, itertools
@@ -36,7 +36,7 @@ def solve(naca, Re, alpha, mode):
 
 def case(args):
     naca, Re, alpha = args
-    return args, solve(naca, Re, alpha, 'cut'), solve(naca, Re, alpha, 'L80'), \
+    return args, solve(naca, Re, alpha, 'cut'), solve(naca, Re, alpha, 'L60'), \
         solve(naca, Re, alpha, 'narasimha')
 
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     cases = list(itertools.product(['0012', '2412', '4412'], [2e5, 1e6, 3e6], [0.0, 4.0, 8.0]))
     with Pool(10) as p:
         res = p.map(case, cases)
-    print('# airfoil Re alpha | cut: conv cl cd xt | L80: conv cl cd dcd% | narasimha: conv cl cd dcd% zone')
+    print('# airfoil Re alpha | cut: conv cl cd xt | L60: conv cl cd dcd% | narasimha: conv cl cd dcd% zone')
     for (naca, Re, a), c, l, n in res:
         rel = lambda r: 100*(r[2] - c[2])/c[2]
         print('%s %.0e %4.1f | %d %.4f %.5f %.3f | %d %.4f %.5f %+5.1f | %d %.4f %.5f %+5.1f %.3f-%.3f' % (
