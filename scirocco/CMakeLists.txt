@@ -132,6 +132,13 @@ if(SCIROCCO_BUILD_TESTS)
             tests/input_validation_test.cpp)
         target_link_libraries(scirocco_solver_strategy_tests scirocco GTest::gtest_main)
         gtest_discover_tests(scirocco_solver_strategy_tests)
+        # Timing guard: only meaningful in optimized, uninstrumented builds.
+        if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$"
+           AND NOT SCIROCCO_SANITIZERS)
+            add_executable(scirocco_gradient_cost_tests tests/gradient_cost_test.cpp)
+            target_link_libraries(scirocco_gradient_cost_tests scirocco GTest::gtest_main)
+            gtest_discover_tests(scirocco_gradient_cost_tests)
+        endif()
     endif()
     if(GTest_FOUND AND hdf5_FOUND)
         message(STATUS "Found HDF5")
