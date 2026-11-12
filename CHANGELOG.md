@@ -153,6 +153,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- `Spline2DCreate` runs all ten arc-length passes again. The early exit
+  added with the tridiagonal spline solve stopped after about three, while
+  `SplineArcLengthDeriv` differentiates ten, so shape gradients on re-paneled
+  geometry missed the high-precision reference by ~6e-13
+  (`RemainingGradientTest/nonunit_chord`). Paneling stays O(n): 1.2 ms at
+  99–199 panels.
 - `hdf5_output_example` now records non-converged sweep points without
   requesting unavailable sensitivities, so the sweep continues and the
   output file retains every attempted operating condition.
