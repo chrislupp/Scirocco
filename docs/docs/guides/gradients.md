@@ -24,7 +24,7 @@ std::printf("dCd/dx is %ld x %ld\n", (long)s.dcd_dx.rows(), (long)s.dcd_dx.cols(
 ```output
 dCl/dalpha = 0.092430 per deg
 dCd/dalpha = 0.000748 per deg
-dCd/dRe    = -1.3068e-09
+dCd/dRe    = -1.3061e-09
 dCd/dx is 2 x 161
 ```
 

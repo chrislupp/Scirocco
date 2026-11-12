@@ -427,6 +427,8 @@ double GetCteq_dMa(const Vector4d& U_in, const Param& p_in,
 /** @brief d(cttr)/dMa at fixed U (param with wake = false). */
 double GetCttr_dMa(const Vector4d& U, const Param& p_nowake,
                    const ThermoMaDeriv& d);
+/** @brief d(cttr)/dRet at fixed U (param with wake = false, turb = true). */
+double GetCttr_dRet(const Vector4d& U, const Param& p_nowake);
 
 } /* namespace detail */
 

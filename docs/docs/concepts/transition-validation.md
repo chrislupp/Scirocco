@@ -166,14 +166,11 @@ The tests are in `scirocco/tests/sensitivity_reference_test.cpp`.
 | Quantity | Case | Agreement |
 | --- | --- | --- |
 | Envelope onset: shape | NACA 2412, 160 panels, α = 4°, Re = 10⁶ | 1e-8 |
-| Envelope onset: α, Mach | same | 1e-9 |
+| Envelope onset: α, Re, Mach | same | 1e-9 |
+| Default onset: Re, lower surface laminar to the trailing edge | same | 1e-9 |
 | Captured: cl, cd, cm | NACA 2412 at Re = 2×10⁵, 10⁶, 3×10⁶ | 1e-10 |
 | Captured: shape, 9 nodes across onset and the blend | NACA 2412, Re = 10⁶ | 1e-8 |
 | Captured: α, Re, Mach | same | 2e-11 |
-
-With the envelope ramp, d/dRe misses complex step by up to 2e-3 on this
-case. The default ramp has the same gap, so it predates these models. The
-captured model's d/dRe has no such gap.
 
 ## Reproducing
 

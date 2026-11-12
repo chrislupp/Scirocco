@@ -18,6 +18,8 @@ HDF5 structure:
   envelope_shape/    NACA 2412, 160 panels, alpha=4, Re=1e6, onset='envelope'
   envelope_scalar/   same case: d/dalpha and d/dRe
   envelope_mach/     same case at Ma=0.3: d/dMa
+  viscous_re_laminar_te/  NACA 2412, 160 panels, alpha=4, Re=1e6, default
+                     onset: d/dRe with the lower surface laminar at the TE
   captured_primal/   NACA 2412, 160 panels, cumulative arc length:
                      TransitionModel::Captured cl/cd/cm (mfoil_captured)
   captured_shape/    same, alpha=4, Re=1e6: CS dcl/dcd/dcm/dx around transition
@@ -32,6 +34,7 @@ Usage:
 --onset-only (re)writes just viscous_shape_onset/ and --envelope-only just the
 envelope_* groups into the existing file; the two can be combined.
 --captured-only (re)writes just captured_primal/.
+--laminar-te-only (re)writes just viscous_re_laminar_te/.
 --captured-cs-only (re)writes just captured_shape/ and captured_scalar/.
 """
 
@@ -371,6 +374,24 @@ def write_envelope_groups(f):
 CAPTURED_CASES = [(4.0, 1e6), (0.0, 1e6), (4.0, 2e5), (8.0, 2e5), (4.0, 3e6)]
 
 
+def write_laminar_te_re_group(f):
+    """CS d/dRe with one surface still laminar at the trailing edge, so the
+    wake initialization takes its shear stress from the Re-dependent
+    transition closure (get_cttr) rather than from the state."""
+    c = ENVELOPE_CASE
+    print("\n--- viscous_re_laminar_te (NACA 2412, 160 panels, alpha=4, Re=1e6) ---")
+    M = solve_viscous(c['naca'], c['npanel'], c['alpha'], c['Re'])
+    if all(M.vsol.turb[Is[-1]] for Is in M.vsol.Is[:2]):
+        raise RuntimeError('expected a laminar trailing edge on one surface')
+    dcl, dcd, dcm = cs_viscous_scalar(c['naca'], c['npanel'], c['alpha'],
+                                      c['Re'], 0.0, 'Re', CS_STEP)
+    print(f"    d/dRe: dcl={dcl:.10e}, dcd={dcd:.10e}, dcm={dcm:.10e}")
+    g = f.create_group('viscous_re_laminar_te')
+    g.create_dataset('dcl_dRe', data=dcl)
+    g.create_dataset('dcd_dRe', data=dcd)
+    g.create_dataset('dcm_dRe', data=dcm)
+
+
 def write_captured_group(f):
     """Captured-transition primal (mfoil_captured) on cumulative-s geometry."""
     import mfoil_captured
@@ -473,6 +494,14 @@ def write_captured_cs_groups(f):
 
 
 def main():
+    if '--laminar-te-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            if 'viscous_re_laminar_te' in f:
+                del f['viscous_re_laminar_te']
+            write_laminar_te_re_group(f)
+        print(f"Wrote viscous_re_laminar_te/ to {OUTPUT_FILE}")
+        return
+
     if '--captured-cs-only' in sys.argv[1:]:
         with h5py.File(OUTPUT_FILE, 'a') as f:
             for name in ('captured_shape', 'captured_scalar'):
@@ -608,6 +637,7 @@ def main():
         g.create_dataset('dcm_dRe', data=dcm_dRe)
 
         write_envelope_groups(f)
+        write_laminar_te_re_group(f)
         write_captured_group(f)
         write_captured_cs_groups(f)
 

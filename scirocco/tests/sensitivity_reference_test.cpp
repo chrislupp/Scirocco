@@ -541,6 +541,36 @@ TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Viscous d/dRe with a laminar trailing edge (default onset)
+ *   NACA 2412, 160 panels, alpha=4, Re=1e6. The lower surface stays laminar
+ *   to the TE, so the wake-initialization shear stress comes from the
+ *   transition closure cttr(Ret) instead of the state. Reference: mfoil_cs
+ *   (extract_sensitivity_reference.py --laminar-te-only).
+ * ---------------------------------------------------------------------------
+ */
+TEST_F(SensitivityReferenceTest, ViscousReLaminarTrailingEdge) {
+    const std::string g = "viscous_re_laminar_te/";
+    Scirocco foil("2412", 160);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    const auto& s = foil.GetState();
+    const bool lam_te =
+        !s.vsol.turb[s.vsol.Is[0].back()] || !s.vsol.turb[s.vsol.Is[1].back()];
+    ASSERT_TRUE(lam_te) << "case no longer exercises a laminar trailing edge";
+
+    const Sensitivity sens = foil.ComputeSensitivities();
+    auto rel = [](double got, double ref) {
+        return std::abs(got - ref) / std::max(std::abs(ref), 1e-30);
+    };
+    EXPECT_LT(rel(sens.dcl_dRe, readScalar<double>(getFile(), g + "dcl_dRe")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcd_dRe, readScalar<double>(getFile(), g + "dcd_dRe")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(rel(sens.dcm_dRe, readScalar<double>(getFile(), g + "dcm_dRe")),
+              TOL_VISC_SCALAR_ALPHA);
+}
+
+/* ---------------------------------------------------------------------------
  * Opt-in envelope onset model (OnsetModel::Envelope)
  *   NACA 2412, 160 panels, alpha=4, Re=1e6. Reference: mfoil_cs with
  *   param.onset='envelope' (extract_sensitivity_reference.py).
@@ -603,11 +633,6 @@ Sensitivity EnvelopeScalarSensitivities(double Ma) {
     return foil.ComputeSensitivities();
 }
 
-/* d/dRe on this NACA 2412 case misses CS by up to 2e-3 with the default
- * cubic onset as well (1.9e-3 dcl, 5.5e-4 dcd, 1.5e-3 dcm), so the gap is in
- * the existing Re chain, not the envelope ramp. Loose until that is fixed. */
-constexpr double TOL_ENVELOPE_RE = 5e-3;
-
 double RelErr(double got, double ref) {
     return std::abs(got - ref) / std::max(std::abs(ref), 1e-30);
 }
@@ -628,13 +653,13 @@ TEST_F(SensitivityReferenceTest, EnvelopeOnsetAlphaReSensitivity) {
               TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(
         RelErr(sens.dcl_dRe, readScalar<double>(getFile(), g + "dcl_dRe")),
-        TOL_ENVELOPE_RE);
+        TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(
         RelErr(sens.dcd_dRe, readScalar<double>(getFile(), g + "dcd_dRe")),
-        TOL_ENVELOPE_RE);
+        TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(
         RelErr(sens.dcm_dRe, readScalar<double>(getFile(), g + "dcm_dRe")),
-        TOL_ENVELOPE_RE);
+        TOL_VISC_SCALAR_ALPHA);
 }
 
 TEST_F(SensitivityReferenceTest, EnvelopeOnsetMachSensitivity) {
