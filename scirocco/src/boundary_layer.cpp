@@ -753,10 +753,8 @@ double GetUq_dcf(double ds, const Param& param) {
 double GetDamp_dRet(const Vector4d& U, const Param& param) {
     /* GetDamp uses Ret only via lr = log(Ret)/log(10). Chain:
      *   lr_dRet = 1/(Ret · log(10))
-     *   rn = (lr - (lrc - dl)) / (2*dl), lrc has no Ret dep → rn_dRet =
-     *   lr_dRet/(2*dl) rf (cubic blend) has Ret dep through rn:
-     *     rn < 1: rf = 3rn² - 2rn³ → ∂rf/∂rn = 6rn - 6rn²
-     *     rn ≥ 1: rf = 1 (flat) → ∂rf/∂rn = 0
+     *   rf = OnsetRamp(lr - lrc, Hmi); lrc and Hmi have no Ret dep →
+     *   rf_dRet = rf_z · lr_dRet
      *   af, da, ar, ex have no Ret dep.
      *   damp = rf · af · da / th → damp_dRet = rf_dRet · af · da / th
      *   ed term: tanh of sa-only, no Ret dep. */
@@ -774,19 +772,10 @@ double GetDamp_dRet(const Vector4d& U, const Param& param) {
 
     constexpr double lten = 2.302585092994046;
     double lr = std::log(Ret) / lten;
-    constexpr double dl = 0.1;
-    if (lr < lrc - dl) return 0.0;
-
-    double rn = (lr - (lrc - dl)) / (2.0 * dl);
+    const OnsetRampValue ramp = OnsetRamp(lr - lrc, Hmi, param);
+    if (ramp.rf_z == 0.0) return 0.0;
     double lr_dRet = 1.0 / (Ret * lten);
-    double rn_dRet = lr_dRet / (2.0 * dl);
-
-    double rf_dRet;
-    if (rn >= 1.0) {
-        rf_dRet = 0.0;
-    } else {
-        rf_dRet = (6.0 * rn - 6.0 * rn * rn) * rn_dRet;
-    }
+    double rf_dRet = ramp.rf_z * lr_dRet;
 
     double ar = 3.87 * Hmi - 2.52;
     double ex = std::exp(-ar * ar);
@@ -1352,18 +1341,10 @@ double GetDamp_dMa(const Vector4d& U, const Param& param,
     constexpr double lten = 2.302585092994046;
     double lr = std::log(Ret_v) / lten;
     double lr_dM = Ret_dM / (Ret_v * lten);
-    constexpr double dl = 0.1;
-    if (lr < lrc - dl) return 0.0;
-    double rn = (lr - (lrc - dl)) / (2.0 * dl);
-    double rn_dM = (lr_dM - lrc_dM) / (2.0 * dl);
-    double rf, rf_dM;
-    if (rn >= 1.0) {
-        rf = 1.0;
-        rf_dM = 0.0;
-    } else {
-        rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
-        rf_dM = (6.0 * rn - 6.0 * rn * rn) * rn_dM;
-    }
+    const OnsetRampValue ramp = OnsetRamp(lr - lrc, Hmi, param);
+    if (ramp.rf == 0.0 && ramp.rf_z == 0.0) return 0.0;
+    double rf = ramp.rf;
+    double rf_dM = ramp.rf_z * (lr_dM - lrc_dM) + ramp.rf_Hmi * Hmi_dM;
     double ar = 3.87 * Hmi - 2.52;
     double ar_dM = 3.87 * Hmi_dM;
     double ex = std::exp(-ar * ar);

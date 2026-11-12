@@ -163,6 +163,32 @@ ScalarLin4 GetRho(const Vector4d& U, const Param& param);
  */
 ScalarLin4 GetDamp(const Vector4d& U, const Param& param);
 
+/** @brief Onset ramp value and partials (see OnsetRamp). */
+struct OnsetRampValue {
+    double rf = 0.0;     /**< Ramp factor in [0, 1]; 0 means no growth */
+    double rf_z = 0.0;   /**< d(rf)/dz at fixed Hmi */
+    double rf_Hmi = 0.0; /**< d(rf)/d(Hmi) at fixed z */
+};
+
+/** @brief Onset ramp of the amplification rate, selected by param.onset
+ *
+ *  The rate is rf * af * da / theta. rf rises from 0 to 1 as
+ *  z = log10(Re_theta) - lrc(Hk) passes the critical value.
+ *
+ *  - OnsetModel::Cubic: XFOIL/mfoil cubic over z in [-0.1, 0.1].
+ *  - OnsetModel::Envelope: rf = P(3, k (z - zc)), the regularized lower
+ *    incomplete gamma function, 1 - exp(-u)(1 + u + u^2/2). zc(Hk) and the
+ *    shape are fitted to Orr-Sommerfeld envelope N-factor curves of
+ *    Falkner-Skan profiles (H = 2.36-3.48); k = ln10 / (1 - 10^(zc/3))
+ *    keeps the asymptote, n = da (Re_theta - 10^lrc), the same as the cubic
+ *    ramp, so only the onset changes. C2 at onset.
+ *
+ *  @param z     log10(Re_theta) - lrc(Hk)
+ *  @param Hmi   1 / (Hk - 1)
+ *  @param param Flow parameter struct
+ */
+OnsetRampValue OnsetRamp(double z, double Hmi, const Param& param);
+
 /** @brief Initial ctau at transition
  *  @param U     State vector [theta, ds, sa, ue]
  *  @param param Flow parameter struct

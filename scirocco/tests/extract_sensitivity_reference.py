@@ -15,13 +15,18 @@ HDF5 structure:
   inviscid_shape/    NACA 2412, 80 panels, alpha=5
   inviscid_alpha/    NACA 2412, 80 panels, alpha=5
   inviscid_mach/     NACA 0012, 100 panels, alpha=3, Ma=0.3
+  envelope_shape/    NACA 2412, 160 panels, alpha=4, Re=1e6, onset='envelope'
+  envelope_scalar/   same case: d/dalpha and d/dRe
+  envelope_mach/     same case at Ma=0.3: d/dMa
 
 Usage:
   cd mfoil
   python ../scirocco/tests/extract_sensitivity_reference.py
   python ../scirocco/tests/extract_sensitivity_reference.py --onset-only
+  python ../scirocco/tests/extract_sensitivity_reference.py --envelope-only
 
---onset-only (re)writes just viscous_shape_onset/ into the existing file.
+--onset-only (re)writes just viscous_shape_onset/ and --envelope-only just the
+envelope_* groups into the existing file; the two can be combined.
 """
 
 import sys
@@ -107,7 +112,7 @@ def cs_inviscid_scalar(naca, npanel, alpha, Ma, var, step):
     return dcl, dcm
 
 
-def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step):
+def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic'):
     """
     Complex-step derivative of (cl, cd, cm) w.r.t. a scalar operating condition.
     var: 'alpha', 'Ma', or 'Re'
@@ -126,6 +131,7 @@ def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step):
     M = mfoil.mfoil(naca=naca, npanel=npanel)
     M.param.verb = 0
     M.param.doplot = False
+    M.param.onset = onset
     # Now enter complex mode for setoper + solve
     with complex_step_mode():
         M.setoper(**kwargs)
@@ -176,7 +182,7 @@ def cs_inviscid_shape(naca, npanel, alpha, Ma, test_nodes):
     return M_base, dcl_dx, dcm_dx
 
 
-def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes):
+def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic'):
     """
     Complex-step shape sensitivities for viscous case.
     Returns dcl_dx, dcd_dx, dcm_dx [2, N+1] (nonzero only at test_nodes).
@@ -191,6 +197,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes):
     M_base = mfoil.mfoil(naca=naca, npanel=npanel)
     M_base.param.verb = 0
     M_base.param.doplot = False
+    M_base.param.onset = onset
     recompute_geom(M_base)  # cumulative foil.s, same path as perturbations
     M_base.setoper(alpha=alpha, Re=Re, Ma=Ma)
     M_base.solve()
@@ -204,6 +211,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes):
             M = mfoil.mfoil(naca=naca, npanel=npanel)
             M.param.verb = 0
             M.param.doplot = False
+            M.param.onset = onset
             M.foil.x = M.foil.x.astype(complex)
             M.foil.x[dim, node] += 1j * CS_STEP
             recompute_geom(M)
@@ -315,13 +323,61 @@ def write_onset_group(f):
                               dcl_dx, dcd_dx, dcm_dx)
 
 
+# Opt-in envelope onset model (OnsetModel::Envelope / param.onset='envelope').
+# Shape nodes straddle the upper-surface amplification onset (85-93) plus one
+# lower- and one upper-surface node away from it.
+ENVELOPE_CASE = dict(naca='2412', npanel=160, alpha=4.0, Re=1e6)
+ENVELOPE_NODES = [40] + list(range(85, 94)) + [120]
+
+
+def write_envelope_groups(f):
+    """CS references for the envelope onset model: shape, alpha, Re, Ma."""
+    c = ENVELOPE_CASE
+    print("\n--- envelope_shape (NACA 2412, 160 panels, alpha=4, Re=1e6) ---")
+    M, dcl_dx, dcd_dx, dcm_dx = cs_viscous_shape(
+        c['naca'], c['npanel'], c['alpha'], c['Re'], 0.0, ENVELOPE_NODES,
+        onset='envelope')
+    write_viscous_shape_group(f, 'envelope_shape', M, ENVELOPE_NODES,
+                              dcl_dx, dcd_dx, dcm_dx)
+
+    print("\n--- envelope_scalar (alpha, Re) ---")
+    g = f.create_group('envelope_scalar')
+    for var, suffix in (('alpha', 'dalpha'), ('Re', 'dRe')):
+        dcl, dcd, dcm = cs_viscous_scalar(c['naca'], c['npanel'], c['alpha'],
+                                          c['Re'], 0.0, var, CS_STEP,
+                                          onset='envelope')
+        print(f"    d/{var}: dcl={dcl:.10e}, dcd={dcd:.10e}, dcm={dcm:.10e}")
+        g.create_dataset('dcl_' + suffix, data=dcl)
+        g.create_dataset('dcd_' + suffix, data=dcd)
+        g.create_dataset('dcm_' + suffix, data=dcm)
+
+    print("\n--- envelope_mach (Ma=0.3) ---")
+    dcl, dcd, dcm = cs_viscous_scalar(c['naca'], c['npanel'], c['alpha'],
+                                      c['Re'], 0.3, 'Ma', CS_STEP,
+                                      onset='envelope')
+    print(f"    d/dMa: dcl={dcl:.10e}, dcd={dcd:.10e}, dcm={dcm:.10e}")
+    g = f.create_group('envelope_mach')
+    g.create_dataset('dcl_dMa', data=dcl)
+    g.create_dataset('dcd_dMa', data=dcd)
+    g.create_dataset('dcm_dMa', data=dcm)
+
+
 def main():
-    if '--onset-only' in sys.argv[1:]:
+    args = sys.argv[1:]
+    if '--onset-only' in args or '--envelope-only' in args:
         with h5py.File(OUTPUT_FILE, 'a') as f:
-            if 'viscous_shape_onset' in f:
-                del f['viscous_shape_onset']
-            write_onset_group(f)
-        print(f"Wrote viscous_shape_onset/ to {OUTPUT_FILE}")
+            if '--onset-only' in args:
+                if 'viscous_shape_onset' in f:
+                    del f['viscous_shape_onset']
+                write_onset_group(f)
+                print(f"Wrote viscous_shape_onset/ to {OUTPUT_FILE}")
+            if '--envelope-only' in args:
+                for name in ('envelope_shape', 'envelope_scalar',
+                             'envelope_mach'):
+                    if name in f:
+                        del f[name]
+                write_envelope_groups(f)
+                print(f"Wrote envelope_* groups to {OUTPUT_FILE}")
         return
 
     t0 = time.time()
@@ -423,6 +479,8 @@ def main():
         g.create_dataset('dcl_dRe', data=dcl_dRe)
         g.create_dataset('dcd_dRe', data=dcd_dRe)
         g.create_dataset('dcm_dRe', data=dcm_dRe)
+
+        write_envelope_groups(f)
 
     elapsed = time.time() - t0
     print(f"\nDone. Wrote {OUTPUT_FILE}")

@@ -568,6 +568,60 @@ ScalarLin4 GetRho(const Vector4d& U, const Param& param) {
     return {rho, rho_U};
 }
 
+namespace {
+
+/* Envelope onset ramp; see OnsetRamp in bl_properties.h and
+ * scirocco/validation/onset_envelope/ for the stability data and fit.
+ *
+ *   zc(Hk) = c0 + c1 Hmi, capped smoothly below zcap (softplus, width w)
+ *   k      = ln10 / (1 - 10^(zc/3))     keeps the asymptote at lrc
+ *   u      = k (z - zc)
+ *   rf     = P(3, u) = 1 - exp(-u) (1 + u + u^2/2),  rf' = u^2 exp(-u) / 2
+ */
+OnsetRampValue OnsetRampEnvelope(double z, double Hmi) {
+    constexpr double ln10 = 2.302585092994046;
+    constexpr double c0 = -0.6877, c1 = 0.6797; /* fit, H = 2.36-3.48 */
+    constexpr double zcap = -0.05, w = 0.03;
+    double zl = c0 + c1 * Hmi;
+    double x = (zcap - zl) / w;
+    double sp = (x > 30.0) ? x : std::log1p(std::exp(x));
+    double sig = 1.0 / (1.0 + std::exp(-x));
+    double zc = zcap - w * sp;
+    double zc_Hmi = sig * c1;
+    double q = std::pow(10.0, zc / 3.0);
+    double k = ln10 / (1.0 - q);
+    double k_zc = ln10 * (ln10 / 3.0 * q) / ((1.0 - q) * (1.0 - q));
+    double u = k * (z - zc);
+    OnsetRampValue r;
+    if (u <= 0.0) return r;
+    double e = std::exp(-u);
+    r.rf = 1.0 - e * (1.0 + u + 0.5 * u * u);
+    double rf_u = 0.5 * u * u * e;
+    r.rf_z = rf_u * k;
+    r.rf_Hmi = rf_u * ((z - zc) * k_zc - k) * zc_Hmi;
+    return r;
+}
+
+}  // namespace
+
+OnsetRampValue OnsetRamp(double z, double Hmi, const Param& param) {
+    if (param.onset == OnsetModel::Envelope) {
+        return OnsetRampEnvelope(z, Hmi);
+    }
+    /* XFOIL/mfoil cubic over [-dl, dl] (mfoil widened 0.08 -> 0.1) */
+    constexpr double dl = 0.1;
+    OnsetRampValue r;
+    if (z < -dl) return r;
+    double rn = (z + dl) / (2.0 * dl);
+    if (rn >= 1.0) {
+        r.rf = 1.0;
+        return r;
+    }
+    r.rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
+    r.rf_z = (6.0 * rn - 6.0 * rn * rn) / (2.0 * dl);
+    return r;
+}
+
 ScalarLin4 GetDamp(const Vector4d& U, const Param& param) {
     /* Amplification rate dn/dx (matches mfoil get_damp) */
     auto [Hk, Hk_U] = GetHk(U, param);
@@ -599,20 +653,10 @@ ScalarLin4 GetDamp(const Vector4d& U, const Param& param) {
     double damp = 0.0;
     Vector4d damp_U = Vector4d::Zero();
 
-    constexpr double dl = 0.1;
-    if (lr >= lrc - dl) {
-        double rn = (lr - (lrc - dl)) / (2.0 * dl);
-        Vector4d rn_U = (lr_U - lrc_U) / (2.0 * dl);
-
-        double rf, rf_U_coeff;
-        if (rn >= 1.0) {
-            rf = 1.0;
-            rf_U_coeff = 0.0;
-        } else {
-            rf = 3.0 * rn * rn - 2.0 * rn * rn * rn;
-            rf_U_coeff = 6.0 * rn - 6.0 * rn * rn;
-        }
-        Vector4d rf_U = rf_U_coeff * rn_U;
+    const OnsetRampValue ramp = OnsetRamp(lr - lrc, Hmi, param);
+    if (ramp.rf > 0.0 || ramp.rf_z != 0.0) {
+        double rf = ramp.rf;
+        Vector4d rf_U = ramp.rf_z * (lr_U - lrc_U) + ramp.rf_Hmi * Hmi_U;
 
         double ar = 3.87 * Hmi - 2.52;
         Vector4d ar_U = 3.87 * Hmi_U;

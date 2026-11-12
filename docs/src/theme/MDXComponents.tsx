@@ -4,7 +4,7 @@ import TabItem from "@theme/TabItem";
 import Next from "@site/src/components/Next";
 import BenchTable from "@site/src/components/BenchTable";
 import QuickstartSource from "@site/src/components/QuickstartSource";
-import { ConvergencePlot, CpPlot, PanelPlot, PolarPlot, ShapeGradientPlot } from "@site/src/components/charts";
+import { ConvergencePlot, CpPlot, OnsetPlot, PanelPlot, PolarPlot, ShapeGradientPlot } from "@site/src/components/charts";
 
 export default {
     ...MDXComponents,
@@ -17,5 +17,6 @@ export default {
     PolarPlot,
     ConvergencePlot,
     PanelPlot,
+    OnsetPlot,
     ShapeGradientPlot,
 };

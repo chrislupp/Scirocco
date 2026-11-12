@@ -9,6 +9,7 @@ import cp from "@site/src/data/cp.json";
 import polar from "@site/src/data/polar.json";
 import convergence from "@site/src/data/convergence.json";
 import panels from "@site/src/data/panels.json";
+import onset from "@site/src/data/onset.json";
 import gradient from "@site/src/data/gradient.json";
 
 const f4 = (v: number) => v.toFixed(4);
@@ -89,6 +90,38 @@ export function PolarPlot() {
                 fy={f4}
             />
         </div>
+    );
+}
+
+/** Amplification onset ramps against Orr-Sommerfeld envelope slopes. */
+export function OnsetPlot() {
+    const blasius = onset.stability.reduce((a, b) =>
+        Math.abs(a.H - onset.H_model) < Math.abs(b.H - onset.H_model) ? a : b,
+    );
+    return (
+        <Chart
+            title="Amplification onset: default and envelope ramps against stability theory"
+            width={640}
+            height={320}
+            series={[
+                { id: "os", label: `Orr–Sommerfeld envelope, H = ${blasius.H.toFixed(2)}`, x: blasius.z, y: blasius.r, role: "2", markers: true },
+                { id: "env", label: "Envelope ramp (opt-in)", x: onset.z, y: onset.envelope, role: "1" },
+                { id: "cub", label: "Cubic ramp (default)", x: onset.z, y: onset.cubic, role: "ref", dashed: true },
+            ]}
+            x={{ domain: [-0.4, 0.45], ticks: [-0.4, -0.2, 0, 0.2, 0.4], label: "log₁₀ Reθ − lrc(Hk)" }}
+            y={{ domain: [0, 1.1], ticks: [0, 0.25, 0.5, 0.75, 1], label: "growth rate / asymptote" }}
+            fx={f3}
+            fy={f3}
+            caption={
+                <>
+                    Rate of growth of the amplification factor, relative to its asymptotic value, near
+                    the critical Reynolds number. Points: spatial Orr–Sommerfeld envelope for the Blasius
+                    profile. Growth starts below the cubic ramp and approaches the asymptote slowly; the
+                    envelope ramp follows it and keeps the same asymptote, so amplification far
+                    downstream is unchanged.
+                </>
+            }
+        />
     );
 }
 

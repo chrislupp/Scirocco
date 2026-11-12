@@ -32,6 +32,18 @@
 
 namespace scirocco {
 
+/** Shape of the onset of Tollmien-Schlichting amplification in the e^N
+ *  transition model: how the amplification rate rises from zero as
+ *  log10(Re_theta) passes the critical value lrc(Hk). */
+enum class OnsetModel {
+    /** XFOIL/mfoil cubic ramp over lrc +/- 0.1 (default, matches mfoil). */
+    Cubic,
+    /** Ramp fitted to Orr-Sommerfeld envelope N-factor curves of the
+     *  Falkner-Skan profiles: starts at the critical Re_theta and approaches
+     *  the same asymptote, so downstream amplification is unchanged. */
+    Envelope
+};
+
 /* Parameters */
 struct Param {
     /* Solver parameters */
@@ -74,7 +86,8 @@ struct Param {
     double tau_shrink_clamp = 0.1; /**< cap per-iter tau shrink ratio */
 
     /* Viscous parameters */
-    double ncrit = 9.0; /**< Critical amplification factor */
+    double ncrit = 9.0;                   /**< Critical amplification factor */
+    OnsetModel onset = OnsetModel::Cubic; /**< Amplification onset ramp */
     double Cuq = 1.0;   /**< Scales the uq term in the shear lag equation */
     double Dlr = 0.9;   /**< Wall/wake dissipation length ratio */
     double SlagK = 5.6; /**< Shear lag constant */
