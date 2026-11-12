@@ -58,7 +58,7 @@ mean to change the model.
 | --- | --- | --- |
 | `ncrit` | `9.0` | $e^N$ transition threshold (see [Transition](../concepts/transition)) |
 | `transition` | `TransitionModel::CutCell` | `TransitionModel::Captured` blends laminar and turbulent closures smoothly, for smooth gradients; experimental, prescribed angle of attack only (see [Captured transition](../concepts/transition#captured-transition-experimental)) |
-| `capt_L`, `capt_ws`, `capt_wc`, `capt_b` | 80, 1, 1, 0 | Captured model: transition length in momentum thicknesses, onset and blend widths in amplification factor, blend offset |
+| `capt_L`, `capt_ws`, `capt_wc`, `capt_b` | 60, 1, 1, 0 | Captured model: transition length in momentum thicknesses, onset and blend widths in amplification factor, blend offset |
 | `onset` | `OnsetModel::Cubic` | Amplification onset ramp; `OnsetModel::Envelope` is fitted to stability theory (see [Onset of amplification](../concepts/transition#onset-of-amplification)) |
 | `Cuq` | `1.0` | Scales the $u_q$ term in the shear lag equation |
 | `Dlr` | `0.9` | Wall/wake dissipation length ratio |

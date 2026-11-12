@@ -100,7 +100,8 @@ struct Param {
     double ncrit = 9.0;                   /**< Critical amplification factor */
     OnsetModel onset = OnsetModel::Cubic; /**< Amplification onset ramp */
     TransitionModel transition = TransitionModel::CutCell; /**< Transition */
-    double capt_L = 80.0; /**< Captured: 10-90% transition length [theta] */
+    double capt_L = 60.0; /**< Captured: 10-90% transition length [theta],
+                               calibrated on E387 drag (UIUC Vol 5) */
     double capt_ws = 1.0; /**< Captured: onset switch width in n */
     double capt_wc = 1.0; /**< Captured: closure blend width in n */
     double capt_b = 0.0;  /**< Captured: blend start after onset [ws] */

@@ -37,8 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   and turbulent closures are blended smoothly over a transition length
   (`capt_L`), so no station switches equations when transition moves. On
   NACA 2412 at Re 1e6 the adjoint dCd/dalpha ripple drops from 25% to 1.6%,
-  and it converges under panel refinement. Drag stays within 3% of the
-  default at Re >= 1e6. The primal matches the mfoil prototype
+  and it converges under panel refinement. Against measured Eppler 387 drag
+  (UIUC Vol 5, Re 1e5-4.6e5) the RMS error is 5.3%, against 16% for the cut
+  cell; `capt_L` = 60 momentum thicknesses is calibrated on that data. The
+  primal matches the mfoil prototype
   (`mfoil/mfoil_captured.py`) to 1e-10. The adjoint is fully analytic: shape
   sensitivities match its complex step to 1e-8, and alpha, Re and Mach to
   2e-11. Prescribed angle of attack only (no lift-target mode).

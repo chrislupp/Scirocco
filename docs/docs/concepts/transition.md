@@ -77,10 +77,13 @@ foil.Solve();
 
 - **Smoothness:** dCd/dα becomes smooth, with a residual ripple of 0.2–4%
   that shrinks under panel refinement. The cut-cell ripple stays at 20–30%.
-- **Drag:** within 3% of the default model at Re ≥ 10⁶. In laminar
-  separation bubbles at Re = 2×10⁵ it is up to 9% higher.
-- **Transition length:** set by `capt_L`, in momentum thicknesses. The zone
-  should span several panels; at high Reynolds numbers, use more panels.
+- **Drag:** checked against measured Eppler 387 drag (UIUC, Re = 1–4.6×10⁵,
+  laminar separation bubbles throughout). The RMS error is 5.3%, against 16%
+  for the default model, which under-predicts bubble drag by up to 28%. At
+  Re ≥ 10⁶ the two models agree within 3% on NACA airfoils.
+- **Transition length:** set by `capt_L`, in momentum thicknesses. The
+  default of 60 is calibrated on the Eppler 387 data. The zone should span
+  several panels; at high Reynolds numbers, use more panels.
 - **Gradients:** `ComputeSensitivities()` works as usual: shape, angle of
   attack, Reynolds and Mach number derivatives all match complex step
   through the mfoil prototype: shape to 1e-8, the scalars to 1e-10.

@@ -52,8 +52,11 @@ points may be unconverged.
 - The remaining ripple comes from resolution: the transition zone has to span
   several panels. At high Re, θ is small, so 80θ covers fewer panels. A
   longer L also helps: at 160 panels, L = 120θ gives 2.4% here.
+- These sweeps used L = 80θ, the default before the E387 calibration. With
+  the calibrated default L = 60θ, the C++ adjoint gives the same 1.6% ripple
+  (max 2.9%) for NACA 2412 at Re = 10⁶.
 
-## Drag against the cut cell
+## Drag against the cut cell (L = 80θ)
 
 `test_matrix.py` runs NACA 0012, 2412 and 4412 at Re = 2×10⁵, 10⁶ and 3×10⁶
 and α = 0, 4 and 8°, with 160 panels (`data/matrix.txt`). The captured model
@@ -69,9 +72,9 @@ cell converged:
 | 10⁶ | −0.5% to +2.9% | −0.8% to −11% |
 | 2×10⁵ (laminar separation bubbles) | −1.3% to +8.9% | −2.7% to +9.8% |
 
-The cut cell is not ground truth here. It is XFOIL's calibrated model, and the
-low-Re differences sit in separation bubbles, where neither model has been
-checked against experiment in this study.
+The cut cell is not ground truth. The E387 calibration below compares both
+models against measurements, and the captured model is the more accurate of
+the two.
 
 ## Transition length
 
@@ -98,9 +101,50 @@ The resulting lengths are 3–6 times longer than 80θ, and they lower Cd by
 equation starts c_τ at XFOIL's c_τ,tr ≈ 0.2 c_τ,eq, so the lag already models
 much of the transition ramp, and the full intermittency length stacks a
 second ramp on top. A consistent physical model would need to recalibrate
-c_τ,tr (XFOIL's CtauC and CtauE) together with L. That is why the default is
-a constant L = 80θ, chosen to stay close to the validated cut-cell drag at
-Re ≥ 10⁶.
+c_τ,tr (XFOIL's CtauC and CtauE) together with L. The default is therefore a
+constant L, calibrated against measured drag (next section).
+
+## Calibration against experiment (Eppler 387)
+
+The E387 is the standard low-Reynolds-number transition case: laminar
+separation bubbles at every condition below. The reference is the UIUC
+drag polars at Re = 1, 2, 3 and 4.6×10⁵ (Williamson et al., *Summary of
+Low-Speed Airfoil Data, Vol. 5*, 2012). Cl is within 0.1–1.0, which is
+attached flow.
+
+`e387_calibrate.py` downloads the data, and `e387_polar.cpp` computes the
+polars. The UIUC data are not stored here. Our polars are in `data/e387/`.
+Panel count is 160, and the trailing edge is opened to 0.25% chord because
+of issue #18.
+
+Each entry is the Cd error at matched Cl, given as mean signed % / RMS %:
+
+| Re | cut cell | L = 40 | **L = 60** | L = 80 | L = 120 | L = 240 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1×10⁵ | −28.4 / 29.0 | −4.9 / 7.1 | −4.0 / 6.3 | −3.9 / 6.2 | −3.9 / 6.2 | −3.8 / 6.2 |
+| 2×10⁵ | −10.0 / 10.2 | −3.5 / 3.7 | −2.5 / 3.1 | −2.7 / 3.5 | −2.9 / 4.0 | −3.2 / 4.7 |
+| 3×10⁵ | −7.3 / 8.1 | −3.9 / 5.0 | −3.7 / 5.2 | −4.0 / 5.7 | −4.5 / 6.3 | −5.5 / 7.7 |
+| 4.6×10⁵ | −6.7 / 7.6 | −4.5 / 5.5 | −4.8 / 6.0 | −5.3 / 6.6 | −6.1 / 7.3 | −7.8 / 9.3 |
+| all, ncrit = 9 | −12.8 / 16.0 | −4.2 / 5.4 | **−3.7 / 5.3** | −4.0 / 5.6 | −4.3 / 6.1 | −5.1 / 7.2 |
+| all, ncrit = 8 | −14.3 / 17.8 | −7.3 / 9.3 | **−6.7 / 8.5** | −6.9 / 8.6 | −7.5 / 9.1 | |
+
+- **The captured model is about three times more accurate than the cut
+  cell.** In laminar separation bubbles the cut cell's instantaneous
+  transition reattaches the flow too quickly and under-predicts drag, by 28%
+  at Re = 10⁵.
+- **L = 60θ is best overall.** It is the best length at ncrit = 9, and within
+  0.1% of the best at ncrit = 8. Mack's relation puts ncrit at about 8 for
+  the ~0.1% turbulence of the UIUC tunnel. It is the default (`capt_L`). The
+  result is flat for 40–80θ, and lengths beyond that over-predict the
+  laminar portion at the higher Reynolds numbers.
+- **What remains** is a 3–4% under-prediction at all lengths. That points to
+  the rest of the closure set (or ncrit), not L.
+- **Convergence:** both models converge at 13–16 of the 23 angles (−3 to 8°),
+  with failures at the polar ends. The captured model adds no failures of
+  its own.
+- **A separate limit:** above 160 panels the E387's coarse leading-edge
+  definition (61 points) breaks the boundary-layer initialization in both
+  Scirocco and mfoil.
 
 ## What did not work
 
@@ -128,8 +172,10 @@ These dead ends shaped the formulation:
 
 ## Open items
 
-- Calibrate L against experiment, ideally together with c_τ,tr, or adopt the
-  Narasimha length with a recalibrated c_τ,tr.
+- L is calibrated on a single airfoil family (E387). More cases with
+  measured drag and transition, such as the E387 oil-flow transition data in
+  NASA TM-4062, would tighten it. A joint fit of c_τ,tr and the Narasimha
+  length is the more physical alternative.
 - Only prescribed α is supported (no lift-target mode).
 - C++ port: done as `TransitionModel::Captured`, with a fully analytic adjoint
   (`CapturedTransition*` tests). Shape sensitivities match mfoil complex step
