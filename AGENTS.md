@@ -204,6 +204,9 @@ Only the `[Unreleased]` section is edited during development. On release, it is 
 Keep branches focused — one logical change per PR. If a fix requires a
 refactor, split them into separate PRs.
 
+Before opening a PR, document any new feature on the documentation site
+(see [Documenting features](#documenting-features)).
+
 Before marking a PR ready for review:
 - All CI checks pass (build + full test suite).
 - `clang-format` and `clang-tidy` produce no new warnings.
@@ -231,6 +234,24 @@ change. Derivative correctness must be validated against mfoil complex-step
 
 Do not suppress clang-tidy warnings with `NOLINT` without a comment on the
 same line explaining why.
+
+### Documenting features
+
+A feature is finished only when the documentation site (`docs/docs/`, a
+Docusaurus site) covers it, on the same branch, before the PR is opened:
+
+- **API:** new public symbols, options and defaults go on the matching
+  `api/` page (for example, a new `Param` field goes in
+  `api/solver-params.md`).
+- **Usage:** what the feature does and when to use it goes in `concepts/` or
+  `guides/`, with a short example.
+- **Validation:** comparisons with data, accuracy and known limits go on a
+  docs page, with figures drawn from `docs/src/data/` (see `docs/README.md`).
+  A README next to validation scripts carries only the steps to reproduce
+  them.
+
+Build the site with `npm run build` in `docs/`; it must finish with no broken
+links or anchors.
 
 ## Development Notes
 
