@@ -67,6 +67,32 @@ CapturedResidual CapturedIntervalResidual(const Param& param,
                                           const Eigen::Matrix<double, 5, 2>& U,
                                           const Eigen::Vector2d& Aux);
 
+/** Global captured system at the current state. */
+struct CapturedSystem {
+    VectorXd R;        /**< BL residuals, 4 per node [4 Nsys] */
+    VectorXd R_ue;     /**< ue coupling residuals [Nsys] */
+    SparseMatrixd R_U; /**< dR/d[th, ds, ct, ue, n] [4 Nsys x 5 Nsys], incl.
+                            the stagnation-movement chain in ue columns */
+    SparseMatrixd R_x; /**< dR/dxi [4 Nsys x Nsys] */
+};
+
+/** @brief Assemble the captured system (as BuildGlobSys does). */
+CapturedSystem BuildCapturedSystem(const FoilState& state);
+
+/** @brief Full Jacobian [5 Nsys x 5 Nsys]: BL rows, then ue rows; state
+ *  columns node-major [th, ds, ct, ue, n]. */
+SparseMatrixd CapturedJacobian(const FoilState& state,
+                               const CapturedSystem& sys);
+
+/** @brief dR_BL/d(foil.x) [4 Nsys x 2N], as DRblDFoilX. */
+MatrixXd CapturedDRblDFoilX(const FoilState& state, const CapturedSystem& sys,
+                            const MatrixXd& dfoil_s_dx);
+
+/** @brief dR/dRe and dR/dMa at fixed state [5 Nsys] (BL rows only), by a
+ *  4th-order central difference on the thermodynamic parameters. */
+VectorXd CapturedDRVDRe(const FoilState& state);
+VectorXd CapturedDRVDMa(const FoilState& state);
+
 /**
  * @brief Converge the captured system, starting from a converged cut-cell
  * viscous solution in state. On success glob.U row 2 holds ct at every node,

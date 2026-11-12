@@ -26,6 +26,7 @@
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
+#include "scirocco/core/viscous_geom_deriv.h"
 #include "scirocco/core/wake.h"
 #include "scirocco/properties/bl_properties.h"
 
@@ -447,17 +448,11 @@ Vector5d NodeState(const FoilState& state, int j) {
     return u;
 }
 
-struct Assembly {
-    VectorXd R;        /* 4 Nsys */
-    SparseMatrixd R_U; /* 4 Nsys x 5 Nsys */
-    SparseMatrixd R_x; /* 4 Nsys x Nsys */
-};
+}  // namespace
 
-/* Global captured system, including the stagnation-movement chain in the ue
- * columns of the two stagnation-panel nodes (as BuildGlobSys does). */
-Assembly BuildGlobSysCaptured(FoilState& state) {
+CapturedSystem BuildCapturedSystem(const FoilState& state) {
     const int Nsys = state.glob.Nsys;
-    Assembly a;
+    CapturedSystem a;
     a.R = VectorXd::Zero(4 * Nsys);
     std::vector<Triplet> tU, tx;
     auto put = [&](int node, const Vector4d& Ri, const Eigen::MatrixXd& Ri_U,
@@ -585,22 +580,23 @@ Assembly BuildGlobSysCaptured(FoilState& state) {
     SparseMatrixd S(4 * Nsys, 5 * Nsys);
     S.setFromTriplets(tst.begin(), tst.end());
     a.R_U += S;
+
+    /* ue coupling rows: ue - (ueinv + ue_m (ds .* ue)) */
+    VectorXd ue = state.glob.U.row(UE).transpose();
+    VectorXd ds = state.glob.U.row(DS).transpose();
+    double uemax = ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < Nsys; ++i) ue(i) = std::max(ue(i), 1e-10 * uemax);
+    a.R_ue = ue - (GetUeInv(state) + state.vsol.ue_m * ds.cwiseProduct(ue));
     return a;
 }
 
-/* Newton step for [th, ds, ct, ue, n] with the ue coupling rows. */
-bool SolveGlobCaptured(FoilState& state, const Assembly& a,
-                       Eigen::MatrixXd& dU) {
+SparseMatrixd CapturedJacobian(const FoilState& state,
+                               const CapturedSystem& a) {
     const int Nsys = state.glob.Nsys;
     VectorXd ue = state.glob.U.row(UE).transpose();
     VectorXd ds = state.glob.U.row(DS).transpose();
     double uemax = ue.cwiseAbs().maxCoeff();
     for (int i = 0; i < Nsys; ++i) ue(i) = std::max(ue(i), 1e-10 * uemax);
-    VectorXd ueinv = GetUeInv(state);
-    VectorXd R(5 * Nsys);
-    R.head(4 * Nsys) = a.R;
-    R.tail(Nsys) = ue - (ueinv + state.vsol.ue_m * ds.cwiseProduct(ue));
-
     std::vector<Triplet> t;
     t.reserve(a.R_U.nonZeros() + 2 * Nsys * Nsys);
     for (int k = 0; k < a.R_U.outerSize(); ++k) {
@@ -620,6 +616,87 @@ bool SolveGlobCaptured(FoilState& state, const Assembly& a,
     }
     SparseMatrixd J(5 * Nsys, 5 * Nsys);
     J.setFromTriplets(t.begin(), t.end());
+    return J;
+}
+
+MatrixXd CapturedDRblDFoilX(const FoilState& state, const CapturedSystem& a,
+                            const MatrixXd& dfoil_s_dx) {
+    /* As DRblDFoilX, with four residuals per node and five states:
+     * R_x DXi, the wake-gap chain at wake stations (dR/dAux =
+     * -R_U[ds col] + Hw term), and the hTE chain at the wake start. */
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    MatrixXd dRbl = a.R_x * DXiDFoilX(state, dfoil_s_dx);
+    MatrixXd dwgap_dx = DWgapDFoilX(state, dfoil_s_dx);
+    const auto& Iw = state.vsol.Is[2];
+    for (int ip = 1; ip < Nw; ++ip) {
+        int Ig = 4 * Iw[ip];
+        int np = Iw[ip - 1], nc = Iw[ip];
+        double uelog = std::log(GetUk(state.glob.U(UE, nc), state.param).value /
+                                GetUk(state.glob.U(UE, np), state.param).value);
+        Vector4d Hw_coef(0.5 * uelog, -0.5 * uelog, 0.0, 0.0);
+        for (int r = 0; r < 4; ++r) {
+            double dp = -a.R_U.coeff(Ig + r, 5 * np + DS) +
+                        Hw_coef(r) / state.glob.U(TH, np);
+            double dc = -a.R_U.coeff(Ig + r, 5 * nc + DS) +
+                        Hw_coef(r) / state.glob.U(TH, nc);
+            if (dp != 0.0) dRbl.row(Ig + r) += dp * dwgap_dx.row(ip - 1);
+            if (dc != 0.0) dRbl.row(Ig + r) += dc * dwgap_dx.row(ip);
+        }
+    }
+    int Ig_wake_init = 4 * Iw[0] + 1;
+    for (int k : {0, 1, N - 2, N - 1}) {
+        for (int dim = 0; dim < 2; ++dim) {
+            double dtcp, dtdp, dhTE, ddtdx;
+            GetTEInfoDeriv(state.foil.x, k, dim, dtcp, dtdp, dhTE, ddtdx);
+            if (dhTE != 0.0) dRbl(Ig_wake_init, 2 * k + dim) += -dhTE;
+        }
+    }
+    return dRbl;
+}
+
+namespace {
+
+/* d(R_BL)/dp at fixed U by a 4th-order central difference in oper.Re or
+ * oper.Ma, rebuilding the thermodynamic parameters each time. */
+VectorXd CapturedThermoPartial(const FoilState& state, bool mach) {
+    const int Nsys = state.glob.Nsys;
+    VectorXd dR = VectorXd::Zero(5 * Nsys);
+    double p0 = mach ? state.oper.Ma : state.oper.Re;
+    if (p0 <= 0.0) return dR; /* even in Ma: zero at Ma = 0 */
+    double h = 1e-3 * p0;
+    const std::array<double, 4> step = {-2.0, -1.0, 1.0, 2.0};
+    const std::array<double, 4> wgt = {1.0, -8.0, 8.0, -1.0};
+    FoilState s = state;
+    for (int k = 0; k < 4; ++k) {
+        (mach ? s.oper.Ma : s.oper.Re) = p0 + step[k] * h;
+        InitThermo(s);
+        dR.head(4 * Nsys) += wgt[k] * BuildCapturedSystem(s).R;
+    }
+    dR /= 12.0 * h;
+    return dR;
+}
+
+}  // namespace
+
+VectorXd CapturedDRVDRe(const FoilState& state) {
+    return CapturedThermoPartial(state, false);
+}
+
+VectorXd CapturedDRVDMa(const FoilState& state) {
+    return CapturedThermoPartial(state, true);
+}
+
+namespace {
+
+/* Newton step for [th, ds, ct, ue, n] with the ue coupling rows. */
+bool SolveGlobCaptured(FoilState& state, const CapturedSystem& a,
+                       Eigen::MatrixXd& dU) {
+    const int Nsys = state.glob.Nsys;
+    VectorXd R(5 * Nsys);
+    R.head(4 * Nsys) = a.R;
+    R.tail(Nsys) = a.R_ue;
+    SparseMatrixd J = CapturedJacobian(state, a);
     Eigen::SparseLU<SparseMatrixd> lu;
     lu.compute(J);
     if (lu.info() != Eigen::Success) return false;
@@ -731,7 +808,7 @@ void SolveCaptured(FoilState& state) {
     state.glob.conv = false;
     const int nNewton = std::max(state.param.niglob, 40);
     for (int it = 0; it < nNewton; ++it) {
-        Assembly a = BuildGlobSysCaptured(state);
+        CapturedSystem a = BuildCapturedSystem(state);
         double Rn = a.R.norm();
         if (state.param.verb >= 1) {
             std::cout << "  captured Newton " << it << ", |R| = " << Rn << '\n';

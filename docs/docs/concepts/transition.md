@@ -81,8 +81,10 @@ foil.Solve();
   separation bubbles at Re = 2×10⁵ it is up to 9% higher.
 - **Transition length:** set by `capt_L`, in momentum thicknesses. The zone
   should span several panels; at high Reynolds numbers, use more panels.
-- **Limits:** primal only. `ComputeSensitivities()` throws for this model
-  until its adjoint is implemented.
+- **Gradients:** `ComputeSensitivities()` works as usual: shape, angle of
+  attack, Reynolds and Mach number derivatives all match complex step
+  through the mfoil prototype to 1e-8.
+- **Limits:** prescribed angle of attack only; a lift target throws.
 
 The formulation, the test matrix and the dead ends are in
 [`scirocco/validation/captured_transition`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/captured_transition).

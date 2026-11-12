@@ -18,6 +18,8 @@ HDF5 structure:
   envelope_mach/     same case at Ma=0.3: d/dMa
   captured_primal/   NACA 2412, 160 panels, cumulative arc length:
                      TransitionModel::Captured cl/cd/cm (mfoil_captured)
+  captured_shape/    same, alpha=4, Re=1e6: CS dcl/dcd/dcm/dx around transition
+  captured_scalar/   same: CS d/dalpha, d/dRe (Ma=0); d/dMa at Ma=0.3
 
 Usage:
   cd mfoil
@@ -26,6 +28,7 @@ Usage:
 
 --envelope-only (re)writes just the envelope_* groups into the existing file.
 --captured-only (re)writes just captured_primal/.
+--captured-cs-only (re)writes just captured_shape/ and captured_scalar/.
 """
 
 import sys
@@ -359,7 +362,95 @@ def write_captured_group(f):
     g.create_dataset('cases', data=np.array(out))  # alpha, Re, cl, cd, cm
 
 
+CAPTURED_NODES = [40, 95, 110, 113, 116, 118, 120, 123, 140]
+
+
+def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
+    """Captured solve in complex_step_mode with one complex perturbation.
+
+    Converges the real part to 1e-11, then runs extra Newton steps so the
+    imaginary (derivative) part converges as well. Returns the mfoil object.
+    """
+    import mfoil_captured as mcap
+    M = mfoil.mfoil(naca='2412', npanel=160)
+    M.param.verb = 0
+    M.param.doplot = False
+    if node is not None:
+        M.foil.x = M.foil.x.astype(complex)
+        M.foil.x[dim, node] += 1j * CS_STEP
+    recompute_geom(M)
+    kw = dict(alpha=alpha, Re=Re, Ma=Ma)
+    if var is not None:
+        kw[var] = kw[var] + 1j * CS_STEP
+    with complex_step_mode():
+        M.setoper(**kw)
+        M.solve()
+        mcap.convert_state(M)
+        extra = None
+        for it in range(60):
+            mcap.build_glob_sys(M)
+            if extra is None and np.linalg.norm(np.real(M.glob.R)) < 1e-11:
+                extra = 3
+            if extra is not None:
+                if extra == 0:
+                    break
+                extra -= 1
+            mcap.solve_glob(M)
+            mcap.update_state(M)
+            mfoil.stagpoint_move(M)
+        if extra is None or extra > 0:
+            raise RuntimeError('captured CS solve did not converge')
+        U5 = M.glob.U
+        M.glob.U = U5[0:4]
+        mfoil.calc_force(M)
+        M.glob.U = U5
+    return M
+
+
+def write_captured_cs_groups(f):
+    """CS references for the captured model: shape, alpha, Re, Ma."""
+    print("\n--- captured_shape (NACA 2412, 160, alpha=4, Re=1e6) ---")
+    M0 = captured_cs_solve(4.0, 1e6, 0.0)
+    N = M0.foil.N
+    dcl = np.zeros((2, N)); dcd = np.zeros((2, N)); dcm = np.zeros((2, N))
+    for node in CAPTURED_NODES:
+        for dim in range(2):
+            M = captured_cs_solve(4.0, 1e6, 0.0, node, dim)
+            dcl[dim, node] = np.imag(M.post.cl) / CS_STEP
+            dcd[dim, node] = np.imag(M.post.cd) / CS_STEP
+            dcm[dim, node] = np.imag(M.post.cm) / CS_STEP
+            print(f"    node={node} dim={dim}: dcl={dcl[dim, node]:.8e} "
+                  f"dcd={dcd[dim, node]:.8e} dcm={dcm[dim, node]:.8e}")
+    g = f.create_group('captured_shape')
+    g.create_dataset('x_base', data=np.real(M0.foil.x[:, :N]))
+    g.create_dataset('cl_base', data=float(np.real(M0.post.cl)))
+    g.create_dataset('cd_base', data=float(np.real(M0.post.cd)))
+    g.create_dataset('test_nodes', data=np.array(CAPTURED_NODES, dtype=np.int64))
+    g.create_dataset('dcl_dx', data=dcl)
+    g.create_dataset('dcd_dx', data=dcd)
+    g.create_dataset('dcm_dx', data=dcm)
+
+    print("\n--- captured_scalar ---")
+    g = f.create_group('captured_scalar')
+    for var, Ma, suffix in (('alpha', 0.0, 'dalpha'), ('Re', 0.0, 'dRe'),
+                            ('Ma', 0.3, 'dMa')):
+        M = captured_cs_solve(4.0, 1e6, Ma, var=var)
+        vals = [np.imag(getattr(M.post, k)) / CS_STEP for k in ('cl', 'cd', 'cm')]
+        print(f"    d/{var}: dcl={vals[0]:.10e} dcd={vals[1]:.10e} dcm={vals[2]:.10e}")
+        for k, v in zip(('dcl_', 'dcd_', 'dcm_'), vals):
+            g.create_dataset(k + suffix, data=v)
+
+
 def main():
+    if '--captured-cs-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            for name in ('captured_shape', 'captured_scalar'):
+                if name in f:
+                    del f[name]
+            write_captured_cs_groups(f)
+        print(f"Wrote captured_shape/ and captured_scalar/ to {OUTPUT_FILE}")
+        return
+
     if '--captured-only' in sys.argv[1:]:
         with h5py.File(OUTPUT_FILE, 'a') as f:
             if 'captured_primal' in f:
@@ -484,6 +575,7 @@ def main():
 
         write_envelope_groups(f)
         write_captured_group(f)
+        write_captured_cs_groups(f)
 
     elapsed = time.time() - t0
     print(f"\nDone. Wrote {OUTPUT_FILE}")

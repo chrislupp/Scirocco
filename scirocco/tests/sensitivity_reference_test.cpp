@@ -634,7 +634,89 @@ TEST_F(SensitivityReferenceTest, CapturedTransitionPrimal) {
         EXPECT_LT(RelErr(s.post.cl, cases(c, 2)), 1e-10) << "cl, case " << c;
         EXPECT_LT(RelErr(s.post.cd, cases(c, 3)), 1e-10) << "cd, case " << c;
         EXPECT_LT(RelErr(s.post.cm, cases(c, 4)), 1e-10) << "cm, case " << c;
-        /* Sensitivities are not implemented for the captured model yet. */
-        EXPECT_THROW(ViscousSensitivities(s), std::runtime_error);
+    }
+}
+
+namespace {
+
+/** Captured solve on the captured_shape reference geometry. */
+Sensitivity CapturedSensitivities(H5::H5File& file, double alpha, double Re,
+                                  double Ma, double* cd = nullptr) {
+    MatrixXd x_base = readMatrix(file, "captured_shape/x_base");
+    auto N_ref = static_cast<int>(x_base.cols());
+    Scirocco foil("2412", N_ref - 1);
+    foil.SetOper(alpha, -1.0, Re, Ma);
+    auto& s = foil.GetState();
+    s.param.transition = TransitionModel::Captured;
+    s.foil.x = x_base;
+    s.foil.N = N_ref;
+    RecomputeArcLength(s);
+    s.oper.viscous = true;
+    s.oper.initbl = true;
+    s.param.verb = 0;
+    s.isol.AIC.resize(0, 0);
+    s.isol.gamref.resize(0, 0);
+    s.isol.gam.resize(0);
+    SolveViscous(s);
+    EXPECT_TRUE(s.glob.conv);
+    CalcForce(s);
+    if (cd) *cd = s.post.cd;
+    return ViscousSensitivities(s);
+}
+
+}  // namespace
+
+/* Captured transition adjoint vs mfoil_captured complex step: shape nodes
+ * around onset and the closure blend, plus alpha, Re and Ma. */
+TEST_F(SensitivityReferenceTest, CapturedTransitionShapeSensitivity) {
+    auto nodes = readIntVector(getFile(), "captured_shape/test_nodes");
+    MatrixXd dcl_ref = readMatrix(getFile(), "captured_shape/dcl_dx");
+    MatrixXd dcd_ref = readMatrix(getFile(), "captured_shape/dcd_dx");
+    MatrixXd dcm_ref = readMatrix(getFile(), "captured_shape/dcm_dx");
+    double cd = 0.0;
+    Sensitivity sens = CapturedSensitivities(getFile(), 4.0, 1e6, 0.0, &cd);
+    EXPECT_LT(
+        RelErr(cd, readScalar<double>(getFile(), "captured_shape/cd_base")),
+        1e-10);
+    for (const auto& [name, got, ref] :
+         {std::tuple<const char*, const MatrixXd&, const MatrixXd&>{
+              "dcl/dx", sens.dcl_dx, dcl_ref},
+          {"dcd/dx", sens.dcd_dx, dcd_ref},
+          {"dcm/dx", sens.dcm_dx, dcm_ref}}) {
+        for (int n : nodes) {
+            for (int d = 0; d < 2; ++d) {
+                double err = std::abs(got(d, n) - ref(d, n));
+                double rel = err / std::max(std::abs(ref(d, n)), 1e-30);
+                EXPECT_TRUE(rel < TOL_VISC_SHAPE || err < 1e-10)
+                    << name << " node=" << n << " dim=" << d
+                    << " scirocco=" << got(d, n) << " ref=" << ref(d, n)
+                    << " rel=" << rel;
+            }
+        }
+    }
+}
+
+TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
+    const std::string g = "captured_scalar/";
+    Sensitivity s0 = CapturedSensitivities(getFile(), 4.0, 1e6, 0.0);
+    for (const auto& [name, got] :
+         {std::pair<const char*, double>{"dcl_dalpha", s0.dcl_dalpha},
+          {"dcd_dalpha", s0.dcd_dalpha},
+          {"dcm_dalpha", s0.dcm_dalpha},
+          {"dcl_dRe", s0.dcl_dRe},
+          {"dcd_dRe", s0.dcd_dRe},
+          {"dcm_dRe", s0.dcm_dRe}}) {
+        auto ref = readScalar<double>(getFile(), g + name);
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SHAPE)
+            << name << " scirocco=" << got << " ref=" << ref;
+    }
+    Sensitivity sm = CapturedSensitivities(getFile(), 4.0, 1e6, 0.3);
+    for (const auto& [name, got] :
+         {std::pair<const char*, double>{"dcl_dMa", sm.dcl_dMa},
+          {"dcd_dMa", sm.dcd_dMa},
+          {"dcm_dMa", sm.dcm_dMa}}) {
+        auto ref = readScalar<double>(getFile(), g + name);
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SHAPE)
+            << name << " scirocco=" << got << " ref=" << ref;
     }
 }

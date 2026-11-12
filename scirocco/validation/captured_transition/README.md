@@ -3,8 +3,9 @@
 `mfoil/mfoil_captured.py` prototypes a smooth, "captured" laminar–turbulent
 transition model, as an alternative to the cut cell that XFOIL and mfoil use.
 Its module docstring documents the formulation and the parameters. This
-directory holds the evidence and the scripts that produce it. The model is
-not in the C++ library yet.
+directory holds the evidence and the scripts that produce it. The C++
+library implements the same model, with its adjoint, as
+`TransitionModel::Captured`.
 
 ## The problem
 
@@ -130,6 +131,8 @@ These dead ends shaped the formulation:
 - Calibrate L against experiment, ideally together with c_τ,tr, or adopt the
   Narasimha length with a recalibrated c_τ,tr.
 - Only prescribed α is supported (no lift-target mode).
-- The C++ port: a 5-variable boundary-layer state touches the residuals, the
-  Jacobians, the adjoint chains (geometry, α, Re, Mach), the wake, the
-  stagnation handling, and the HDF5 reference data.
+- C++ port: done as `TransitionModel::Captured`, with the adjoint, which
+  matches mfoil complex step to 1e-8 (`CapturedTransition*` tests). Its Re and
+  Mach residual partials use a 4th-order central difference at fixed state;
+  analytic versions would follow `ComputeStationLinRet` and
+  `ComputeStationLinMa`.

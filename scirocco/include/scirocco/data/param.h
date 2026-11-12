@@ -51,7 +51,7 @@ enum class TransitionModel {
     CutCell,
     /** Captured: amplification and shear stress at every node, closures
      *  blended smoothly by the amplification factor; no station switches.
-     *  Primal only for now (no sensitivities). See captured_transition.h. */
+     *  Prescribed angle of attack only. See captured_transition.h. */
     Captured
 };
 
