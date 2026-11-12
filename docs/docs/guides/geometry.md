@@ -81,8 +81,29 @@ neighbouring points, no self-intersections, positive chord.
 :::warning Leave a gap at the trailing edge
 Viscous solves on coordinates with an **exactly closed** trailing edge often
 fail to converge, and can converge to a wrong answer. Give the trailing edge
-a small gap, as the built-in NACA generator does. This is a known issue.
+a small gap, as the built-in NACA generator does. This is a known issue
+([#18](https://github.com/chrislupp/Scirocco/issues/18)).
 :::
+
+### Why a closed trailing edge fails
+
+The limitation comes from mfoil, which Scirocco ports. The wake leaves the
+airfoil along the normal to the trailing-edge gap. When the gap is zero,
+that direction is undefined:
+
+- the first wake point lands on the trailing edge itself;
+- in potential flow that is a stagnation point, so the wake streamline has
+  no direction to follow.
+
+mfoil stops on the same coordinates with "Wrong wake direction". Scirocco
+has no such check, so it carries on with a bad wake. Usually the solve then
+fails, but sometimes it reports convergence at the wrong Cl.
+
+Starting the wake along the trailing-edge bisector instead doesn't fix it.
+mfoil gets past the wake construction, but the coupled viscous solve still
+fails on NACA 0012 at 120–199 panels. Supporting a sharp trailing edge
+properly would take a new formulation of the trailing-edge and wake
+junction, not a port fix.
 
 ## Flaps, camber, and alignment
 

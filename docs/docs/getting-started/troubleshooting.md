@@ -45,7 +45,8 @@ Work through these in order:
 2. **Open a closed trailing edge.** Viscous solves on coordinates whose
    trailing edge is exactly closed (zero gap) often fail, and can converge to
    a wrong answer. Give the trailing edge a small gap, such as the 0.25% of
-   chord that the built-in NACA generator uses. This is a known issue.
+   chord that the built-in NACA generator uses. This limitation comes from
+   mfoil; see [why a closed trailing edge fails](../guides/geometry#why-a-closed-trailing-edge-fails).
 3. **Back off the angle of attack.** If a lower angle converges, you're
    likely near stall, where the integral boundary layer is least reliable.
 4. **Change the panel count.** Try 120 or 160 panels instead of 199.
