@@ -123,6 +123,26 @@ dependencies. Inspect the configured suite with `ctest --test-dir
 scirocco/build -N`. All configured tests must pass before a PR is ready for
 review.
 
+With GTest and HDF5 installed, the default suite builds these executables,
+plus an installed-consumer check. Without HDF5 the reference tests are
+omitted; without GTest only the installed-consumer check is registered.
+Configure with `-DSCIROCCO_BUILD_PHILOTE=ON` to add the Philote discipline
+and RPC tests.
+
+| Executable | Purpose |
+|---|---|
+| `scirocco_solver_strategy_tests` | Solver strategies, input validation, and solver reuse |
+| `scirocco_tests` | Spline, geometry, and the mfoil primal reference suite |
+| `scirocco_forward_ref_tests` | Forward `R_x` / `R_U` partials vs mfoil |
+| `scirocco_ping_tests` | Analytic Jacobians vs mfoil-CS references (BL, residuals, BuildGlobSys, WakeSys, forces) |
+| `scirocco_sensitivity_ref_tests` | End-to-end adjoint `dJ/d{x, α, Ma, Re}` vs complex-step references |
+| `scirocco_gradient_contract_tests` | Gradient API contracts against references |
+| `scirocco_remaining_gradient_tests` | Additional and high-precision gradient references |
+| `scirocco_viscous_chain_tests` | Geometric derivative chains against complex-step references |
+
+The opt-in sensitivity-debug suites are described under
+[Adjoint regression debugging](#adjoint-regression-debugging).
+
 ### Running a single test case
 
 ```bash
@@ -133,6 +153,51 @@ scirocco/build/scirocco_ping_tests
 scirocco/build/scirocco_sensitivity_ref_tests \
     --gtest_filter="SensitivityRefTest.AdjointAlpha"
 ```
+
+### Memory and undefined-behavior checks
+
+```bash
+cmake -S scirocco -B scirocco/build-sanitized -DCMAKE_BUILD_TYPE=Debug \
+    -DSCIROCCO_SANITIZERS=ON -DSCIROCCO_NATIVE_ARCH=OFF
+cmake --build scirocco/build-sanitized -j2
+ASAN_OPTIONS=halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+    ctest --test-dir scirocco/build-sanitized --output-on-failure
+```
+
+The sanitizer CI job also enables Philote and HDF5 output to exercise RPC and
+writer paths. Sanitized builds are diagnostic builds, not release artifacts.
+
+### Coverage measurement
+
+Coverage uses Clang compiler flags directly; there is no `SCIROCCO_COVERAGE`
+CMake option. CI runs the same measurement in the `Coverage` job and uploads
+it to Codecov. To reproduce it locally with Clang and matching LLVM tools on
+PATH, and GTest and HDF5 installed:
+
+```bash
+CC=clang CXX=clang++ cmake -S scirocco -B scirocco/build-cov \
+    -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_NATIVE_ARCH=OFF \
+    -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+cmake --build scirocco/build-cov -j2
+(
+    cd scirocco/build-cov
+    LLVM_PROFILE_FILE="cov-%p.profraw" ctest --output-on-failure -E '^InstalledConsumer$'
+    llvm-profdata merge -sparse cov-*.profraw -o cov.profdata
+    llvm-cov report scirocco_tests \
+        -object scirocco_solver_strategy_tests \
+        -object scirocco_forward_ref_tests \
+        -object scirocco_sensitivity_ref_tests \
+        -object scirocco_gradient_contract_tests \
+        -object scirocco_remaining_gradient_tests \
+        -object scirocco_viscous_chain_tests \
+        -object scirocco_ping_tests \
+        -instr-profile=cov.profdata ../src/*.cpp
+)
+```
+
+The installed-consumer check is excluded because its separate build does not
+inherit the global coverage flags. Use `xcrun llvm-profdata` and
+`xcrun llvm-cov` with Apple's bundled Clang tools.
 
 ### Adding tests
 
@@ -270,8 +335,8 @@ Before promoting `develop` to a stable release:
 
 The **ASan and UBSan** job runs the default core and Philote suites, including
 installed-consumer and RPC checks, in an instrumented build. Release builds
-remain uninstrumented. Coverage CI is disabled; do not quote historical coverage
-numbers as a current release guarantee.
+remain uninstrumented. The **Coverage** job runs the default suite in a
+Clang-instrumented build and uploads the result to Codecov.
 
 ### Main branch protection
 

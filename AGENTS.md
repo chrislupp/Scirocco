@@ -32,7 +32,7 @@ cmake --build scirocco/build-debug -j
 ```
 
 ### Build options
-- `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see README.md for dependency requirements
+- `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
 - `SCIROCCO_BUILD_PHILOTE=OFF` (default) — Philote-Cpp gRPC discipline interface for multidisciplinary optimization frameworks
 - `SCIROCCO_BUILD_PROBES=ON` (opt-in) — 14 diagnostic binaries for ad-hoc adjoint debugging
@@ -51,7 +51,8 @@ cmake --build scirocco/build -j
 ctest --test-dir scirocco/build --output-on-failure
 ```
 Test counts and runtime depend on features and dependencies. Inspect the suite
-with `ctest --test-dir scirocco/build -N`. Coverage CI is disabled.
+with `ctest --test-dir scirocco/build -N`. The CI `Coverage` job uploads to
+Codecov.
 
 ### Test categories
 
@@ -85,7 +86,7 @@ run-clang-tidy -p scirocco/build -header-filter='scirocco/include/' 'scirocco/sr
 
 ### Coverage measurement
 
-Use the compiler flags and measurement commands in README.md. There is no
+Use the compiler flags and measurement commands in CONTRIBUTING.md. There is no
 CMake coverage option.
 
 ## Code Architecture

@@ -134,7 +134,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   validation.
 - Remove the unreleased 0.2.0 documentation scaffold so its first stable release
   can create a complete snapshot instead of colliding with placeholder pages.
-- Temporarily disable the CI coverage job and Codecov upload.
+- The CI coverage job runs the full default test suite in parallel, instead
+  of the spline, geometry, mfoil reference, and Philote tests only. A
+  15-minute job limit and a 60-second per-test limit keep a slow test from
+  stalling the pipeline.
 - Multipoint Kulfan optimization example switched from OpenMDAO's
   `ScipyOptimizeDriver`/SLSQP to IPOPT via `modopt.OpenMDAOProblem`.
   gRPC server ports shifted to 50060–50063 to avoid collisions. With
