@@ -1,6 +1,7 @@
 # Scirocco
 
 [![Build](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml/badge.svg)](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
 A C++17 library for inviscid and viscous analysis of 2D airfoils, with
 adjoint gradients for design optimization.

@@ -170,8 +170,9 @@ writer paths. Sanitized builds are diagnostic builds, not release artifacts.
 ### Coverage measurement
 
 Coverage uses Clang compiler flags directly; there is no `SCIROCCO_COVERAGE`
-CMake option, and coverage CI is currently disabled. With Clang and matching
-LLVM tools on PATH, and GTest and HDF5 installed:
+CMake option. CI runs the same measurement in the `Coverage` job and uploads
+it to Codecov. To reproduce it locally with Clang and matching LLVM tools on
+PATH, and GTest and HDF5 installed:
 
 ```bash
 CC=clang CXX=clang++ cmake -S scirocco -B scirocco/build-cov \
@@ -334,8 +335,8 @@ Before promoting `develop` to a stable release:
 
 The **ASan and UBSan** job runs the default core and Philote suites, including
 installed-consumer and RPC checks, in an instrumented build. Release builds
-remain uninstrumented. Coverage CI is disabled; do not quote historical coverage
-numbers as a current release guarantee.
+remain uninstrumented. The **Coverage** job runs the default suite in a
+Clang-instrumented build and uploads the result to Codecov.
 
 ### Main branch protection
 

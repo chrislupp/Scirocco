@@ -51,7 +51,8 @@ cmake --build scirocco/build -j
 ctest --test-dir scirocco/build --output-on-failure
 ```
 Test counts and runtime depend on features and dependencies. Inspect the suite
-with `ctest --test-dir scirocco/build -N`. Coverage CI is disabled.
+with `ctest --test-dir scirocco/build -N`. The CI `Coverage` job uploads to
+Codecov.
 
 ### Test categories
 

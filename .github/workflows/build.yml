@@ -258,10 +258,11 @@ jobs:
       run: ctest --output-on-failure
 
   coverage:
-    # Temporarily disabled, including the Codecov upload.
-    if: ${{ false }}
     needs: [format]
     runs-on: ubuntu-24.04
+    # The job takes a few minutes. Cap it so a slow regression fails the job
+    # instead of holding the PR for half an hour.
+    timeout-minutes: 15
 
     name: Coverage
 
@@ -307,7 +308,13 @@ jobs:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
       # Chain-piece debug tests run in build-debug-suite; the default suite
       # already exercises their production paths through end-to-end gradients.
-      run: ctest --output-on-failure --parallel $(nproc)
+      # Every test takes under 3 s instrumented; the per-test limit names the
+      # culprit if one becomes slow. InstalledConsumer runs in the packaging
+      # job: its separate build lacks the coverage flags and cannot link the
+      # instrumented library.
+      run: >
+        ctest --output-on-failure --no-tests=error
+        --parallel $(nproc) --timeout 60 -E '^InstalledConsumer$'
 
     - name: Generate Coverage Report
       run: |
