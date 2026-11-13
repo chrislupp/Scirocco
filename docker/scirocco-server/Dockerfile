@@ -7,7 +7,7 @@
 
 ARG DEBIAN_BASE=debian:stable-slim
 ARG PHILOTE_REPO=https://github.com/MDO-Standards/Philote-Cpp.git
-ARG PHILOTE_REF=cd19666a23ddca009ee8b27ecdd40c0a0a2ea4b4
+ARG PHILOTE_REF=49e1b42c3e46a4b9b70619c29e705985a6e6555d
 
 # ---------------------------------------------------------------------------
 # builder: compile PhiloteCpp + Scirocco, copy binary to /out

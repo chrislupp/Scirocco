@@ -1,5 +1,5 @@
 # Reproduces the optimizer stack used to validate the IPOPT example while
-# pairing the client with Philote-Cpp protocol 0.8.
+# pairing the client with Philote-Cpp 0.6.0.
 philote-mdo==0.8.0
 openmdao==3.39.0
 grpcio==1.66.2

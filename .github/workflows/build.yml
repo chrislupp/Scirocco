@@ -1,7 +1,7 @@
 name: Build and Tests
 
 env:
-  PHILOTE_CPP_REF: cd19666a23ddca009ee8b27ecdd40c0a0a2ea4b4
+  PHILOTE_CPP_REF: 49e1b42c3e46a4b9b70619c29e705985a6e6555d
 
 on:
   push:

@@ -12,7 +12,7 @@ you use. All commands run from the repository root.
 | --- | --- | --- |
 | The C++ library | CMake 3.18+, a C++17 compiler, Eigen 3.4+ | (default) |
 | HDF5 history files | HDF5 with C++ bindings | `SCIROCCO_HDF5_OUTPUT=ON` |
-| Python / OpenMDAO | Protobuf, gRPC, Philote-Cpp 0.8 | `SCIROCCO_BUILD_PHILOTE=ON` |
+| Python / OpenMDAO | Protobuf, gRPC, Philote-Cpp 0.6.0 | `SCIROCCO_BUILD_PHILOTE=ON` |
 | The test suites | Google Test, and HDF5 for the reference tests | (on by default) |
 
 CI builds with GCC 14 and Clang 18 on Ubuntu 24.04. macOS with Homebrew works
@@ -111,12 +111,12 @@ sudo apt-get install -y libgrpc++-dev libprotobuf-dev protobuf-compiler \
 </TabItem>
 </Tabs>
 
-Build Philote-Cpp at the tested commit. It matches `philote-mdo==0.8.0` on
+Build Philote-Cpp v0.6.0, the tested release. It matches `philote-mdo==0.8.0` on
 the Python side; other versions use a different wire format.
 
 ```bash
 git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git
-git -C Philote-Cpp checkout cd19666a23ddca009ee8b27ecdd40c0a0a2ea4b4
+git -C Philote-Cpp checkout 49e1b42c3e46a4b9b70619c29e705985a6e6555d
 git -C Philote-Cpp submodule update --init --recursive
 cmake -S Philote-Cpp -B Philote-Cpp/build -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
