@@ -179,7 +179,7 @@ high_cl:  alpha=+3.098°  Cl=0.8000  Cd=0.00508
 constraint violation = 2.2e-11
 ```
 
-Results from before Philote-Cpp 0.8 differ: older versions silently
+Results from before Philote-Cpp 0.6.0 differ: older versions silently
 truncated large Jacobians, so they aren't a valid comparison.
 
 ## Exploring the weights

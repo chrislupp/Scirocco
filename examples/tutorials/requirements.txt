@@ -1,4 +1,4 @@
-# Tested tutorial environment. Pair Philote-MDO 0.8.0 with Philote-Cpp 0.8;
+# Tested tutorial environment. Pair Philote-MDO 0.8.0 with Philote-Cpp 0.6.0;
 # see docs/getting-started/installation.md.
 philote-mdo==0.8.0
 openmdao==3.45.0
