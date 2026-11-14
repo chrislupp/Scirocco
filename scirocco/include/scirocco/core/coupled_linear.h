@@ -49,10 +49,64 @@
 
 #include <Eigen/SparseLU>
 #include <memory>
+#include <vector>
 
 #include "scirocco/config.h"
 
 namespace scirocco {
+
+/** Row-major dense matrix, for row-wise block substitution. */
+using RowMatrixXd =
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+/**
+ * @brief Direct solver for a sparse matrix that is block triangular up to a
+ * permutation of its node blocks.
+ *
+ * The boundary-layer Jacobian at prescribed mass couples each station to the
+ * station upstream, except at the stagnation point (two stations solved
+ * together) and the first wake station (both trailing edges). Grouping the
+ * nodes into strongly connected components of the dependency graph and
+ * ordering the groups topologically makes the matrix block lower
+ * triangular, so solves are a forward (or, transposed, backward)
+ * substitution with small dense LUs on the diagonal groups.
+ */
+class BlockTriangularSolver {
+   public:
+    /**
+     * @brief Factor @p a.
+     * @param a Square sparse matrix
+     * @param block Rows and columns per node
+     * @return false if a diagonal group is singular
+     */
+    bool Compute(const SparseMatrixd& a, int block);
+
+    /** @brief Overwrite @p y with A^-1 y (any number of columns). */
+    void SolveInPlace(RowMatrixXd& y) const;
+
+    /** @brief A^-1 r. */
+    [[nodiscard]] VectorXd Solve(const VectorXd& r) const;
+
+    /** @brief A^-T r. */
+    [[nodiscard]] VectorXd SolveTranspose(const VectorXd& r) const;
+
+    /** @brief Largest diagonal group, in nodes (diagnostic). */
+    [[nodiscard]] int LargestGroup() const;
+
+   private:
+    struct Entry {
+        int row;
+        int col;
+        double value;
+    };
+    struct Group {
+        std::vector<int> rows; /* Matrix rows (and columns) of the group */
+        Eigen::PartialPivLU<MatrixXd> lu;
+        std::vector<Entry> coupling; /* Rows in the group, columns earlier */
+    };
+    std::vector<Group> groups_; /* In solve order */
+    int block_ = 1;
+};
 
 /**
  * @brief Factorization of the coupled viscous-inviscid Jacobian J through
@@ -113,8 +167,8 @@ class CoupledFactorization {
 
     bool use_schur_ = false;
     VectorXd row_scale_; /* Row equilibration of B and G */
-    mutable Eigen::SparseLU<SparseMatrixd> b_lu_; /* transpose() is non-const */
-    MatrixXd x_;                                  /* B^-1 G [3N x N] */
+    BlockTriangularSolver b_solver_;
+    RowMatrixXd x_; /* B^-1 G [3N x N] */
     Eigen::PartialPivLU<MatrixXd> s_lu_;
 
     mutable std::unique_ptr<Eigen::SparseLU<SparseMatrixd>> direct_lu_;

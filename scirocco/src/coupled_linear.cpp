@@ -47,7 +47,151 @@ constexpr double kSchurTolerance = 1e-10;
 /// Iterative-refinement passes tried before falling back to a direct LU.
 constexpr int kRefinementPasses = 3;
 
+/// Tarjan's strongly connected components; components come out with every
+/// dependency before its dependents (solve order).
+class Components {
+   public:
+    explicit Components(const std::vector<std::vector<int>>& deps)
+        : deps_(deps),
+          index_(deps.size(), -1),
+          low_(deps.size(), 0),
+          on_stack_(deps.size(), false) {
+        for (int v = 0; v < static_cast<int>(deps.size()); ++v)
+            if (index_[v] < 0) Visit(v);
+    }
+    std::vector<std::vector<int>> components;
+
+   private:
+    void Visit(int v) {
+        index_[v] = low_[v] = counter_++;
+        stack_.push_back(v);
+        on_stack_[v] = true;
+        for (int w : deps_[v]) {
+            if (index_[w] < 0) {
+                Visit(w);
+                low_[v] = std::min(low_[v], low_[w]);
+            } else if (on_stack_[w]) {
+                low_[v] = std::min(low_[v], index_[w]);
+            }
+        }
+        if (low_[v] != index_[v]) return;
+        std::vector<int> component;
+        int w = -1;
+        do {
+            w = stack_.back();
+            stack_.pop_back();
+            on_stack_[w] = false;
+            component.push_back(w);
+        } while (w != v);
+        std::sort(component.begin(), component.end());
+        components.push_back(std::move(component));
+    }
+    const std::vector<std::vector<int>>& deps_;
+    std::vector<int> index_, low_;
+    std::vector<bool> on_stack_;
+    std::vector<int> stack_;
+    int counter_ = 0;
+};
+
 }  // namespace
+
+bool BlockTriangularSolver::Compute(const SparseMatrixd& a, int block) {
+    block_ = block;
+    const int nodes = static_cast<int>(a.rows()) / block;
+    std::vector<std::vector<int>> deps(nodes);
+    for (int c = 0; c < a.outerSize(); ++c)
+        for (SparseMatrixd::InnerIterator it(a, c); it; ++it) {
+            const int i = static_cast<int>(it.row()) / block;
+            const int j = c / block;
+            if (i != j) deps[i].push_back(j);
+        }
+    for (auto& d : deps) {
+        std::sort(d.begin(), d.end());
+        d.erase(std::unique(d.begin(), d.end()), d.end());
+    }
+    const Components scc(deps);
+
+    groups_.assign(scc.components.size(), Group{});
+    std::vector<int> group_of(nodes), local(nodes);
+    std::vector<MatrixXd> diag(groups_.size());
+    for (size_t g = 0; g < scc.components.size(); ++g) {
+        const auto& members = scc.components[g];
+        for (size_t k = 0; k < members.size(); ++k) {
+            group_of[members[k]] = static_cast<int>(g);
+            local[members[k]] = static_cast<int>(k);
+            for (int b = 0; b < block; ++b)
+                groups_[g].rows.push_back(block * members[k] + b);
+        }
+        const int size = block * static_cast<int>(members.size());
+        diag[g] = MatrixXd::Zero(size, size);
+    }
+    for (int c = 0; c < a.outerSize(); ++c)
+        for (SparseMatrixd::InnerIterator it(a, c); it; ++it) {
+            const int r = static_cast<int>(it.row());
+            const int gi = group_of[r / block];
+            const int gj = group_of[c / block];
+            if (gi == gj) {
+                diag[gi](block * local[r / block] + r % block,
+                         block * local[c / block] + c % block) += it.value();
+            } else {
+                groups_[gi].coupling.push_back({r, c, it.value()});
+            }
+        }
+    for (size_t g = 0; g < groups_.size(); ++g) {
+        const MatrixXd& d = diag[g];
+        groups_[g].lu.compute(d);
+        const VectorXd pivots = groups_[g].lu.matrixLU().diagonal().cwiseAbs();
+        const double norm = d.cwiseAbs().maxCoeff();
+        if (!(pivots.minCoeff() > 1e-13 * norm)) return false;
+    }
+    return true;
+}
+
+void BlockTriangularSolver::SolveInPlace(RowMatrixXd& y) const {
+    for (const Group& g : groups_) {
+        for (const Entry& e : g.coupling)
+            y.row(e.row) -= e.value * y.row(e.col);
+        const int size = static_cast<int>(g.rows.size());
+        if (size == block_) {
+            /* A single node: its rows are contiguous. */
+            y.middleRows(g.rows[0], size) =
+                g.lu.solve(MatrixXd(y.middleRows(g.rows[0], size)));
+        } else {
+            MatrixXd local(size, y.cols());
+            for (int k = 0; k < size; ++k) local.row(k) = y.row(g.rows[k]);
+            local = g.lu.solve(local);
+            for (int k = 0; k < size; ++k) y.row(g.rows[k]) = local.row(k);
+        }
+    }
+}
+
+VectorXd BlockTriangularSolver::Solve(const VectorXd& r) const {
+    RowMatrixXd y = r;
+    SolveInPlace(y);
+    return y;
+}
+
+VectorXd BlockTriangularSolver::SolveTranspose(const VectorXd& r) const {
+    /* A^T is block upper triangular in solve order: substitute backwards,
+     * then push each group's result into the rows it couples to. */
+    VectorXd t = r;
+    VectorXd z = VectorXd::Zero(r.size());
+    for (auto g = groups_.rbegin(); g != groups_.rend(); ++g) {
+        const int size = static_cast<int>(g->rows.size());
+        VectorXd local(size);
+        for (int k = 0; k < size; ++k) local(k) = t(g->rows[k]);
+        local = g->lu.transpose().solve(local);
+        for (int k = 0; k < size; ++k) z(g->rows[k]) = local(k);
+        for (const Entry& e : g->coupling) t(e.col) -= e.value * z(e.row);
+    }
+    return z;
+}
+
+int BlockTriangularSolver::LargestGroup() const {
+    size_t largest = 0;
+    for (const Group& g : groups_) largest = std::max(largest, g.rows.size());
+    return static_cast<int>(largest) / block_;
+}
 
 bool CoupledFactorization::Compute(const SparseMatrixd& bl_jacobian,
                                    const MatrixXd& ue_m, const VectorXd& ue,
@@ -123,11 +267,10 @@ bool CoupledFactorization::ComputeSchur() {
     b = row_scale_.asDiagonal() * b;
     g = row_scale_.asDiagonal() * g;
 
-    b_lu_.compute(b);
-    if (b_lu_.info() != Eigen::Success) return false;
-
-    x_ = b_lu_.solve(MatrixXd(g));
-    if (b_lu_.info() != Eigen::Success || !x_.allFinite()) return false;
+    if (!b_solver_.Compute(b, 3)) return false;
+    x_ = RowMatrixXd(g);
+    b_solver_.SolveInPlace(x_);
+    if (!x_.allFinite()) return false;
 
     /* S = D + ue_m X_m, X_m the mass rows of X. */
     MatrixXd xm(n, n);
@@ -224,7 +367,7 @@ VectorXd CoupledFactorization::AbsApplyTranspose(const VectorXd& w) const {
 VectorXd CoupledFactorization::SolveSchur(const VectorXd& rhs) const {
     const int n = n_;
     const VectorXd y0 =
-        b_lu_.solve(row_scale_.cwiseProduct(rhs.head(3 * n)).eval());
+        b_solver_.Solve(row_scale_.cwiseProduct(rhs.head(3 * n)));
     VectorXd y0m(n);
     for (int j = 0; j < n; ++j) y0m(j) = y0(3 * j + 1);
     const VectorXd u = s_lu_.solve(rhs.tail(n) + ue_m_ * y0m);
@@ -255,7 +398,7 @@ VectorXd CoupledFactorization::SolveTransposeSchur(const VectorXd& rhs) const {
     const VectorXd q = ue_m_.transpose() * z2;
     VectorXd t = h1;
     for (int j = 0; j < n; ++j) t(3 * j + 1) += q(j);
-    const VectorXd z1 = row_scale_.cwiseProduct(b_lu_.transpose().solve(t));
+    const VectorXd z1 = row_scale_.cwiseProduct(b_solver_.SolveTranspose(t));
     VectorXd z(4 * n);
     z.head(3 * n) = z1;
     z.tail(n) = z2;

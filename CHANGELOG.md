@@ -102,8 +102,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `R_V`, whose dense edge-velocity block filled in. Substituting the mass
   defect for displacement thickness leaves an N x N dense system after a
   sparse boundary-layer solve. Steps and adjoints are unchanged to round-off;
-  the linear solve per Newton iteration drops from 15 ms to 3 ms at 200
-  panels. A sparse LU of the assembled system remains as a fallback, and the
+  the linear solve per Newton iteration drops from 15 ms to 1.9 ms at 200
+  panels. The boundary-layer block is solved by block forward substitution
+  over its station groups (`BlockTriangularSolver`). A sparse LU of the assembled system remains as a fallback, and the
   trust-region step still assembles `R_V`.
 - `Glob::lu_factorization` is replaced by `Glob::coupled_factorization`, and
   `StoreAdjointFactorization` no longer fills `Glob::R_V`; call
