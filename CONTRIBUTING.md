@@ -177,7 +177,8 @@ PATH, and GTest and HDF5 installed:
 ```bash
 CC=clang CXX=clang++ cmake -S scirocco -B scirocco/build-cov \
     -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_NATIVE_ARCH=OFF \
-    -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+    -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping \
+        -fprofile-list=$PWD/.github/coverage-profile-list.txt"
 cmake --build scirocco/build-cov -j2
 (
     cd scirocco/build-cov
@@ -194,6 +195,10 @@ cmake --build scirocco/build-cov -j2
         -instr-profile=cov.profdata ../src/*.cpp
 )
 ```
+
+The profile list leaves Eigen, the standard library, GoogleTest, gRPC, and
+protobuf uninstrumented. Their inlined counters made the tests about 17x
+slower, and the report excludes those headers anyway.
 
 The installed-consumer check is excluded because its separate build does not
 inherit the global coverage flags. Use `xcrun llvm-profdata` and

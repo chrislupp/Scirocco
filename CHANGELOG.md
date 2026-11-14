@@ -130,7 +130,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The CI coverage job runs the full default test suite in parallel, instead
   of the spline, geometry, mfoil reference, and Philote tests only. A
   15-minute job limit and a 60-second per-test limit keep a slow test from
-  stalling the pipeline.
+  stalling the pipeline. Eigen, the standard library, GoogleTest, gRPC, and
+  protobuf are not instrumented (`.github/coverage-profile-list.txt`); their
+  inlined counters made instrumented tests about 17x slower than Release and
+  pushed `CalcForce_Viscous` past the limit. The reported coverage of
+  Scirocco's sources is unchanged.
 - Nonfinite operating conditions, invalid panel counts, malformed coordinate
   options, and nonfinite solver results now raise errors instead of being
   reported as successful analyses.
