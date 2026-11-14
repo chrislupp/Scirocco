@@ -23,8 +23,13 @@ Philote server.
 | --- | --- | --- |
 | `verb` | `0` | `0` silent, `1` summary per iter, `2` very verbose. Set to `1` when convergence trouble starts. |
 | `rtol` | `1e-11` | Newton residual tolerance. Below `1e-12`, round-off gets in the way. |
+| `rtol_floor` | `1e-8` | Also converged once the residual is below this and a step no longer halves it: the round-off floor, which on some cases sits above `rtol` |
 | `niglob` | `200` | Maximum iterations for a coupled solve |
-| `scale_coupled_system` | `true` | Equilibrate equations and variables |
+| `coupled_march` | `true` | After each Newton update, re-solve the boundary layer by a [coupled march](../concepts/viscous-coupling#the-solve) |
+| `march_residual` | `0.1` | March only while the residual norm is above this |
+| `step_limiter` | `StepLimiter::Absolute` | Under-relaxation rule: `Absolute` (mfoil) caps the amplification change at 2, the shear-stress change at 0.05 and the `ue` change at 0.2; `Relative` (XFOIL) scales the step so no change exceeds +150% or −50% of its value |
+| `warm_start` | `true` | Start a viscous `Solve()` from the last converged boundary layer of the same object; cold start if that fails |
+| `scale_coupled_system` | `true` | Equilibrate the assembled system of the trust-region step |
 | `use_continuation` | `true` | Retry failed cold starts along an angle/lift path |
 | `continuation_max_attempts` | `24` | Maximum continuation attempts |
 | `continuation_max_iterations` | `800` | Total extra coupled iterations |
