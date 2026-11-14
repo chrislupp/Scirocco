@@ -47,9 +47,8 @@ easy case PTC never engages.
 
 ## What it does in practice
 
-PTC is a safeguard, not a speed-up. On this difficult start both variants
-spend about ten steps near $\|R\| \approx 4$ before Newton takes over, and
-finish within a step of each other:
+PTC is a safeguard, not a speed-up. On this difficult start it never
+engages, and both variants take the same 14 steps:
 
 <ConvergencePlot variant="hard" />
 

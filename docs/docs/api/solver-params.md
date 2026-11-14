@@ -25,8 +25,7 @@ Philote server.
 | `rtol` | `1e-11` | Newton residual tolerance. Below `1e-12`, round-off gets in the way. |
 | `rtol_floor` | `1e-8` | Also converged once the residual is below this and a step no longer halves it: the round-off floor, which on some cases sits above `rtol` |
 | `niglob` | `200` | Maximum iterations for a coupled solve |
-| `coupled_march` | `true` | After each Newton update, re-solve the boundary layer by a [coupled march](../concepts/viscous-coupling#the-solve) |
-| `march_residual` | `0.1` | March only while the residual norm is above this |
+| `bl_march` | `true` | Before each Newton step, re-solve the boundary layer by a [march](../concepts/viscous-coupling#the-solve) at the current `ue`, as XFOIL does. `false` gives mfoil's iteration |
 | `step_limiter` | `StepLimiter::Absolute` | Under-relaxation rule: `Absolute` (mfoil) caps the amplification change at 2, the shear-stress change at 0.05 and the `ue` change at 0.2; `Relative` (XFOIL) scales the step so no change exceeds +150% or −50% of its value |
 | `warm_start` | `true` | Start a viscous `Solve()` from the last converged boundary layer of the same object; cold start if that fails |
 | `scale_coupled_system` | `true` | Equilibrate the assembled system of the trust-region step |

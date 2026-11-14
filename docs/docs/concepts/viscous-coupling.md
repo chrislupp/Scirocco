@@ -50,15 +50,17 @@ eliminating the boundary-layer unknowns, which couple only to the station
 upstream, leaves an $N \times N$ dense system. The step costs about 2 ms at
 200 panels and is exact; the adjoint uses the same factorization.
 
-Far from the solution, a Newton step can move the boundary layer somewhere
-its own transition criterion disagrees with, and the next update then throws
-transition far upstream or downstream. While the residual is above
-`march_residual`, each update is therefore followed by a coupled march, as
-in XFOIL: every station is re-solved together with its own edge-velocity
-equation, holding the other nodes' mass defect fixed, and transition is
-placed where the amplification reaches $n_{crit}$. The marched state is kept
-only if it lowers the residual. It doesn't change the converged answer;
-transition is checked once more before the solve is accepted.
+Between Newton steps the boundary layer is re-solved by a march down each
+surface, as in XFOIL. Each station is solved with the station upstream fixed
+and its edge velocity held close to the current iterate: a combination of
+$u_e$ and $H_k$ chosen so that the station is solved in direct mode in
+attached flow and in inverse mode near separation, where $u_e$ alone would
+make the problem singular. On laminar stretches the march places transition
+where the amplification reaches $n_{crit}$, with the same test used to accept
+the converged solution. Newton then only has to settle the coupling between
+the boundary layer and the outer flow, and typical cases converge in 7-11
+steps. The march doesn't change the converged answer: its equations are the
+global ones, so a converged state is a fixed point.
 
 Newton steps are damped with
 [pseudo-transient continuation](./ptc) when the residual grows. If a cold
@@ -85,5 +87,5 @@ compare against data for your regime.
 Source: [`boundary_layer.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/boundary_layer.cpp),
 [`coupled_solver.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/coupled_solver.cpp),
 [`coupled_linear.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/coupled_linear.cpp),
-[`coupled_march.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/coupled_march.cpp),
+[`bl_march.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/bl_march.cpp),
 [`forces.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/forces.cpp).

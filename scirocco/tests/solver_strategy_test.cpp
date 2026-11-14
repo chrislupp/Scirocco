@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "scirocco/core/coupled_march.h"
+#include "scirocco/core/bl_march.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/scirocco.h"
@@ -92,19 +92,19 @@ TEST(SolverStrategy, PseudoTimeTermsActOnOwnVariables) {
 
 /* NACA 0012 at alpha 5, 199 panels: the first Newton step used to flip the
  * whole upper surface laminar, and the step limiter then held the step to a
- * few percent for some 40 iterations. The coupled march keeps transition
- * consistent with the boundary layer, so Newton converges directly, to the
- * same solution. */
-TEST(SolverStrategy, CoupledMarchConvergesWithoutStalling) {
+ * few percent for some 40 iterations. The boundary-layer march keeps the
+ * boundary layer and transition consistent with ue between Newton steps, so
+ * Newton converges directly, to the same solution. */
+TEST(SolverStrategy, BoundaryLayerMarchConvergesWithoutStalling) {
     Scirocco marched("0012", 199);
     marched.SetOper(5.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(marched.Solve());
-    EXPECT_LE(marched.GetState().glob.coupled_iterations, 25);
+    EXPECT_LE(marched.GetState().glob.coupled_iterations, 20);
     EXPECT_EQ(marched.GetState().glob.continuation_attempts, 0);
 
     Scirocco plain("0012", 199);
     plain.SetOper(5.0, -1.0, 1e6, 0.0);
-    plain.GetState().param.coupled_march = false;
+    plain.GetState().param.bl_march = false;
     plain.GetState().param.step_limiter = StepLimiter::Absolute;
     ASSERT_TRUE(plain.Solve());
     EXPECT_GT(plain.GetState().glob.coupled_iterations, 30);
@@ -112,14 +112,14 @@ TEST(SolverStrategy, CoupledMarchConvergesWithoutStalling) {
     EXPECT_NEAR(marched.GetCd(), plain.GetCd(), 1e-9);
 }
 
-/* The march solves the global residual equations, so a converged state is a
- * fixed point. */
-TEST(SolverStrategy, CoupledMarchLeavesConvergedStateUnchanged) {
+/* The march solves the global residual equations, and places transition
+ * with UpdateTransition's test, so a converged state is a fixed point. */
+TEST(SolverStrategy, BoundaryLayerMarchLeavesConvergedStateUnchanged) {
     Scirocco foil("2412", 99);
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(foil.Solve());
     FoilState state = foil.GetState();
-    EXPECT_EQ(CoupledMarch(state), 0);
+    EXPECT_EQ(BoundaryLayerMarch(state), 0);
     EXPECT_LT((state.glob.U - foil.GetState().glob.U).norm(),
               1e-9 * state.glob.U.norm());
     EXPECT_EQ(state.vsol.turb, foil.GetState().vsol.turb);
@@ -165,14 +165,14 @@ TEST(SolverStrategy, RoundOffFloorEndsNewton) {
 /* A second solve on the same object starts from the first solution: fewer
  * iterations, same answer as a cold start. */
 TEST(SolverStrategy, WarmStartReusesPreviousSolution) {
-    Scirocco warm("2412", 160);
-    warm.SetOper(4.0, -1.0, 1e6, 0.0);
+    Scirocco warm("0012", 200);
+    warm.SetOper(8.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(warm.Solve());
-    warm.SetOper(4.5, -1.0, 1e6, 0.0);
+    warm.SetOper(8.5, -1.0, 1e6, 0.0);
     ASSERT_TRUE(warm.Solve());
 
-    Scirocco cold("2412", 160);
-    cold.SetOper(4.5, -1.0, 1e6, 0.0);
+    Scirocco cold("0012", 200);
+    cold.SetOper(8.5, -1.0, 1e6, 0.0);
     cold.GetState().param.warm_start = false;
     ASSERT_TRUE(cold.Solve());
     EXPECT_LT(warm.GetState().glob.coupled_iterations,

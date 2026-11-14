@@ -39,6 +39,53 @@
 
 namespace scirocco {
 
+double AmplifyInterval(const FoilState& state, int ip, int ii,
+                       bool* converged) {
+    Param param = BuildParam(state, 0);
+    param.turb = false;
+    param.wake = false;
+
+    Vector4d U1 = state.glob.U.col(ip);
+    Vector4d U2 = state.glob.U.col(ii);
+
+    /* Initialize amp if currently turbulent */
+    if (ii < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[ii]) {
+        U2(2) = U1(2) * 1.01;
+    }
+
+    double dx = state.isol.xi(ii) - state.isol.xi(ip);
+
+    /* Newton iterations for amplification equation */
+    constexpr int nNewton = 20;
+    int iNewton = 0;
+    for (; iNewton < nNewton; ++iNewton) {
+        /* Amplification rate, averaged */
+        StationParam(state, param, ip);
+        auto [damp1, damp1_U1] = GetDamp(U1, param);
+        StationParam(state, param, ii);
+        auto [damp2, damp2_U2] = GetDamp(U2, param);
+
+        double damp = 0.5 * (damp1 + damp2);
+
+        double Ramp = U2(2) - U1(2) - damp * dx;
+
+        if (std::abs(Ramp) < 1e-12) break; /* Converged */
+
+        /* Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx */
+        double Ramp_U2 = 1.0 - 0.5 * damp2_U2(2) * dx;
+        double dU = -Ramp / Ramp_U2;
+
+        double omega = 1.0;
+        double dmax = 0.5 * (1.01 - static_cast<double>(iNewton) / nNewton);
+        if (std::abs(dU) > dmax) {
+            omega = dmax / std::abs(dU);
+        }
+        U2(2) += omega * dU;
+    }
+    if (converged) *converged = iNewton < nNewton;
+    return U2(2);
+}
+
 int MarchAmplification(FoilState& state, int si) {
     /* Marches amplification equation on surface si
      * Returns: index of last laminar station before transition (in Is array)
@@ -48,9 +95,7 @@ int MarchAmplification(FoilState& state, int si) {
     int N = static_cast<int>(Is.size());
     if (N == 0) return -1;
 
-    Param param = BuildParam(state, si);
-    param.turb = false;
-    param.wake = false;
+    const double ncrit = state.param.ncrit;
 
     /* No amplification at first station */
     state.glob.U(2, Is[0]) = 0.0;
@@ -60,53 +105,19 @@ int MarchAmplification(FoilState& state, int si) {
         int ip = Is[i - 1];
         int ii = Is[i];
 
-        Vector4d U1 = state.glob.U.col(ip);
+        bool amp_converged = true;
         Vector4d U2 = state.glob.U.col(ii);
+        U2(2) = AmplifyInterval(state, ip, ii, &amp_converged);
 
-        /* Initialize amp if currently turbulent */
-        if (ii < static_cast<int>(state.vsol.turb.size()) &&
-            state.vsol.turb[ii]) {
-            U2(2) = U1(2) * 1.01;
-        }
-
-        double dx = state.isol.xi(ii) - state.isol.xi(ip);
-
-        /* Newton iterations for amplification equation */
-        int nNewton = 20;
-        int iNewton = 0;
-        for (; iNewton < nNewton; ++iNewton) {
-            /* Amplification rate, averaged */
-            StationParam(state, param, ip);
-            auto [damp1, damp1_U1] = GetDamp(U1, param);
-            StationParam(state, param, ii);
-            auto [damp2, damp2_U2] = GetDamp(U2, param);
-
-            double damp = 0.5 * (damp1 + damp2);
-
-            double Ramp = U2(2) - U1(2) - damp * dx;
-
-            if (std::abs(Ramp) < 1e-12) break; /* Converged */
-
-            /* Jacobian: dRamp/dU2[2] = 1 - 0.5 * damp2_U2[2] * dx */
-            double Ramp_U2 = 1.0 - 0.5 * damp2_U2(2) * dx;
-            double dU = -Ramp / Ramp_U2;
-
-            double omega = 1.0;
-            double dmax = 0.5 * (1.01 - static_cast<double>(iNewton) / nNewton);
-            if (std::abs(dU) > dmax) {
-                omega = dmax / std::abs(dU);
-            }
-            U2(2) += omega * dU;
-        }
         /* Match mfoil.march_amplification (mfoil.py:2602): warn if the
          * station Newton ran the full budget without converging. */
-        if (iNewton >= nNewton && state.param.verb >= 1) {
+        if (!amp_converged && state.param.verb >= 1) {
             std::cerr << "  march amp Newton unconverged at station " << i
                       << " (surface " << si << ")\n";
         }
 
         /* Check for transition */
-        if (U2(2) > param.ncrit) {
+        if (U2(2) > ncrit) {
             /* Transition found - return last laminar station */
             return i - 1;
         } else {

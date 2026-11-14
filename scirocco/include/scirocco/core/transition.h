@@ -44,6 +44,20 @@ namespace scirocco {
 int MarchAmplification(FoilState& state, int si);
 
 /**
+ * @brief Amplification at node @p ii from node @p ip by the laminar
+ * amplification equation, holding theta, delta* and ue at their current
+ * values. This is the transition test of MarchAmplification and of the
+ * boundary-layer march, so both place transition at the same interval.
+ * @param state Foil state
+ * @param ip Upstream node
+ * @param ii Downstream node
+ * @param converged Set to false if the scalar Newton did not converge
+ * @return Amplification factor at @p ii
+ */
+double AmplifyInterval(const FoilState& state, int ip, int ii,
+                       bool* converged = nullptr);
+
+/**
  * @brief Update transition locations based on current solution
  * @param state FoilState with current solution
  */

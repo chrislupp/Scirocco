@@ -36,10 +36,10 @@
 #include <iostream>
 #include <limits>
 
+#include "scirocco/core/bl_march.h"
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/captured_transition.h"
 #include "scirocco/core/coupled_linear.h"
-#include "scirocco/core/coupled_march.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/panel_influence.h"
@@ -93,35 +93,6 @@ bool TransitionSettled(FoilState& state) {
     const auto turb = state.vsol.turb;
     UpdateTransition(state);
     return state.vsol.turb == turb;
-}
-
-/**
- * @brief Smooth the iterate with the coupled march (CoupledMarch), keeping
- * the result only if it brings the coupled residual below @p reference, the
- * residual before the Newton step. Otherwise restore the iterate and locate
- * transition from the amplification march (UpdateTransition).
- * @return true if the marched state was kept; its global system is then
- *         already built (BuildGlobSys, CalcForce)
- */
-bool MarchOrUpdateTransition(FoilState& state, double reference) {
-    const MatrixXd U = state.glob.U;
-    const auto turb = state.vsol.turb;
-    CoupledMarch(state);
-    bool keep = false;
-    try {
-        BuildGlobSys(state);
-        CalcForce(state);
-        const double marched = CoupledResidual(state).norm();
-        keep = std::isfinite(marched) && marched < reference;
-    } catch (const std::exception&) {
-        keep = false;
-    }
-    if (!keep) {
-        state.glob.U = U;
-        state.vsol.turb = turb;
-        UpdateTransition(state);
-    }
-    return keep;
 }
 
 VectorXd PackedState(const FoilState& state) {
@@ -279,16 +250,16 @@ void SolveCoupled(FoilState& state) {
     state.glob.trust_rejected = 0;
     state.glob.coupled_iterations = 0;
 
-    bool built = false; /* Global system already built for this state */
+    /* As in XFOIL, march the boundary layer before every Newton step,
+     * starting with the initial guess. */
+    const bool march = state.param.bl_march;
+    if (march) BoundaryLayerMarch(state);
     for (int iter = 0; iter < niglob; ++iter) {
         ++state.glob.coupled_iterations;
-        if (!built) {
-            BuildGlobSys(state);
-            // Python mfoil updates force values and the lift constraint each
-            // iteration.
-            CalcForce(state);
-        }
-        built = false;
+        BuildGlobSys(state);
+        // Python mfoil updates force values and the lift constraint each
+        // iteration.
+        CalcForce(state);
         double rnorm = CoupledResidual(state).norm();
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm
@@ -302,10 +273,9 @@ void SolveCoupled(FoilState& state) {
         const bool at_floor = iter > 0 && rnorm < state.param.rtol_floor &&
                               rnorm > 0.5 * state.glob.R_norm_prev;
         if (rnorm < rtol || at_floor) {
-            /* With the coupled march, transition may have been held fixed
-             * over the last iterations; accept only if the amplification
-             * march agrees with where it sits. */
-            if (!state.param.coupled_march || TransitionSettled(state)) {
+            /* With the boundary-layer march placing transition, accept
+             * only if the amplification march agrees with where it sits. */
+            if (!march || TransitionSettled(state)) {
                 state.glob.conv = true;
                 return;
             }
@@ -355,8 +325,8 @@ void SolveCoupled(FoilState& state) {
         if (!state.param.use_trust_region ||
             !state.param.trust_update_topology) {
             StagPointMove(state);
-            if (state.param.coupled_march && rnorm > state.param.march_residual)
-                built = MarchOrUpdateTransition(state, rnorm);
+            if (march)
+                BoundaryLayerMarch(state);
             else
                 UpdateTransition(state);
         }

@@ -39,7 +39,7 @@ set(SCIROCCO_SOURCES
     src/transition.cpp
     src/coupled_solver.cpp
     src/coupled_linear.cpp
-    src/coupled_march.cpp
+    src/bl_march.cpp
     src/forces.cpp
     src/adjoint.cpp
     src/viscous_geom_deriv.cpp
