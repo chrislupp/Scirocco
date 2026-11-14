@@ -1,0 +1,25 @@
+# Clang -fprofile-list for the Coverage job (.github/workflows/build.yml).
+#
+# Instrument every function except inline code from third-party headers.
+# Eigen's expression templates are inlined into every solver loop, and their
+# counters made instrumented tests about 17x slower than Release on CI. The
+# coverage report already drops these headers (/usr/ in
+# -ignore-filename-regex), so excluding them loses no data.
+#
+# Patterns match mangled names: src: patterns see the translation unit, not
+# the header a function comes from. Clang 18 ignores the newer "[clang]" and
+# "=skip" syntax, so this uses an allow list with negations.
+fun:*
+!fun:_ZN5Eigen*
+!fun:_ZNK5Eigen*
+!fun:_ZSt*
+!fun:_ZNSt*
+!fun:_ZNKSt*
+!fun:_ZN7testing*
+!fun:_ZNK7testing*
+!fun:_ZN6google*
+!fun:_ZNK6google*
+!fun:_ZN4grpc*
+!fun:_ZNK4grpc*
+# x86 SIMD intrinsics (static inline in Clang's headers), inside Eigen kernels.
+!fun:_ZL*_mm*

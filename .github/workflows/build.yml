@@ -297,7 +297,8 @@ jobs:
         -DPhiloteCpp_DIR=/tmp/philote-cpp/build
         -DSCIROCCO_BUILD_TESTS=ON
         -DSCIROCCO_NATIVE_ARCH=OFF
-        -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+        -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping
+        -fprofile-list=${{github.workspace}}/.github/coverage-profile-list.txt"
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j$(nproc)
@@ -308,8 +309,9 @@ jobs:
         LLVM_PROFILE_FILE: ${{github.workspace}}/build/coverage-%p.profraw
       # Chain-piece debug tests run in build-debug-suite; the default suite
       # already exercises their production paths through end-to-end gradients.
-      # Every test takes under 3 s instrumented; the per-test limit names the
-      # culprit if one becomes slow. InstalledConsumer runs in the packaging
+      # Third-party headers are not instrumented (coverage-profile-list.txt),
+      # so tests run within about 1.5x of Release. The per-test limit names
+      # the culprit if one becomes slow. InstalledConsumer runs in the packaging
       # job: its separate build lacks the coverage flags and cannot link the
       # instrumented library.
       run: >
