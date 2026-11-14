@@ -208,6 +208,22 @@ TEST(SolverStrategy, InviscidCacheFollowsGeometry) {
     EXPECT_EQ(state.isol.gamref, fresh.isol.gamref);
 }
 
+/* Newton iterations skip dR/dRe and dR/dMa; the converged state must still
+ * carry them, exactly as a full assembly gives them. */
+TEST(SolverStrategy, ConvergedStateCarriesScalarDerivatives) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(3.0, -1.0, 1e6, 0.3);
+    ASSERT_TRUE(foil.Solve());
+    FoilState state = foil.GetState();
+    const VectorXd re = state.glob.dR_dRe_times_Re;
+    const VectorXd ma = state.glob.dR_dMa_times_Ma;
+    ASSERT_GT(re.norm(), 0.0);
+    ASSERT_GT(ma.norm(), 0.0);
+    BuildGlobSys(state);
+    EXPECT_EQ(re, state.glob.dR_dRe_times_Re);
+    EXPECT_EQ(ma, state.glob.dR_dMa_times_Ma);
+}
+
 TEST(SolverStrategy, TrustStepRejectsUphillWithoutChangingState) {
     Scirocco foil("2412", 99);
     foil.SetOper(2.0, -1.0, 1e6, 0.2);

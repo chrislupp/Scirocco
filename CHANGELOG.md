@@ -124,6 +124,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   tags can be rechecked manually.
 
 ### Changed
+- `ResidualStation`, `ResidualTransition` and `BuildGlobSys` take an optional
+  `scalar_derivatives` flag (default true). Newton iterations and the
+  boundary-layer march no longer compute the Re and Mach residual partials,
+  which only the adjoint uses; the solver assembles them once at the accepted
+  solution. Viscous solves are about 15% faster (NACA 0012, 200 panels:
+  28-32 ms cold, 12-15 ms for a 0.5-degree polar step).
 - The influence-matrix LU from the inviscid solve is stored
   (`Isol::AIC_lu`, `SolveAIC`) and reused by `CalcUeM` and the adjoint
   instead of refactoring, and `BuildGlobSys` adds the stagnation-point

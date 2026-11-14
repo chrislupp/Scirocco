@@ -256,7 +256,9 @@ void SolveCoupled(FoilState& state) {
     if (march) BoundaryLayerMarch(state);
     for (int iter = 0; iter < niglob; ++iter) {
         ++state.glob.coupled_iterations;
-        BuildGlobSys(state);
+        /* dR/dRe and dR/dMa are for the adjoint only: assembled once, at
+         * the accepted solution below. */
+        BuildGlobSys(state, false);
         // Python mfoil updates force values and the lift constraint each
         // iteration.
         CalcForce(state);
@@ -276,6 +278,7 @@ void SolveCoupled(FoilState& state) {
             /* With the boundary-layer march placing transition, accept
              * only if the amplification march agrees with where it sits. */
             if (!march || TransitionSettled(state)) {
+                BuildGlobSys(state);
                 state.glob.conv = true;
                 return;
             }
@@ -442,7 +445,7 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
  * @brief Build global residual and Jacobian
  * @param state Foil state
  */
-void BuildGlobSys(FoilState& state) {
+void BuildGlobSys(FoilState& state, bool scalar_derivatives) {
     int Nsys = state.glob.Nsys;
 
     /* Allocate residual and Jacobians if needed */
@@ -526,7 +529,8 @@ void BuildGlobSys(FoilState& state) {
             Vector2d xst_pair(stag.xst, stag.xst);
             Vector2d Aux_pair(Aux(ip0), Aux(ip0));
 
-            auto res = ResidualStation(param, xst_pair, Ust_pair, Aux_pair);
+            auto res = ResidualStation(param, xst_pair, Ust_pair, Aux_pair,
+                                       scalar_derivatives);
             param.simi = false;
 
             /* ∂R/∂Re·Re for the simi station: res.lin_Ret is computed for
@@ -655,14 +659,16 @@ void BuildGlobSys(FoilState& state) {
             ResidualLin res;
             if (tran) {
                 /* Transition station: combined laminar + turbulent residual */
-                res = ResidualTransition(state, param, xin, Uin, Aux_in);
+                res = ResidualTransition(state, param, xin, Uin, Aux_in,
+                                         scalar_derivatives);
                 /* After transition, subsequent stations are turbulent */
                 param.turb = true;
             } else {
                 /* Update param for this station */
                 StationParam(state, param, Is[i]);
                 /* Regular residual */
-                res = ResidualStation(param, xin, Uin, Aux_in);
+                res = ResidualStation(param, xin, Uin, Aux_in,
+                                      scalar_derivatives);
             }
 
             /* Store in global system */

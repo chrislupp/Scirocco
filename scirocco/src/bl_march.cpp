@@ -67,10 +67,10 @@ ResidualLin Residual(FoilState& state, const Station& st, Kind kind) {
     Param param = BuildParam(state, st.surface);
     if (kind == Kind::Transition) {
         param.turb = false;
-        return ResidualTransition(state, param, st.xi, pair, st.aux);
+        return ResidualTransition(state, param, st.xi, pair, st.aux, false);
     }
     StationParam(state, param, st.node);
-    return ResidualStation(param, st.xi, pair, st.aux);
+    return ResidualStation(param, st.xi, pair, st.aux, false);
 }
 
 /// Shear stress for a station entering the transition interval.
@@ -234,8 +234,9 @@ bool SolveStagnationPair(FoilState& state, int si, int n0, int n1) {
         Matrix42d stag_pair;
         stag_pair.col(0) = stag.Ust;
         stag_pair.col(1) = stag.Ust;
-        const ResidualLin r1 = ResidualStation(
-            param, Vector2d(stag.xst, stag.xst), stag_pair, Vector2d::Zero());
+        const ResidualLin r1 =
+            ResidualStation(param, Vector2d(stag.xst, stag.xst), stag_pair,
+                            Vector2d::Zero(), false);
         const Matrix34d r1_ust =
             r1.lin_U.block<3, 4>(0, 0) + r1.lin_U.block<3, 4>(0, 4);
         const Matrix38d r1_u = r1_ust * stag.Ust_U;
@@ -243,7 +244,7 @@ bool SolveStagnationPair(FoilState& state, int si, int n0, int n1) {
         param.simi = false;
         StationParam(state, param, n1);
         const ResidualLin r2 =
-            ResidualStation(param, xi, pair, Vector2d::Zero());
+            ResidualStation(param, xi, pair, Vector2d::Zero(), false);
 
         Eigen::Matrix<double, 6, 6> a;
         Eigen::Matrix<double, 6, 1> f;

@@ -50,8 +50,10 @@ void SolveCoupled(FoilState& state);
 /**
  * @brief Build global residual system
  * @param state Foil state whose global residual is assembled.
+ * @param scalar_derivatives Also accumulate dR/dRe and dR/dMa
+ *        (glob.dR_dRe_times_Re, glob.dR_dMa_times_Ma) for the adjoint
  */
-void BuildGlobSys(FoilState& state);
+void BuildGlobSys(FoilState& state, bool scalar_derivatives = true);
 
 /**
  * @brief Solve the global linear system
