@@ -79,9 +79,11 @@ redistributes them. They do need to be a clean loop: no repeated
 neighbouring points, no self-intersections, positive chord.
 
 :::warning Leave a gap at the trailing edge
-Viscous solves on coordinates with an **exactly closed** trailing edge often
-fail to converge, and can converge to a wrong answer. Give the trailing edge
-a small gap, as the built-in NACA generator does. This is a known issue
+Viscous analysis needs an **open** trailing edge. If the trailing-edge
+thickness `hTE` is below `kMinViscousTEGap` (1e-6 chord), a viscous
+`Solve()` throws `std::invalid_argument`. Give the trailing edge a small gap,
+as the built-in NACA generator does (0.25% chord). Inviscid solves on a
+closed trailing edge are fine. This is a known limitation
 ([#18](https://github.com/chrislupp/Scirocco/issues/18)).
 :::
 
@@ -95,9 +97,17 @@ that direction is undefined:
 - in potential flow that is a stagnation point, so the wake streamline has
   no direction to follow.
 
-mfoil stops on the same coordinates with "Wrong wake direction". Scirocco
-has no such check, so it carries on with a bad wake. Usually the solve then
-fails, but sometimes it reports convergence at the wrong Cl.
+mfoil stops on the same coordinates with "Wrong wake direction". Without a
+check, the solve carries on with a bad wake: usually it fails, but sometimes
+it reports convergence at the wrong Cl (0.03 instead of 0.21 on NACA 0012 at
+199 panels and α = 2°). Scirocco therefore rejects the geometry before
+building the wake.
+
+The trouble starts well before the gap is exactly zero. On NACA 0012 at
+120 and 199 panels, α = 0–8° and Re = 2×10⁵–5×10⁶, a gap of 1e-9 chord or
+less never converges, while from 2e-9 chord up Cl changes smoothly with the
+gap. The 1e-6 chord limit leaves a factor of 1000 and still accepts the
+smallest gap a five-decimal coordinate file can hold (1e-5).
 
 Starting the wake along the trailing-edge bisector instead doesn't fix it.
 mfoil gets past the wake construction, but the coupled viscous solve still

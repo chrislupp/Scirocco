@@ -51,6 +51,11 @@ Set at discipline construction.
 | `te_upper` | double | 0.0 | Fixed upper-surface TE y-offset |
 | `te_lower` | double | 0.0 | Fixed lower-surface TE y-offset |
 
+The defaults give a closed trailing edge, which is fine for inviscid
+analysis. For viscous analysis set `te_upper - te_lower` to at least 1e-6
+chord (the examples use 0.00126, 0.126% chord); otherwise the analysis
+discipline raises an error.
+
 ## Inputs
 
 | Name | Shape |

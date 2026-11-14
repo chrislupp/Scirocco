@@ -61,7 +61,8 @@ bool Solve();
 Runs the inviscid solve and, when `Re > 0`, the coupled viscous Newton
 iteration. Returns `false` if it doesn't converge or a lift target can't be
 reached; then the results are not valid. Throws on invalid inputs or
-non-finite results.
+non-finite results. In viscous mode a closed trailing edge (thinner than
+1e-6 chord) is an invalid input: `Solve()` throws `std::invalid_argument`.
 
 ## Results
 
