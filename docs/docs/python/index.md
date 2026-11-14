@@ -138,6 +138,56 @@ The `naca` option only initializes the analysis server and fixes its panel
 count. The shape it actually analyzes is whatever arrives on `x`, here
 from the CST server.
 
+## Native Python client
+
+`philote-mdo` also has a native Python client that calls a server directly,
+with no framework. This runs the same model by hand, passing the geometry
+server's `x` to the analysis server:
+
+```python
+import grpc
+import numpy as np
+from philote_mdo.general import ExplicitClient
+
+npanel = 100
+
+def connect(address, options):
+    client = ExplicitClient(grpc.insecure_channel(address))
+    client.send_options(options)
+    client.run_setup()
+    client.get_variable_definitions()
+    client.get_partials_definitions()
+    return client
+
+geometry = connect("localhost:50052", {
+    "n_cst_upper": 6, "n_cst_lower": 6,
+    "te_upper": 0.00063, "te_lower": -0.00063, "npanel": npanel,
+})
+analysis = connect("localhost:50051", {"naca": "0012", "npanel": npanel})
+
+cst_0012 = np.array([
+    0.1706635358053721, 0.15626369325824663, 0.1546327069833401,
+    0.14462202838023833, 0.13318428664336585, 0.15537328876198608,
+])
+x = geometry.run_compute({"cst_upper": cst_0012, "cst_lower": cst_0012})["x"]
+inputs = {"x": x, "alpha": np.array([4.0]), "Re": np.array([0.0]), "Ma": np.array([0.0])}
+
+forces = analysis.run_compute(inputs)
+print(f"Cl = {forces['cl'][0]:.8f}")
+
+partials = analysis.run_compute_partials(inputs)
+print(f"dCd/dx has {partials['cd', 'x'].size} entries")
+```
+
+```output
+Cl = 0.48270391
+dCd/dx has 202 entries
+```
+
+`run_compute_partials` returns the analytic partials, keyed by output and
+input. Chaining them through the geometry, as a framework would, is up to
+you.
+
 ## Tutorials
 
 Each tutorial changes one thing about this model. The complete scripts are
