@@ -15,8 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   from the last converged boundary layer of the same object, as XFOIL does,
   and falls back to a cold start (after at most 30 iterations) if that does
   not converge. The previous boundary layer is shifted along each surface
-  to the new stagnation point, as XFOIL's STMOVE does. On NACA 0012 at 200
-  panels, a 0.5-degree polar step takes 26-35 ms against 39-61 ms cold.
+  to the new stagnation point, as XFOIL's STMOVE does, and its edge
+  velocity is predicted from the new inviscid solution at the old mass
+  defect, so a 0.5-degree polar step mostly takes 5-6 Newton iterations.
   This also applies across geometry updates through the Philote discipline.
 - `BoundaryLayerMarch` (new header `core/bl_march.h`) and
   `Param::bl_march` (default on): before each coupled Newton step the

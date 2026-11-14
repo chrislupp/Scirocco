@@ -86,6 +86,26 @@ void ShiftToStagnation(FoilState& state, const std::array<int, 2>& old) {
 }
 
 /**
+ * @brief Warm-start predictor: keep the previous mass defect m = ds ue and
+ * set ue = ueinv + ue_m m for the new operating point, so the coupling
+ * equation holds from the start and only the boundary layer has to adjust
+ * (the boundary-layer march does that before the first Newton step).
+ * Falls back to the previous ue where the prediction is not positive.
+ */
+void PredictEdgeVelocity(FoilState& state) {
+    auto& U = state.glob.U;
+    const VectorXd mass = U.row(1).cwiseProduct(U.row(3)).transpose();
+    const VectorXd ue = GetUeInv(state) + state.vsol.ue_m * mass;
+    if (!ue.allFinite()) return;
+    const double floor = 1e-3 * ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < ue.size(); ++i) {
+        if (!(ue(i) > floor)) continue;
+        U(1, i) = mass(i) / ue(i);
+        U(3, i) = ue(i);
+    }
+}
+
+/**
  * @brief Locate transition from the amplification march (UpdateTransition).
  * @return true if no station changed between laminar and turbulent
  */
@@ -177,6 +197,7 @@ void SolveViscous(FoilState& state) {
         state.glob.Nsys = nsys;
         state.glob.realloc = true;
         ShiftToStagnation(state, entry_istag);
+        PredictEdgeVelocity(state);
     } else {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {
