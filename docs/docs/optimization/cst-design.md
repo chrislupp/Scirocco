@@ -18,17 +18,11 @@ viscous one minimizes drag and adds a smoothness constraint.
 
 ## How it fits together
 
-Both scripts start both servers themselves.
-
-```text
-[KulfanDiscipline] --x--> [SiroccoDiscipline] --cl, cd, cm--> [SLSQP]
-   (Philote gRPC          (Philote gRPC                ^
-    localhost:50052)        localhost:50051)           |
-                       +--> [AirfoilArea] -------------+
-```
-
-The coefficients go to the geometry server, its `x` goes to the analysis
-server, and the framework multiplies the two Jacobians.
+Both scripts start both servers themselves: the geometry server
+(`KulfanDiscipline`) on `localhost:50052` and the analysis server
+(`SiroccoDiscipline`) on `localhost:50051`. The coefficients go to the
+geometry server, its `x` goes to the analysis server, and the framework
+multiplies the two Jacobians. Each variant below shows its model.
 
 ## Inviscid variant
 
@@ -43,6 +37,10 @@ server, and the framework multiplies the two Jacobians.
 Inviscid drag is zero, so it can't be the objective. Minimizing $C_m^2$ at
 a target $C_l$ gives a section with no pitching moment, a classic inviscid
 design problem with a smooth minimum.
+
+The model adds a small component that squares `cm` for the objective:
+
+<N2 name="cst-inviscid" alt="N2 diagram: SLSQP drives CST geometry, AirfoilArea, Analysis, and a cm-squared component." />
 
 ```bash
 python examples/kulfan_inviscid_optimization/kulfan_inviscid_optimization.py
@@ -67,6 +65,11 @@ getting too thin.
 | Design variables | 16 CST coefficients, $\alpha$ |
 | Objective | $\min C_d$ |
 | Constraints | $C_l = 0.5$, area $\ge 0.8 \times$ initial, **smoothness $\in [-0.05, 0.05]$ on each surface** |
+
+The model drops the `cm` component, and the geometry server also returns its
+smoothness outputs to SLSQP:
+
+<N2 name="cst-viscous" alt="N2 diagram: SLSQP drives CST geometry, AirfoilArea, and Analysis." />
 
 ```bash
 python examples/kulfan_viscous_optimization/kulfan_viscous_optimization.py

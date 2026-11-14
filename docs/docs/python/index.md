@@ -61,8 +61,16 @@ any component that produces `x`.
 python examples/tutorials/quickstart.py
 ```
 
-The script builds this model, using OpenMDAO as the framework. Here its
-constants, which live in `tutorial_airfoil.py`, are written inline:
+The script connects the two servers as in this N2 diagram. Components sit on
+the diagonal, and each circle marks data passed from the component in its row
+to the one in its column: circles above the diagonal pass data forward,
+circles below it feed data back. Hover over or tap a circle to see the
+variables it carries.
+
+<N2 name="analysis-cst" alt="N2 diagram: CST geometry passes x to Analysis." />
+
+It builds this model, using OpenMDAO as the framework. Here its constants,
+which live in `tutorial_airfoil.py`, are written inline:
 
 ```python
 import grpc

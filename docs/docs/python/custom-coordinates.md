@@ -49,6 +49,10 @@ the panels exactly; it doesn't re-panel them.
 
 ## Connect it
 
+A fixed block of coordinates takes the place of the geometry server:
+
+<N2 name="analysis-coordinates" alt="N2 diagram: a coordinates block passes x to Analysis." />
+
 ```python
 import grpc
 import openmdao.api as om

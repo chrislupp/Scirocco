@@ -1,0 +1,40 @@
+{
+  "disciplines": [
+    {
+      "id": "geometry",
+      "name": "CST geometry",
+      "type": "explicit",
+      "inputs": [
+        "cst_upper",
+        "cst_lower"
+      ],
+      "outputs": [
+        "x",
+        "smoothness_upper",
+        "smoothness_lower"
+      ]
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "geometry.x",
+      "sink": "analysis.x"
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+/* The figure is as wide as its diagram and centered. Every N2 shares one
+   scale, so the diagram shows at its natural size and only shrinks in a
+   narrower column. Colors come from here, not from the SVG. */
+.figure {
+    --n2-box: #ffffff;
+    --n2-component: #2c55a8;
+    --n2-driver: #7a3b8f;
+    --n2-datablock: #9a4a1f;
+    --n2-line: #dfe6f0;
+    --n2-point: #ffffff;
+    --n2-point-stroke: #66738a;
+    --n2-active: #2c55a8;
+
+    margin: 1.75rem auto 2rem;
+}
+
+:global([data-theme="dark"]) .figure {
+    --n2-box: #0a1222;
+    --n2-component: #8fb6f0;
+    --n2-driver: #c9a2e0;
+    --n2-datablock: #e0a07a;
+    --n2-line: #24314d;
+    --n2-point: #0a1222;
+    --n2-point-stroke: #8592a8;
+    --n2-active: #8fb6f0;
+}
+
+.plot {
+    position: relative;
+}
+
+.svg :global(svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.svg :global(.n2-connections polyline) {
+    stroke: var(--n2-line);
+    stroke-width: 8px;
+}
+
+.svg :global(.n2-box) {
+    fill: var(--n2-box);
+    stroke: var(--n2-component);
+    stroke-width: 2px;
+}
+
+.svg :global(.n2-label) {
+    fill: var(--n2-component);
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.svg :global(.n2-driver) {
+    stroke: var(--n2-driver);
+}
+
+.svg :global(.n2-label.n2-driver) {
+    fill: var(--n2-driver);
+    stroke: none;
+}
+
+.svg :global(.n2-datablock) {
+    stroke: var(--n2-datablock);
+}
+
+.svg :global(.n2-label.n2-datablock) {
+    fill: var(--n2-datablock);
+    stroke: none;
+}
+
+.svg :global(.n2-coupling) {
+    fill: var(--n2-point);
+    stroke: var(--n2-point-stroke);
+    stroke-width: 1.5px;
+    transition: fill 0.12s;
+}
+
+/* Highlight over the active circle. */
+.dot {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--n2-active);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.svg :global(.n2-hit) {
+    fill: transparent;
+    stroke: none;
+    cursor: pointer;
+    outline: none;
+}
+
+.svg :global(.n2-hit:focus-visible) {
+    stroke: var(--n2-active);
+    stroke-width: 1.5px;
+    stroke-dasharray: 3 2;
+}
+
+/* Tooltip, above the circle; anchored at an edge near the sides. */
+.tip {
+    position: absolute;
+    z-index: 2;
+    width: max-content;
+    max-width: 16rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--sc-line-strong);
+    border-radius: 6px;
+    background: var(--sc-bg);
+    box-shadow: 0 4px 14px rgb(11 18 32 / 0.12);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--sc-ink-2);
+    pointer-events: none;
+    transform: translate(-50%, calc(-100% - 12px));
+}
+
+.tip[data-align="start"] {
+    transform: translate(-14px, calc(-100% - 12px));
+}
+
+.tip[data-align="end"] {
+    transform: translate(calc(-100% + 14px), calc(-100% - 12px));
+}
+
+.tipHead {
+    font-weight: 600;
+    color: var(--sc-ink);
+    margin-bottom: 0.2rem;
+}
+
+.tipVars {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tipVars code {
+    font-size: 0.95em;
+    padding: 0.05em 0.3em;
+}

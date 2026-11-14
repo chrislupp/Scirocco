@@ -28,8 +28,8 @@ Write for someone who wants to get something done:
 Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
 `<Next>`, `<CpPlot>`, `<PolarPlot>`, `<ConvergencePlot>`, `<PanelPlot>`,
 `<OnsetPlot>`, `<ShapeGradientPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`,
-`<BenchTable>`, and `<QuickstartSource>` (which shows
-`scirocco/examples/quickstart.cpp` as built by CI).
+`<BenchTable>`, `<QuickstartSource>` (which shows
+`scirocco/examples/quickstart.cpp` as built by CI), and `<N2>`.
 
 ## Figures and timings
 
@@ -50,6 +50,21 @@ scirocco/build/bench        # copy the table into docs/src/data/bench.json
 Record the machine in `bench.json`. Chart colours are validated for
 colour-vision deficiency in both themes; keep series to the `--sc-series-*`
 roles in `src/css/custom.css`.
+
+### N2 diagrams
+
+The model diagrams on the Python and optimization pages are
+[Prelude](https://chrislupp.github.io/Prelude/) files in `src/data/n2/`. Edit
+one in Prelude, or by hand, then render them all into
+`src/data/n2/rendered.json` and commit it:
+
+```bash
+npm run n2
+```
+
+`<N2 name="multipoint" alt="…" />` draws a diagram inline, colored for the
+current theme; hovering over or tapping a circle shows the variables it
+carries. Keep each diagram in step with its script in `examples/`.
 
 ## Checks
 
