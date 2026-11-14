@@ -10,7 +10,7 @@ const GITHUB = "https://github.com/chrislupp/Scirocco";
 
 const config: Config = {
     title: "Scirocco",
-    tagline: "Viscous airfoil analysis with exact gradients, in C++",
+    tagline: "Airfoil analysis for optimization",
     favicon: "img/favicon.ico",
 
     future: {
