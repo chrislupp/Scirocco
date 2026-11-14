@@ -4,6 +4,7 @@ import TabItem from "@theme/TabItem";
 import Next from "@site/src/components/Next";
 import BenchTable from "@site/src/components/BenchTable";
 import QuickstartSource from "@site/src/components/QuickstartSource";
+import N2 from "@site/src/components/N2";
 import {
     ConvergencePlot,
     CpPlot,
@@ -22,6 +23,7 @@ export default {
     Next,
     BenchTable,
     QuickstartSource,
+    N2,
     CpPlot,
     PolarPlot,
     ConvergencePlot,

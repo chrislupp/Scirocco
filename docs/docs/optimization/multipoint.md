@@ -28,11 +28,11 @@ its own solver state, so each gets its own analysis server.
 
 ## How it fits together
 
-```text
-                       ┌──→ [Analysis @ 50061] ──cl_0, cd_0──→
-[Kulfan geometry] ──x──┼──→ [Analysis @ 50062] ──cl_1, cd_1──→  [IPOPT]
-   (50060)             └──→ [Analysis @ 50063] ──cl_2, cd_2──→
-```
+One geometry feeds an analysis per design point; analyses 1, 2, and 3 are the
+low, mid, and high lift points. A last component combines their drag into the
+objective:
+
+<N2 name="multipoint" alt="N2 diagram: IPOPT drives one CST geometry, AirfoilArea, three Analysis components, and a weighted-drag component." />
 
 The geometry server listens on 50060 and the analysis servers on 50061
 upward, one per entry in `DESIGN_POINTS`. The script starts and stops all

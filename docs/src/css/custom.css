@@ -580,3 +580,10 @@ button[class*="copyButton"] {
 .theme-code-block.language-output button[class*="copyButton"] {
     display: none;
 }
+
+/* Divider between versions and "All releases" in the version dropdown. */
+.dropdown-separator {
+    margin: 0.3rem 0.5rem;
+    border: 0;
+    border-top: 1px solid var(--sc-line);
+}

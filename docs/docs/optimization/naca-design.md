@@ -31,14 +31,11 @@ partials of the 4-digit formulas.
 
 ## How it fits together
 
-```text
-[NACA4Geometry] --x--> [Scirocco (Philote)] --cl, cd, cm--> [SLSQP]
-   analytical    |        analytical adjoint           ^
-   gradients     |          sensitivities              |
-                 +--> [AirfoilArea] --area-------------+
-```
+<N2 name="naca-design" alt="N2 diagram: SLSQP drives NACA4Geometry, AirfoilArea, and Analysis." />
 
-Only the analysis server is needed, on `localhost:50051`.
+`NACA4Geometry` and `AirfoilArea` run in Python with analytic partials;
+Analysis is `scirocco_server`, with the adjoint. Only the analysis server is
+needed, on `localhost:50051`.
 
 ## Run it
 
@@ -140,7 +137,7 @@ $$
    + \frac{\partial C_d}{\partial \alpha}
 $$
 
-OpenMDAO multiplies the two pieces. Scirocco's adjoint costs the same no
+The framework multiplies the two pieces. Scirocco's adjoint costs the same no
 matter how many geometry variables feed `x`, so moving to the 16 variables
 of the [CST example](./cst-design) doesn't make the gradient more expensive.
 

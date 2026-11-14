@@ -17,7 +17,7 @@ function Hero() {
     return (
         <header className={styles.hero}>
             <div className={styles.heroText}>
-                <h1 className={styles.title}>Viscous airfoil analysis with exact gradients, in C++.</h1>
+                <h1 className={styles.title}>Airfoil analysis for optimization.</h1>
                 <p className={styles.lede}>
                     Scirocco couples a panel method to an integral boundary layer with e<sup>N</sup> transition.
                     One solve gives you C<sub>l</sub>, C<sub>d</sub>, and C<sub>m</sub>. One more call gives
@@ -45,11 +45,7 @@ function Program() {
     return (
         <section className={styles.section}>
             <div className={styles.sectionHead}>
-                <h2>The whole program</h2>
-                <p>
-                    This is <code>scirocco/examples/quickstart.cpp</code>, built by CI. It produced the figure
-                    above.
-                </p>
+                <h2>A viscous solution in three calls</h2>
             </div>
             <div className={styles.program}>
                 <div className={styles.code}>
@@ -77,22 +73,22 @@ function Program() {
 
 const FEATURES = [
     {
-        title: "Viscous, transitional, subsonic",
-        body: "A linear-vortex panel method coupled by Newton's method to an integral boundary layer and wake, with eᴺ transition and Kármán–Tsien compressibility. A C++17 port of mfoil.",
+        title: "XFOIL-like viscous solver",
+        body: "A linear-vortex panel method coupled by Newton's method to an integral boundary layer and wake, with eᴺ transition and Kármán–Tsien compressibility.",
         to: "/docs/concepts/panel-method",
         link: "How the solver works",
     },
     {
-        title: "Gradients checked against complex step",
+        title: "Verified exact gradients",
         body: "The discrete adjoint returns dCl, dCd, dCm with respect to every panel node, α, Re, and Ma. Each piece of the chain is tested against complex-step reference data from mfoil.",
         to: "/docs/guides/gradients",
         link: "Compute gradients",
     },
     {
-        title: "Ready for OpenMDAO",
-        body: "Two Philote gRPC servers expose the analysis and a CST geometry with analytic partials. Worked examples cover NACA, CST, and multipoint drag minimization.",
+        title: "Framework-agnostic MDO interface",
+        body: "Connect to Scirocco through Philote, a framework-neutral interface for multidisciplinary design optimization.",
         to: "/docs/python",
-        link: "Python and optimization",
+        link: "Connect through Philote",
     },
 ];
 
@@ -115,8 +111,8 @@ function Features() {
 export default function Home(): React.JSX.Element {
     return (
         <Layout
-            title="Viscous airfoil analysis with exact gradients"
-            description="Scirocco is a C++17 library for viscous and inviscid 2D airfoil analysis with adjoint gradients, HDF5 output, and OpenMDAO integration through Philote."
+            title="Airfoil analysis for optimization"
+            description="Scirocco is a C++17 library for viscous and inviscid 2D airfoil analysis with adjoint gradients, HDF5 output, and a framework-neutral MDO interface through Philote."
         >
             <main className={styles.main}>
                 <Hero />

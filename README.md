@@ -18,7 +18,8 @@ and Mach number.
   geometry
 - Discrete adjoint for Cl, Cd, and Cm, tested against complex-step
   references
-- Philote gRPC servers for OpenMDAO and other Python MDO frameworks
+- Philote gRPC servers, so any MDO framework with a Philote client can drive
+  the analysis
 
 **Documentation: <https://chrislupp.github.io/Scirocco/>**
 
@@ -48,8 +49,9 @@ foil.ComputeSensitivities();           // adjoint gradients
 const auto& dcd_dx = foil.GetDcdDx();  // dCd / d(node coordinates)
 ```
 
-From Python, Scirocco runs as a Philote server that OpenMDAO connects to.
-There is no in-process `import scirocco` module.
+From Python or an MDO framework, Scirocco runs as a Philote server that any
+Philote client connects to; the examples use OpenMDAO. There is no in-process
+`import scirocco` module.
 
 ## Where to go next
 
@@ -57,7 +59,7 @@ There is no in-process `import scirocco` module.
 | --- | --- |
 | Install, including the optional HDF5 and Philote dependencies | [Installation](https://chrislupp.github.io/Scirocco/docs/getting-started/installation) |
 | Run analyses, change geometry, or compute gradients in C++ | [Guides](https://chrislupp.github.io/Scirocco/docs/guides/analysis) |
-| Use Scirocco from Python and OpenMDAO | [Python overview](https://chrislupp.github.io/Scirocco/docs/python) |
+| Use Scirocco from Python or an MDO framework | [Python and MDO frameworks](https://chrislupp.github.io/Scirocco/docs/python) |
 | Optimize an airfoil | [Optimization examples](https://chrislupp.github.io/Scirocco/docs/optimization/cst-design) and [`examples/`](examples/) |
 | Look up a class, option, or CMake flag | [API reference](https://chrislupp.github.io/Scirocco/docs/api) |
 | Understand the method, transition models, and their validation | [Concepts](https://chrislupp.github.io/Scirocco/docs/concepts/panel-method) |

@@ -1,0 +1,182 @@
+{
+  "disciplines": [
+    {
+      "id": "opt",
+      "name": "IPOPT",
+      "type": "driver",
+      "inputs": [
+        "cd_total",
+        "cl_0",
+        "cl_1",
+        "cl_2",
+        "area",
+        "smoothness_upper",
+        "smoothness_lower"
+      ],
+      "outputs": [
+        "cst_upper",
+        "cst_lower",
+        "alpha_0",
+        "alpha_1",
+        "alpha_2"
+      ]
+    },
+    {
+      "id": "geometry",
+      "name": "CST geometry",
+      "type": "explicit",
+      "inputs": [
+        "cst_upper",
+        "cst_lower"
+      ],
+      "outputs": [
+        "x",
+        "smoothness_upper",
+        "smoothness_lower"
+      ]
+    },
+    {
+      "id": "area_comp",
+      "name": "AirfoilArea",
+      "type": "explicit",
+      "inputs": [
+        "x"
+      ],
+      "outputs": [
+        "area"
+      ]
+    },
+    {
+      "id": "analysis_0",
+      "name": "Analysis 1",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    },
+    {
+      "id": "analysis_1",
+      "name": "Analysis 2",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    },
+    {
+      "id": "analysis_2",
+      "name": "Analysis 3",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    },
+    {
+      "id": "cd_aggregator",
+      "name": "Weighted cd",
+      "type": "explicit",
+      "inputs": [
+        "cd_0",
+        "cd_1",
+        "cd_2"
+      ],
+      "outputs": [
+        "cd_total"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "opt.cst_upper",
+      "sink": "geometry.cst_upper"
+    },
+    {
+      "source": "opt.cst_lower",
+      "sink": "geometry.cst_lower"
+    },
+    {
+      "source": "geometry.x",
+      "sink": [
+        "area_comp.x",
+        "analysis_0.x",
+        "analysis_1.x",
+        "analysis_2.x"
+      ]
+    },
+    {
+      "source": "geometry.smoothness_upper",
+      "sink": "opt.smoothness_upper"
+    },
+    {
+      "source": "geometry.smoothness_lower",
+      "sink": "opt.smoothness_lower"
+    },
+    {
+      "source": "area_comp.area",
+      "sink": "opt.area"
+    },
+    {
+      "source": "opt.alpha_0",
+      "sink": "analysis_0.alpha"
+    },
+    {
+      "source": "analysis_0.cl",
+      "sink": "opt.cl_0"
+    },
+    {
+      "source": "analysis_0.cd",
+      "sink": "cd_aggregator.cd_0"
+    },
+    {
+      "source": "opt.alpha_1",
+      "sink": "analysis_1.alpha"
+    },
+    {
+      "source": "analysis_1.cl",
+      "sink": "opt.cl_1"
+    },
+    {
+      "source": "analysis_1.cd",
+      "sink": "cd_aggregator.cd_1"
+    },
+    {
+      "source": "opt.alpha_2",
+      "sink": "analysis_2.alpha"
+    },
+    {
+      "source": "analysis_2.cl",
+      "sink": "opt.cl_2"
+    },
+    {
+      "source": "analysis_2.cd",
+      "sink": "cd_aggregator.cd_2"
+    },
+    {
+      "source": "cd_aggregator.cd_total",
+      "sink": "opt.cd_total"
+    }
+  ]
+}

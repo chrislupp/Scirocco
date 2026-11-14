@@ -18,6 +18,7 @@ const CP_H = 210;
 const CP_MIN = -1.1;
 const CP_MAX = 1.45;
 const pcp = (v: number) => CP_TOP + ((CP_MAX - v) / (CP_MAX - CP_MIN)) * CP_H;
+const AX = px(0) - 10; // vertical axis, just ahead of the leading edge
 // Section below, true scale
 const FOIL_Y = 330;
 const pz = (z: number) => FOIL_Y - z * SCALE;
@@ -69,32 +70,28 @@ export default function HeroFoil() {
                     </linearGradient>
                 </defs>
 
-                {/* -Cp axis */}
+                {/* -Cp axis: a vertical axis with ticks, and the zero line across the chord */}
+                <line x1={AX} x2={AX} y1={CP_TOP + 8} y2={CP_TOP + CP_H} className={styles.axis} />
+                <line x1={AX} x2={px(1.13)} y1={pcp(0)} y2={pcp(0)} className={styles.axis} />
                 {[-1, 0, 1].map((t) => (
                     <g key={t}>
-                        <line x1={px(0)} x2={px(1.13)} y1={pcp(t)} y2={pcp(t)} className={t === 0 ? styles.zero : styles.grid} />
-                        <text x={px(0) - 8} y={pcp(t)} dy="0.32em" textAnchor="end" className={styles.tick}>
+                        <line x1={AX - 5} x2={AX} y1={pcp(t)} y2={pcp(t)} className={styles.axis} />
+                        <text x={AX - 9} y={pcp(t)} dy="0.32em" textAnchor="end" className={styles.tick}>
                             {t}
                         </text>
                     </g>
                 ))}
-                <text x={px(0) - 8} y={CP_TOP - 8} textAnchor="end" className={styles.tick}>
+                <text x={AX} y={CP_TOP - 2} textAnchor="middle" className={styles.tick}>
                     −Cp
                 </text>
 
-                <path d={cpPath} className={styles.cp} pathLength={1} />
+                {/* Grows out of the -Cp = 0 line: a vertical scale about that line. */}
+                <path d={cpPath} className={styles.cp} style={{ transformOrigin: `0 ${pcp(0)}px` }} />
 
                 {/* Section, viscous envelope, and wake */}
                 <path d={line(ex, ez)} className={styles.envelope} />
                 <path d={line(wx.map(px), wz.map(pz))} className={styles.wake} />
                 <path d={foil} className={styles.foil} />
-
-                <text x={px(0.5)} y={pcp(1.18)} className={styles.note} textAnchor="middle">
-                    suction side
-                </text>
-                <text x={px(0.5)} y={pcp(-0.42)} className={styles.note} textAnchor="middle">
-                    pressure side
-                </text>
             </svg>
             <figcaption className={styles.readout}>
                 <span className={styles.case}>

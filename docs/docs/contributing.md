@@ -25,14 +25,6 @@ Bug reports, documentation fixes, test cases, and code are all welcome.
 Branches are named `feature/<name>`, `fix/<name>`, or `docs/<name>`, with one
 logical change per pull request. Feature branches are squash-merged.
 
-## Testing derivatives
-
-Derivative tests compare against complex-step reference data from mfoil,
-never against finite differences. Complex step is exact to machine
-precision; finite differences aren't. If an adjoint test fails, first check
-the primal solve against mfoil, then check each piece of the chain against
-its reference before changing any code.
-
 ## Working on these docs
 
 The site lives in `docs/` and is built with Docusaurus:

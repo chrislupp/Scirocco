@@ -1,6 +1,6 @@
 ---
 title: 1. Sweep angle of attack
-description: Reuse one OpenMDAO model across operating points.
+description: Reuse one model across operating points.
 ---
 
 # 1. Sweep angle of attack

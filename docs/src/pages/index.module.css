@@ -97,11 +97,6 @@
     margin: 0;
 }
 
-.sectionHead p {
-    margin: 0;
-    color: var(--sc-ink-3);
-}
-
 .program {
     display: grid;
     grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);

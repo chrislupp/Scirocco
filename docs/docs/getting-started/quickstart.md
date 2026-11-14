@@ -93,5 +93,5 @@ the optional HDF5 and Philote components.
 <Next items={[
   { to: "/docs/guides/analysis", title: "Run an analysis", body: "Sweeps, lift targets, Mach number, and surface distributions." },
   { to: "/docs/guides/gradients", title: "Compute gradients", body: "Derivatives of Cl, Cd, and Cm for optimization." },
-  { to: "/docs/python", title: "Use it from Python", body: "OpenMDAO components through Philote." },
+  { to: "/docs/python", title: "Use it from Python", body: "Connect an MDO framework through Philote." },
 ]} />

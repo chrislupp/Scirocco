@@ -4,13 +4,11 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { darkCodeTheme, lightCodeTheme } from "./src/prism";
 
-import versions from "./versions.json";
-
 const GITHUB = "https://github.com/chrislupp/Scirocco";
 
 const config: Config = {
     title: "Scirocco",
-    tagline: "Viscous airfoil analysis with exact gradients, in C++",
+    tagline: "Airfoil analysis for optimization",
     favicon: "img/favicon.ico",
 
     future: {
@@ -131,8 +129,16 @@ const config: Config = {
                 { type: "docSidebar", sidebarId: "pythonSidebar", position: "left", label: "Python" },
                 { type: "docSidebar", sidebarId: "apiSidebar", position: "left", label: "Reference" },
                 { type: "search", position: "right" },
-                // Only once a release has been snapshotted.
-                ...(versions.length > 0 ? [{ type: "docsVersionDropdown" as const, position: "right" as const }] : []),
+                // "Next" is develop. Each stable release adds its snapshot here
+                // (scripts/release_docs.py) and becomes the default version.
+                {
+                    type: "docsVersionDropdown",
+                    position: "right",
+                    dropdownItemsAfter: [
+                        { type: "html", value: '<hr class="dropdown-separator">' },
+                        { href: `${GITHUB}/releases`, label: "All releases" },
+                    ],
+                },
                 {
                     href: GITHUB,
                     position: "right",
@@ -155,7 +161,7 @@ const config: Config = {
                     title: "Use",
                     items: [
                         { label: "C++ reference", to: "/docs/api" },
-                        { label: "Python and OpenMDAO", to: "/docs/python" },
+                        { label: "Python and MDO frameworks", to: "/docs/python" },
                         { label: "Troubleshooting", to: "/docs/getting-started/troubleshooting" },
                     ],
                 },

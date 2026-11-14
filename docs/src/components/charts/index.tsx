@@ -22,6 +22,9 @@ function foilPath(x: number[], z: number[], px: (v: number) => number, pz: (v: n
     return x.map((xv, i) => `${i ? "L" : "M"}${px(xv).toFixed(1)} ${pz(z[i]).toFixed(1)}`).join("") + "Z";
 }
 
+/** -Cp level of the section's chord line in CpPlot. */
+const FOIL_CP = -1.45;
+
 /** Surface pressure on NACA 2412, viscous vs inviscid, with the section drawn in. */
 export function CpPlot() {
     const { x, z } = cp.coords;
@@ -33,18 +36,24 @@ export function CpPlot() {
                 { id: "visc", label: "Viscous, Re = 10⁶", x, y: neg(cp.cp), role: "1" },
                 { id: "inv", label: "Inviscid", x, y: neg(cp.cpi), role: "ref", dashed: true },
             ]}
+            height={435}
             x={{ domain: [0, 1], ticks: [0, 0.2, 0.4, 0.6, 0.8, 1], label: "x/c" }}
-            y={{ domain: [-1.1, 1.5], ticks: [-1, -0.5, 0, 0.5, 1, 1.5], label: "−Cp" }}
+            // The domain runs below the lowest tick to leave room for the section.
+            y={{ domain: [-1.75, 1.5], ticks: [-1, -0.5, 0, 0.5, 1, 1.5], label: "−Cp" }}
             fx={f4}
             fy={f3}
-            underlay={(sx, sy) => (
-                <path className={styles.foilFill} d={foilPath(x, z, sx, (v) => sy(-0.8 + 2.4 * v))} />
-            )}
+            underlay={(sx, sy) => {
+                // True scale: one chord vertically spans as many pixels as one
+                // chord horizontally. The chord line sits below the -Cp = -1
+                // gridline, clear of the stagnation-point spike.
+                const chord = sx(1) - sx(0);
+                return <path className={styles.foilFill} d={foilPath(x, z, sx, (v) => sy(FOIL_CP) - v * chord)} />;
+            }}
             caption={
                 <>
                     {cp.airfoil} at α = {cp.alpha}°, 160 panels. Viscous: Cl = {cp.cl.toFixed(3)}, Cd ={" "}
                     {cp.cd.toFixed(5)}. The boundary layer lowers the suction peak and relieves the
-                    trailing-edge pressure recovery. Section shape drawn to scale in x only.
+                    trailing-edge pressure recovery. Section drawn to scale.
                 </>
             }
             noTable

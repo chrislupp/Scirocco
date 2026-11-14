@@ -12,7 +12,7 @@ you use. All commands run from the repository root.
 | --- | --- | --- |
 | The C++ library | CMake 3.18+, a C++17 compiler, Eigen 3.4+ | (default) |
 | HDF5 history files | HDF5 with C++ bindings | `SCIROCCO_HDF5_OUTPUT=ON` |
-| Python / OpenMDAO | Protobuf, gRPC, Philote-Cpp 0.6.0 | `SCIROCCO_BUILD_PHILOTE=ON` |
+| Philote servers, for Python and MDO frameworks | Protobuf, gRPC, Philote-Cpp 0.6.0 | `SCIROCCO_BUILD_PHILOTE=ON` |
 | The test suites | Google Test, and HDF5 for the reference tests | (on by default) |
 
 CI builds with GCC 14 and Clang 18 on Ubuntu 24.04. macOS with Homebrew works
@@ -135,7 +135,7 @@ cmake --build scirocco/build-philote -j
 
 This produces `scirocco_server` and `scirocco_kulfan_server` in
 `scirocco/build-philote/src/philote/`. Continue with
-[Python and OpenMDAO](../python) to set up the client. If you'd rather not
+[Python and MDO frameworks](../python) to set up a client. If you'd rather not
 build the servers, use [Docker](../python/docker).
 
 ## Run the tests

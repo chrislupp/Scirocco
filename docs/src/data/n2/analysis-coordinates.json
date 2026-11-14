@@ -1,0 +1,34 @@
+{
+  "disciplines": [
+    {
+      "id": "inputs",
+      "name": "Coordinates",
+      "type": "datablock",
+      "outputs": [
+        "x"
+      ]
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "inputs.x",
+      "sink": "analysis.x"
+    }
+  ]
+}
