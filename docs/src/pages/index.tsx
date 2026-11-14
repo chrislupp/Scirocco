@@ -88,7 +88,7 @@ const FEATURES = [
         title: "Framework-agnostic MDO interface",
         body: "Connect to Scirocco through Philote, a framework-neutral interface for multidisciplinary design optimization.",
         to: "/docs/python",
-        link: "Python and optimization",
+        link: "Connect through Philote",
     },
 ];
 

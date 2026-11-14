@@ -155,7 +155,7 @@ const config: Config = {
                     title: "Use",
                     items: [
                         { label: "C++ reference", to: "/docs/api" },
-                        { label: "Python and OpenMDAO", to: "/docs/python" },
+                        { label: "Python and MDO frameworks", to: "/docs/python" },
                         { label: "Troubleshooting", to: "/docs/getting-started/troubleshooting" },
                     ],
                 },

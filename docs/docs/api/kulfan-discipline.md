@@ -115,7 +115,8 @@ exposes the half-chord $\psi$ vector for testing.
 
 ## Building, launching, using
 
-With the server running, connect from OpenMDAO:
+With the server running, connect from any Philote client. In Python, with
+OpenMDAO as the framework:
 
 ```python
 from philote_mdo.openmdao import RemoteExplicitComponent

@@ -5,10 +5,10 @@ description: Compare the analytic CST-to-forces gradient against finite differen
 
 # 5. Check the gradients
 
-Both servers return analytic partials, and OpenMDAO chains them into total
-derivatives. This tutorial checks the whole chain, from CST coefficients
-to forces, against finite differences. It's the same chain the optimization
-examples use.
+Both servers return analytic partials, and the framework chains them into
+total derivatives; here that is OpenMDAO. This tutorial checks the whole
+chain, from CST coefficients to forces, against finite differences. It's the
+same chain the optimization examples use.
 
 ```bash
 python examples/tutorials/05_sensitivities.py
@@ -38,7 +38,7 @@ totals = problem.check_totals(
 )
 ```
 
-For a CST coefficient $A$, OpenMDAO computes
+For a CST coefficient $A$, the framework computes
 
 $$
 \frac{dC_d}{dA} = \frac{\partial C_d}{\partial x}\,\frac{\partial x}{\partial A},

@@ -6,9 +6,9 @@ sidebar_position: 4
 
 The same kind of problem as the [NACA example](./naca-design), with a CST
 parameterization: 8 coefficients per surface instead of 3 NACA parameters.
-The geometry now runs on its own server, `scirocco_kulfan_server`, so
-OpenMDAO chains two analytic Jacobians. The adjoint's cost doesn't depend on
-how many coefficients there are.
+The geometry now runs on its own server, `scirocco_kulfan_server`, so the
+framework (OpenMDAO in these scripts) chains two analytic Jacobians. The
+adjoint's cost doesn't depend on how many coefficients there are.
 
 There are two variants. The inviscid one trims the pitching moment; the
 viscous one minimizes drag and adds a smoothness constraint.
@@ -28,7 +28,7 @@ Both scripts start both servers themselves.
 ```
 
 The coefficients go to the geometry server, its `x` goes to the analysis
-server, and OpenMDAO multiplies the two Jacobians.
+server, and the framework multiplies the two Jacobians.
 
 ## Inviscid variant
 

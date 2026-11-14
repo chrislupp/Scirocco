@@ -1,14 +1,23 @@
 ---
-title: Python and OpenMDAO
+title: Python and MDO frameworks
 sidebar_label: Overview
-description: Run Scirocco from Python as OpenMDAO components, through Philote gRPC servers.
+description: Drive Scirocco from any MDO framework through its Philote servers, with Python examples.
 ---
 
-# Python and OpenMDAO
+# Python and MDO frameworks
 
-From Python, Scirocco runs as OpenMDAO components. Two small servers host
-the C++ code, and `philote-mdo` connects to them, so each looks like any
-other OpenMDAO component, analytic partials included.
+Scirocco connects to optimization frameworks through
+[Philote](https://github.com/MDO-Standards), a framework-neutral standard for
+running an analysis as a remote discipline. Two small servers host the C++
+code. Any framework with a Philote client can drive them, and both return
+analytic partials along with their outputs.
+
+The examples on these pages are written in Python with
+[OpenMDAO](https://openmdao.org), using the
+[`philote-mdo`](https://MDO-Standards.github.io/Philote-Python) client to wrap
+each server as an OpenMDAO component. The servers' inputs, outputs, and
+partials are the same from any Philote client, so the examples carry over to
+other frameworks.
 
 | Server | Port | Inputs | Outputs |
 | --- | --- | --- | --- |
@@ -52,8 +61,8 @@ any component that produces `x`.
 python examples/tutorials/quickstart.py
 ```
 
-The script builds this model. Here its constants, which live in
-`tutorial_airfoil.py`, are written inline:
+The script builds this model, using OpenMDAO as the framework. Here its
+constants, which live in `tutorial_airfoil.py`, are written inline:
 
 ```python
 import grpc

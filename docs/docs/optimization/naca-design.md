@@ -140,7 +140,7 @@ $$
    + \frac{\partial C_d}{\partial \alpha}
 $$
 
-OpenMDAO multiplies the two pieces. Scirocco's adjoint costs the same no
+The framework multiplies the two pieces. Scirocco's adjoint costs the same no
 matter how many geometry variables feed `x`, so moving to the 16 variables
 of the [CST example](./cst-design) doesn't make the gradient more expensive.
 

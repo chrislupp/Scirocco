@@ -25,7 +25,7 @@ input, which is what a gradient-based optimizer needs.
   to node coordinates, $\alpha$, $Re$, and $M_\infty$, tested against
   complex-step reference data.
 - **Output and integration.** Optional HDF5 history files, and Philote gRPC
-  servers that plug into OpenMDAO.
+  servers that connect to any MDO framework with a Philote client.
 
 Scirocco is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html)
 by Krzysztof J. Fidkowski, extended with analytic adjoints. The Python mfoil
@@ -36,7 +36,7 @@ suite.
 
 <Next items={[
   { to: "/docs/getting-started/quickstart", title: "C++ quickstart", body: "Build the library and solve your first airfoil in a few minutes." },
-  { to: "/docs/python", title: "Python and OpenMDAO", body: "Drive Scirocco from Python through its Philote servers." },
+  { to: "/docs/python", title: "Python and MDO frameworks", body: "Drive Scirocco from an MDO framework through its Philote servers." },
   { to: "/docs/concepts/panel-method", title: "How it works", body: "The panel method, boundary layer, transition, and adjoint." },
 ]} />
 

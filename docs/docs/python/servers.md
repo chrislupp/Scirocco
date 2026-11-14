@@ -27,7 +27,7 @@ proc = subprocess.Popen([
 try:
     with grpc.insecure_channel("localhost:50051") as channel:
         grpc.channel_ready_future(channel).result(timeout=15)
-        # Build and run your OpenMDAO problem with this channel.
+        # Connect your Philote client to this channel.
 finally:
     proc.terminate()
     try:

@@ -35,7 +35,8 @@ Servers bind to an address such as `0.0.0.0:50051`, but clients connect to
 
 `Solve()` returns `false` when the viscous Newton iteration fails or a lift
 target can't be met. Don't use the forces or gradients from a failed solve.
-In Python, a failed solve raises an exception from `run_model()`.
+Through Philote, a failed solve comes back as an error from the server; in
+the OpenMDAO examples it raises an exception from `run_model()`.
 
 Work through these in order:
 

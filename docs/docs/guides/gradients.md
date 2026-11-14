@@ -54,8 +54,8 @@ $$
 \frac{dC_d}{dA} = \frac{\partial C_d}{\partial x}\,\frac{\partial x}{\partial A}
 $$
 
-OpenMDAO does this for you when the geometry is its own component; see
-[Check analytic sensitivities](../python/sensitivities).
+An MDO framework does this for you when the geometry is its own discipline;
+[Check the gradients](../python/sensitivities) shows it with OpenMDAO.
 
 ## Lift-target mode
 
