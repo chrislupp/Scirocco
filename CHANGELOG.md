@@ -96,6 +96,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   tags can be rechecked manually.
 
 ### Changed
+- The coupled viscous Newton system and the viscous adjoint are factored
+  through the mass-defect Schur complement (`CoupledFactorization`, new
+  header `core/coupled_linear.h`) instead of a sparse LU of the assembled
+  `R_V`, whose dense edge-velocity block filled in. Substituting the mass
+  defect for displacement thickness leaves an N x N dense system after a
+  sparse boundary-layer solve. Steps and adjoints are unchanged to round-off;
+  the linear solve per Newton iteration drops from 15 ms to 3 ms at 200
+  panels. A sparse LU of the assembled system remains as a fallback, and the
+  trust-region step still assembles `R_V`.
+- `Glob::lu_factorization` is replaced by `Glob::coupled_factorization`, and
+  `StoreAdjointFactorization` no longer fills `Glob::R_V`; call
+  `coupled_factorization->Assemble()` for the matrix.
 - Viscous `ComputeSensitivities()` is about 13x faster (11.2 s to 0.88 s at
   199 panels on an M1 Pro). The geometric Jacobians in the `R_ue` chain,
   `d(gamma)/d(foil.x)` and the wake sweeps, were rebuilt 16 times per gradient;
@@ -183,6 +195,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- Pseudo-transient continuation added `1/tau` at matrix position `(i, i)`,
+  but boundary-layer rows are ordered `3 * node + equation` and columns
+  `4 * node + variable`, so the term coupled equations to other nodes'
+  variables. Each equation now gets the term on its own variable.
 - Viscous analysis rejects a closed trailing edge instead of returning wrong
   results (#18). The wake model is singular when the trailing-edge gap
   closes: on NACA 0012 a gap of 1e-9 chord or less never converged, and an

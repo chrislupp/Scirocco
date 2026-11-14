@@ -38,6 +38,7 @@ set(SCIROCCO_SOURCES
     src/captured_transition.cpp
     src/transition.cpp
     src/coupled_solver.cpp
+    src/coupled_linear.cpp
     src/forces.cpp
     src/adjoint.cpp
     src/viscous_geom_deriv.cpp

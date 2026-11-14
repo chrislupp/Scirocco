@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "scirocco/core/adjoint.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/wake.h"
@@ -90,7 +91,7 @@ int main() {
 
     int Nsys = s.glob.Nsys;
     int NN = 4 * Nsys;
-    MatrixXd R_V_cpp = MatrixXd(s.glob.R_V);
+    MatrixXd R_V_cpp = MatrixXd(s.glob.coupled_factorization->Assemble());
     std::cout << "R_V scirocco dims: " << R_V_cpp.rows() << "x"
               << R_V_cpp.cols() << "\n";
     std::cout << "R_V mfoil dims:   " << R_V_ref.rows() << "x" << R_V_ref.cols()

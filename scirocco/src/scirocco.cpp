@@ -82,7 +82,7 @@ Scirocco::Scirocco(const MatrixXd& coords, int npanel) {
 void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
     sensitivity_valid_ = false;
     state_.glob.conv = false;
-    state_.glob.lu_factorization.reset();
+    state_.glob.coupled_factorization.reset();
     ValidateOperatingConditions(alpha, cl, Re, Ma);
     if (state_.oper.viscous && Re <= 0.0) ClearSolution(state_);
     state_.oper.Re = Re > 0.0 ? Re : 0.0;
@@ -110,7 +110,7 @@ void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
 bool Scirocco::Solve() {
     sensitivity_valid_ = false;
     state_.glob.conv = false;
-    state_.glob.lu_factorization.reset();
+    state_.glob.coupled_factorization.reset();
     try {
         ValidateOperatingConditions(state_.oper.alpha, state_.oper.cltgt,
                                     state_.oper.Re, state_.oper.Ma);
@@ -187,7 +187,7 @@ bool Scirocco::Solve() {
         }
     } catch (...) {
         state_.glob.conv = false;
-        state_.glob.lu_factorization.reset();
+        state_.glob.coupled_factorization.reset();
         throw;
     }
 }

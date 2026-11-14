@@ -37,6 +37,7 @@
 
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/captured_transition.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/panel_influence.h"
@@ -193,7 +194,7 @@ void SolveViscous(FoilState& state) {
  */
 void SolveCoupled(FoilState& state) {
     state.glob.conv = false;
-    state.glob.lu_factorization.reset();
+    state.glob.coupled_factorization.reset();
     int niglob = state.param.niglob;
     double rtol = state.param.rtol;
 
@@ -304,7 +305,7 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
     };
     try {
         FoilState seed = target;
-        seed.glob.lu_factorization.reset();
+        seed.glob.coupled_factorization.reset();
         seed.oper.givencl = false;
         seed.oper.alpha = std::abs(target.oper.alpha) < 0.5 ? 2.0 : 0.0;
         RebuildIsol(seed);
@@ -660,44 +661,67 @@ void BuildGlobSys(FoilState& state) {
     }
 }
 
-/**
- * @brief Solve the global linear system using augmented system.
- * Variables = [th, ds, sa, ue] at each node.
- * Fourth equation: ue = ueinv + ue_m * (ds * ue)
- * @param state Foil state
- */
-void SolveGlob(FoilState& state) {
-    int Nsys = state.glob.Nsys;
-    bool docl = state.oper.givencl;
+namespace {
 
-    /* Get edge velocity and displacement thickness */
-    VectorXd ue = state.glob.U.row(3).transpose();
-    VectorXd ds = state.glob.U.row(1).transpose();
-    double uemax = ue.cwiseAbs().maxCoeff();
+/// d(ueinv)/d(alpha) at every node [Nsys], for the Cl constraint.
+VectorXd UeInvAlpha(const FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    const double alpha = state.oper.alpha;
+    VectorXd out = VectorXd::Zero(Nsys);
     for (int i = 0; i < Nsys; ++i) {
-        ue(i) = std::max(ue(i), 1e-10 * uemax);
+        double duinv_dalpha = 0.0;
+        if (i < state.foil.N) {
+            duinv_dalpha =
+                state.isol.sgnue(i) * (-state.isol.gamref(i, 0) * Sind(alpha) +
+                                       state.isol.gamref(i, 1) * Cosd(alpha));
+        } else if (i - state.foil.N <
+                   static_cast<int>(state.isol.uewiref.rows())) {
+            const int iw = i - state.foil.N;
+            duinv_dalpha = -state.isol.uewiref(iw, 0) * Sind(alpha) +
+                           state.isol.uewiref(iw, 1) * Cosd(alpha);
+        }
+        out(i) = duinv_dalpha * kDegToRad;
     }
+    return out;
+}
 
-    /* Get inviscid edge velocity */
-    VectorXd ueinv = GetUeInv(state);
+/// Edge velocity with the floor used in the coupled Jacobian.
+VectorXd ClippedUe(const FoilState& state) {
+    VectorXd ue = state.glob.U.row(3).transpose();
+    const double uemax = ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < ue.size(); ++i) ue(i) = std::max(ue(i), 1e-10 * uemax);
+    return ue;
+}
 
-    /* Build augmented system */
-    int NN = 4 * Nsys + (docl ? 1 : 0);
-    bool alloc = state.glob.realloc || state.glob.R_V.rows() != NN ||
-                 state.glob.R_V.cols() != NN;
-
-    if (alloc) {
-        state.glob.R_V.resize(NN, NN);
-    }
-
-    /* Build residual vector */
-    VectorXd R(NN);
+/**
+ * @brief Coupled residual [R_BL; R_ue; (cl - cltgt)] at the current state.
+ * @param ue Clipped edge velocity (see ClippedUe)
+ */
+VectorXd AugmentedResidual(const FoilState& state, const VectorXd& ue) {
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    VectorXd R(4 * Nsys + (docl ? 1 : 0));
     R.head(3 * Nsys) = state.glob.R;
+    R.segment(3 * Nsys, Nsys) =
+        ue - (GetUeInv(state) + state.vsol.ue_m * ds.cwiseProduct(ue));
+    if (docl) R(R.size() - 1) = state.post.cl - state.oper.cltgt;
+    return R;
+}
 
-    /* Fourth equation residual: ue - (ueinv + ue_m * (ds .* ue)) */
-    VectorXd mass = ds.cwiseProduct(ue);
-    VectorXd ue_correction = state.vsol.ue_m * mass;
-    R.segment(3 * Nsys, Nsys) = ue - (ueinv + ue_correction);
+/**
+ * @brief Assemble and factor the full augmented Jacobian R_V with an
+ * equilibrated sparse LU. Used by the trust-region step, which needs R_V
+ * and the scales.
+ */
+void SolveGlobAssembled(FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ue = ClippedUe(state);
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    VectorXd R = AugmentedResidual(state, ue);
+    const int NN = static_cast<int>(R.size());
+    state.glob.R_V.resize(NN, NN);
 
     /* Build Jacobian using triplets */
     std::vector<Triplet> triplets;
@@ -734,10 +758,6 @@ void SolveGlob(FoilState& state) {
 
     /* Cl-alpha constraint if requested */
     if (docl) {
-        double cl = state.post.cl;
-        double cltgt = state.oper.cltgt;
-        R(NN - 1) = cl - cltgt;
-
         /* d(cl)/d(alpha) */
         triplets.emplace_back(NN - 1, NN - 1, state.post.cl_alpha);
 
@@ -749,41 +769,9 @@ void SolveGlob(FoilState& state) {
             }
         }
 
-        /* d(ue residual)/d(alpha)
-         * uinv = uinvref * [cos(alpha), sin(alpha)]
-         * d(uinv)/d(alpha) = uinvref * [-sin(alpha), cos(alpha)] * pi/180 */
-        double alpha = state.oper.alpha;
-        for (int i = 0; i < Nsys; ++i) {
-            double duinv_dalpha = 0.0;
-            if (i < state.foil.N) {
-                duinv_dalpha = state.isol.sgnue(i) *
-                               (-state.isol.gamref(i, 0) * Sind(alpha) +
-                                state.isol.gamref(i, 1) * Cosd(alpha));
-            } else if (i - state.foil.N <
-                       static_cast<int>(state.isol.uewiref.rows())) {
-                int iw = i - state.foil.N;
-                duinv_dalpha = -state.isol.uewiref(iw, 0) * Sind(alpha) +
-                               state.isol.uewiref(iw, 1) * Cosd(alpha);
-            }
-            duinv_dalpha *= kDegToRad;
-            triplets.emplace_back(3 * Nsys + i, NN - 1, -duinv_dalpha);
-        }
-    }
-
-    /* Pseudo-transient continuation: add (1/tau)*I to the diagonal of the
-     * 4*Nsys BL rows (not the alpha row — alpha is an outer DV, not a
-     * transient state). setFromTriplets sums duplicate entries, so this
-     * augments any existing diagonal entries. tau is managed by
-     * SolveCoupled via the SER rule; at convergence ||R|| < rtol, the
-     * (1/tau)(U_{n+1} - U_n) term vanishes (U_{n+1} = U_n), so the
-     * converged R = 0 root is unchanged and the adjoint's StoreAdjoint-
-     * Factorization (which uses state.glob.R_U, not R_V) is untouched. */
-    if (state.param.use_ptc && !state.param.use_trust_region &&
-        state.glob.tau > 0.0) {
-        const double lambda = 1.0 / state.glob.tau;
-        for (int i = 0; i < 4 * Nsys; ++i) {
-            triplets.emplace_back(i, i, lambda);
-        }
+        const VectorXd ueinv_alpha = UeInvAlpha(state);
+        for (int i = 0; i < Nsys; ++i)
+            triplets.emplace_back(3 * Nsys + i, NN - 1, -ueinv_alpha(i));
     }
 
     /* Build sparse matrix */
@@ -847,6 +835,79 @@ void SolveGlob(FoilState& state) {
     } else {
         state.glob.dalpha = 0.0;
     }
+}
+
+}  // namespace
+
+/**
+ * @brief Solve the coupled Newton system for dU (and dalpha with a Cl target).
+ *
+ * Variables are [th, ds, sa, ue] at each node; the fourth equation is
+ * ue = ueinv + ue_m (ds ue). The system is factored through the mass-defect
+ * Schur complement (CoupledFactorization), which costs O(N^2) plus one dense
+ * N x N LU per iteration. With a Cl target, the alpha row and column are a
+ * bordering handled with a second solve.
+ *
+ * Pseudo-transient continuation adds (1/tau) to each equation's own variable:
+ * boundary-layer equation k of node i on variable k of node i, and the
+ * edge-velocity equation on ue. At convergence the term multiplies a zero
+ * update, so the root and the adjoint are unchanged.
+ * @param state Foil state
+ */
+void SolveGlob(FoilState& state) {
+    if (state.param.use_trust_region) {
+        SolveGlobAssembled(state);
+        return;
+    }
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ue = ClippedUe(state);
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    const VectorXd R = AugmentedResidual(state, ue);
+    state.glob.coupled_residual = R;
+
+    const double lambda = (state.param.use_ptc && state.glob.tau > 0.0)
+                              ? 1.0 / state.glob.tau
+                              : 0.0;
+    SparseMatrixd bl = state.glob.R_U;
+    if (lambda > 0.0) {
+        std::vector<Triplet> diag;
+        diag.reserve(3 * Nsys);
+        for (int i = 0; i < Nsys; ++i)
+            for (int k = 0; k < 3; ++k)
+                diag.emplace_back(3 * i + k, 4 * i + k, lambda);
+        SparseMatrixd shift(3 * Nsys, 4 * Nsys);
+        shift.setFromTriplets(diag.begin(), diag.end());
+        bl += shift;
+    }
+
+    CoupledFactorization factorization;
+    if (!factorization.Compute(bl, state.vsol.ue_m, ue, ds,
+                               VectorXd::Constant(Nsys, 1.0 + lambda))) {
+        throw std::runtime_error("SolveGlob: linear factorization failed");
+    }
+    const VectorXd x1 = factorization.Solve(-R.head(4 * Nsys));
+    VectorXd dV = x1;
+    state.glob.dalpha = 0.0;
+    if (docl) {
+        /* [J b; c^T d] [dV; da] = -[R; r_cl] */
+        VectorXd b = VectorXd::Zero(4 * Nsys);
+        b.tail(Nsys) = -UeInvAlpha(state);
+        VectorXd c = VectorXd::Zero(4 * Nsys);
+        for (int i = 0;
+             i < state.foil.N && i < static_cast<int>(state.post.cl_ue.size());
+             ++i)
+            c(4 * i + 3) = state.post.cl_ue(i);
+        const VectorXd x2 = factorization.Solve(b);
+        const double denom = state.post.cl_alpha - c.dot(x2);
+        if (!std::isfinite(denom) || denom == 0.0)
+            throw std::runtime_error("SolveGlob: singular Cl constraint");
+        state.glob.dalpha = (-R(R.size() - 1) - c.dot(x1)) / denom;
+        dV -= state.glob.dalpha * x2;
+    }
+    if (!dV.allFinite())
+        throw std::runtime_error("SolveGlob: linear solve failed");
+    state.glob.dU = Eigen::Map<const MatrixXd>(dV.data(), 4, Nsys);
 }
 
 bool TakeTrustRegionStep(FoilState& state) {
@@ -1318,59 +1379,22 @@ void CalcUeM(FoilState& state) {
 void RebuildUeM(FoilState& state) { CalcUeM(state); }
 
 /**
- * @brief Rebuild R_V at converged state and store SparseLU factorization
- * for use in adjoint transpose solves.
+ * @brief Factor the coupled Jacobian at the converged state for adjoint
+ * transpose solves (state.glob.coupled_factorization). The factorization is
+ * of the unregularized Jacobian: no pseudo-time terms.
  * @param state Foil state
  */
 void StoreAdjointFactorization(FoilState& state) {
-    int Nsys = state.glob.Nsys;
-
     /* Rebuild global system at converged state to get current R_U */
     BuildGlobSys(state);
-
-    /* Rebuild R_V (same assembly as SolveGlob but without solving) */
-    VectorXd ue = state.glob.U.row(3).transpose();
-    VectorXd ds = state.glob.U.row(1).transpose();
-    double uemax = ue.cwiseAbs().maxCoeff();
-    for (int i = 0; i < Nsys; ++i) {
-        ue(i) = std::max(ue(i), 1e-10 * uemax);
-    }
-
-    int NN = 4 * Nsys; /* Fixed-angle block; trim uses its Schur complement. */
-    state.glob.R_V.resize(NN, NN);
-
-    std::vector<Triplet> triplets;
-    triplets.reserve(state.glob.R_U.nonZeros() + 4 * Nsys);
-
-    /* Copy R_U entries (first 3*Nsys rows) */
-    for (int k = 0; k < state.glob.R_U.outerSize(); ++k) {
-        for (SparseMatrixd::InnerIterator it(state.glob.R_U, k); it; ++it) {
-            triplets.emplace_back(it.row(), it.col(), it.value());
-        }
-    }
-
-    /* Fourth equation: R_ue = ue - ueinv - ue_m * (ds .* ue) */
-    for (int i = 0; i < Nsys; ++i) {
-        int row = 3 * Nsys + i;
-        int ue_idx = 4 * i + 3;
-        triplets.emplace_back(row, ue_idx, 1.0);
-
-        for (int j = 0; j < Nsys; ++j) {
-            double ue_m_ij = state.vsol.ue_m(i, j);
-            if (std::abs(ue_m_ij) > 0.0) {
-                triplets.emplace_back(row, 4 * j + 3, -ue_m_ij * ds(j));
-                triplets.emplace_back(row, 4 * j + 1, -ue_m_ij * ue(j));
-            }
-        }
-    }
-
-    state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
-
+    const int Nsys = state.glob.Nsys;
+    auto factorization = std::make_shared<CoupledFactorization>();
     // A ridge solves a different derivative problem. Fail instead of returning
     // a gradient of a regularized model that Python mfoil did not evaluate.
-    auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
-    lu->compute(state.glob.R_V);
-    state.glob.lu_factorization = lu->info() == Eigen::Success ? lu : nullptr;
+    const bool ok = factorization->Compute(
+        state.glob.R_U, state.vsol.ue_m, ClippedUe(state),
+        state.glob.U.row(1).transpose(), VectorXd::Ones(Nsys));
+    state.glob.coupled_factorization = ok ? factorization : nullptr;
 }
 
 /**

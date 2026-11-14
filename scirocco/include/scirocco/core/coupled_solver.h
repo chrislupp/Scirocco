@@ -91,8 +91,8 @@ void RebuildUeM(FoilState& state);
 void RebuildIsol(FoilState& state);
 
 /**
- * @brief Store SparseLU factorization for adjoint solves (post-convergence)
- * @param state Foil state whose R_V factorization is stored.
+ * @brief Factor the coupled Jacobian for adjoint solves (post-convergence)
+ * @param state Foil state; fills state.glob.coupled_factorization.
  */
 void StoreAdjointFactorization(FoilState& state);
 

@@ -6,29 +6,87 @@
 
 using namespace scirocco;
 
-TEST(SolverStrategy, ScalingPreservesNewtonEquation) {
+namespace {
+
+/// A converged state with the momentum thickness perturbed, so the Newton
+/// step is nontrivial.
+FoilState PerturbedState(double cl_target) {
     Scirocco foil("2412", 99);
-    foil.SetOper(2.0, -1.0, 1e6, 0.2);
+    foil.SetOper(2.0, cl_target, 1e6, 0.2);
     foil.GetState().param.use_ptc = false;
-    ASSERT_TRUE(foil.Solve());
-    auto original = foil.GetState();
-    original.glob.U.row(0) *= 1.03;
-    BuildGlobSys(original);
-    CalcForce(original);
+    EXPECT_TRUE(foil.Solve());
+    FoilState state = foil.GetState();
+    state.glob.U.row(0) *= 1.03;
+    BuildGlobSys(state);
+    CalcForce(state);
+    return state;
+}
+
+VectorXd Packed(const FoilState& state) {
+    VectorXd v(state.glob.dU.size() + (state.oper.givencl ? 1 : 0));
+    v.head(state.glob.dU.size()) =
+        Eigen::Map<const VectorXd>(state.glob.dU.data(), state.glob.dU.size());
+    if (state.oper.givencl) v(v.size() - 1) = state.glob.dalpha;
+    return v;
+}
+
+}  // namespace
+
+TEST(SolverStrategy, ScalingPreservesNewtonEquation) {
+    /* The assembled path (trust region) equilibrates its sparse LU. */
+    auto original = PerturbedState(-1.0);
+    original.param.use_trust_region = true;
     auto scaled = original;
     original.param.scale_coupled_system = false;
     scaled.param.scale_coupled_system = true;
     SolveGlob(original);
     SolveGlob(scaled);
-    const VectorXd delta = Eigen::Map<const VectorXd>(scaled.glob.dU.data(),
-                                                      scaled.glob.dU.size());
     const VectorXd defect =
-        scaled.glob.R_V * delta + scaled.glob.coupled_residual;
+        scaled.glob.R_V * Packed(scaled) + scaled.glob.coupled_residual;
     EXPECT_LT(defect.norm(), 1e-11 * scaled.glob.coupled_residual.norm());
     EXPECT_LT((original.glob.dU - scaled.glob.dU).norm(),
               1e-9 * original.glob.dU.norm());
     EXPECT_GT((scaled.glob.variable_scale.array() != 1.).count(), 0);
     EXPECT_GT((scaled.glob.residual_scale.array() != 1.).count(), 0);
+}
+
+/* The Schur-complement step is the exact Newton step: it satisfies the
+ * assembled Newton equation, at fixed alpha and with a Cl target. */
+TEST(SolverStrategy, SchurStepSolvesAssembledNewtonEquation) {
+    for (const double cl_target : {-1.0, 0.5}) {
+        auto schur = PerturbedState(cl_target);
+        auto assembled = schur;
+        assembled.param.use_trust_region = true;
+        SolveGlob(schur);
+        SolveGlob(assembled);
+        const VectorXd defect = assembled.glob.R_V * Packed(schur) +
+                                assembled.glob.coupled_residual;
+        EXPECT_LT(defect.norm(), 1e-11 * assembled.glob.coupled_residual.norm())
+            << "cl_target " << cl_target;
+        EXPECT_LT((Packed(schur) - Packed(assembled)).norm(),
+                  1e-9 * Packed(assembled).norm())
+            << "cl_target " << cl_target;
+    }
+}
+
+/* Pseudo-time terms sit on each equation's own variable. With a tiny tau
+ * the step reduces to dU = -tau R, node by node: boundary-layer equation k
+ * of node i moves variable k of node i, and the edge-velocity equation moves
+ * ue. A shifted diagonal would move other nodes' variables instead. */
+TEST(SolverStrategy, PseudoTimeTermsActOnOwnVariables) {
+    auto state = PerturbedState(-1.0);
+    state.param.use_ptc = true;
+    state.glob.tau = 1e-9;
+    SolveGlob(state);
+    const int n = state.glob.Nsys;
+    const VectorXd& r = state.glob.coupled_residual;
+    MatrixXd expected(4, n);
+    for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k)
+            expected(k, i) = -state.glob.tau * r(3 * i + k);
+        expected(3, i) = -r(3 * n + i) / (1.0 + 1.0 / state.glob.tau);
+    }
+    EXPECT_LT((state.glob.dU - expected).norm(), 1e-3 * expected.norm());
 }
 
 TEST(SolverStrategy, TrustStepRejectsUphillWithoutChangingState) {
