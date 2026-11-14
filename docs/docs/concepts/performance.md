@@ -26,13 +26,13 @@ scirocco/build/bench
   Changing the operating point doesn't re-panel.
 - **Inviscid solves** take a millisecond or two. Sweeping angle of attack
   in potential flow is essentially free.
-- **Viscous solves** take 20-65 ms. Time depends mostly on how many Newton
+- **Viscous solves** take 12-40 ms. Time depends mostly on how many Newton
   steps the case needs; each, with its boundary-layer march, costs about
-  4 ms at 200 panels. The 199-panel case here takes 14 Newton steps, where
+  2.5 ms at 200 panels. The 199-panel case here takes 14 Newton steps, where
   the NACA 2412 case in [Viscous coupling](./viscous-coupling) takes 6 (see
-  [PTC](./ptc)).
-  A second solve on the same object, such as the next point of a polar,
-  starts from the previous solution and is usually faster.
+  [PTC](./ptc)). A second solve on the same object, such as the next point
+  of a polar, starts from the previous solution and reuses everything that
+  depends only on the geometry: a 0.5° step takes 8-17 ms at 200 panels.
 - **The full gradient** covers $C_l$, $C_d$, and $C_m$ with respect to every
   node coordinate, $\alpha$, $Re$, and $M_\infty$. All outputs share one pass:
   the panel-influence derivatives are evaluated once, and the chains through
@@ -55,16 +55,17 @@ each code). Cold starts are fresh solves; warm starts follow a solve
 
 | Panels | α | XFOIL cold | Scirocco cold | XFOIL warm | Scirocco warm |
 | --- | --- | --- | --- | --- | --- |
-| 160 | 2° | 22 (10) | 23 (8) | 12 | 18 |
-| 160 | 8° | 18 (8) | 27 (9) | 10 | 25 |
-| 200 | 2° | 37 (10) | 39 (10) | 22 | 26 |
-| 200 | 5° | 36 (10) | 42 (10) | 20 | 30 |
-| 200 | 8° | 31 (8) | 46 (11) | 16 | 27 |
-| 284 | 5° | 86 (10) | 89 (10) | 49 | 57 |
+| 160 | 2° | 22 (10) | 17 (8) | 12 | 8 |
+| 160 | 8° | 18 (8) | 20 (9) | 10 | 11 |
+| 200 | 2° | 37 (10) | 28 (10) | 22 | 11 |
+| 200 | 5° | 36 (10) | 29 (10) | 20 | 17 |
+| 200 | 8° | 31 (8) | 31 (11) | 16 | 13 |
+| 284 | 5° | 86 (10) | 53 (10) | 49 | 26 |
 
-Both codes now take about the same number of Newton steps, and Scirocco
-matches XFOIL on cold starts at the lower angles. A Scirocco step costs about
-20% more at 200 panels, mostly its boundary-layer march, and warm starts
-save less than XFOIL's.
+Both codes take about the same number of Newton steps. Scirocco is faster
+on most of these cases, increasingly so at higher panel counts, where its
+O(N²) step and BLAS-backed dense algebra pay off. Warm starts reuse the
+geometry-only work and predict the new edge velocity, and mostly take 5-6
+steps.
 XFOIL's tolerance
 (`EPS1 = 1e-10` on the RMS relative change) is about as tight as Scirocco's.
