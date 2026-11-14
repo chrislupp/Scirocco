@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "scirocco/core/coupled_march.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/scirocco.h"
@@ -87,6 +88,78 @@ TEST(SolverStrategy, PseudoTimeTermsActOnOwnVariables) {
         expected(3, i) = -r(3 * n + i) / (1.0 + 1.0 / state.glob.tau);
     }
     EXPECT_LT((state.glob.dU - expected).norm(), 1e-3 * expected.norm());
+}
+
+/* NACA 0012 at alpha 5, 199 panels: the first Newton step used to flip the
+ * whole upper surface laminar, and the step limiter then held the step to a
+ * few percent for some 40 iterations. The coupled march keeps transition
+ * consistent with the boundary layer, so Newton converges directly, to the
+ * same solution. */
+TEST(SolverStrategy, CoupledMarchConvergesWithoutStalling) {
+    Scirocco marched("0012", 199);
+    marched.SetOper(5.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(marched.Solve());
+    EXPECT_LE(marched.GetState().glob.coupled_iterations, 25);
+    EXPECT_EQ(marched.GetState().glob.continuation_attempts, 0);
+
+    Scirocco plain("0012", 199);
+    plain.SetOper(5.0, -1.0, 1e6, 0.0);
+    plain.GetState().param.coupled_march = false;
+    plain.GetState().param.step_limiter = StepLimiter::Absolute;
+    ASSERT_TRUE(plain.Solve());
+    EXPECT_GT(plain.GetState().glob.coupled_iterations, 30);
+    EXPECT_NEAR(marched.GetCl(), plain.GetCl(), 1e-8);
+    EXPECT_NEAR(marched.GetCd(), plain.GetCd(), 1e-9);
+}
+
+/* The march solves the global residual equations, so a converged state is a
+ * fixed point. */
+TEST(SolverStrategy, CoupledMarchLeavesConvergedStateUnchanged) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    FoilState state = foil.GetState();
+    EXPECT_EQ(CoupledMarch(state), 0);
+    EXPECT_LT((state.glob.U - foil.GetState().glob.U).norm(),
+              1e-9 * state.glob.U.norm());
+    EXPECT_EQ(state.vsol.turb, foil.GetState().vsol.turb);
+}
+
+/* XFOIL's rule: a change in theta of +300% is scaled to +150%, a change of
+ * -90% to -50%. The mfoil rule leaves theta increases unlimited. */
+TEST(SolverStrategy, RelativeLimiterBoundsNormalizedChanges) {
+    auto state = PerturbedState(-1.0);
+    const int k = state.glob.Nsys / 3;
+    for (const double change : {3.0, -0.9}) {
+        FoilState trial = state;
+        trial.param.step_limiter = StepLimiter::Relative;
+        trial.glob.dU.setZero();
+        trial.glob.dU(0, k) = change * trial.glob.U(0, k);
+        const double before = trial.glob.U(0, k);
+        UpdateState(trial);
+        const double expected = change > 0.0 ? 1.5 : -0.5;
+        EXPECT_NEAR(trial.glob.U(0, k) / before - 1.0, expected, 1e-12);
+    }
+    FoilState absolute = state;
+    absolute.param.step_limiter = StepLimiter::Absolute;
+    absolute.glob.dU.setZero();
+    absolute.glob.dU(0, k) = 3.0 * absolute.glob.U(0, k);
+    const double before = absolute.glob.U(0, k);
+    UpdateState(absolute);
+    EXPECT_NEAR(absolute.glob.U(0, k) / before, 4.0, 1e-12);
+}
+
+/* NACA 0012 at alpha 0 has its stagnation point on a node; the residual
+ * stalls near 1e-10, above rtol. Newton used to run out its 200 iterations
+ * and fall back to continuation. The round-off floor test ends it. (cl is
+ * -4.5e-8, not 0: the stagnation node breaks the symmetry.) */
+TEST(SolverStrategy, RoundOffFloorEndsNewton) {
+    Scirocco foil("0012", 130);
+    foil.SetOper(0.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_LT(foil.GetState().glob.coupled_iterations, 30);
+    EXPECT_EQ(foil.GetState().glob.continuation_attempts, 0);
+    EXPECT_NEAR(foil.GetCl(), 0.0, 1e-7);
 }
 
 TEST(SolverStrategy, TrustStepRejectsUphillWithoutChangingState) {

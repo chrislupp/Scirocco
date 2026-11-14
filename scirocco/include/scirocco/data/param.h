@@ -55,11 +55,26 @@ enum class TransitionModel {
     Captured
 };
 
+/** Under-relaxation rule for coupled Newton updates. */
+enum class StepLimiter {
+    /** mfoil: absolute caps of 2 on the amplification change and 0.05 on the
+     *  shear-stress change at every node, 0.2 Vinf on ue, and at most a 50%
+     *  decrease in theta and delta*. */
+    Absolute,
+    /** XFOIL: every change is normalized (amplification by 10, shear stress,
+     *  theta and delta* by their values, ue by 0.25 Vinf) and the step is
+     *  scaled so that no normalized change exceeds +1.5 or -0.5. */
+    Relative
+};
+
 /* Parameters */
 struct Param {
     /* Solver parameters */
     int verb = 0; /**< Printing verbosity level (higher = more verbose) */
-    double rtol = 1e-11; /**< Residual tolerance for Newton */
+    double rtol = 1e-11;      /**< Residual tolerance for Newton */
+    double rtol_floor = 1e-8; /**< Also converged once the residual norm is
+                                   below this and a Newton step no longer
+                                   halves it (the round-off floor) */
     bool scale_coupled_system =
         true; /**< Equilibrate equations and variables */
     bool use_trust_region =
@@ -95,6 +110,15 @@ struct Param {
     double tau_max = 1e8;          /**< cap on tau (effectively "PTC off") */
     double tau_grow_clamp = 4.0;   /**< cap per-iter tau growth ratio */
     double tau_shrink_clamp = 0.1; /**< cap per-iter tau shrink ratio */
+
+    /* Newton globalization for the cut-cell transition model */
+    StepLimiter step_limiter = StepLimiter::Absolute; /**< Under-relaxation */
+    bool coupled_march = true;    /**< Re-solve the boundary layer by a
+                                       quasi-simultaneous march after each
+                                       Newton update (see coupled_march.h) */
+    double march_residual = 1e-1; /**< March only while the coupled residual
+                                       norm exceeds this; below it, Newton
+                                       converges alone */
 
     /* Viscous parameters */
     double ncrit = 9.0;                   /**< Critical amplification factor */

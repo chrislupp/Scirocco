@@ -38,6 +38,7 @@
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/captured_transition.h"
 #include "scirocco/core/coupled_linear.h"
+#include "scirocco/core/coupled_march.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/panel_influence.h"
@@ -59,6 +60,45 @@ VectorXd CoupledResidual(const FoilState& state) {
         state.vsol.ue_m * state.glob.U.row(1).transpose().cwiseProduct(ue);
     if (state.oper.givencl) residual(4 * n) = state.post.cl - state.oper.cltgt;
     return residual;
+}
+
+/**
+ * @brief Locate transition from the amplification march (UpdateTransition).
+ * @return true if no station changed between laminar and turbulent
+ */
+bool TransitionSettled(FoilState& state) {
+    const auto turb = state.vsol.turb;
+    UpdateTransition(state);
+    return state.vsol.turb == turb;
+}
+
+/**
+ * @brief Smooth the iterate with the coupled march (CoupledMarch), keeping
+ * the result only if it brings the coupled residual below @p reference, the
+ * residual before the Newton step. Otherwise restore the iterate and locate
+ * transition from the amplification march (UpdateTransition).
+ * @return true if the marched state was kept; its global system is then
+ *         already built (BuildGlobSys, CalcForce)
+ */
+bool MarchOrUpdateTransition(FoilState& state, double reference) {
+    const MatrixXd U = state.glob.U;
+    const auto turb = state.vsol.turb;
+    CoupledMarch(state);
+    bool keep = false;
+    try {
+        BuildGlobSys(state);
+        CalcForce(state);
+        const double marched = CoupledResidual(state).norm();
+        keep = std::isfinite(marched) && marched < reference;
+    } catch (const std::exception&) {
+        keep = false;
+    }
+    if (!keep) {
+        state.glob.U = U;
+        state.vsol.turb = turb;
+        UpdateTransition(state);
+    }
+    return keep;
 }
 
 VectorXd PackedState(const FoilState& state) {
@@ -172,7 +212,8 @@ void SolveViscous(FoilState& state) {
          *
          * Phase 2 (residual_deriv_test) now explicitly applies the gamma-xi
          * swap in its test fixture; production sensitivities use ue-based. */
-        StoreAdjointFactorization(state);
+        /* The adjoint factorization is built on demand by
+         * ViscousSensitivities / SolveViscousAdjoint. */
     }
 
     /* Calculate forces */
@@ -205,23 +246,37 @@ void SolveCoupled(FoilState& state) {
     state.glob.trust_rejected = 0;
     state.glob.coupled_iterations = 0;
 
+    bool built = false; /* Global system already built for this state */
     for (int iter = 0; iter < niglob; ++iter) {
         ++state.glob.coupled_iterations;
-        /* Build global system */
-        BuildGlobSys(state);
-
-        // Python mfoil updates force values and the lift constraint each
-        // iteration.
-        CalcForce(state);
+        if (!built) {
+            BuildGlobSys(state);
+            // Python mfoil updates force values and the lift constraint each
+            // iteration.
+            CalcForce(state);
+        }
+        built = false;
         double rnorm = CoupledResidual(state).norm();
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm
                       << ", tau = " << state.glob.tau << '\n';
         }
 
-        if (rnorm < rtol) {
-            state.glob.conv = true;
-            return;
+        /* Near the round-off floor (above rtol on some cases, e.g. a
+         * stagnation point on a node) the residual stops contracting.
+         * Quadratic convergence would cut it by orders of magnitude, so a
+         * step that fails to halve it below rtol_floor means the floor. */
+        const bool at_floor = iter > 0 && rnorm < state.param.rtol_floor &&
+                              rnorm > 0.5 * state.glob.R_norm_prev;
+        if (rnorm < rtol || at_floor) {
+            /* With the coupled march, transition may have been held fixed
+             * over the last iterations; accept only if the amplification
+             * march agrees with where it sits. */
+            if (!state.param.coupled_march || TransitionSettled(state)) {
+                state.glob.conv = true;
+                return;
+            }
+            continue;
         }
 
         if (!std::isfinite(rnorm)) {
@@ -267,7 +322,10 @@ void SolveCoupled(FoilState& state) {
         if (!state.param.use_trust_region ||
             !state.param.trust_update_topology) {
             StagPointMove(state);
-            UpdateTransition(state);
+            if (state.param.coupled_march && rnorm > state.param.march_residual)
+                built = MarchOrUpdateTransition(state, rnorm);
+            else
+                UpdateTransition(state);
         }
     }
 
@@ -1003,8 +1061,14 @@ bool TakeTrustRegionStep(FoilState& state) {
  * @brief Update state with adaptive under-relaxation (matching mfoil approach)
  * @param state Foil state
  */
-void UpdateState(FoilState& state) {
-    int Nsys = state.glob.Nsys;
+namespace {
+
+/**
+ * @brief mfoil under-relaxation: absolute caps on amplification, shear
+ * stress and ue changes, and at most a 50% decrease in theta and delta*.
+ */
+double AbsoluteRelaxation(const FoilState& state) {
+    const int Nsys = state.glob.Nsys;
     double omega = 1.0;
 
     /* Get max ctau for threshold calculations */
@@ -1096,7 +1160,53 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    /* 6. Limit alpha changes to 2 degrees */
+    return omega;
+}
+
+/**
+ * @brief XFOIL under-relaxation (UPDATE in xbl.f): normalize every change
+ * (amplification by 10, shear stress, theta and delta* by their values, ue
+ * by 0.25 Vinf) and scale the step so that none exceeds +1.5 or -0.5.
+ */
+double RelativeRelaxation(const FoilState& state) {
+    constexpr double kHigh = 1.5;
+    constexpr double kLow = -0.5;
+    double omega = 1.0;
+    auto limit = [&](double change) {
+        if (omega * change > kHigh) omega = kHigh / change;
+        if (omega * change < kLow) omega = kLow / change;
+    };
+    const auto& U = state.glob.U;
+    const auto& dU = state.glob.dU;
+    const auto& turb = state.vsol.turb;
+    for (int i = 0; i < state.glob.Nsys; ++i) {
+        const bool turbulent = i < static_cast<int>(turb.size()) && turb[i];
+        if (turbulent) {
+            if (U(2, i) > 0.0) limit(dU(2, i) / U(2, i));
+        } else {
+            limit(dU(2, i) / 10.0);
+        }
+        if (U(0, i) > 0.0) limit(dU(0, i) / U(0, i));
+        if (U(1, i) > 0.0) limit(dU(1, i) / U(1, i));
+        limit(std::abs(dU(3, i)) / (0.25 * state.oper.Vinf));
+    }
+    return omega;
+}
+
+}  // namespace
+
+void UpdateState(FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    double omega = state.param.step_limiter == StepLimiter::Relative
+                       ? RelativeRelaxation(state)
+                       : AbsoluteRelaxation(state);
+
+    std::vector<int> turbIdx;
+    for (int i = 0; i < Nsys; ++i)
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i])
+            turbIdx.push_back(i);
+
+    /* Limit alpha changes to 2 degrees */
     if (std::abs(state.glob.dalpha) > 2.0) {
         omega = std::min(omega, 2.0 / std::abs(state.glob.dalpha));
     }
@@ -1123,9 +1233,8 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    /* Fix negative ctau after update
-     * Recompute ctmax after update */
-    ctmax = 0.0;
+    /* Fix negative ctau after update */
+    double ctmax = 0.0;
     for (int i : turbIdx) {
         ctmax = std::max(ctmax, state.glob.U(2, i));
     }

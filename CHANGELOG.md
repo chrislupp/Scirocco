@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `CoupledMarch` (new header `core/coupled_march.h`) and
+  `Param::coupled_march` (default on): while the coupled residual exceeds
+  `Param::march_residual` (0.1), each Newton update is followed by a
+  quasi-simultaneous boundary-layer march that re-solves every station with
+  its edge-velocity equation and relocates transition, as XFOIL's MRCHDU
+  does. The marched state is kept only if it lowers the residual. Over 144
+  cases (NACA 0012/2412/4412, 99-284 panels, alpha -2 to 12, Re 5e5 and
+  3e6) the median Newton iteration count drops from 19 to 14 and the mean
+  from 47 to 25; converged solutions are unchanged.
+- `Param::step_limiter` and `StepLimiter::Relative`: XFOIL's
+  under-relaxation rule as an alternative to the default mfoil rule.
+- `Param::rtol_floor` (1e-8): the coupled Newton solve also stops once the
+  residual is below this and a step no longer halves it, instead of running
+  to `niglob` at the round-off floor.
 - `Param::transition` and `TransitionModel::Captured` (experimental): the
   amplification factor and shear stress live at every node and the laminar
   and turbulent closures are blended smoothly over a transition length
@@ -108,7 +122,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   trust-region step still assembles `R_V`.
 - `Glob::lu_factorization` is replaced by `Glob::coupled_factorization`, and
   `StoreAdjointFactorization` no longer fills `Glob::R_V`; call
-  `coupled_factorization->Assemble()` for the matrix.
+  `coupled_factorization->Assemble()` for the matrix. A viscous `Solve()` no
+  longer factors the adjoint system; `ComputeSensitivities` does, on demand.
 - Viscous `ComputeSensitivities()` is about 13x faster (11.2 s to 0.88 s at
   199 panels on an M1 Pro). The geometric Jacobians in the `R_ue` chain,
   `d(gamma)/d(foil.x)` and the wake sweeps, were rebuilt 16 times per gradient;
@@ -196,6 +211,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- NACA 0012 at alpha 0 (stagnation point on a node) no longer runs all 200
+  Newton iterations and a continuation restart: the residual stalls near
+  1e-10, above `rtol`, and the round-off floor test now ends the solve.
 - Pseudo-transient continuation added `1/tau` at matrix position `(i, i)`,
   but boundary-layer rows are ordered `3 * node + equation` and columns
   `4 * node + variable`, so the term coupled equations to other nodes'
