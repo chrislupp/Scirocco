@@ -31,6 +31,7 @@
 #include "scirocco/core/inviscid.h"
 
 #include <cmath>
+#include <memory>
 #include <stdexcept>
 
 #include "scirocco/core/geometry.h"
@@ -174,7 +175,9 @@ void BuildGamma(FoilState& state, double alpha) {
 
     /* Solve the system */
     state.isol.AIC = A;
-    MatrixXd g = A.partialPivLu().solve(rhs);
+    state.isol.AIC_lu =
+        std::make_shared<const Eigen::PartialPivLU<MatrixXd>>(A);
+    MatrixXd g = state.isol.AIC_lu->solve(rhs);
 
     if (!g.allFinite())
         throw std::runtime_error(
@@ -274,6 +277,14 @@ VectorXd GetUeInv(const FoilState& state) {
     ueinv << uea, uew;
 
     return ueinv;
+}
+
+MatrixXd SolveAIC(const FoilState& state, const MatrixXd& rhs) {
+    const auto& lu = state.isol.AIC_lu;
+    if (lu && lu->rows() == state.isol.AIC.rows() &&
+        state.isol.AIC.rows() == rhs.rows())
+        return lu->solve(rhs);
+    return state.isol.AIC.partialPivLu().solve(rhs);
 }
 
 MatrixXd GetUeInvRef(const FoilState& state) {

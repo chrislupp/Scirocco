@@ -151,9 +151,33 @@ bool Scirocco::Solve() {
                 state_.param.KTl = 0.0;
             }
 
-            /* Viscous solver */
-            SolveViscous(state_);
-            if (state_.glob.conv) ValidateResults(state_);
+            /* Viscous solver: warm start from the previous converged
+             * boundary layer, then cold start if that does not converge.
+             * The warm attempt skips continuation; the cold one does not. */
+            bool solved = false;
+            if (state_.param.warm_start && warm_U_.cols() > 0) {
+                FoilState cold = state_;
+                state_.oper.initbl = false;
+                state_.glob.U = warm_U_;
+                state_.glob.Nsys = static_cast<int>(warm_U_.cols());
+                state_.vsol.turb = warm_turb_;
+                const bool continuation = state_.param.use_continuation;
+                state_.param.use_continuation = false;
+                try {
+                    SolveViscous(state_);
+                    solved = state_.glob.conv;
+                } catch (const std::exception&) {
+                    solved = false;
+                }
+                state_.param.use_continuation = continuation;
+                if (!solved) state_ = std::move(cold);
+            }
+            if (!solved) SolveViscous(state_);
+            if (state_.glob.conv) {
+                ValidateResults(state_);
+                warm_U_ = state_.glob.U;
+                warm_turb_ = state_.vsol.turb;
+            }
             return state_.glob.conv;
         } else {
             /* Inviscid solver */

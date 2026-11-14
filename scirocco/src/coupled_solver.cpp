@@ -172,8 +172,14 @@ void SolveViscous(FoilState& state) {
     /* Calculate ue sensitivities */
     CalcUeM(state);
 
-    /* Initialize boundary layer */
-    if (state.oper.initbl) {
+    /* Initialize boundary layer, unless the caller supplied an initial
+     * state of the right size (warm start). */
+    const int nsys = state.foil.N + state.wake.N;
+    if (!state.oper.initbl && state.glob.U.cols() == nsys &&
+        static_cast<int>(state.vsol.turb.size()) == nsys) {
+        state.glob.Nsys = nsys;
+        state.glob.realloc = true;
+    } else {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {
             std::cout << "  BL init done, Nsys=" << state.glob.Nsys << '\n';
@@ -688,35 +694,26 @@ void BuildGlobSys(FoilState& state) {
         }
     }
 
-    /* Build sparse matrices from triplets */
-    state.glob.R_U.setFromTriplets(triplets_U.begin(), triplets_U.end());
-    state.glob.R_x.setFromTriplets(triplets_x.begin(), triplets_x.end());
-
-    /* Include effects of R_x into R_U: R_ue += R_x * x_st * st_ue
-     * x_st = -sgnue (sensitivity of xi to stagnation point location) */
-    VectorXd x_st(Nsys);
-    int N = state.foil.N;
-    for (int i = 0; i < N; ++i) {
-        x_st(i) = -state.isol.sgnue(i);
+    /* Include effects of R_x into R_U: R_ue += R_x * x_st * st_ue, where
+     * x_st = -sgnue is the sensitivity of xi to the stagnation point
+     * (the wake moves with the upper surface). Added as triplets, which
+     * setFromTriplets sums with the existing entries. */
+    const int N = state.foil.N;
+    VectorXd R_st = VectorXd::Zero(3 * Nsys);
+    for (const Triplet& t : triplets_x) {
+        const double x_st = t.col() < N ? -state.isol.sgnue(t.col()) : -1.0;
+        R_st(t.row()) += t.value() * x_st;
     }
-    for (int i = N; i < Nsys; ++i) {
-        x_st(i) = -1.0; /* Wake has same sens as upper surface */
-    }
-
-    VectorXd R_st = state.glob.R_x * x_st;
     const auto& Istag = state.isol.Istag;
     const auto& st_ue = state.isol.sstag_ue;
-
-    /* Add contributions at stagnation point ue indices */
     for (int row = 0; row < 3 * Nsys; ++row) {
-        if (std::abs(R_st(row)) > 0.0) {
-            /* ue index for stagnation points */
-            int ue_idx0 = 4 * Istag[0] + 3;
-            int ue_idx1 = 4 * Istag[1] + 3;
-            state.glob.R_U.coeffRef(row, ue_idx0) += R_st(row) * st_ue(0);
-            state.glob.R_U.coeffRef(row, ue_idx1) += R_st(row) * st_ue(1);
-        }
+        if (R_st(row) == 0.0) continue;
+        triplets_U.emplace_back(row, 4 * Istag[0] + 3, R_st(row) * st_ue(0));
+        triplets_U.emplace_back(row, 4 * Istag[1] + 3, R_st(row) * st_ue(1));
     }
+
+    state.glob.R_U.setFromTriplets(triplets_U.begin(), triplets_U.end());
+    state.glob.R_x.setFromTriplets(triplets_x.begin(), triplets_x.end());
 }
 
 namespace {
@@ -1348,7 +1345,7 @@ void CalcUeM(FoilState& state) {
 
     /* 3. Bp = -inv(AIC) * B [N x (N+Nw-2)]
      * Note: AIC is (N+1) x (N+1), but last row is Kutta condition */
-    MatrixXd Bp = -state.isol.AIC.lu().solve(B);
+    MatrixXd Bp = -SolveAIC(state, B);
     Bp.conservativeResize(N, Npanel); /* Remove last row */
 
     /* 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)] */

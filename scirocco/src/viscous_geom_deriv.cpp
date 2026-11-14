@@ -22,6 +22,7 @@
 #include <stdexcept>
 
 #include "scirocco/core/geometry.h"
+#include "scirocco/core/inviscid.h"
 #include "scirocco/core/inviscid_deriv.h"
 #include "scirocco/core/panel_influence_deriv.h"
 #include "scirocco/core/spline.h"
@@ -537,8 +538,7 @@ MatrixXd DWgapDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
  * @return MatrixXd of shape [N+1 x 2N].
  */
 MatrixXd DGammaDFoilX(const FoilState& state, double alpha) {
-    return -state.isol.AIC.partialPivLu().solve(
-        AICResidualJacobianX(state, alpha));
+    return -SolveAIC(state, AICResidualJacobianX(state, alpha));
 }
 
 /**

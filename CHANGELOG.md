@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `Param::warm_start` (default on): `Scirocco::Solve` starts a viscous solve
+  from the last converged boundary layer of the same object, as XFOIL does,
+  and falls back to a cold start if that does not converge. A 0.5-degree
+  step in a polar takes about half the Newton iterations of a cold start.
+  This also applies across geometry updates through the Philote discipline.
 - `CoupledMarch` (new header `core/coupled_march.h`) and
   `Param::coupled_march` (default on): while the coupled residual exceeds
   `Param::march_residual` (0.1), each Newton update is followed by a
@@ -110,6 +115,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   tags can be rechecked manually.
 
 ### Changed
+- The influence-matrix LU from the inviscid solve is stored
+  (`Isol::AIC_lu`, `SolveAIC`) and reused by `CalcUeM` and the adjoint
+  instead of refactoring, and `BuildGlobSys` adds the stagnation-point
+  chain as triplets instead of inserting into the compressed matrix.
 - The coupled viscous Newton system and the viscous adjoint are factored
   through the mass-defect Schur complement (`CoupledFactorization`, new
   header `core/coupled_linear.h`) instead of a sparse LU of the assembled

@@ -51,6 +51,15 @@ void BuildGamma(FoilState& state, double alpha);
 VectorXd GetUeInv(const FoilState& state);
 
 /**
+ * @brief Solve AIC x = rhs, reusing the factorization stored by BuildGamma
+ * when it belongs to the current AIC.
+ * @param state FoilState with an influence matrix
+ * @param rhs Right-hand sides [N+1 x k]
+ * @return AIC^-1 rhs
+ */
+MatrixXd SolveAIC(const FoilState& state, const MatrixXd& rhs);
+
+/**
  * @brief Compute 0,90-deg reference inviscid tangential velocities
  * @param state FoilState with inviscid solution
  * @return 0,90-deg inviscid tangential velocity at all points [N+Nw x 2]

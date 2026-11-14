@@ -31,6 +31,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 
 #include "scirocco/config.h"
 
@@ -39,6 +40,8 @@ namespace scirocco {
 /** @brief Inviscid solution variables */
 struct Isol {
     MatrixXd AIC; /**< Aerodynamic influence coefficient matrix */
+    std::shared_ptr<const Eigen::PartialPivLU<MatrixXd>>
+        AIC_lu; /**< LU of AIC, set together with it (see SolveAIC) */
     MatrixXd
         gamref; /**< 0,90-deg alpha vortex strengths at airfoil nodes [N x 2] */
     VectorXd gam; /**< Vortex strengths at airfoil nodes (current alpha) */

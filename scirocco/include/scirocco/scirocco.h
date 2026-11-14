@@ -31,6 +31,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "scirocco/config.h"
 #include "scirocco/data/sensitivity.h"
@@ -192,6 +193,10 @@ class Scirocco {
     void CheckSensitivityAvailable() const;
     bool sensitivity_valid_ = false;
     FoilState state_;
+    /* Last converged viscous boundary layer: the initial guess of the next
+       viscous solve when param.warm_start is set */
+    MatrixXd warm_U_;
+    std::vector<bool> warm_turb_;
     Sensitivity sensitivity_;
 };
 

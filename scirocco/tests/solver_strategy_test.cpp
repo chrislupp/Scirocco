@@ -162,6 +162,25 @@ TEST(SolverStrategy, RoundOffFloorEndsNewton) {
     EXPECT_NEAR(foil.GetCl(), 0.0, 1e-7);
 }
 
+/* A second solve on the same object starts from the first solution: fewer
+ * iterations, same answer as a cold start. */
+TEST(SolverStrategy, WarmStartReusesPreviousSolution) {
+    Scirocco warm("2412", 160);
+    warm.SetOper(4.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(warm.Solve());
+    warm.SetOper(4.5, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(warm.Solve());
+
+    Scirocco cold("2412", 160);
+    cold.SetOper(4.5, -1.0, 1e6, 0.0);
+    cold.GetState().param.warm_start = false;
+    ASSERT_TRUE(cold.Solve());
+    EXPECT_LT(warm.GetState().glob.coupled_iterations,
+              cold.GetState().glob.coupled_iterations);
+    EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-8);
+    EXPECT_NEAR(warm.GetCd(), cold.GetCd(), 1e-9);
+}
+
 TEST(SolverStrategy, TrustStepRejectsUphillWithoutChangingState) {
     Scirocco foil("2412", 99);
     foil.SetOper(2.0, -1.0, 1e6, 0.2);

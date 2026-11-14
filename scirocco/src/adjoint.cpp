@@ -918,10 +918,7 @@ static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake,
     }
     /* ∂(Bp · phi)/∂α = -AIC^{-1} · rhs_alpha. AIC is [N+1 × N+1]. */
     VectorXd dBphi_dalpha(N + 1);
-    {
-        const MatrixXd& AIC = state.isol.AIC;
-        dBphi_dalpha = -AIC.partialPivLu().solve(rhs_alpha);
-    }
+    dBphi_dalpha = -SolveAIC(state, rhs_alpha);
 
     /* Step 3: ue_sigma · phi α-derivative.
      *   foil row i (i < N): (ue_sigma · phi)[i] = (Bp · phi)[i] =
