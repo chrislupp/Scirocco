@@ -159,6 +159,9 @@ class CoupledFactorization {
     [[nodiscard]] VectorXd SolveTransposeSchur(const VectorXd& rhs) const;
     [[nodiscard]] bool Accurate(const VectorXd& x, const VectorXd& rhs,
                                 bool transpose) const;
+    bool FactorSchurComplement(MatrixXd s);
+    [[nodiscard]] VectorXd SolveSchurComplement(const VectorXd& r,
+                                                bool transpose) const;
 
     int n_ = 0;
     SparseMatrixd bl_;
@@ -169,6 +172,10 @@ class CoupledFactorization {
     VectorXd row_scale_; /* Row equilibration of B and G */
     BlockTriangularSolver b_solver_;
     RowMatrixXd x_; /* B^-1 G [3N x N] */
+    /* LU of the Schur complement S: LAPACK factors and pivots when built
+       with LAPACK, Eigen's otherwise */
+    MatrixXd s_factors_;
+    std::vector<int> s_pivots_;
     Eigen::PartialPivLU<MatrixXd> s_lu_;
 
     mutable std::unique_ptr<Eigen::SparseLU<SparseMatrixd>> direct_lu_;

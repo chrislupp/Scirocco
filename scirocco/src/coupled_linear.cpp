@@ -34,8 +34,26 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <vector>
+
+#ifdef SCIROCCO_HAVE_LAPACK
+/* Fortran BLAS/LAPACK (LP64). The trailing arguments are the hidden lengths
+ * of the character arguments; implementations that do not expect them
+ * ignore them. */
+extern "C" {
+void dgemm_(const char* transa, const char* transb, const int* m, const int* n,
+            const int* k, const double* alpha, const double* a, const int* lda,
+            const double* b, const int* ldb, const double* beta, double* c,
+            const int* ldc, std::size_t, std::size_t);
+void dgetrf_(const int* m, const int* n, double* a, const int* lda, int* ipiv,
+             int* info);
+void dgetrs_(const char* trans, const int* n, const int* nrhs, const double* a,
+             const int* lda, const int* ipiv, double* b, const int* ldb,
+             int* info, std::size_t);
+}
+#endif
 
 namespace scirocco {
 
@@ -275,14 +293,53 @@ bool CoupledFactorization::ComputeSchur() {
     /* S = D + ue_m X_m, X_m the mass rows of X. */
     MatrixXd xm(n, n);
     for (int j = 0; j < n; ++j) xm.row(j) = x_.row(3 * j + 1);
-    MatrixXd s = ue_m_ * xm;
+    MatrixXd s(n, n);
+#ifdef SCIROCCO_HAVE_LAPACK
+    {
+        const int nn = n;
+        const double one = 1.0, zero = 0.0;
+        dgemm_("N", "N", &nn, &nn, &nn, &one, ue_m_.data(), &nn, xm.data(), &nn,
+               &zero, s.data(), &nn, 1, 1);
+    }
+#else
+    s.noalias() = ue_m_ * xm;
+#endif
     s.diagonal() += d_;
     if (!s.allFinite()) return false;
+    return FactorSchurComplement(std::move(s));
+}
+
+bool CoupledFactorization::FactorSchurComplement(MatrixXd s) {
+#ifdef SCIROCCO_HAVE_LAPACK
+    const int n = static_cast<int>(s.rows());
+    s_factors_ = std::move(s);
+    s_pivots_.assign(n, 0);
+    int info = 0;
+    dgetrf_(&n, &n, s_factors_.data(), &n, s_pivots_.data(), &info);
+    if (info != 0) return false;
+    const VectorXd pivots = s_factors_.diagonal().cwiseAbs();
+#else
     s_lu_.compute(s);
     /* PartialPivLU does not report singularity; check the pivots. */
     const VectorXd pivots = s_lu_.matrixLU().diagonal().cwiseAbs();
-    if (!(pivots.minCoeff() > 1e-14 * pivots.maxCoeff())) return false;
-    return true;
+#endif
+    return pivots.minCoeff() > 1e-14 * pivots.maxCoeff();
+}
+
+VectorXd CoupledFactorization::SolveSchurComplement(const VectorXd& r,
+                                                    bool transpose) const {
+#ifdef SCIROCCO_HAVE_LAPACK
+    VectorXd x = r;
+    const int n = static_cast<int>(x.size());
+    const int one = 1;
+    int info = 0;
+    dgetrs_(transpose ? "T" : "N", &n, &one, s_factors_.data(), &n,
+            s_pivots_.data(), x.data(), &n, &info, 1);
+    return x;
+#else
+    return transpose ? VectorXd(s_lu_.transpose().solve(r))
+                     : VectorXd(s_lu_.solve(r));
+#endif
 }
 
 bool CoupledFactorization::ComputeDirect() {
@@ -370,7 +427,7 @@ VectorXd CoupledFactorization::SolveSchur(const VectorXd& rhs) const {
         b_solver_.Solve(row_scale_.cwiseProduct(rhs.head(3 * n)));
     VectorXd y0m(n);
     for (int j = 0; j < n; ++j) y0m(j) = y0(3 * j + 1);
-    const VectorXd u = s_lu_.solve(rhs.tail(n) + ue_m_ * y0m);
+    const VectorXd u = SolveSchurComplement(rhs.tail(n) + ue_m_ * y0m, false);
     const VectorXd y = y0 - x_ * u;
     VectorXd v(4 * n);
     for (int j = 0; j < n; ++j) {
@@ -393,7 +450,7 @@ VectorXd CoupledFactorization::SolveTransposeSchur(const VectorXd& rhs) const {
         h2(j) = rhs(4 * j + 3) - rhs(4 * j + 1) * ds_(j) / ue_(j);
     }
     /* S^T z2 = h2 - X^T h1 */
-    const VectorXd z2 = s_lu_.transpose().solve(h2 - x_.transpose() * h1);
+    const VectorXd z2 = SolveSchurComplement(h2 - x_.transpose() * h1, true);
     /* B^T z1 = h1 + E_m ue_m^T z2; B = R^-1 B~ so B^-T = R B~^-T. */
     const VectorXd q = ue_m_.transpose() * z2;
     VectorXd t = h1;

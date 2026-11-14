@@ -20,6 +20,8 @@ option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
+option(SCIROCCO_USE_BLAS
+       "Use BLAS/LAPACK (Accelerate, OpenBLAS, MKL) for the dense coupled solve" ON)
 # Find Eigen3 (3.4+ or 5.x)
 find_package(Eigen3 REQUIRED)
 
@@ -55,6 +57,18 @@ target_include_directories(scirocco PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(scirocco PUBLIC Eigen3::Eigen)
+set(SCIROCCO_FIND_LAPACK "")
+if(SCIROCCO_USE_BLAS)
+    find_package(LAPACK)
+    if(LAPACK_FOUND)
+        target_link_libraries(scirocco PRIVATE LAPACK::LAPACK)
+        target_compile_definitions(scirocco PRIVATE SCIROCCO_HAVE_LAPACK)
+        set(SCIROCCO_FIND_LAPACK "find_dependency(LAPACK)")
+        message(STATUS "Scirocco: dense coupled solve uses LAPACK (${LAPACK_LIBRARIES})")
+    else()
+        message(STATUS "Scirocco: BLAS/LAPACK not found; dense solves use Eigen")
+    endif()
+endif()
 target_compile_features(scirocco PUBLIC cxx_std_17)
 target_compile_options(scirocco PRIVATE
     -Wall -Wextra -Wpedantic

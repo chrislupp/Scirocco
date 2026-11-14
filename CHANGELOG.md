@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `SCIROCCO_USE_BLAS` CMake option (default on): the dense product and LU of
+  the coupled solve's Schur complement go through BLAS/LAPACK (Accelerate,
+  OpenBLAS, MKL) when CMake finds one, Eigen otherwise. Viscous solves are
+  10-15% faster at 200 panels and 15% at 284 on an M1 Pro.
 - `Param::warm_start` (default on): `Scirocco::Solve` starts a viscous solve
   from the last converged boundary layer of the same object, as XFOIL does,
   and falls back to a cold start (after at most 30 iterations) if that does
