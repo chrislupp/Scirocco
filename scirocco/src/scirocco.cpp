@@ -45,6 +45,8 @@
 
 namespace scirocco {
 namespace {
+/// Newton iterations allowed to a warm-started viscous solve.
+constexpr int kWarmIterations = 30;
 void ValidateOperatingConditions(double alpha, double cl, double Re,
                                  double Ma) {
     if (!std::isfinite(alpha) || !std::isfinite(cl) || !std::isfinite(Re) ||
@@ -161,8 +163,14 @@ bool Scirocco::Solve() {
                 state_.glob.U = warm_U_;
                 state_.glob.Nsys = static_cast<int>(warm_U_.cols());
                 state_.vsol.turb = warm_turb_;
+                state_.isol.Istag = warm_istag_;
                 const bool continuation = state_.param.use_continuation;
+                const int niglob = state_.param.niglob;
                 state_.param.use_continuation = false;
+                /* A good initial guess converges in a few iterations; give
+                 * up early on a bad one (e.g. the stagnation point crossed a
+                 * node) rather than spend the full budget. */
+                state_.param.niglob = std::min(niglob, kWarmIterations);
                 try {
                     SolveViscous(state_);
                     solved = state_.glob.conv;
@@ -170,6 +178,7 @@ bool Scirocco::Solve() {
                     solved = false;
                 }
                 state_.param.use_continuation = continuation;
+                state_.param.niglob = niglob;
                 if (!solved) state_ = std::move(cold);
             }
             if (!solved) SolveViscous(state_);
@@ -177,6 +186,7 @@ bool Scirocco::Solve() {
                 ValidateResults(state_);
                 warm_U_ = state_.glob.U;
                 warm_turb_ = state_.vsol.turb;
+                warm_istag_ = state_.isol.Istag;
             }
             return state_.glob.conv;
         } else {

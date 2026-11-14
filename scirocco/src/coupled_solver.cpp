@@ -31,6 +31,7 @@
 #include "scirocco/core/coupled_solver.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -60,6 +61,28 @@ VectorXd CoupledResidual(const FoilState& state) {
         state.vsol.ue_m * state.glob.U.row(1).transpose().cwiseProduct(ue);
     if (state.oper.givencl) residual(4 * n) = state.post.cl - state.oper.cltgt;
     return residual;
+}
+
+/**
+ * @brief Re-index a boundary layer from a previous solution to a new
+ * stagnation point: station k from the stagnation point on each surface
+ * takes the values of station k of the old solution (XFOIL's STMOVE).
+ * Stations past the end of the old surface repeat its last station.
+ * @param old Stagnation node pair the boundary layer was solved with
+ */
+void ShiftToStagnation(FoilState& state, const std::array<int, 2>& old) {
+    const auto& now = state.isol.Istag;
+    if (now == old) return;
+    const int N = state.foil.N;
+    const MatrixXd U = state.glob.U;
+    const auto turb = state.vsol.turb;
+    auto copy = [&](int dst, int src) {
+        state.glob.U.col(dst) = U.col(src);
+        state.vsol.turb[dst] = turb[src];
+    };
+    for (int k = 0; k <= now[0]; ++k) copy(now[0] - k, std::max(old[0] - k, 0));
+    for (int k = 0; now[1] + k < N; ++k)
+        copy(now[1] + k, std::min(old[1] + k, N - 1));
 }
 
 /**
@@ -133,6 +156,9 @@ void SolveViscous(FoilState& state) {
         std::cout << "SolveViscous: starting" << '\n';
     }
 
+    /* Stagnation nodes of a supplied initial boundary layer (warm start) */
+    const std::array<int, 2> entry_istag = state.isol.Istag;
+
     /* Initialize thermodynamic parameters */
     state.oper.viscous = true;
     InitThermo(state);
@@ -179,6 +205,7 @@ void SolveViscous(FoilState& state) {
         static_cast<int>(state.vsol.turb.size()) == nsys) {
         state.glob.Nsys = nsys;
         state.glob.realloc = true;
+        ShiftToStagnation(state, entry_istag);
     } else {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {

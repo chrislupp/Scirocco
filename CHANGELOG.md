@@ -9,8 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - `Param::warm_start` (default on): `Scirocco::Solve` starts a viscous solve
   from the last converged boundary layer of the same object, as XFOIL does,
-  and falls back to a cold start if that does not converge. A 0.5-degree
-  step in a polar takes about half the Newton iterations of a cold start.
+  and falls back to a cold start (after at most 30 iterations) if that does
+  not converge. The previous boundary layer is shifted along each surface
+  to the new stagnation point, as XFOIL's STMOVE does. On NACA 0012 at 200
+  panels, a 0.5-degree polar step takes 30-41 ms against 36-64 ms cold.
   This also applies across geometry updates through the Philote discipline.
 - `CoupledMarch` (new header `core/coupled_march.h`) and
   `Param::coupled_march` (default on): while the coupled residual exceeds

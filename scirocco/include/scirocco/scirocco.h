@@ -30,6 +30,7 @@
 */
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -197,6 +198,7 @@ class Scirocco {
        viscous solve when param.warm_start is set */
     MatrixXd warm_U_;
     std::vector<bool> warm_turb_;
+    std::array<int, 2> warm_istag_{0, 0};
     Sensitivity sensitivity_;
 };
 
