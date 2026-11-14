@@ -87,7 +87,8 @@ API claims into an older version without verifying that version's source.
 
 Stable releases automatically snapshot the current docs and sidebar using
 Docusaurus `docs:version`, select that version as the default, and commit the
-snapshot before release validation. Prereleases do not create snapshots or
+snapshot before release validation. The navbar's version dropdown then lists
+it alongside "Next", the develop docs, which move to `/docs/next/`. Prereleases do not create snapshots or
 change the default. The release merge back to `develop` triggers deployment;
 if that merge conflicts, deployment of the new snapshot waits for resolution.
 Tutorials remain runnable examples for users; snapshotting copies documentation
