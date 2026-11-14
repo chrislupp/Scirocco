@@ -6,31 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Release readiness
-- Break Philote RPC service ownership cycles so server shutdown and startup
-  failures release the discipline and its solver state.
-- Fix stack overwrites in reference-test scalar readers by converting HDF5
-  storage values to the destination C++ memory type. Initialize wake coordinates
-  and wake-inclusive velocities consistently in debug test fixtures.
-- Add ASan/UBSan CI and an opt-in instrumented CMake build, including installed
-  consumers and Philote tests.
-- Verify published source archives and full-version container images after
-  release, with manual rechecks of existing tags.
-- Correct test-suite and coverage documentation and record main branch
-  protection requirements and the release-token administrator exception.
-- Reject empty, malformed, nonfinite, or unordered camber data before changing
-  geometry, and handle server startup failures without dereferencing null.
-- Validate the prepared release commit, installed consumer, Python references,
-  documentation, and both container images before publication. Publish the tested
-  images without rebuilding; refuse publication if `main` advances.
-- Reject nonfinite operating conditions, invalid panel counts, malformed coordinate
-  options, and nonfinite solver results instead of reporting successful analyses.
-- Clear previous boundary-layer and wake results when switching to inviscid mode.
-- Default the optional Philote interface to OFF; server CI and Docker builds
-  explicitly enable it.
-- Keep prerelease target versions fixed through candidate progression and stable
-  promotion; validate release labels and tags before publishing atomically.
-
 ### Added
 - `Param::transition` and `TransitionModel::Captured` (experimental): the
   amplification factor and shear stress live at every node and the laminar
@@ -86,8 +61,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `panel.s` and `panel.t` from the current `panel.x` via
   `Spline2DCreate`. Called from `SiroccoDiscipline::Compute` after
   overwriting `foil.x` from an upstream geometry discipline, so the BL
-  solver doesn't run on new coordinates with stale tangents.
-- `RefreshPanelGeometry` declaration in `scirocco/core/paneling.h`.
+  solver doesn't run on new coordinates with stale tangents. Declared in
+  `scirocco/core/paneling.h`.
 - Three airfoil-optimization examples:
   - `examples/kulfan_inviscid_optimization/` — minimize `Cm²` at target
     `Cl` (inviscid).
@@ -101,6 +76,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Runnable Philote-MDO 0.8.0 Python tutorial suite under `examples/tutorials/`,
   covering inviscid and viscous analysis, geometry changes, custom
   coordinates, analytic sensitivities, and HDF5 histories.
+- Optional Philote-Cpp discipline interface for coupling Scirocco with
+  multidisciplinary optimization tools (`SCIROCCO_BUILD_PHILOTE`, OFF by
+  default; server CI and Docker builds enable it).
+- HDF5 iteration history writer (`SCIROCCO_HDF5_OUTPUT`) for saving
+  analysis and optimization results.
+- `examples/naca_optimization/`: NACA 4-digit airfoil optimization through
+  an optimization framework.
+- `examples/cst_range_optimization/`: CST multipoint optimization for low
+  drag at Cl = 0.55 and 0.70, with guard conditions at Cl = 0.30 and 0.80.
+- `SCIROCCO_SANITIZERS` CMake option (AddressSanitizer and
+  UndefinedBehaviorSanitizer) and a sanitizer CI job, including installed
+  consumers and Philote tests.
+- Release validation: the release workflow checks the prepared release
+  commit, installed consumer, Python references, documentation, and both
+  container images before publishing; publishes the tested images without
+  rebuilding; and refuses to publish if `main` advances. Published source
+  archives and full-version images are verified after release, and existing
+  tags can be rechecked manually.
 
 ### Changed
 - Viscous `ComputeSensitivities()` is about 13x faster (11.2 s to 0.88 s at
@@ -138,6 +131,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   of the spline, geometry, mfoil reference, and Philote tests only. A
   15-minute job limit and a 60-second per-test limit keep a slow test from
   stalling the pipeline.
+- Nonfinite operating conditions, invalid panel counts, malformed coordinate
+  options, and nonfinite solver results now raise errors instead of being
+  reported as successful analyses.
+- Prerelease target versions stay fixed through candidate progression and
+  stable promotion; release labels and tags are validated before an atomic
+  publish.
 - Multipoint Kulfan optimization example switched from OpenMDAO's
   `ScipyOptimizeDriver`/SLSQP to IPOPT via `modopt.OpenMDAOProblem`.
   gRPC server ports shifted to 50060–50063 to avoid collisions. With
@@ -166,18 +165,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `transition.cpp::MarchAmplification` cleaned up to match
   `mfoil.py:2662` and `mfoil.py:2602` exactly (off-by-one in the
   implicit-xt Newton loop guard; non-convergence warning print).
-- `scirocco_viscous_chain_tests` (geometric forward-chain CS validation:
-  `DFoilSDFoilXCumulative`, `DSstagDFoilX`, `DWakeSDFoilX`,
-  `DXiDFoilX`, `DWgapDFoilX`, `DWakeXDFoilX`) promoted from opt-in
-  (`SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON`) into the default test
-  suite. Locks the wake-chain VJP correctness in CI at `1e-10` rel /
-  `2e-11` abs over 60k+ Jacobian entries.
+- The test suite is split into a default suite and opt-in diagnostics. The
+  default suite includes `scirocco_viscous_chain_tests`, which checks the
+  geometric forward chains (`DFoilSDFoilXCumulative`, `DSstagDFoilX`,
+  `DWakeSDFoilX`, `DXiDFoilX`, `DWgapDFoilX`, `DWakeXDFoilX`) against
+  complex step at `1e-10` rel / `2e-11` abs. The chain-piece isolators build
+  only with `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` and the 14 `probe_*`
+  binaries only with `SCIROCCO_BUILD_PROBES=ON`. CI runs the default suite
+  with GCC 14 and Clang 18 in Release, plus a job for the opt-in flags.
 - `TOL_VISC_SHAPE` tightened from `1e-4` to `1e-8` in
   `sensitivity_reference_test.cpp::ViscousShapeSensitivity`. End-to-end
   adjoint dcl/dcd/dcm vs mfoil complex-step now agrees to ~3e-11
   relative.
 
 ### Fixed
+- Philote RPC services no longer hold ownership cycles, so server shutdown
+  and startup failures release the discipline and its solver state.
+- Server startup failures no longer dereference null.
+- Empty, malformed, nonfinite, or unordered camber data is rejected before
+  the geometry is changed.
+- Switching to inviscid mode clears the previous boundary-layer and wake
+  results.
+- Reference-test scalar readers no longer overwrite the stack: HDF5 values
+  are converted to the destination C++ type. Debug test fixtures initialize
+  wake coordinates and wake-inclusive velocities consistently.
+- Test-suite and coverage documentation now matches the build, and the main
+  branch protection requirements and release-token administrator exception
+  are recorded.
 - Reynolds-number derivatives were wrong by up to 2e-3 (relative) when
   either surface stays laminar to the trailing edge, e.g. the lower surface
   of NACA 2412 at α = 4°, Re = 10⁶. The wake-start shear stress then comes
@@ -253,35 +267,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   chain (`ComputeRueVJP:401`); the docstring now describes the
   implementation accurately.
 
-## [0.2.0] - 2026-05-29
-
-### Added
-- NACA 4-digit airfoil optimization example demonstrating Scirocco
-  integration with optimization frameworks.
-- Philote-Cpp discipline interface for coupling Scirocco with
-  multidisciplinary optimization tools.
-- HDF5 iteration history writer for saving optimization/analysis results
-  to HDF5 format.
-- `SCIROCCO_COVERAGE` CMake option that instruments the library and
-  tests for `llvm-cov` source-based coverage. Default suite measured at
-  93.4% line / 94.0% function coverage.
-- README documentation for all test-suite build flags and the local
-  coverage workflow.
-
-### Changed
-- Split the test suite into a lean default (`scirocco_tests`,
-  `scirocco_forward_ref_tests`, `scirocco_ping_tests`,
-  `scirocco_sensitivity_ref_tests`) and an opt-in sensitivity-debug
-  suite. Chain-piece tests (`sensitivity_ping`, `viscous_chain`,
-  `viscous_residual_deriv`, `viscous_output_ping`) and the 14 `probe_*`
-  diagnostic binaries now build only when
-  `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` or
-  `SCIROCCO_BUILD_PROBES=ON`.
-- Extended CI: GCC + Clang Release matrix runs the default suite, a
-  separate job exercises the opt-in flags, a Clang coverage job uploads
-  lcov to Codecov, and a Valgrind memcheck job fails on any
-  definite/indirect leak.
-
 ## [0.1.0] - 2026-03-18
 
 Initial public release.
@@ -305,6 +290,5 @@ Initial public release.
 - CMake build system with Eigen3 dependency.
 - Apache 2.0 license.
 
-[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/chrislupp/Scirocco/compare/v0.1.0...v0.2.0
+[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.1.0
