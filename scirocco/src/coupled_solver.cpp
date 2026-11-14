@@ -1251,6 +1251,44 @@ void UpdateState(FoilState& state) {
 }
 
 /**
+ * @brief ue_m = diag(sgnue) ue_sigma sigma_m from the stored ue_sigma:
+ * the part of CalcUeM that depends on the stagnation point.
+ * @param state Foil state with ue_sigma from CalcUeM
+ */
+static void AssembleUeM(FoilState& state) {
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int Nsys = N + Nw;
+    const int Npanel = N + Nw - 2;
+    /* 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)] */
+    std::vector<Triplet> triplets;
+    for (int i = 0; i < N - 1; ++i) {
+        double ds = state.foil.s(i + 1) - state.foil.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(i, i, -state.isol.sgnue(i) / ds);
+            triplets.emplace_back(i, i + 1, state.isol.sgnue(i + 1) / ds);
+        }
+    }
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds = state.wake.s(i + 1) - state.wake.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(N - 1 + i, N + i, -1.0 / ds);
+            triplets.emplace_back(N - 1 + i, N + i + 1, 1.0 / ds);
+        }
+    }
+    state.vsol.sigma_m.resize(Npanel, Nsys);
+    state.vsol.sigma_m.setFromTriplets(triplets.begin(), triplets.end());
+
+    /* 7. ue_m = sgnue * ue_sigma * sigma_m */
+    VectorXd sgue(Nsys);
+    sgue.head(N) = state.isol.sgnue;
+    sgue.tail(Nw).setOnes();
+
+    state.vsol.ue_m =
+        sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
+}
+
+/**
  * @brief Calculate d(ue)/d(mass) sensitivities
  * This implements the transpiration BC coupling
  * @param state Foil state
@@ -1286,20 +1324,33 @@ void CalcUeM(FoilState& state) {
         }
     }
 
-    /* 2. B = d(airfoil streamfunction)/d(source) [(N+1) x (N+Nw-2)] */
+    /* 2-3. Bp = -AIC^-1 B, B = d(airfoil streamfunction)/d(source)
+     * [N x (N+Nw-2)]. The airfoil-panel columns depend only on the
+     * geometry and are cached (as XFOIL caches the airfoil part of DIJ);
+     * the wake-panel columns move with the wake. */
     int Npanel = N + Nw - 2; /* N-1 airfoil panels + Nw-1 wake panels */
-    MatrixXd B = MatrixXd::Zero(N + 1, Npanel);
+    auto& Bp_foil = state.isol.Bp_foil;
+    if (Bp_foil.rows() != N || Bp_foil.cols() != N - 1 ||
+        state.isol.Bp_foil_x.cols() != N ||
+        state.isol.Bp_foil_x != state.foil.x) {
+        MatrixXd B = MatrixXd::Zero(N + 1, N - 1);
+        for (int i = 0; i < N; ++i) {
+            Vector2d xi = state.foil.x.col(i);
+            /* Constant source panels on airfoil */
+            for (int j = 0; j < N - 1; ++j) {
+                Matrix2d Xj;
+                Xj.col(0) = state.foil.x.col(j);
+                Xj.col(1) = state.foil.x.col(j + 1);
+                B(i, j) = PanelConstSourceStream(Xj, xi);
+            }
+        }
+        Bp_foil = (-SolveAIC(state, B)).topRows(N);
+        state.isol.Bp_foil_x = state.foil.x;
+    }
 
+    MatrixXd Bw = MatrixXd::Zero(N + 1, Nw - 1);
     for (int i = 0; i < N; ++i) {
         Vector2d xi = state.foil.x.col(i);
-
-        /* Constant source panels on airfoil */
-        for (int j = 0; j < N - 1; ++j) {
-            Matrix2d Xj;
-            Xj.col(0) = state.foil.x.col(j);
-            Xj.col(1) = state.foil.x.col(j + 1);
-            B(i, j) = PanelConstSourceStream(Xj, xi);
-        }
 
         /* Linear source panels on wake */
         for (int j = 0; j < Nw - 1; ++j) {
@@ -1321,29 +1372,28 @@ void CalcUeM(FoilState& state) {
             /* Left half panel */
             PanelLinSourceStream(Xj, xi, a_left, b_left);
             if (j > 0) {
-                B(i, N - 1 + j) += 0.5 * a_left + b_left;
-                B(i, N - 1 + j - 1) += 0.5 * a_left;
+                Bw(i, j) += 0.5 * a_left + b_left;
+                Bw(i, j - 1) += 0.5 * a_left;
             } else {
-                B(i, N - 1 + j) += b_left;
+                Bw(i, j) += b_left;
             }
 
             /* Right half panel */
             Xj.col(0) = Xm;
             Xj.col(1) = X_right;
             PanelLinSourceStream(Xj, xi, a_right, b_right);
-            B(i, N - 1 + j) += a_right + 0.5 * b_right;
+            Bw(i, j) += a_right + 0.5 * b_right;
             if (j < Nw - 2) {
-                B(i, N - 1 + j + 1) += 0.5 * b_right;
+                Bw(i, j + 1) += 0.5 * b_right;
             } else {
-                B(i, N - 1 + j) += 0.5 * b_right;
+                Bw(i, j) += 0.5 * b_right;
             }
         }
     }
 
-    /* 3. Bp = -inv(AIC) * B [N x (N+Nw-2)]
-     * Note: AIC is (N+1) x (N+1), but last row is Kutta condition */
-    MatrixXd Bp = -SolveAIC(state, B);
-    Bp.conservativeResize(N, Npanel); /* Remove last row */
+    MatrixXd Bp(N, Npanel);
+    Bp.leftCols(N - 1) = Bp_foil;
+    Bp.rightCols(Nw - 1) = (-SolveAIC(state, Bw)).topRows(N);
 
     /* 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)] */
     MatrixXd Csig = MatrixXd::Zero(Nw, Npanel);
@@ -1447,39 +1497,22 @@ void CalcUeM(FoilState& state) {
     state.vsol.ue_sigma.topRows(N) = Bp;
     state.vsol.ue_sigma.bottomRows(Nw) = Dw;
 
-    /* 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)] */
-    std::vector<Triplet> triplets;
-    for (int i = 0; i < N - 1; ++i) {
-        double ds = state.foil.s(i + 1) - state.foil.s(i);
-        if (ds > 1e-12) {
-            triplets.emplace_back(i, i, -state.isol.sgnue(i) / ds);
-            triplets.emplace_back(i, i + 1, state.isol.sgnue(i + 1) / ds);
-        }
-    }
-    for (int i = 0; i < Nw - 1; ++i) {
-        double ds = state.wake.s(i + 1) - state.wake.s(i);
-        if (ds > 1e-12) {
-            triplets.emplace_back(N - 1 + i, N + i, -1.0 / ds);
-            triplets.emplace_back(N - 1 + i, N + i + 1, 1.0 / ds);
-        }
-    }
-    state.vsol.sigma_m.resize(Npanel, Nsys);
-    state.vsol.sigma_m.setFromTriplets(triplets.begin(), triplets.end());
-
-    /* 7. ue_m = sgnue * ue_sigma * sigma_m */
-    VectorXd sgue(Nsys);
-    sgue.head(N) = state.isol.sgnue;
-    sgue.tail(Nw).setOnes();
-
-    state.vsol.ue_m =
-        sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
+    AssembleUeM(state);
 }
 
 /**
  * @brief Rebuild sensitivities after stagnation point move
  * @param state Foil state
  */
-void RebuildUeM(FoilState& state) { CalcUeM(state); }
+void RebuildUeM(FoilState& state) {
+    /* Only the signs depend on the stagnation point; reuse ue_sigma. */
+    const int Nsys = state.foil.N + state.wake.N;
+    if (state.wake.N > 0 && state.vsol.ue_sigma.rows() == Nsys &&
+        state.vsol.ue_sigma.cols() == Nsys - 2)
+        AssembleUeM(state);
+    else
+        CalcUeM(state);
+}
 
 /**
  * @brief Factor the coupled Jacobian at the converged state for adjoint

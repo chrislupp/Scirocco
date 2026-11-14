@@ -112,6 +112,17 @@ void BuildGamma(FoilState& state, double alpha) {
         throw std::runtime_error("No panels defined");
     }
 
+    /* The influence matrix depends only on the panel nodes: reuse it, its
+     * factorization and the reference solutions while they are unchanged
+     * (a new operating point on the same geometry). */
+    if (state.isol.AIC_lu && state.isol.AIC.rows() == N + 1 &&
+        state.isol.gamref.rows() == N && state.isol.AIC_x.cols() == N &&
+        state.isol.AIC_x == state.foil.x) {
+        state.isol.gam = state.isol.gamref.col(0) * Cosd(alpha) +
+                         state.isol.gamref.col(1) * Sind(alpha);
+        return;
+    }
+
     /* Get trailing edge info */
     TEInfo te = GetTEInfo(state.foil.x);
     bool nogap = (std::abs(te.hTE) < 1e-10 * state.geom.chord);
@@ -185,6 +196,7 @@ void BuildGamma(FoilState& state, double alpha) {
 
     /* Store reference solutions (excluding streamfunction row) */
     state.isol.gamref = g.topRows(N);
+    state.isol.AIC_x = state.foil.x;
 
     /* Compute gamma for current alpha */
     state.isol.gam = state.isol.gamref.col(0) * Cosd(alpha) +

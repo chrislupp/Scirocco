@@ -41,7 +41,12 @@ namespace scirocco {
 struct Isol {
     MatrixXd AIC; /**< Aerodynamic influence coefficient matrix */
     std::shared_ptr<const Eigen::PartialPivLU<MatrixXd>>
-        AIC_lu; /**< LU of AIC, set together with it (see SolveAIC) */
+        AIC_lu;         /**< LU of AIC, set together with it (see SolveAIC) */
+    MatrixXd AIC_x;     /**< Node coordinates AIC was built from; BuildGamma
+                             reuses AIC while they are unchanged */
+    MatrixXd Bp_foil;   /**< -AIC^-1 B for the airfoil source panels
+                             [N x N-1]: the geometry-only part of CalcUeM */
+    MatrixXd Bp_foil_x; /**< Node coordinates Bp_foil was built from */
     MatrixXd
         gamref; /**< 0,90-deg alpha vortex strengths at airfoil nodes [N x 2] */
     VectorXd gam; /**< Vortex strengths at airfoil nodes (current alpha) */

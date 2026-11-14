@@ -3,6 +3,8 @@
 #include "scirocco/core/bl_march.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
+#include "scirocco/core/inviscid.h"
+#include "scirocco/core/paneling.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
@@ -179,6 +181,31 @@ TEST(SolverStrategy, WarmStartReusesPreviousSolution) {
               cold.GetState().glob.coupled_iterations);
     EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-8);
     EXPECT_NEAR(warm.GetCd(), cold.GetCd(), 1e-9);
+}
+
+/* The influence matrix and its factorization are reused while the panel
+ * nodes are unchanged, and rebuilt as soon as any node moves. */
+TEST(SolverStrategy, InviscidCacheFollowsGeometry) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(2.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    auto& state = foil.GetState();
+    const auto lu = state.isol.AIC_lu;
+    const MatrixXd bp = state.isol.Bp_foil;
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_EQ(state.isol.AIC_lu, lu);
+    EXPECT_EQ(state.isol.Bp_foil, bp);
+
+    state.foil.x(1, 20) += 1e-4;
+    RefreshPanelGeometry(state.foil);
+    FoilState fresh = state;
+    fresh.isol.AIC_x.resize(0, 0);
+    fresh.isol.Bp_foil_x.resize(0, 0);
+    BuildGamma(state, 4.0);
+    BuildGamma(fresh, 4.0);
+    EXPECT_NE(state.isol.AIC_lu, lu);
+    EXPECT_EQ(state.isol.gamref, fresh.isol.gamref);
 }
 
 TEST(SolverStrategy, TrustStepRejectsUphillWithoutChangingState) {

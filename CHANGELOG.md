@@ -128,6 +128,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (`Isol::AIC_lu`, `SolveAIC`) and reused by `CalcUeM` and the adjoint
   instead of refactoring, and `BuildGlobSys` adds the stagnation-point
   chain as triplets instead of inserting into the compressed matrix.
+- Geometry-only work is cached while the panel nodes are unchanged:
+  `BuildGamma` reuses the influence matrix, its LU and the reference
+  solutions (`Isol::AIC_x`), and `CalcUeM` reuses the airfoil-panel part of
+  the source influence (`Isol::Bp_foil`), as XFOIL caches the airfoil part
+  of its DIJ matrix. `RebuildUeM`, called when the stagnation point moves to
+  another panel, now only reapplies the surface signs. A 0.5-degree polar
+  step at 200 panels takes 15-18 ms instead of 22-25 ms.
 - The coupled viscous Newton system and the viscous adjoint are factored
   through the mass-defect Schur complement (`CoupledFactorization`, new
   header `core/coupled_linear.h`) instead of a sparse LU of the assembled
