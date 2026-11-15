@@ -90,9 +90,6 @@ class BlockTriangularSolver {
     /** @brief A^-T r. */
     [[nodiscard]] VectorXd SolveTranspose(const VectorXd& r) const;
 
-    /** @brief Largest diagonal group, in nodes (diagnostic). */
-    [[nodiscard]] int LargestGroup() const;
-
    private:
     struct Entry {
         int row;
@@ -149,12 +146,10 @@ class CoupledFactorization {
     /** @brief True if solves go through the Schur complement. */
     [[nodiscard]] bool UsesSchur() const { return use_schur_; }
 
-    /** @brief Number of unknowns, 4N. */
-    [[nodiscard]] int Size() const { return 4 * n_; }
-
    private:
     bool ComputeSchur();
     bool ComputeDirect();
+    VectorXd SolveEither(const VectorXd& rhs, bool transpose);
     [[nodiscard]] VectorXd SolveSchur(const VectorXd& rhs) const;
     [[nodiscard]] VectorXd SolveTransposeSchur(const VectorXd& rhs) const;
     [[nodiscard]] bool Accurate(const VectorXd& x, const VectorXd& rhs,

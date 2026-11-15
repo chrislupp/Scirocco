@@ -960,11 +960,10 @@ void SolveGlob(FoilState& state) {
         bl += shift;
     }
 
+    /* A failed factorization makes Solve throw. */
     CoupledFactorization factorization;
-    if (!factorization.Compute(bl, state.vsol.ue_m, ue, ds,
-                               VectorXd::Constant(Nsys, 1.0 + lambda))) {
-        throw std::runtime_error("SolveGlob: linear factorization failed");
-    }
+    factorization.Compute(bl, state.vsol.ue_m, ue, ds,
+                          VectorXd::Constant(Nsys, 1.0 + lambda));
     const VectorXd x1 = factorization.Solve(-R.head(4 * Nsys));
     VectorXd dV = x1;
     state.glob.dalpha = 0.0;
@@ -978,9 +977,8 @@ void SolveGlob(FoilState& state) {
              ++i)
             c(4 * i + 3) = state.post.cl_ue(i);
         const VectorXd x2 = factorization.Solve(b);
+        /* A singular constraint (denom 0 or NaN) leaves dV non-finite. */
         const double denom = state.post.cl_alpha - c.dot(x2);
-        if (!std::isfinite(denom) || denom == 0.0)
-            throw std::runtime_error("SolveGlob: singular Cl constraint");
         state.glob.dalpha = (-R(R.size() - 1) - c.dot(x1)) / denom;
         dV -= state.glob.dalpha * x2;
     }

@@ -205,12 +205,6 @@ VectorXd BlockTriangularSolver::SolveTranspose(const VectorXd& r) const {
     return z;
 }
 
-int BlockTriangularSolver::LargestGroup() const {
-    size_t largest = 0;
-    for (const Group& g : groups_) largest = std::max(largest, g.rows.size());
-    return static_cast<int>(largest) / block_;
-}
-
 bool CoupledFactorization::Compute(const SparseMatrixd& bl_jacobian,
                                    const MatrixXd& ue_m, const VectorXd& ue,
                                    const VectorXd& ds,
@@ -485,17 +479,29 @@ bool CoupledFactorization::Accurate(const VectorXd& x, const VectorXd& rhs,
 }
 
 VectorXd CoupledFactorization::Solve(const VectorXd& rhs) {
+    return SolveEither(rhs, false);
+}
+
+VectorXd CoupledFactorization::SolveTranspose(const VectorXd& rhs) {
+    return SolveEither(rhs, true);
+}
+
+VectorXd CoupledFactorization::SolveEither(const VectorXd& rhs,
+                                           bool transpose) {
     if (rhs.size() != 4 * n_)
         throw std::invalid_argument("CoupledFactorization: rhs size");
     if (use_schur_) {
         /* Iterative refinement recovers accuracy when B is poorly
          * conditioned (rough intermediate Newton iterates); each pass costs
-         * O(N^2). */
-        VectorXd x = SolveSchur(rhs);
+         * O(N^2). If it does not, switch to the direct factorization. */
+        const auto schur = [&](const VectorXd& r) {
+            return transpose ? SolveTransposeSchur(r) : SolveSchur(r);
+        };
+        VectorXd x = schur(rhs);
         for (int pass = 0;; ++pass) {
-            if (Accurate(x, rhs, false)) return x;
+            if (Accurate(x, rhs, transpose)) return x;
             if (pass == kRefinementPasses) break;
-            x += SolveSchur(rhs - Apply(x));
+            x += schur(rhs - (transpose ? ApplyTranspose(x) : Apply(x)));
         }
         use_schur_ = false;
         if (!ComputeDirect())
@@ -504,34 +510,15 @@ VectorXd CoupledFactorization::Solve(const VectorXd& rhs) {
     }
     if (!direct_lu_)
         throw std::runtime_error("CoupledFactorization: not factored");
-    VectorXd x = direct_lu_->solve(direct_row_scale_.cwiseProduct(rhs));
-    if (direct_lu_->info() != Eigen::Success || !x.allFinite())
+    /* With row scale R: (R J) x = R rhs, and (R J)^T y = rhs with x = R y. */
+    const VectorXd x =
+        transpose
+            ? VectorXd(direct_row_scale_.cwiseProduct(
+                  direct_lu_->transpose().solve(rhs)))
+            : VectorXd(direct_lu_->solve(direct_row_scale_.cwiseProduct(rhs)));
+    if (!x.allFinite())
         throw std::runtime_error("CoupledFactorization: solve failed");
     return x;
-}
-
-VectorXd CoupledFactorization::SolveTranspose(const VectorXd& rhs) {
-    if (rhs.size() != 4 * n_)
-        throw std::invalid_argument("CoupledFactorization: rhs size");
-    if (use_schur_) {
-        VectorXd x = SolveTransposeSchur(rhs);
-        for (int pass = 0;; ++pass) {
-            if (Accurate(x, rhs, true)) return x;
-            if (pass == kRefinementPasses) break;
-            x += SolveTransposeSchur(rhs - ApplyTranspose(x));
-        }
-        use_schur_ = false;
-        if (!ComputeDirect())
-            throw std::runtime_error(
-                "CoupledFactorization: direct factorization failed");
-    }
-    if (!direct_lu_)
-        throw std::runtime_error("CoupledFactorization: not factored");
-    /* (R J)^T y = g with x = R y. */
-    VectorXd y = direct_lu_->transpose().solve(rhs);
-    if (!y.allFinite())
-        throw std::runtime_error("CoupledFactorization: solve failed");
-    return direct_row_scale_.cwiseProduct(y);
 }
 
 }  // namespace scirocco

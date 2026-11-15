@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include "scirocco/core/bl_march.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
@@ -31,6 +34,48 @@ VectorXd Packed(const FoilState& state) {
         Eigen::Map<const VectorXd>(state.glob.dU.data(), state.glob.dU.size());
     if (state.oper.givencl) v(v.size() - 1) = state.glob.dalpha;
     return v;
+}
+
+/// A small coupled system: each station's boundary-layer rows depend on its
+/// own variables and the station upstream, every ue on every mass.
+struct SmallSystem {
+    SparseMatrixd bl;
+    MatrixXd ue_m;
+    VectorXd ue, ds, d;
+};
+
+/// @param empty_station Station left without boundary-layer equations
+SmallSystem MakeSmallSystem(int n, int empty_station = -1) {
+    SmallSystem sys;
+    std::vector<Eigen::Triplet<double>> t;
+    for (int i = 0; i < n; ++i)
+        for (int r = 0; r < 3 && i != empty_station; ++r)
+            for (int k = 0; k < 4; ++k) {
+                const double own = (r == k ? 4.0 : 0.0) + 0.1 * (r + 2 * k + i);
+                t.emplace_back(3 * i + r, 4 * i + k, own);
+                if (i > 0)
+                    t.emplace_back(3 * i + r, 4 * (i - 1) + k,
+                                   -0.3 + 0.05 * (r - k));
+            }
+    sys.bl.resize(3 * n, 4 * n);
+    sys.bl.setFromTriplets(t.begin(), t.end());
+    sys.ue_m.resize(n, n);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            sys.ue_m(i, j) = 0.2 / (1.0 + std::abs(i - j));
+    sys.ue = VectorXd::LinSpaced(n, 0.8, 1.2);
+    sys.ds = VectorXd::LinSpaced(n, 0.002, 0.01);
+    sys.d = VectorXd::Ones(n);
+    return sys;
+}
+
+/// Solve and transposed solve against the assembled matrix.
+void ExpectSolvesAssembled(CoupledFactorization& f, int n) {
+    const MatrixXd j = MatrixXd(f.Assemble());
+    const VectorXd rhs = VectorXd::LinSpaced(4 * n, -1.0, 2.0);
+    EXPECT_LT((j * f.Solve(rhs) - rhs).norm(), 1e-12 * rhs.norm());
+    EXPECT_LT((j.transpose() * f.SolveTranspose(rhs) - rhs).norm(),
+              1e-12 * rhs.norm());
 }
 
 }  // namespace
@@ -340,4 +385,96 @@ TEST(SolverStrategy, ContinuationReachesExactLiftTarget) {
     EXPECT_NEAR(result.post.cl, 0.6, target.param.rtol);
     EXPECT_EQ(result.wake.x, target.wake.x);
     EXPECT_NEAR(result.oper.alpha, target.oper.alpha, 1e-9);
+}
+
+/* The Schur and direct paths solve the same system. A zero edge velocity
+ * makes the mass transform singular, so it must fall back to the direct
+ * factorization. */
+TEST(CoupledFactorization, SchurAndDirectPathsSolveAssembledSystem) {
+    const int n = 5;
+    SmallSystem sys = MakeSmallSystem(n);
+    CoupledFactorization schur;
+    ASSERT_TRUE(schur.Compute(sys.bl, sys.ue_m, sys.ue, sys.ds, sys.d));
+    EXPECT_TRUE(schur.UsesSchur());
+    ExpectSolvesAssembled(schur, n);
+
+    sys.ue(2) = 0.0;
+    CoupledFactorization direct;
+    ASSERT_TRUE(direct.Compute(sys.bl, sys.ue_m, sys.ue, sys.ds, sys.d));
+    EXPECT_FALSE(direct.UsesSchur());
+    ExpectSolvesAssembled(direct, n);
+}
+
+/* A station with no boundary-layer equations makes J singular: both
+ * factorizations fail, and solving reports it instead of returning junk. */
+TEST(CoupledFactorization, SingularSystemFailsLoudly) {
+    const int n = 4;
+    const SmallSystem sys = MakeSmallSystem(n, 1);
+    CoupledFactorization f;
+    EXPECT_FALSE(f.Compute(sys.bl, sys.ue_m, sys.ue, sys.ds, sys.d));
+    const VectorXd rhs = VectorXd::Ones(4 * n);
+    EXPECT_THROW((void)f.Solve(rhs), std::runtime_error);
+    EXPECT_THROW((void)f.SolveTranspose(rhs), std::runtime_error);
+}
+
+TEST(CoupledFactorization, RejectsInconsistentSizes) {
+    const int n = 4;
+    const SmallSystem sys = MakeSmallSystem(n);
+    CoupledFactorization f;
+    EXPECT_THROW(f.Compute(sys.bl, sys.ue_m, sys.ue, sys.ds.head(n - 1), sys.d),
+                 std::invalid_argument);
+    ASSERT_TRUE(f.Compute(sys.bl, sys.ue_m, sys.ue, sys.ds, sys.d));
+    const VectorXd short_rhs = VectorXd::Ones(4 * n - 1);
+    EXPECT_THROW((void)f.Solve(short_rhs), std::invalid_argument);
+    EXPECT_THROW((void)f.SolveTranspose(short_rhs), std::invalid_argument);
+}
+
+/* Without a cached LU, SolveAIC factors the influence matrix itself. */
+TEST(SolverStrategy, SolveAICWithoutCachedFactorization) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(2.0, -1.0, 0.0, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    FoilState state = foil.GetState();
+    const MatrixXd rhs = MatrixXd::Identity(state.isol.AIC.rows(), 3);
+    const MatrixXd cached = SolveAIC(state, rhs);
+    state.isol.AIC_lu.reset();
+    EXPECT_LT((SolveAIC(state, rhs) - cached).norm(), 1e-12 * cached.norm());
+}
+
+/* Stations whose local solve fails are extrapolated from upstream or kept,
+ * so a bad edge velocity never leaves a non-physical boundary layer for
+ * the Newton step. */
+TEST(SolverStrategy, BoundaryLayerMarchSurvivesFailedStations) {
+    Scirocco foil("2412", 99);
+    foil.SetOper(3.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    FoilState state = foil.GetState();
+    for (int j = 0; j < state.glob.Nsys; j += 2) state.glob.U(3, j) *= 3.0;
+    EXPECT_GT(BoundaryLayerMarch(state), 0);
+    EXPECT_TRUE(state.glob.U.allFinite());
+    EXPECT_GT(state.glob.U.row(0).minCoeff(), 0.0);
+    EXPECT_GT(state.glob.U.row(1).minCoeff(), 0.0);
+}
+
+/* With a Cl target the step borders the factorization with the lift
+ * constraint; a singular constraint must be reported, not stepped on. */
+TEST(SolverStrategy, SingularLiftConstraintThrows) {
+    auto state = PerturbedState(0.5);
+    state.post.cl_alpha = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(SolveGlob(state), std::runtime_error);
+}
+
+/* A warm start that does not converge falls back to a cold start, which
+ * must give exactly what a fresh object gives. */
+TEST(SolverStrategy, FailedWarmStartMatchesColdStart) {
+    Scirocco warm("0012", 99);
+    warm.SetOper(2.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(warm.Solve());
+    warm.SetOper(16.0, -1.0, 1e6, 0.0);
+    const bool warm_ok = warm.Solve();
+
+    Scirocco cold("0012", 99);
+    cold.SetOper(16.0, -1.0, 1e6, 0.0);
+    EXPECT_EQ(warm_ok, cold.Solve());
+    if (warm_ok) EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-6);
 }
