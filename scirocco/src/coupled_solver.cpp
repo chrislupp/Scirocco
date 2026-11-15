@@ -1287,6 +1287,7 @@ static void AssembleUeM(FoilState& state) {
     const int Nw = state.wake.N;
     const int Nsys = N + Nw;
     const int Npanel = N + Nw - 2;
+    if (Npanel <= 0) return; /* no panels: nothing to couple */
     /* 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)] */
     std::vector<Triplet> triplets;
     for (int i = 0; i < N - 1; ++i) {
