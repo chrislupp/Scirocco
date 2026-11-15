@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
 ### Added
 - Docker images: each push to `develop` publishes `chrislupp/scirocco:next`
   and `chrislupp/scirocco-kulfan:next` to Docker Hub, once the image passes
@@ -373,5 +375,6 @@ Initial public release.
 - CMake build system with Eigen3 dependency.
 - Apache 2.0 license.
 
-[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.1.0
+[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.2.0
