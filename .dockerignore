@@ -1,0 +1,39 @@
+# Keep build context minimal. Only `scirocco/` is COPYed by the Dockerfile.
+**/.git
+**/.gitignore
+**/.github
+**/.vscode
+**/.idea
+**/*.swp
+**/.DS_Store
+
+# Build artifacts
+**/build
+**/build-*
+**/cmake-build-*
+**/_deps
+**/CMakeFiles
+**/CMakeCache.txt
+**/*.o
+**/*.a
+**/*.so
+**/*.dylib
+
+# Docs and examples are not needed in the image
+docs
+examples
+mfoil
+
+# Python/venv junk
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/*.egg-info
+
+# Local notes / plans
+**/*.local
+**/CLAUDE.md
+**/AGENTS.md
+**/AGENTS.local.md
+**/CLAUDE.local.md

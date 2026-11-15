@@ -1,0 +1,97 @@
+{
+  "disciplines": [
+    {
+      "id": "opt",
+      "name": "SLSQP",
+      "type": "driver",
+      "inputs": [
+        "cd",
+        "cl",
+        "area"
+      ],
+      "outputs": [
+        "camber",
+        "camber_loc",
+        "thickness",
+        "alpha"
+      ]
+    },
+    {
+      "id": "geometry",
+      "name": "NACA4Geometry",
+      "type": "explicit",
+      "inputs": [
+        "camber",
+        "camber_loc",
+        "thickness"
+      ],
+      "outputs": [
+        "x"
+      ]
+    },
+    {
+      "id": "area_comp",
+      "name": "AirfoilArea",
+      "type": "explicit",
+      "inputs": [
+        "x"
+      ],
+      "outputs": [
+        "area"
+      ]
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "opt.camber",
+      "sink": "geometry.camber"
+    },
+    {
+      "source": "opt.camber_loc",
+      "sink": "geometry.camber_loc"
+    },
+    {
+      "source": "opt.thickness",
+      "sink": "geometry.thickness"
+    },
+    {
+      "source": "opt.alpha",
+      "sink": "analysis.alpha"
+    },
+    {
+      "source": "geometry.x",
+      "sink": [
+        "area_comp.x",
+        "analysis.x"
+      ]
+    },
+    {
+      "source": "area_comp.area",
+      "sink": "opt.area"
+    },
+    {
+      "source": "analysis.cl",
+      "sink": "opt.cl"
+    },
+    {
+      "source": "analysis.cd",
+      "sink": "opt.cd"
+    }
+  ]
+}

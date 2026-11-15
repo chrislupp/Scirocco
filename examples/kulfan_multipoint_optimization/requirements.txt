@@ -1,0 +1,11 @@
+# Reproduces the optimizer stack used to validate the IPOPT example while
+# pairing the client with Philote-Cpp 0.6.0.
+philote-mdo==0.8.0
+openmdao==3.39.0
+grpcio==1.66.2
+numpy==2.5.1
+scipy==1.17.1
+matplotlib>=3.10,<4
+h5py>=3.15,<4
+modopt[open_source_optimizers] @ git+https://github.com/LSDOlab/modopt.git@65c7e272b8d75b39c9360c15a95deb3d70753958
+cyipopt==1.7.0

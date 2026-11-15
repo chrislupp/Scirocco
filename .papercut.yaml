@@ -6,25 +6,25 @@
 cover_page:
   enabled: true
 
-  title: "CppFoil"
+  title: "Scirocco"
 
   # Authors field supports multi-line text with paragraph breaks (double newlines)
   authors: |
     Christopher A. Lupp
 
   description: |
-    cppfoil provides computational tools for analyzing airfoil performance
+    Scirocco provides computational tools for analyzing airfoil performance
     across different operating conditions. It predicts aerodynamic coefficients
     (lift, drag, moment) and boundary layer distributions using panel methods
     coupled with integral boundary layer equations.
 
-    cppfoil (Project Trysil) is a C++ port of Prof. Fidkowski's airfoil panel
+    Scirocco is a C++ port of Prof. Fidkowski's airfoil panel
     code implementation, mfoil. It implements the same theoretical formulation
     as Mark Drela's XFOIL, while improving its convergence behavior.
 
     The code was developed completely outside the author's employment.
 
-  location: "https://github.com/chrislupp/ProjectTrysil"
+  location: "https://github.com/chrislupp/Scirocco"
 
   include_toc: true
   title_font_size: 24
@@ -38,7 +38,7 @@ cover_page:
     enabled: true
     text: |
       Distribution A: This work has been cleared for public release,
-      distribution unlimited, case number: AFRL-2026-XXXX. The views expressed
+      distribution unlimited, case number: AFRL-2026-0405. The views expressed
       are those of the authors and do not reflect the official guidance or
       position of the United States Government, the Department of Defense or of
       the United States Air Force.
@@ -58,7 +58,7 @@ cover_page:
 output:
   mode: single
   directory: ./pa_output
-  filename: trysil_source.pdf
+  filename: scirocco_source.pdf
 
 # ===== FILES TO CONVERT =====
 files:
@@ -75,7 +75,7 @@ files:
       - "./temp/**"
       - "./.claude/**"
       - "./build/**"
-      - "./cppfoil/build/**"
+      - "./scirocco/build*/**"
     title: "Source Code"
 
   # Example 2: Glob pattern to match multiple files

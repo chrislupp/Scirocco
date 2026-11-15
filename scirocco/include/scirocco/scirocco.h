@@ -1,0 +1,205 @@
+/*
+    Scirocco: C++ Airfoil Analysis Library
+
+    Copyright 2024-2026 Christopher A. Lupp
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+    This work has been cleared for public release, distribution unlimited, case
+    number: AFRL-2026-0405.
+
+    The views expressed are those of the authors and do not reflect the
+    official guidance or position of the United States Government, the
+    Department of Defense or of the United States Air Force.
+
+    Statement from DoD: The Appearance of external hyperlinks does not
+    constitute endorsement by the United States Department of Defense (DoD) of
+    the linked websites, of the information, products, or services contained
+    therein. The DoD does not exercise any editorial, security, or other
+    control over the information you may find at these locations.
+*/
+#pragma once
+
+#include <array>
+#include <string>
+#include <vector>
+
+#include "scirocco/config.h"
+#include "scirocco/data/sensitivity.h"
+#include "scirocco/data/state.h"
+
+namespace scirocco {
+
+/**
+ * @brief Main Scirocco solver class
+ */
+class Scirocco {
+   public:
+    /**
+     * @brief Construct from NACA digits
+     * @param naca NACA digit string
+     * @param npanel Number of panels
+     */
+    explicit Scirocco(const std::string& naca = "0012", int npanel = 199);
+
+    /**
+     * @brief Construct from coordinates
+     * @param coords Airfoil coordinates
+     * @param npanel Number of panels
+     */
+    explicit Scirocco(const MatrixXd& coords, int npanel = 199);
+
+    /**
+     * @brief Set operating conditions
+     * @param alpha Angle of attack [degrees]
+     * @param cl Target lift coefficient (if set, alpha is computed)
+     * @param Re Reynolds number (enables viscous analysis)
+     * @param Ma Mach number
+     */
+    void SetOper(double alpha = 0.0, double cl = -1.0, double Re = 0.0,
+                 double Ma = 0.0);
+
+    /**
+     * @brief Solve the current operating point
+     * @return True if converged with finite outputs; invalid inputs throw
+     */
+    bool Solve();
+
+    /* Get results */
+    [[nodiscard]] double GetCl() const { return state_.post.cl; }
+    [[nodiscard]] double GetCd() const { return state_.post.cd; }
+    [[nodiscard]] double GetCdf() const { return state_.post.cdf; }
+    [[nodiscard]] double GetCdp() const { return state_.post.cdp; }
+    [[nodiscard]] double GetCm() const { return state_.post.cm; }
+    [[nodiscard]] double GetAlpha() const { return state_.oper.alpha; }
+    [[nodiscard]] bool IsConverged() const { return state_.glob.conv; }
+
+    /* Boundary-layer distributions are empty in inviscid mode. */
+    /* Get distributions */
+    [[nodiscard]] const VectorXd& GetCp() const { return state_.post.cp; }
+    [[nodiscard]] const VectorXd& GetCf() const { return state_.post.cf; }
+    [[nodiscard]] const VectorXd& GetTheta() const { return state_.post.th; }
+    [[nodiscard]] const VectorXd& GetDeltaStar() const {
+        return state_.post.ds;
+    }
+
+    /* Get panel coordinates */
+    [[nodiscard]] const MatrixXd& GetFoilCoords() const {
+        return state_.foil.x;
+    }
+    [[nodiscard]] const MatrixXd& GetWakeCoords() const {
+        return state_.wake.x;
+    }
+
+    /**
+     * @brief Deploy a flap at hinge location with given deflection angle
+     * @param xzhinge Hinge location [x, z]
+     * @param eta Flap deflection angle in degrees (positive = down)
+     */
+    void GeomFlap(const Vector2d& xzhinge, double eta);
+
+    /**
+     * @brief Add camber to airfoil from given camber line increment
+     * @param xzcamb Finite camber points [2 x Nc] or [Nc x 2], Nc >= 2,
+     * with strictly increasing x coordinates (2 x 2 uses rows for x and z).
+     * @throws std::invalid_argument for malformed camber data
+     */
+    void GeomAddCamber(const MatrixXd& xzcamb);
+
+    /**
+     * @brief Derotate airfoil to make chord line horizontal
+     */
+    void GeomDerotate();
+
+    /**
+     * @brief Compute sensitivities of cl, cd, cm w.r.t. panel node coordinates
+     *
+     * Must be called after Solve(). Uses adjoint method.
+     * @return Sensitivity struct with dcl_dx, dcd_dx, dcm_dx [2 x N] matrices
+     */
+    Sensitivity ComputeSensitivities();
+
+    /* Accessors for sensitivity results (call ComputeSensitivities first) */
+    [[nodiscard]] const MatrixXd& GetDclDx() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dx;
+    }
+    [[nodiscard]] const MatrixXd& GetDcdDx() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dx;
+    }
+    [[nodiscard]] const MatrixXd& GetDcmDx() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dx;
+    }
+
+    /* Scalar operating-condition sensitivities */
+    [[nodiscard]] double GetDclDalpha() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dalpha;
+    }
+    [[nodiscard]] double GetDcdDalpha() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dalpha;
+    }
+    [[nodiscard]] double GetDcmDalpha() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dalpha;
+    }
+
+    [[nodiscard]] double GetDclDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dMa;
+    }
+    [[nodiscard]] double GetDcdDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dMa;
+    }
+    [[nodiscard]] double GetDcmDMa() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dMa;
+    }
+
+    [[nodiscard]] double GetDclDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcl_dRe;
+    }
+    [[nodiscard]] double GetDcdDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcd_dRe;
+    }
+    [[nodiscard]] double GetDcmDRe() const {
+        CheckSensitivityAvailable();
+        return sensitivity_.dcm_dRe;
+    }
+
+    /* Access internal state (for advanced use) */
+    FoilState& GetState() {
+        sensitivity_valid_ = false;
+        return state_;
+    }
+    [[nodiscard]] const FoilState& GetState() const { return state_; }
+
+   private:
+    void CheckSensitivityAvailable() const;
+    bool sensitivity_valid_ = false;
+    FoilState state_;
+    /* Last converged viscous boundary layer: the initial guess of the next
+       viscous solve when param.warm_start is set */
+    MatrixXd warm_U_;
+    std::vector<bool> warm_turb_;
+    std::array<int, 2> warm_istag_{0, 0};
+    Sensitivity sensitivity_;
+};
+
+}  // namespace scirocco

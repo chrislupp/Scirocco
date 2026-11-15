@@ -1,0 +1,33 @@
+.next {
+    margin: 2.25rem 0 1rem;
+    border-top: 1px solid var(--sc-line);
+}
+
+.item {
+    display: grid;
+    grid-template-columns: minmax(10rem, 16rem) 1fr;
+    gap: 0.25rem 1.5rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--sc-line);
+    text-decoration: none !important;
+}
+
+.title {
+    color: var(--sc-ink);
+    font-weight: 600;
+}
+
+.item:hover .title {
+    color: var(--sc-link);
+}
+
+.body {
+    color: var(--sc-ink-3);
+    font-size: 0.925rem;
+}
+
+@media (max-width: 720px) {
+    .item {
+        grid-template-columns: 1fr;
+    }
+}

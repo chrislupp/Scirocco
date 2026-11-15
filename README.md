@@ -1,201 +1,143 @@
-# cppfoil
+# Scirocco
 
-A modern C++ library for inviscid and viscous aerodynamic analysis of airfoils.
+[![Build](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml/badge.svg)](https://github.com/chrislupp/Scirocco/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/chrislupp/Scirocco/branch/main/graph/badge.svg)](https://codecov.io/gh/chrislupp/Scirocco/branch/main)
 
-## Overview
+A C++17 library for inviscid and viscous analysis of 2D airfoils, with
+adjoint gradients for design optimization.
 
-cppfoil provides computational tools for analyzing airfoil performance across different operating conditions. It predicts aerodynamic coefficients (lift, drag, moment) and boundary layer distributions using panel methods coupled with integral boundary layer equations.
+Give Scirocco a shape and an operating point, and it returns lift, drag,
+moment, and the boundary layer. One more call returns the derivatives of
+those results with respect to the shape, angle of attack, Reynolds number,
+and Mach number.
 
-Key capabilities:
-- Inviscid (potential flow) analysis using linear vortex panel methods
-- Viscous analysis with coupled boundary layer solver
-- Laminar-to-turbulent transition prediction (e^N method)
-- Compressibility corrections for subsonic flow
-- NACA 4-digit and 5-digit airfoil generation
-- Geometry modification (flaps, camber, derotation)
+- Linear-vortex panel method coupled by Newton's method to an integral
+  boundary layer and wake
+- e^N transition prediction and Kármán–Tsien compressibility correction
+- NACA 4- and 5-digit sections, custom coordinates, flaps, and CST (Kulfan)
+  geometry
+- Discrete adjoint for Cl, Cd, and Cm, tested against complex-step
+  references
+- Philote gRPC servers, so any MDO framework with a Philote client can drive
+  the analysis
 
-## Requirements
+**Documentation: <https://chrislupp.github.io/Scirocco/>**
 
-- CMake 3.18+
-- C++17 compatible compiler
-- Eigen 3.4+ (linear algebra library)
+## Quick start
 
-Optional:
-- Google Test (for unit tests)
-- HDF5 (for reference validation tests)
+### C++
 
-## Building
+You need CMake 3.18+, a C++17 compiler, and Eigen 3.4+.
 
 ```bash
-cd cppfoil
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make
+git clone https://github.com/chrislupp/Scirocco.git
+cd Scirocco
+cmake -S scirocco -B scirocco/build -DCMAKE_BUILD_TYPE=Release
+cmake --build scirocco/build -j --target quickstart
+scirocco/build/quickstart
 ```
 
-Build options:
-```bash
-cmake -DCPPFOIL_BUILD_TESTS=ON -DCPPFOIL_BUILD_EXAMPLES=ON ..
-```
-
-## Usage
-
-### Basic Inviscid Analysis
+That builds and runs this program, a viscous solve of a NACA 2412:
 
 ```cpp
-#include <cppfoil/cppfoil.h>
+#include <scirocco/scirocco.h>
 
-cppfoil::Cppfoil foil("0012", 199);  // NACA 0012, 199 panels
-foil.SetOper(5.0, -1.0, 0.0, 0.0);  // alpha=5°, no Re (inviscid)
+scirocco::Scirocco foil("2412", 160);  // NACA 2412, 160 panels
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);   // alpha = 4 deg, Re = 1e6, Mach 0
 foil.Solve();
 
-std::cout << "Cl = " << foil.GetCl() << std::endl;
-std::cout << "Cm = " << foil.GetCm() << std::endl;
-```
-
-### Viscous Analysis
-
-```cpp
-#include <cppfoil/cppfoil.h>
-
-cppfoil::Cppfoil foil("2412", 129);  // NACA 2412, 129 panels
-double Re = 1.0e6;
-double Ma = 0.0;
-
-foil.SetOper(4.0, -1.0, Re, Ma);  // alpha=4°, Re=1e6
-bool converged = foil.Solve();
-
-std::cout << "Cl = " << foil.GetCl() << std::endl;
-std::cout << "Cd = " << foil.GetCd() << std::endl;
-std::cout << "Cdf = " << foil.GetCdf() << std::endl;  // friction drag
-std::cout << "Cdp = " << foil.GetCdp() << std::endl;  // pressure drag
-```
-
-### Custom Airfoil Coordinates
-
-```cpp
-Eigen::MatrixXd coords(n, 2);  // n points, columns are x and z
-// ... fill coordinates ...
-
-cppfoil::Cppfoil foil(coords, 199);
-```
-
-### Geometry Modification
-
-```cpp
-cppfoil::Cppfoil foil("0012", 199);
-
-// Deploy a flap
-Eigen::Vector2d hinge(0.75, 0.0);  // hinge at 75% chord
-double deflection = 10.0;          // 10 degrees
-foil.GeomFlap(hinge, deflection);
-
-// Add camber
-Eigen::MatrixXd camber_line(n, 2);
-// ... define camber ...
-foil.GeomAddCamber(camber_line);
-```
-
-### Accessing Results
-
-```cpp
-// Scalar results
-double cl = foil.GetCl();
 double cd = foil.GetCd();
-double cm = foil.GetCm();
-double alpha = foil.GetAlpha();
-
-// Distributions (along airfoil surface)
-const Eigen::VectorXd& cp = foil.GetCp();          // pressure coefficient
-const Eigen::VectorXd& cf = foil.GetCf();          // skin friction
-const Eigen::VectorXd& theta = foil.GetTheta();    // momentum thickness
-const Eigen::VectorXd& dstar = foil.GetDeltaStar(); // displacement thickness
-
-// Geometry
-const Eigen::MatrixXd& foil_coords = foil.GetFoilCoords();
-const Eigen::MatrixXd& wake_coords = foil.GetWakeCoords();
+foil.ComputeSensitivities();           // adjoint gradients
+const auto& dcd_dx = foil.GetDcdDx();  // dCd / d(node coordinates)
 ```
 
-## API Reference
+### Python and MDO frameworks, with Docker
 
-### Cppfoil Class
+From Python or an MDO framework, Scirocco runs as two Philote gRPC servers
+that any Philote client connects to; the examples use OpenMDAO. There is no
+in-process `import scirocco` module. Both servers come as Docker images, so
+there's nothing to compile:
 
-| Method | Description |
-|--------|-------------|
-| `Cppfoil(naca, npanel)` | Create airfoil from NACA designation |
-| `Cppfoil(coords, npanel)` | Create airfoil from coordinates |
-| `SetOper(alpha, cl, Re, Ma)` | Set operating conditions |
-| `Solve()` | Run analysis, returns convergence status |
-| `GetCl(), GetCd(), GetCm()` | Get force coefficients |
-| `GetCdf(), GetCdp()` | Get friction and pressure drag |
-| `GetCp(), GetCf()` | Get surface distributions |
-| `GeomFlap(hinge, angle)` | Deploy trailing edge flap |
-| `GeomAddCamber(camber)` | Add camber line modification |
-| `GeomDerotate()` | Remove angle of attack from geometry |
-
-### SetOper Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `alpha` | Angle of attack in degrees |
-| `cl` | Target lift coefficient (use -1.0 for alpha mode) |
-| `Re` | Reynolds number (0 for inviscid) |
-| `Ma` | Mach number |
-
-## Project Structure
-
-```
-cppfoil/
-├── include/cppfoil/
-│   ├── core/           # Solver modules
-│   │   ├── geometry.h      # Airfoil generation
-│   │   ├── spline.h        # Cubic spline interpolation
-│   │   ├── paneling.h      # Panel discretization
-│   │   ├── inviscid.h      # Potential flow solver
-│   │   ├── boundary_layer.h # BL equations
-│   │   ├── transition.h    # Transition prediction
-│   │   ├── coupled_solver.h # Viscous solver
-│   │   └── forces.h        # Force calculation
-│   ├── data/           # Data structures
-│   └── util/           # Utilities
-├── src/                # Implementation
-├── tests/              # Test suite
-└── examples/           # Example programs
-```
-
-## Testing
+| Image | Port | Server |
+| --- | --- | --- |
+| [`chrislupp/scirocco`](https://hub.docker.com/r/chrislupp/scirocco) | 50051 | Analysis: shape and operating point to Cl, Cd, Cm, with gradients |
+| [`chrislupp/scirocco-kulfan`](https://hub.docker.com/r/chrislupp/scirocco-kulfan) | 50052 | Geometry: CST coefficients to panel coordinates |
 
 ```bash
-cd build
-ctest
-# or
-./cppfoil_tests
+docker run -d --rm --name scirocco -p 50051:50051 chrislupp/scirocco:latest
+docker run -d --rm --name scirocco-kulfan -p 50052:50052 chrislupp/scirocco-kulfan:latest
+
+git clone https://github.com/chrislupp/Scirocco.git
+cd Scirocco
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r examples/tutorials/requirements.txt
+python examples/tutorials/quickstart.py
 ```
 
-The test suite validates against reference data from mfoil to ensure numerical accuracy.
+`latest` is the newest release. Pin a version tag, such as `0.2.0`, for
+results that don't change under you; `next` tracks the `develop` branch. See
+[Docker](https://chrislupp.github.io/Scirocco/docs/python/docker) for the
+tags, and stop the servers with `docker stop scirocco scirocco-kulfan`.
 
-## Solver Details
+## Documentation
 
-### Inviscid Solver
-- Linear vortex panel method with Kutta condition
-- Aerodynamic influence coefficient (AIC) matrix formulation
-- Stagnation point tracking
+Everything else is on the
+[documentation site](https://chrislupp.github.io/Scirocco/). To build the
+tests or contribute a change, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Changes between releases are in [CHANGELOG.md](CHANGELOG.md).
 
-### Viscous Solver
-- Integral boundary layer equations
-- Thwaites initialization for laminar flow
-- e^N transition prediction (default n_crit = 9)
-- Coupled Newton iteration with the inviscid solution
-- Wake modeling with displacement thickness effects
+## Citation
 
-### Compressibility
-- Karman-Tsien correction for subsonic flow
-- Sutherland viscosity model
+Scirocco implements the methods of the papers below. If you use it in
+published work, please cite them:
+
+- K. J. Fidkowski, "A Coupled Inviscid–Viscous Airfoil Analysis Solver,
+  Revisited," *AIAA Journal*, Vol. 60, No. 5, 2022, pp. 2961–2971.
+  [doi:10.2514/1.J061341](https://doi.org/10.2514/1.J061341). This is the
+  mfoil solver that Scirocco ports: the coupled Newton method, the
+  stagnation-point treatment, and the closure relations.
+- M. Drela, "XFOIL: An Analysis and Design System for Low Reynolds Number
+  Airfoils," in T. J. Mueller (ed.), *Low Reynolds Number Aerodynamics*,
+  Lecture Notes in Engineering, Vol. 54, Springer, 1989, pp. 1–12.
+  [doi:10.1007/978-3-642-84010-4_1](https://doi.org/10.1007/978-3-642-84010-4_1).
+  This is the source of the integral boundary-layer formulation, the e^N
+  transition model, and the boundary-layer march between Newton steps.
+
+```bibtex
+@article{Fidkowski2022mfoil,
+  author  = {Fidkowski, Krzysztof J.},
+  title   = {A Coupled Inviscid--Viscous Airfoil Analysis Solver, Revisited},
+  journal = {AIAA Journal},
+  volume  = {60},
+  number  = {5},
+  pages   = {2961--2971},
+  year    = {2022},
+  doi     = {10.2514/1.J061341}
+}
+
+@incollection{Drela1989xfoil,
+  author    = {Drela, Mark},
+  title     = {{XFOIL}: An Analysis and Design System for Low {R}eynolds
+               Number Airfoils},
+  booktitle = {Low {R}eynolds Number Aerodynamics},
+  editor    = {Mueller, Thomas J.},
+  series    = {Lecture Notes in Engineering},
+  volume    = {54},
+  pages     = {1--12},
+  publisher = {Springer},
+  address   = {Berlin, Heidelberg},
+  year      = {1989},
+  doi       = {10.1007/978-3-642-84010-4_1}
+}
+```
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-cppfoil is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html) by Krzysztof J. Fidkowski. The original mfoil is a Python implementation of subsonic airfoil analysis and is licensed under the MIT License. See [NOTICE](NOTICE) for details.
+Scirocco is a C++ port of [mfoil](https://websites.umich.edu/~kfid/codes.html)
+by Krzysztof J. Fidkowski, a Python code for subsonic airfoil analysis
+released under the MIT License. See [NOTICE](NOTICE).

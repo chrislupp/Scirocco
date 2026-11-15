@@ -1,0 +1,113 @@
+.figure {
+    margin: 0;
+    /* The logo gradient; light mode ends darker so it holds up on white. */
+    --stop-0: #2f529c;
+    --stop-1: #4a74c4;
+    --stop-2: #6189cf;
+}
+
+:global([data-theme="dark"]) .figure {
+    --stop-1: #6189cf;
+    --stop-2: #b3e0f8;
+}
+
+.stop0 {
+    stop-color: var(--stop-0);
+}
+
+.stop1 {
+    stop-color: var(--stop-1);
+}
+
+.stop2 {
+    stop-color: var(--stop-2);
+}
+
+.svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.axis {
+    stroke: var(--sc-ink-3);
+    stroke-width: 1.25;
+    stroke-linecap: square;
+}
+
+.tick {
+    fill: var(--sc-ink-2);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cp {
+    fill: none;
+    stroke: url(#hero-cp);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    transform-box: view-box;
+    /* Final shape by default; the morph only plays where animation runs. */
+    animation: morph 1.4s cubic-bezier(0.45, 0, 0.15, 1) 0.2s backwards;
+}
+
+.foil {
+    fill: var(--sc-ink);
+    stroke: none;
+}
+
+.envelope {
+    fill: none;
+    stroke: var(--sc-sky);
+    stroke-width: 1;
+    opacity: 0.7;
+}
+
+.wake {
+    fill: none;
+    stroke: var(--sc-sky);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+    opacity: 0.7;
+}
+
+@keyframes morph {
+    from {
+        /* Not exactly 0: a singular transform can stop the path rendering. */
+        transform: scaleY(0.002);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cp {
+        animation: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .case {
+        flex-basis: 100%;
+    }
+}
+
+.readout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--sc-ink-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.readout b {
+    color: var(--sc-ink);
+    font-weight: 600;
+}
+
+.case {
+    color: var(--sc-ink-2);
+    margin-right: auto;
+}

@@ -5,22 +5,35 @@ on:
     types: [closed]
     branches: [main]
 
+# Serialize version calculation, commit, and tag publication.
+concurrency:
+  group: scirocco-release
+  cancel-in-progress: false
+
 jobs:
   release:
     if: >
       github.event.pull_request.merged == true &&
       (contains(github.event.pull_request.labels.*.name, 'release') ||
        contains(github.event.pull_request.labels.*.name, 'prerelease'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     # ── Checkout ──────────────────────────────────────────────────────
-    - name: Checkout main
+    - name: Checkout merged candidate
       uses: actions/checkout@v4
       with:
-        ref: main
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
         fetch-depth: 0
         token: ${{ secrets.RELEASE_TOKEN }}
+
+    - name: Require candidate to be current main
+      env:
+        CANDIDATE: ${{ github.event.pull_request.merge_commit_sha }}
+      run: |
+        git fetch origin main
+        test "$(git rev-parse origin/main)" = "$CANDIDATE"
+        git checkout -B main "$CANDIDATE"
 
     # ── GPG setup for signed commits ─────────────────────────────────
     - name: Generate ephemeral GPG key
@@ -45,123 +58,20 @@ jobs:
         git config commit.gpgsign true
         git config tag.gpgsign true
 
-    # ── Extract and validate PR labels ───────────────────────────────
-    - name: Extract labels
-      id: labels
-      env:
-        LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
-      run: |
-        echo "Labels on PR: $LABELS"
-
-        # Release type
-        IS_RELEASE=false
-        IS_PRERELEASE=false
-        for l in $LABELS; do
-          case "$l" in
-            release)    IS_RELEASE=true ;;
-            prerelease) IS_PRERELEASE=true ;;
-          esac
-        done
-
-        if $IS_RELEASE && $IS_PRERELEASE; then
-          echo "::error::PR must have exactly one of 'release' or 'prerelease', not both."
-          exit 1
-        fi
-
-        # Version bump
-        BUMP=""
-        BUMP_COUNT=0
-        for l in $LABELS; do
-          case "$l" in
-            major|minor|patch)
-              BUMP="$l"
-              BUMP_COUNT=$((BUMP_COUNT + 1))
-              ;;
-          esac
-        done
-
-        if [ "$BUMP_COUNT" -ne 1 ]; then
-          echo "::error::PR must have exactly one of 'major', 'minor', or 'patch' labels."
-          exit 1
-        fi
-
-        # Pre-release qualifier
-        QUALIFIER=""
-        QUAL_COUNT=0
-        for l in $LABELS; do
-          case "$l" in
-            alpha|beta|rc)
-              QUALIFIER="$l"
-              QUAL_COUNT=$((QUAL_COUNT + 1))
-              ;;
-          esac
-        done
-
-        if $IS_PRERELEASE && [ "$QUAL_COUNT" -ne 1 ]; then
-          echo "::error::Pre-release PRs must have exactly one of 'alpha', 'beta', or 'rc' labels."
-          exit 1
-        fi
-
-        if $IS_RELEASE && [ "$QUAL_COUNT" -ne 0 ]; then
-          echo "::error::Stable release PRs must not have 'alpha', 'beta', or 'rc' labels."
-          exit 1
-        fi
-
-        echo "is_release=$IS_RELEASE"       >> "$GITHUB_OUTPUT"
-        echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
-        echo "bump=$BUMP"                   >> "$GITHUB_OUTPUT"
-        echo "qualifier=$QUALIFIER"         >> "$GITHUB_OUTPUT"
-
-    # ── Calculate new version ────────────────────────────────────────
-    - name: Calculate version
+    - name: Calculate and validate release version
       id: version
-      run: |
-        # Read current version from CMakeLists.txt
-        CURRENT=$(grep -oP 'VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' cppfoil/CMakeLists.txt | head -1)
-        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-        echo "Current version: ${MAJOR}.${MINOR}.${PATCH}"
-
-        BUMP="${{ steps.labels.outputs.bump }}"
-        case "$BUMP" in
-          major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-          minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-          patch) PATCH=$((PATCH + 1)) ;;
-        esac
-
-        NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-
-        if [ "${{ steps.labels.outputs.is_prerelease }}" = "true" ]; then
-          QUALIFIER="${{ steps.labels.outputs.qualifier }}"
-
-          # Find the latest pre-release tag for this version+qualifier
-          PRERELEASE_NUM=1
-          PATTERN="v${NEW_VERSION}-${QUALIFIER}."
-          LATEST_TAG=$(git tag -l "${PATTERN}*" | sort -V | tail -n1 || true)
-          if [ -n "$LATEST_TAG" ]; then
-            PREV_NUM=$(echo "$LATEST_TAG" | grep -oP "${QUALIFIER}\.\K[0-9]+")
-            PRERELEASE_NUM=$((PREV_NUM + 1))
-          fi
-
-          TAG_VERSION="v${NEW_VERSION}-${QUALIFIER}.${PRERELEASE_NUM}"
-          IS_PRERELEASE=true
-        else
-          TAG_VERSION="v${NEW_VERSION}"
-          IS_PRERELEASE=false
-        fi
-
-        echo "new_version=${NEW_VERSION}"     >> "$GITHUB_OUTPUT"
-        echo "tag_version=${TAG_VERSION}"     >> "$GITHUB_OUTPUT"
-        echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
-        echo "New version: ${NEW_VERSION}, Tag: ${TAG_VERSION}"
+      env:
+        RELEASE_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+      run: python3 scripts/release_version.py
 
     # ── Update CMakeLists.txt version ────────────────────────────────
     - name: Update CMakeLists.txt version
       run: |
         NEW_VERSION="${{ steps.version.outputs.new_version }}"
-        sed -i 's/\(VERSION\s\+\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1'"$NEW_VERSION"'/' cppfoil/CMakeLists.txt
+        sed -i 's/\(VERSION\s\+\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1'"$NEW_VERSION"'/' scirocco/CMakeLists.txt
 
         echo "CMakeLists.txt updated:"
-        grep "project(cppfoil" cppfoil/CMakeLists.txt
+        grep "project(scirocco" scirocco/CMakeLists.txt
 
     # ── Update CHANGELOG.md ──────────────────────────────────────────
     - name: Update CHANGELOG.md
@@ -187,14 +97,70 @@ jobs:
         echo "[Unreleased]: ${REPO}/compare/${TAG}...HEAD" >> CHANGELOG.md
         echo "[${HEADER}]: ${REPO}/releases/tag/${TAG}" >> CHANGELOG.md
 
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: docs/package-lock.json
+
+    - name: Install docs snapshot dependencies
+      if: steps.version.outputs.is_prerelease == 'false'
+      run: npm --prefix docs ci
+
+    - name: Prepare docs release snapshot
+      env:
+        RELEASE_VERSION: ${{ steps.version.outputs.new_version }}
+        IS_PRERELEASE: ${{ steps.version.outputs.is_prerelease }}
+      run: python3 scripts/release_docs.py "$RELEASE_VERSION" "$IS_PRERELEASE"
+
+    # Include the snapshot in the exact revision validated before publication.
     # ── Commit and tag ───────────────────────────────────────────────
     - name: Commit release changes
       run: |
         TAG="${{ steps.version.outputs.tag_version }}"
         VERSION="${TAG#v}"
 
-        git add -A
+        git add scirocco/CMakeLists.txt CHANGELOG.md
+        git add docs/docusaurus.config.ts docs/versions.json
+        if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
+          git add docs/versioned_docs docs/versioned_sidebars
+        fi
         git commit -S -m "chore: release version ${VERSION}"
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install validation dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
+          libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+        python3 -m pip install numpy scipy matplotlib philote-mdo==0.8.0
+
+    - name: Build pinned Philote-Cpp
+      env:
+        PHILOTE_CPP_REF: 49e1b42c3e46a4b9b70619c29e705985a6e6555d
+      run: |
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+        git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+        git -C /tmp/philote-cpp submodule update --init --recursive
+        cmake -S /tmp/philote-cpp -B /tmp/philote-cpp/build \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+        cmake --build /tmp/philote-cpp/build -j2
+
+    - name: Validate prepared commit and both release images
+      env:
+        PHILOTE_CPP_DIR: /tmp/philote-cpp/build
+      run: bash scripts/validate_release.sh
+
+    - name: Refuse publication if main advanced or tracked files changed
+      env:
+        CANDIDATE: ${{ github.event.pull_request.merge_commit_sha }}
+      run: |
+        git diff --exit-code HEAD
+        git fetch origin main
+        test "$(git rev-parse origin/main)" = "$CANDIDATE"
 
     - name: Create annotated tag
       run: |
@@ -203,8 +169,33 @@ jobs:
 
     - name: Push commit and tag
       run: |
-        git push origin main
-        git push origin "${{ steps.version.outputs.tag_version }}"
+        git push --atomic \
+          --force-with-lease=refs/heads/main:${{ github.event.pull_request.merge_commit_sha }} \
+          origin HEAD:refs/heads/main "${{ steps.version.outputs.tag_version }}"
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Publish the tested images without rebuilding
+      env:
+        VERSION: ${{ steps.version.outputs.tag_version }}
+      run: |
+        version="${VERSION#v}"
+        tags=("$version")
+        if [[ "$version" != *-* ]]; then
+          tags+=("${version%.*}" "${version%%.*}" latest)
+        fi
+        for kind in analysis geometry; do
+          image=chrislupp/scirocco
+          if [[ "$kind" == geometry ]]; then image=chrislupp/scirocco-kulfan; fi
+          for tag in "${tags[@]}"; do
+            docker tag "scirocco-release:$kind" "$image:$tag"
+            docker push "$image:$tag"
+          done
+        done
 
     # ── Extract release notes ────────────────────────────────────────
     - name: Extract release notes

@@ -1,5 +1,6 @@
 # Build directories
 build/
+build-*/
 cmake-build-*/
 out/
 
@@ -26,6 +27,7 @@ compile_commands.json
 
 # Testing
 Testing/
+Testing/Temporary/
 CTestTestfile.cmake
 
 # Package files
@@ -34,3 +36,37 @@ CTestTestfile.cmake
 
 # Analysis output
 pa_output/
+
+# Plans and theory (top-level only)
+/plans/
+/theory/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local debug scratch (numpy dumps, binary state captures, validation scripts)
+*.npy
+*.npz
+*.bin
+scirocco/tests/validate_*.py
+scirocco/tests/extract_vjp_chain_reference.py
+scirocco/tests/extract_wake_geom_reference.py
+scirocco/tests/isolate_ue_partials.py
+
+# OpenMDAO per-problem report directories (auto-generated next to scripts and
+# in the repo root when examples or ad-hoc scripts run)
+*_out/
+
+# Optimization result artifacts from examples — regenerated on every run.
+# Scoped to examples/ so test reference data under scirocco/tests/ is unaffected.
+examples/**/*_history*.h5
+examples/**/optimization_history*.h5
+examples/**/*_result*.png
+
+# modopt per-run output directories
+*_outputs/
+
+# Local agent instructions and Claude Code configuration (machine-specific)
+AGENTS.local.md
+CLAUDE.local.md

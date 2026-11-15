@@ -1,0 +1,108 @@
+{
+  "disciplines": [
+    {
+      "id": "opt",
+      "name": "SLSQP",
+      "type": "driver",
+      "inputs": [
+        "cm_sq",
+        "cl",
+        "area"
+      ],
+      "outputs": [
+        "cst_upper",
+        "cst_lower",
+        "alpha"
+      ]
+    },
+    {
+      "id": "geometry",
+      "name": "CST geometry",
+      "type": "explicit",
+      "inputs": [
+        "cst_upper",
+        "cst_lower"
+      ],
+      "outputs": [
+        "x",
+        "smoothness_upper",
+        "smoothness_lower"
+      ]
+    },
+    {
+      "id": "area_comp",
+      "name": "AirfoilArea",
+      "type": "explicit",
+      "inputs": [
+        "x"
+      ],
+      "outputs": [
+        "area"
+      ]
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis",
+      "type": "explicit",
+      "inputs": [
+        "x",
+        "alpha",
+        "Re",
+        "Ma"
+      ],
+      "outputs": [
+        "cl",
+        "cd",
+        "cm"
+      ]
+    },
+    {
+      "id": "cm_sq",
+      "name": "cm_sq = cm²",
+      "type": "explicit",
+      "inputs": [
+        "cm"
+      ],
+      "outputs": [
+        "cm_sq"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "opt.cst_upper",
+      "sink": "geometry.cst_upper"
+    },
+    {
+      "source": "opt.cst_lower",
+      "sink": "geometry.cst_lower"
+    },
+    {
+      "source": "opt.alpha",
+      "sink": "analysis.alpha"
+    },
+    {
+      "source": "geometry.x",
+      "sink": [
+        "area_comp.x",
+        "analysis.x"
+      ]
+    },
+    {
+      "source": "area_comp.area",
+      "sink": "opt.area"
+    },
+    {
+      "source": "analysis.cl",
+      "sink": "opt.cl"
+    },
+    {
+      "source": "analysis.cm",
+      "sink": "cm_sq.cm"
+    },
+    {
+      "source": "cm_sq.cm_sq",
+      "sink": "opt.cm_sq"
+    }
+  ]
+}

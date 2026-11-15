@@ -1,0 +1,44 @@
+name: Sanitizers
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+permissions:
+  contents: read
+jobs:
+  sanitizers:
+    name: ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CC: clang-18
+      CXX: clang++-18
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      PHILOTE_CPP_REF: 49e1b42c3e46a4b9b70619c29e705985a6e6555d
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 libeigen3-dev libgtest-dev libhdf5-dev \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+      - name: Build pinned Philote-Cpp
+        run: |
+          git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git /tmp/philote-cpp
+          git -C /tmp/philote-cpp checkout "$PHILOTE_CPP_REF"
+          git -C /tmp/philote-cpp submodule update --init --recursive
+          cmake -S /tmp/philote-cpp -B /tmp/philote-cpp/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build /tmp/philote-cpp/build -j2
+      - name: Configure instrumented library and consumers
+        run: |
+          cmake -S scirocco -B build-sanitizers -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS_DEBUG="-O1 -g" -DSCIROCCO_SANITIZERS=ON \
+            -DSCIROCCO_NATIVE_ARCH=OFF -DSCIROCCO_BUILD_PHILOTE=ON \
+            -DSCIROCCO_HDF5_OUTPUT=ON -DPhiloteCpp_DIR=/tmp/philote-cpp/build
+      - name: Build
+        run: cmake --build build-sanitizers -j2
+      - name: Test including installed consumer and RPC recovery
+        run: ctest --test-dir build-sanitizers --output-on-failure --no-tests=error -j2

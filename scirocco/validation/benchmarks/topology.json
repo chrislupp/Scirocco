@@ -1,0 +1,77 @@
+{
+  "driver_sha256": "a4c8c698a6beba810b49eed9ee887878b6209ac5735796d3e9fd4ab2e09d323f",
+  "strategy": 3,
+  "ptc": 1,
+  "cases": 62,
+  "converged": 40,
+  "seconds": 41.496556713071186,
+  "iterations": 2655,
+  "failures": [
+    "0012_a10",
+    "0012_a6_m0.3",
+    "paper_n99",
+    "paper_alpha_1.98",
+    "2412_a10",
+    "extended_0012_a12_r200000_m0",
+    "extended_0012_a15_r200000_m0",
+    "extended_0012_a12_r200000_m0.4",
+    "extended_0012_a15_r200000_m0.4",
+    "extended_0012_a12_r1e+06_m0",
+    "extended_0012_a-4_r1e+06_m0.4",
+    "extended_0012_a12_r1e+06_m0.4",
+    "extended_0012_a15_r1e+06_m0.4",
+    "extended_2412_a8_r200000_m0",
+    "extended_2412_a8_r200000_m0.4",
+    "extended_2412_a12_r200000_m0.4",
+    "extended_2412_a15_r200000_m0.4",
+    "extended_2412_a-4_r1e+06_m0",
+    "extended_2412_a8_r1e+06_m0",
+    "extended_2412_a8_r1e+06_m0.4",
+    "extended_2412_a12_r1e+06_m0.4",
+    "extended_2412_a15_r1e+06_m0.4"
+  ],
+  "original": {
+    "cases": 30,
+    "converged": 25
+  },
+  "extended": {
+    "cases": 32,
+    "converged": 15
+  },
+  "recovered": [
+    "2412_a0_m0",
+    "2412_a3_m0",
+    "paper_n299",
+    "paper_n199",
+    "2412_low_re",
+    "paper_alpha_1.9975",
+    "paper_alpha_1.995",
+    "paper_alpha_2.005",
+    "paper_alpha_2.0025",
+    "paper_alpha_2.02",
+    "extended_0012_a8_r200000_m0",
+    "extended_0012_a-4_r200000_m0.4",
+    "extended_0012_a8_r200000_m0.4",
+    "extended_0012_a15_r1e+06_m0",
+    "extended_0012_a8_r1e+06_m0.4",
+    "extended_2412_a-4_r200000_m0",
+    "extended_2412_a12_r200000_m0",
+    "extended_2412_a15_r200000_m0",
+    "extended_2412_a12_r1e+06_m0",
+    "extended_2412_a15_r1e+06_m0"
+  ],
+  "regressed": [
+    "0012_a6_m0.3",
+    "paper_n99",
+    "2412_a10",
+    "extended_0012_a-4_r1e+06_m0.4",
+    "extended_2412_a8_r200000_m0"
+  ],
+  "max_coefficient_differences": {
+    "cl": 5.081490783709341e-13,
+    "cd": 2.6995766733151072e-14,
+    "cm": 8.375244942016025e-14
+  },
+  "decision": "Use complete transactional state evaluation whenever trust regions are enabled. Keep trust regions opt-in: still fewer converged cases than scaled Newton/PTC.",
+  "tests": "Four strategy tests plus 154 existing tests passed."
+}
