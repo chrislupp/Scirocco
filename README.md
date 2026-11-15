@@ -53,20 +53,57 @@ From Python or an MDO framework, Scirocco runs as a Philote server that any
 Philote client connects to; the examples use OpenMDAO. There is no in-process
 `import scirocco` module.
 
-## Where to go next
+## Documentation
 
-| If you want to | Read |
-| --- | --- |
-| Install, including the optional HDF5 and Philote dependencies | [Installation](https://chrislupp.github.io/Scirocco/docs/getting-started/installation) |
-| Run analyses, change geometry, or compute gradients in C++ | [Guides](https://chrislupp.github.io/Scirocco/docs/guides/analysis) |
-| Use Scirocco from Python or an MDO framework | [Python and MDO frameworks](https://chrislupp.github.io/Scirocco/docs/python) |
-| Optimize an airfoil | [Optimization examples](https://chrislupp.github.io/Scirocco/docs/optimization/cst-design) and [`examples/`](examples/) |
-| Look up a class, option, or CMake flag | [API reference](https://chrislupp.github.io/Scirocco/docs/api) |
-| Understand the method, transition models, and their validation | [Concepts](https://chrislupp.github.io/Scirocco/docs/concepts/panel-method) |
-| Fix a convergence or gradient failure | [Troubleshooting](https://chrislupp.github.io/Scirocco/docs/getting-started/troubleshooting) |
-| Build the tests or contribute a change | [CONTRIBUTING.md](CONTRIBUTING.md) |
-
+Everything else is on the
+[documentation site](https://chrislupp.github.io/Scirocco/). To build the
+tests or contribute a change, see [CONTRIBUTING.md](CONTRIBUTING.md).
 Changes between releases are in [CHANGELOG.md](CHANGELOG.md).
+
+## Citation
+
+Scirocco implements the methods of the papers below. If you use it in
+published work, please cite them:
+
+- K. J. Fidkowski, "A Coupled Inviscid–Viscous Airfoil Analysis Solver,
+  Revisited," *AIAA Journal*, Vol. 60, No. 5, 2022, pp. 2961–2971.
+  [doi:10.2514/1.J061341](https://doi.org/10.2514/1.J061341). This is the
+  mfoil solver that Scirocco ports: the coupled Newton method, the
+  stagnation-point treatment, and the closure relations.
+- M. Drela, "XFOIL: An Analysis and Design System for Low Reynolds Number
+  Airfoils," in T. J. Mueller (ed.), *Low Reynolds Number Aerodynamics*,
+  Lecture Notes in Engineering, Vol. 54, Springer, 1989, pp. 1–12.
+  [doi:10.1007/978-3-642-84010-4_1](https://doi.org/10.1007/978-3-642-84010-4_1).
+  This is the source of the integral boundary-layer formulation, the e^N
+  transition model, and the boundary-layer march between Newton steps.
+
+```bibtex
+@article{Fidkowski2022mfoil,
+  author  = {Fidkowski, Krzysztof J.},
+  title   = {A Coupled Inviscid--Viscous Airfoil Analysis Solver, Revisited},
+  journal = {AIAA Journal},
+  volume  = {60},
+  number  = {5},
+  pages   = {2961--2971},
+  year    = {2022},
+  doi     = {10.2514/1.J061341}
+}
+
+@incollection{Drela1989xfoil,
+  author    = {Drela, Mark},
+  title     = {{XFOIL}: An Analysis and Design System for Low {R}eynolds
+               Number Airfoils},
+  booktitle = {Low {R}eynolds Number Aerodynamics},
+  editor    = {Mueller, Thomas J.},
+  series    = {Lecture Notes in Engineering},
+  volume    = {54},
+  pages     = {1--12},
+  publisher = {Springer},
+  address   = {Berlin, Heidelberg},
+  year      = {1989},
+  doi       = {10.1007/978-3-642-84010-4_1}
+}
+```
 
 ## License
 
