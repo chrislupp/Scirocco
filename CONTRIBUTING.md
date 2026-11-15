@@ -303,9 +303,11 @@ recovery and valid-request smoke tests. Any failure stops publication.
 Only after validation does the workflow push the release commit/tag and publish
 the already-tested local images, followed by the GitHub release. The atomic Git
 push uses an explicit lease on the original `main` revision to reject concurrent
-changes. Branch/PR Docker workflows validate images but never publish them;
-manual tag pushes do not publish images. Stable releases receive version, minor,
-major, and `latest` image tags; prereleases receive only their full version tag.
+changes. Stable releases receive version, minor, major, and `latest` image
+tags; prereleases receive only their full version tag. Manual tag pushes do not
+publish images. The Docker workflow validates images on PRs and branch pushes,
+and on pushes to `develop` it also publishes each image that passed its smoke
+test as `next`. No other branch publishes images.
 
 For a local validation run without publication, install the dependencies listed
 in `scripts/validate_release.sh`, including a running Docker daemon, then run:

@@ -36,7 +36,7 @@ suite.
 
 <Next items={[
   { to: "/docs/getting-started/quickstart", title: "C++ quickstart", body: "Build the library and solve your first airfoil in a few minutes." },
-  { to: "/docs/python", title: "Python and MDO frameworks", body: "Drive Scirocco from an MDO framework through its Philote servers." },
+  { to: "/docs/python", title: "Python and MDO frameworks", body: "Run the servers from Docker images, with nothing to build, and drive them from an MDO framework." },
   { to: "/docs/concepts/panel-method", title: "How it works", body: "The panel method, boundary layer, transition, and adjoint." },
 ]} />
 

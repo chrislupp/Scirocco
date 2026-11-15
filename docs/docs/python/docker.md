@@ -16,14 +16,34 @@ side.
 | [`chrislupp/scirocco`](https://hub.docker.com/r/chrislupp/scirocco) | 50051 | Analysis |
 | [`chrislupp/scirocco-kulfan`](https://hub.docker.com/r/chrislupp/scirocco-kulfan) | 50052 | CST geometry |
 
-Images are published for tagged releases. Use a version tag, not `latest`:
+| Tag | Tracks | Updated |
+| --- | --- | --- |
+| `<version>`, for example `0.2.0` | That release | Never |
+| `<major>.<minor>`, `<major>`, `latest` | The newest stable release in that series | On each stable release |
+| `next` | The `develop` branch | On each push to `develop` that passes the image smoke test |
+
+Use a version tag, not `latest`, so your results don't change under you.
+The commands on this site use the tag that matches the docs you're reading:
+`next` in the unreleased docs, and the release number in a release's docs.
+
+<DockerRun />
+
+Stop the servers with `docker stop scirocco scirocco-kulfan`.
+
+The images are built for `linux/amd64`. On Apple silicon, Docker Desktop
+runs them under emulation: they work, but solve more slowly than a native
+build, and Docker prints a platform warning when it starts them.
+
+Use `next` to try changes before they are released. It moves with
+`develop` and can change between pulls, so pull it again before each run:
 
 ```bash
-docker run --rm -p 50051:50051 chrislupp/scirocco:<version>
-docker run --rm -p 50052:50052 chrislupp/scirocco-kulfan:<version>
+docker pull chrislupp/scirocco:next
+docker run --rm -p 50051:50051 chrislupp/scirocco:next
 ```
 
-Until the first image is published, build them yourself.
+The two images are published separately, so their `next` tags can briefly
+come from different commits.
 
 ## Build the images
 

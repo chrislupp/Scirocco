@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Docker images: each push to `develop` publishes `chrislupp/scirocco:next`
+  and `chrislupp/scirocco-kulfan:next` to Docker Hub, once the image passes
+  the smoke test. Release images keep their version and `latest` tags.
 - `SCIROCCO_USE_BLAS` CMake option (default on): the dense product and LU of
   the coupled solve's Schur complement go through BLAS/LAPACK (Accelerate,
   OpenBLAS, MKL) when CMake finds one, Eigen otherwise. Viscous solves are

@@ -30,22 +30,16 @@ any component that produces `x`.
 
 ## Set up
 
-1. **Build the servers.** Follow
+1. **Start both servers.** The quickest way is the published
+   [Docker images](./docker), which need no compiler or C++ dependencies:
+
+   <DockerRun />
+
+   Stop them later with `docker stop scirocco scirocco-kulfan`.
+
+   To build the servers yourself instead, follow
    [Installation › Philote servers](../getting-started/installation#philote-servers-for-python),
-   or run them in [Docker](./docker).
-
-2. **Install the Python packages** in a virtual environment:
-
-   ```bash
-   python3.12 -m venv .venv
-   source .venv/bin/activate
-   python -m pip install -r examples/tutorials/requirements.txt
-   ```
-
-   This pins `philote-mdo==0.8.0`, which must match the server's Philote
-   version.
-
-3. **Start both servers**, each in its own terminal:
+   then start each in its own terminal:
 
    ```bash
    scirocco/build-philote/src/philote/scirocco_kulfan_server localhost:50052
@@ -54,6 +48,20 @@ any component that produces `x`.
    ```bash
    scirocco/build-philote/src/philote/scirocco_server localhost:50051
    ```
+
+2. **Get the examples and install the Python packages** in a virtual
+   environment:
+
+   ```bash
+   git clone https://github.com/chrislupp/Scirocco.git
+   cd Scirocco
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -r examples/tutorials/requirements.txt
+   ```
+
+   This pins `philote-mdo==0.8.0`, which must match the server's Philote
+   version.
 
 ## Run one analysis
 

@@ -25,6 +25,8 @@ and Mach number.
 
 ## Quick start
 
+### C++
+
 You need CMake 3.18+, a C++17 compiler, and Eigen 3.4+.
 
 ```bash
@@ -49,9 +51,34 @@ foil.ComputeSensitivities();           // adjoint gradients
 const auto& dcd_dx = foil.GetDcdDx();  // dCd / d(node coordinates)
 ```
 
-From Python or an MDO framework, Scirocco runs as a Philote server that any
-Philote client connects to; the examples use OpenMDAO. There is no in-process
-`import scirocco` module.
+### Python and MDO frameworks, with Docker
+
+From Python or an MDO framework, Scirocco runs as two Philote gRPC servers
+that any Philote client connects to; the examples use OpenMDAO. There is no
+in-process `import scirocco` module. Both servers come as Docker images, so
+there's nothing to compile:
+
+| Image | Port | Server |
+| --- | --- | --- |
+| [`chrislupp/scirocco`](https://hub.docker.com/r/chrislupp/scirocco) | 50051 | Analysis: shape and operating point to Cl, Cd, Cm, with gradients |
+| [`chrislupp/scirocco-kulfan`](https://hub.docker.com/r/chrislupp/scirocco-kulfan) | 50052 | Geometry: CST coefficients to panel coordinates |
+
+```bash
+docker run -d --rm --name scirocco -p 50051:50051 chrislupp/scirocco:latest
+docker run -d --rm --name scirocco-kulfan -p 50052:50052 chrislupp/scirocco-kulfan:latest
+
+git clone https://github.com/chrislupp/Scirocco.git
+cd Scirocco
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r examples/tutorials/requirements.txt
+python examples/tutorials/quickstart.py
+```
+
+`latest` is the newest release. Pin a version tag, such as `0.2.0`, for
+results that don't change under you; `next` tracks the `develop` branch. See
+[Docker](https://chrislupp.github.io/Scirocco/docs/python/docker) for the
+tags, and stop the servers with `docker stop scirocco scirocco-kulfan`.
 
 ## Documentation
 
