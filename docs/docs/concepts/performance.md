@@ -42,16 +42,20 @@ scirocco/build/bench
 ## Compared with finite differences
 
 A finite-difference gradient needs one extra viscous solve per input, of
-which there are $2N + 3$. At 99 panels that's 203 solves, about 24 s; the
-adjoint takes 11 ms. At 149 panels it's about 29 s against 21 ms. And the
-adjoint result is exact, with no step size to choose.
+which there are $2N + 3$. At 99 panels that's 203 solves, about 2.5 s even
+with warm starts; the adjoint takes 9 ms. At 149 panels it's about 7 s
+against 18 ms. And the adjoint result is exact, with no step size to choose.
 
 ## Compared with XFOIL
 
-XFOIL, built from the CMPLXFOIL sources with `gfortran -O2`, on the same
-machine and coordinates (NACA 0012, Re = 10⁶, 161 input points repaneled by
-each code). Cold starts are fresh solves; warm starts follow a solve
-0.5° away. Times in milliseconds, Newton steps in parentheses.
+These are viscous analyses alone, without gradients. XFOIL here is the
+Fortran from the CMPLXFOIL sources, built with `gfortran -O2
+-fdefault-real-8` and called through a small Fortran driver, so there is no
+Python overhead. Both codes ran on the same machine with the same
+coordinates: NACA 0012 at Re = 10⁶, 321 input points, repaneled by each code
+to the panel count shown. Cold starts are fresh solves. Warm starts follow
+a solve 0.5° away. Times are in milliseconds, with Newton steps in
+parentheses.
 
 | Panels | α | XFOIL cold | Scirocco cold | XFOIL warm | Scirocco warm |
 | --- | --- | --- | --- | --- | --- |
@@ -63,9 +67,82 @@ each code). Cold starts are fresh solves; warm starts follow a solve
 | 284 | 5° | 86 (10) | 53 (10) | 49 | 26 |
 
 Both codes take about the same number of Newton steps. Scirocco is faster
-on most of these cases, increasingly so at higher panel counts, where its
-O(N²) step and BLAS-backed dense algebra pay off. Warm starts reuse the
-geometry-only work and predict the new edge velocity, and mostly take 5-6
-steps.
-XFOIL's tolerance
-(`EPS1 = 1e-10` on the RMS relative change) is about as tight as Scirocco's.
+on most of these cases, and the margin grows with the panel count: its
+Newton step costs O(N²) plus one dense N × N factorization done with BLAS.
+Warm starts reuse the geometry-only work and predict the new edge velocity,
+so most take 5-6 steps. XFOIL's convergence tolerance (`EPS1 = 1e-10` on the
+RMS relative change) is about as tight as Scirocco's.
+
+## Compared with CMPLXFOIL in optimization
+
+In a gradient-based optimization every evaluation is a solve plus a
+gradient. [CMPLXFOIL](https://github.com/mdolab/CMPLXFOIL) computes its
+gradient by forward complex step, which costs one complex-valued XFOIL solve
+per design variable. Scirocco's adjoint costs one solve however many design
+variables there are: it gives $C_l$, $C_d$, and $C_m$ with respect to every
+node coordinate, $\alpha$, $Re$, and $M_\infty$, and any shape
+parameterization is a chain-rule product on top.
+
+**Setup.** CMPLXFOIL 2.1.1 through its Python API, with a fresh geometry per
+evaluation (`setCoordinates`, then a solve, then one
+`setCoordinatesComplex` and complex solve per design variable, as
+`evalFunctionsSens` does). The case is NACA 0012 at α = 4° and Re = 10⁶,
+from 160 input points that CMPLXFOIL repanels to 284 nodes. Scirocco follows
+its [Philote discipline](../python/servers): it writes the node
+coordinates, clears the solution, solves, and calls
+`ComputeSensitivities()`. Times are medians over 8 nearby geometries.
+
+### CST shape variables
+
+These use 4 CST coefficients per surface plus α, 9 design variables in all,
+as in CMPLXFOIL's own optimization example:
+
+| | Function | Gradient | Function + gradient |
+| --- | --- | --- | --- |
+| CMPLXFOIL, complex step | 94 ms | 1.43 s | 1.53 s |
+| CMPLXFOIL, finite differences | 96 ms | 0.85 s | 0.95 s |
+| Scirocco, 285 nodes | 38 ms | 0.21 s | 0.24 s |
+| Scirocco, 201 nodes | 22 ms | 0.09 s | 0.11 s |
+
+At the same resolution Scirocco is about 6x faster than CMPLXFOIL's complex
+step. Each additional design variable costs CMPLXFOIL one more complex
+solve, about 160 ms, and costs Scirocco nothing.
+
+### Full shape gradient
+
+These are derivatives with respect to every coordinate, for one geometry:
+
+| | Gradient |
+| --- | --- |
+| CMPLXFOIL, complex step (321 solves: x and y of 160 points, plus α) | 51.4 s |
+| Scirocco, 285 nodes (all node coordinates, α, Re, Ma) | 0.21 s |
+| Scirocco, 201 nodes | 0.09 s |
+
+That is about 250x faster at the same resolution.
+
+### Notes
+
+- **Robustness.** One of the 8 geometries did not converge in CMPLXFOIL,
+  and neither did any of its gradient solves. Scirocco converged on all 8.
+- **Gradient agreement.** Each code's gradient matches its own central
+  finite differences to five digits. The two codes differ from each other by
+  up to a factor of two on some CST coefficients. CMPLXFOIL repanels as the
+  shape changes, so its derivatives include the motion of its panel nodes.
+  Scirocco differentiates at fixed nodes, and its boundary layer follows
+  mfoil rather than XFOIL.
+- **Making CMPLXFOIL's complex step work.** On this machine (gfortran 15,
+  NumPy 2, f2py with the meson backend) CMPLXFOIL needed three fixes:
+  - Add `-fdefault-double-8` to the f2py step of the complex build. Without
+    it, `-fdefault-real-8` widens the wrapper's `double complex` to 32 bytes,
+    so Python reads and writes the Fortran common blocks at the wrong
+    offsets.
+  - Pass `h=1e-30j` to `evalFunctionsSens(..., mode="CS")`. The default
+    step, `1e-200j`, underflows inside the boundary-layer code and returns
+    a derivative close to the inviscid one.
+  - Replace `np.NaN` with `np.nan` for NumPy 2.
+
+  `AeroProblem` also derives Re from Mach and altitude, so the CMPLXFOIL
+  cases ran at M = 10⁻⁴ rather than 0.
+
+All timings are on an Apple M1 Pro, with Release builds, `-march=native` and
+Accelerate.
