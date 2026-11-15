@@ -36,6 +36,8 @@
 
 namespace scirocco {
 
+class CoupledFactorization;
+
 /* Global system variables */
 struct Glob {
     int Nsys = 0;        /**< Number of equations and states */
@@ -48,7 +50,8 @@ struct Glob {
     VectorXd R;          /**< Residuals [3*Nsys] */
     SparseMatrixd R_U;   /**< Residual Jacobian w.r.t. primary states */
     SparseMatrixd R_x;   /**< Residual Jacobian w.r.t. xi [3*Nsys x Nsys] */
-    SparseMatrixd R_V;   /**< Global Jacobian [4*Nsys x 4*Nsys] */
+    SparseMatrixd R_V;   /**< Assembled global Jacobian [4*Nsys x 4*Nsys];
+                              filled only by the trust-region step */
     VectorXd coupled_residual; /**< Full physical residual, including ue/Cl */
     VectorXd variable_scale;   /**< U = diag(variable_scale) * scaled_U */
     VectorXd residual_scale;   /**< Multipliers for coupled residual rows */
@@ -73,8 +76,9 @@ struct Glob {
     VectorXd dR_dMa_times_Ma;
     bool realloc = false; /**< If true, system Jacobians will be reallocated */
 
-    /* Stored SparseLU factorization of R_V for adjoint solves */
-    std::shared_ptr<Eigen::SparseLU<SparseMatrixd>> lu_factorization;
+    /* Factorization of the coupled Jacobian at the converged state, for
+       adjoint solves (see core/coupled_linear.h) */
+    std::shared_ptr<CoupledFactorization> coupled_factorization;
 
     /* PTC state — current pseudo-time step and the previous-iter residual
        norm, used by the SER tau update in SolveCoupled. */

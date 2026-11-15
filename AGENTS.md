@@ -39,6 +39,7 @@ cmake --build scirocco/build-debug -j
 - `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `quickstart`, `naca_example`, `viscous_example`, `bench`, `docs_figure_data`
 - Coverage uses compiler flags; there is no `SCIROCCO_COVERAGE` option.
 - `SCIROCCO_NATIVE_ARCH=ON` (default) — `-march=native` in Release builds
+- `SCIROCCO_USE_BLAS=ON` (default) — BLAS/LAPACK for the dense coupled solve (Eigen fallback)
 
 Build directories are local and disposable; delete and regenerate if CMake cache or test discovery state gets stale.
 

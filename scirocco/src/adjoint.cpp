@@ -35,6 +35,7 @@
 #include <functional>
 
 #include "scirocco/core/captured_transition.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/geometry.h"
@@ -553,7 +554,7 @@ Sensitivity ViscousSensitivities(FoilState& state) {
         };
     } else {
         StoreAdjointFactorization(state);
-        if (!state.glob.lu_factorization) {
+        if (!state.glob.coupled_factorization) {
             throw std::runtime_error(
                 "ViscousSensitivities: adjoint LU factorization failed");
         }
@@ -917,10 +918,7 @@ static VectorXd DRVDAlphaImpl(FoilState& state, bool flow, bool wake,
     }
     /* ∂(Bp · phi)/∂α = -AIC^{-1} · rhs_alpha. AIC is [N+1 × N+1]. */
     VectorXd dBphi_dalpha(N + 1);
-    {
-        const MatrixXd& AIC = state.isol.AIC;
-        dBphi_dalpha = -AIC.partialPivLu().solve(rhs_alpha);
-    }
+    dBphi_dalpha = -SolveAIC(state, rhs_alpha);
 
     /* Step 3: ue_sigma · phi α-derivative.
      *   foil row i (i < N): (ue_sigma · phi)[i] = (Bp · phi)[i] =
@@ -1225,12 +1223,12 @@ VectorXd DRVDRe(FoilState& state, double h) {
 
 /**
  * @brief SolveViscousAdjoint — transpose solve through the converged viscous
- * R_V.
+ * Jacobian.
  *
- * R_V is assembled and LU-factored by StoreAdjointFactorization. Eigen's
- * SparseLU supports transpose solves via the `.transpose()` view, which is
- * what we use here.
- * @param state foil state with a valid adjoint LU factorization
+ * The Jacobian is factored by StoreAdjointFactorization through the
+ * mass-defect Schur complement (CoupledFactorization), which supports
+ * transpose solves directly.
+ * @param state foil state with a valid adjoint factorization
  * @param rhs right-hand side vector of size 4*Nsys
  * @return adjoint solution vector λ of size 4*Nsys
  */
@@ -1240,17 +1238,19 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
         throw std::runtime_error(
             "SolveViscousAdjoint: rhs size must equal 4*Nsys");
     }
-    if (!state.glob.lu_factorization) {
+    if (!state.glob.coupled_factorization) {
         StoreAdjointFactorization(state);
     }
-    if (!state.glob.lu_factorization) {
+    if (!state.glob.coupled_factorization) {
         throw std::runtime_error(
-            "SolveViscousAdjoint: R_V factorization unavailable (singular?)");
+            "SolveViscousAdjoint: Jacobian factorization unavailable "
+            "(singular?)");
     }
-    VectorXd lambda = state.glob.lu_factorization->transpose().solve(rhs);
-    VectorXd residual = state.glob.R_V.transpose() * lambda - rhs;
+    CoupledFactorization& factorization = *state.glob.coupled_factorization;
+    VectorXd lambda = factorization.SolveTranspose(rhs);
+    VectorXd residual = factorization.ApplyTranspose(lambda) - rhs;
     // Check the original equations, never a regularized replacement.
-    VectorXd scale = state.glob.R_V.cwiseAbs().transpose() * lambda.cwiseAbs();
+    VectorXd scale = factorization.AbsApplyTranspose(lambda);
     scale += rhs.cwiseAbs();
     if (!lambda.allFinite() || !residual.allFinite() ||
         residual.norm() > 1e-11 * std::max(scale.norm(), 1e-30)) {

@@ -45,6 +45,8 @@
 
 namespace scirocco {
 namespace {
+/// Newton iterations allowed to a warm-started viscous solve.
+constexpr int kWarmIterations = 30;
 void ValidateOperatingConditions(double alpha, double cl, double Re,
                                  double Ma) {
     if (!std::isfinite(alpha) || !std::isfinite(cl) || !std::isfinite(Re) ||
@@ -82,7 +84,7 @@ Scirocco::Scirocco(const MatrixXd& coords, int npanel) {
 void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
     sensitivity_valid_ = false;
     state_.glob.conv = false;
-    state_.glob.lu_factorization.reset();
+    state_.glob.coupled_factorization.reset();
     ValidateOperatingConditions(alpha, cl, Re, Ma);
     if (state_.oper.viscous && Re <= 0.0) ClearSolution(state_);
     state_.oper.Re = Re > 0.0 ? Re : 0.0;
@@ -110,7 +112,7 @@ void Scirocco::SetOper(double alpha, double cl, double Re, double Ma) {
 bool Scirocco::Solve() {
     sensitivity_valid_ = false;
     state_.glob.conv = false;
-    state_.glob.lu_factorization.reset();
+    state_.glob.coupled_factorization.reset();
     try {
         ValidateOperatingConditions(state_.oper.alpha, state_.oper.cltgt,
                                     state_.oper.Re, state_.oper.Ma);
@@ -151,9 +153,41 @@ bool Scirocco::Solve() {
                 state_.param.KTl = 0.0;
             }
 
-            /* Viscous solver */
-            SolveViscous(state_);
-            if (state_.glob.conv) ValidateResults(state_);
+            /* Viscous solver: warm start from the previous converged
+             * boundary layer, then cold start if that does not converge.
+             * The warm attempt skips continuation; the cold one does not. */
+            bool solved = false;
+            if (state_.param.warm_start && warm_U_.cols() > 0) {
+                FoilState cold = state_;
+                state_.oper.initbl = false;
+                state_.glob.U = warm_U_;
+                state_.glob.Nsys = static_cast<int>(warm_U_.cols());
+                state_.vsol.turb = warm_turb_;
+                state_.isol.Istag = warm_istag_;
+                const bool continuation = state_.param.use_continuation;
+                const int niglob = state_.param.niglob;
+                state_.param.use_continuation = false;
+                /* A good initial guess converges in a few iterations; give
+                 * up early on a bad one (e.g. the stagnation point crossed a
+                 * node) rather than spend the full budget. */
+                state_.param.niglob = std::min(niglob, kWarmIterations);
+                try {
+                    SolveViscous(state_);
+                    solved = state_.glob.conv;
+                } catch (const std::exception&) {
+                    solved = false;
+                }
+                state_.param.use_continuation = continuation;
+                state_.param.niglob = niglob;
+                if (!solved) state_ = std::move(cold);
+            }
+            if (!solved) SolveViscous(state_);
+            if (state_.glob.conv) {
+                ValidateResults(state_);
+                warm_U_ = state_.glob.U;
+                warm_turb_ = state_.vsol.turb;
+                warm_istag_ = state_.isol.Istag;
+            }
             return state_.glob.conv;
         } else {
             /* Inviscid solver */
@@ -187,7 +221,7 @@ bool Scirocco::Solve() {
         }
     } catch (...) {
         state_.glob.conv = false;
-        state_.glob.lu_factorization.reset();
+        state_.glob.coupled_factorization.reset();
         throw;
     }
 }

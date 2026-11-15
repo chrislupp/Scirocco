@@ -10,10 +10,12 @@
 #include <gtest/gtest.h>
 
 #include <Eigen/Dense>
+#include <Eigen/SparseLU>
 #include <cmath>
 #include <vector>
 
 #include "scirocco/core/adjoint.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/wake.h"
@@ -185,21 +187,27 @@ TEST_F(ViscousOutputPingTest, DRVDAlphaMatchesCS) {
  * @brief Phase 4: forward/reverse adjoint consistency.
  *   For any b, g ∈ ℝ^{4·Nsys}:
  *     bᵀ · (R_V^{-1} g) == (R_V^{-T} b)ᵀ · g
- *   Pure linear-algebra identity. Tests the transpose solve through
- *   SolveViscousAdjoint vs. SparseLU's forward solve.
+ *   Pure linear-algebra identity. Tests the Schur transpose solve through
+ *   SolveViscousAdjoint against a direct SparseLU forward solve of the
+ *   assembled R_V.
  */
 TEST_F(ViscousOutputPingTest, ForwardReverseConsistency) {
     auto& s = foil_.GetState();
     StoreAdjointFactorization(s);
-    ASSERT_TRUE(s.glob.lu_factorization) << "R_V LU factorization unavailable";
+    ASSERT_TRUE(s.glob.coupled_factorization)
+        << "Jacobian factorization unavailable";
+    EXPECT_TRUE(s.glob.coupled_factorization->UsesSchur());
+    Eigen::SparseLU<SparseMatrixd> direct(
+        s.glob.coupled_factorization->Assemble());
+    ASSERT_EQ(direct.info(), Eigen::Success);
 
     int Nsys = s.glob.Nsys;
     int NN = 4 * Nsys;
     VectorXd b = VectorXd::Random(NN);
     VectorXd g = VectorXd::Random(NN);
 
-    VectorXd y = s.glob.lu_factorization->solve(g); /* R_V^{-1} g */
-    VectorXd lambda = SolveViscousAdjoint(s, b);    /* R_V^{-T} b */
+    VectorXd y = direct.solve(g);                /* R_V^{-1} g */
+    VectorXd lambda = SolveViscousAdjoint(s, b); /* R_V^{-T} b */
 
     double lhs = b.dot(y);
     double rhs = lambda.dot(g);

@@ -125,6 +125,11 @@ class PingTest : public ::testing::Test {
         s.param.verb = 0;
         s.param.niglob = 25;
         s.param.rtol = 1e-6;
+        /* The reference stores mfoil's U and xi at its rtol = 1e-6 stopping
+         * point but not its transition flags, which the tests reuse from
+         * this solve. Follow mfoil's iteration path so the flags match. */
+        s.param.bl_march = false;
+        s.param.step_limiter = StepLimiter::Absolute;
         SolveViscous(s);
         CalcForce(s);
         file_ =

@@ -31,12 +31,15 @@
 #include "scirocco/core/coupled_solver.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
 
+#include "scirocco/core/bl_march.h"
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/captured_transition.h"
+#include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/panel_influence.h"
@@ -58,6 +61,58 @@ VectorXd CoupledResidual(const FoilState& state) {
         state.vsol.ue_m * state.glob.U.row(1).transpose().cwiseProduct(ue);
     if (state.oper.givencl) residual(4 * n) = state.post.cl - state.oper.cltgt;
     return residual;
+}
+
+/**
+ * @brief Re-index a boundary layer from a previous solution to a new
+ * stagnation point: station k from the stagnation point on each surface
+ * takes the values of station k of the old solution (XFOIL's STMOVE).
+ * Stations past the end of the old surface repeat its last station.
+ * @param old Stagnation node pair the boundary layer was solved with
+ */
+void ShiftToStagnation(FoilState& state, const std::array<int, 2>& old) {
+    const auto& now = state.isol.Istag;
+    if (now == old) return;
+    const int N = state.foil.N;
+    const MatrixXd U = state.glob.U;
+    const auto turb = state.vsol.turb;
+    auto copy = [&](int dst, int src) {
+        state.glob.U.col(dst) = U.col(src);
+        state.vsol.turb[dst] = turb[src];
+    };
+    for (int k = 0; k <= now[0]; ++k) copy(now[0] - k, std::max(old[0] - k, 0));
+    for (int k = 0; now[1] + k < N; ++k)
+        copy(now[1] + k, std::min(old[1] + k, N - 1));
+}
+
+/**
+ * @brief Warm-start predictor: keep the previous mass defect m = ds ue and
+ * set ue = ueinv + ue_m m for the new operating point, so the coupling
+ * equation holds from the start and only the boundary layer has to adjust
+ * (the boundary-layer march does that before the first Newton step).
+ * Falls back to the previous ue where the prediction is not positive.
+ */
+void PredictEdgeVelocity(FoilState& state) {
+    auto& U = state.glob.U;
+    const VectorXd mass = U.row(1).cwiseProduct(U.row(3)).transpose();
+    const VectorXd ue = GetUeInv(state) + state.vsol.ue_m * mass;
+    if (!ue.allFinite()) return;
+    const double floor = 1e-3 * ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < ue.size(); ++i) {
+        if (!(ue(i) > floor)) continue;
+        U(1, i) = mass(i) / ue(i);
+        U(3, i) = ue(i);
+    }
+}
+
+/**
+ * @brief Locate transition from the amplification march (UpdateTransition).
+ * @return true if no station changed between laminar and turbulent
+ */
+bool TransitionSettled(FoilState& state) {
+    const auto turb = state.vsol.turb;
+    UpdateTransition(state);
+    return state.vsol.turb == turb;
 }
 
 VectorXd PackedState(const FoilState& state) {
@@ -91,6 +146,9 @@ void SolveViscous(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "SolveViscous: starting" << '\n';
     }
+
+    /* Stagnation nodes of a supplied initial boundary layer (warm start) */
+    const std::array<int, 2> entry_istag = state.isol.Istag;
 
     /* Initialize thermodynamic parameters */
     state.oper.viscous = true;
@@ -131,8 +189,16 @@ void SolveViscous(FoilState& state) {
     /* Calculate ue sensitivities */
     CalcUeM(state);
 
-    /* Initialize boundary layer */
-    if (state.oper.initbl) {
+    /* Initialize boundary layer, unless the caller supplied an initial
+     * state of the right size (warm start). */
+    const int nsys = state.foil.N + state.wake.N;
+    if (!state.oper.initbl && state.glob.U.cols() == nsys &&
+        static_cast<int>(state.vsol.turb.size()) == nsys) {
+        state.glob.Nsys = nsys;
+        state.glob.realloc = true;
+        ShiftToStagnation(state, entry_istag);
+        PredictEdgeVelocity(state);
+    } else {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {
             std::cout << "  BL init done, Nsys=" << state.glob.Nsys << '\n';
@@ -171,7 +237,8 @@ void SolveViscous(FoilState& state) {
          *
          * Phase 2 (residual_deriv_test) now explicitly applies the gamma-xi
          * swap in its test fixture; production sensitivities use ue-based. */
-        StoreAdjointFactorization(state);
+        /* The adjoint factorization is built on demand by
+         * ViscousSensitivities / SolveViscousAdjoint. */
     }
 
     /* Calculate forces */
@@ -193,7 +260,7 @@ void SolveViscous(FoilState& state) {
  */
 void SolveCoupled(FoilState& state) {
     state.glob.conv = false;
-    state.glob.lu_factorization.reset();
+    state.glob.coupled_factorization.reset();
     int niglob = state.param.niglob;
     double rtol = state.param.rtol;
 
@@ -204,11 +271,15 @@ void SolveCoupled(FoilState& state) {
     state.glob.trust_rejected = 0;
     state.glob.coupled_iterations = 0;
 
+    /* As in XFOIL, march the boundary layer before every Newton step,
+     * starting with the initial guess. */
+    const bool march = state.param.bl_march;
+    if (march) BoundaryLayerMarch(state);
     for (int iter = 0; iter < niglob; ++iter) {
         ++state.glob.coupled_iterations;
-        /* Build global system */
-        BuildGlobSys(state);
-
+        /* dR/dRe and dR/dMa are for the adjoint only: assembled once, at
+         * the accepted solution below. */
+        BuildGlobSys(state, false);
         // Python mfoil updates force values and the lift constraint each
         // iteration.
         CalcForce(state);
@@ -218,9 +289,21 @@ void SolveCoupled(FoilState& state) {
                       << ", tau = " << state.glob.tau << '\n';
         }
 
-        if (rnorm < rtol) {
-            state.glob.conv = true;
-            return;
+        /* Near the round-off floor (above rtol on some cases, e.g. a
+         * stagnation point on a node) the residual stops contracting.
+         * Quadratic convergence would cut it by orders of magnitude, so a
+         * step that fails to halve it below rtol_floor means the floor. */
+        const bool at_floor = iter > 0 && rnorm < state.param.rtol_floor &&
+                              rnorm > 0.5 * state.glob.R_norm_prev;
+        if (rnorm < rtol || at_floor) {
+            /* With the boundary-layer march placing transition, accept
+             * only if the amplification march agrees with where it sits. */
+            if (!march || TransitionSettled(state)) {
+                BuildGlobSys(state);
+                state.glob.conv = true;
+                return;
+            }
+            continue;
         }
 
         if (!std::isfinite(rnorm)) {
@@ -266,7 +349,10 @@ void SolveCoupled(FoilState& state) {
         if (!state.param.use_trust_region ||
             !state.param.trust_update_topology) {
             StagPointMove(state);
-            UpdateTransition(state);
+            if (march)
+                BoundaryLayerMarch(state);
+            else
+                UpdateTransition(state);
         }
     }
 
@@ -304,7 +390,7 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
     };
     try {
         FoilState seed = target;
-        seed.glob.lu_factorization.reset();
+        seed.glob.coupled_factorization.reset();
         seed.oper.givencl = false;
         seed.oper.alpha = std::abs(target.oper.alpha) < 0.5 ? 2.0 : 0.0;
         RebuildIsol(seed);
@@ -380,7 +466,7 @@ bool SolveContinuation(const FoilState& target, FoilState& result) {
  * @brief Build global residual and Jacobian
  * @param state Foil state
  */
-void BuildGlobSys(FoilState& state) {
+void BuildGlobSys(FoilState& state, bool scalar_derivatives) {
     int Nsys = state.glob.Nsys;
 
     /* Allocate residual and Jacobians if needed */
@@ -464,7 +550,8 @@ void BuildGlobSys(FoilState& state) {
             Vector2d xst_pair(stag.xst, stag.xst);
             Vector2d Aux_pair(Aux(ip0), Aux(ip0));
 
-            auto res = ResidualStation(param, xst_pair, Ust_pair, Aux_pair);
+            auto res = ResidualStation(param, xst_pair, Ust_pair, Aux_pair,
+                                       scalar_derivatives);
             param.simi = false;
 
             /* ∂R/∂Re·Re for the simi station: res.lin_Ret is computed for
@@ -593,14 +680,16 @@ void BuildGlobSys(FoilState& state) {
             ResidualLin res;
             if (tran) {
                 /* Transition station: combined laminar + turbulent residual */
-                res = ResidualTransition(state, param, xin, Uin, Aux_in);
+                res = ResidualTransition(state, param, xin, Uin, Aux_in,
+                                         scalar_derivatives);
                 /* After transition, subsequent stations are turbulent */
                 param.turb = true;
             } else {
                 /* Update param for this station */
                 StationParam(state, param, Is[i]);
                 /* Regular residual */
-                res = ResidualStation(param, xin, Uin, Aux_in);
+                res = ResidualStation(param, xin, Uin, Aux_in,
+                                      scalar_derivatives);
             }
 
             /* Store in global system */
@@ -629,75 +718,89 @@ void BuildGlobSys(FoilState& state) {
         }
     }
 
-    /* Build sparse matrices from triplets */
-    state.glob.R_U.setFromTriplets(triplets_U.begin(), triplets_U.end());
-    state.glob.R_x.setFromTriplets(triplets_x.begin(), triplets_x.end());
-
-    /* Include effects of R_x into R_U: R_ue += R_x * x_st * st_ue
-     * x_st = -sgnue (sensitivity of xi to stagnation point location) */
-    VectorXd x_st(Nsys);
-    int N = state.foil.N;
-    for (int i = 0; i < N; ++i) {
-        x_st(i) = -state.isol.sgnue(i);
+    /* Include effects of R_x into R_U: R_ue += R_x * x_st * st_ue, where
+     * x_st = -sgnue is the sensitivity of xi to the stagnation point
+     * (the wake moves with the upper surface). Added as triplets, which
+     * setFromTriplets sums with the existing entries. */
+    const int N = state.foil.N;
+    VectorXd R_st = VectorXd::Zero(3 * Nsys);
+    for (const Triplet& t : triplets_x) {
+        const double x_st = t.col() < N ? -state.isol.sgnue(t.col()) : -1.0;
+        R_st(t.row()) += t.value() * x_st;
     }
-    for (int i = N; i < Nsys; ++i) {
-        x_st(i) = -1.0; /* Wake has same sens as upper surface */
-    }
-
-    VectorXd R_st = state.glob.R_x * x_st;
     const auto& Istag = state.isol.Istag;
     const auto& st_ue = state.isol.sstag_ue;
-
-    /* Add contributions at stagnation point ue indices */
     for (int row = 0; row < 3 * Nsys; ++row) {
-        if (std::abs(R_st(row)) > 0.0) {
-            /* ue index for stagnation points */
-            int ue_idx0 = 4 * Istag[0] + 3;
-            int ue_idx1 = 4 * Istag[1] + 3;
-            state.glob.R_U.coeffRef(row, ue_idx0) += R_st(row) * st_ue(0);
-            state.glob.R_U.coeffRef(row, ue_idx1) += R_st(row) * st_ue(1);
-        }
+        if (R_st(row) == 0.0) continue;
+        triplets_U.emplace_back(row, 4 * Istag[0] + 3, R_st(row) * st_ue(0));
+        triplets_U.emplace_back(row, 4 * Istag[1] + 3, R_st(row) * st_ue(1));
     }
+
+    state.glob.R_U.setFromTriplets(triplets_U.begin(), triplets_U.end());
+    state.glob.R_x.setFromTriplets(triplets_x.begin(), triplets_x.end());
+}
+
+namespace {
+
+/// d(ueinv)/d(alpha) at every node [Nsys], for the Cl constraint.
+VectorXd UeInvAlpha(const FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    const double alpha = state.oper.alpha;
+    VectorXd out = VectorXd::Zero(Nsys);
+    for (int i = 0; i < Nsys; ++i) {
+        double duinv_dalpha = 0.0;
+        if (i < state.foil.N) {
+            duinv_dalpha =
+                state.isol.sgnue(i) * (-state.isol.gamref(i, 0) * Sind(alpha) +
+                                       state.isol.gamref(i, 1) * Cosd(alpha));
+        } else if (i - state.foil.N <
+                   static_cast<int>(state.isol.uewiref.rows())) {
+            const int iw = i - state.foil.N;
+            duinv_dalpha = -state.isol.uewiref(iw, 0) * Sind(alpha) +
+                           state.isol.uewiref(iw, 1) * Cosd(alpha);
+        }
+        out(i) = duinv_dalpha * kDegToRad;
+    }
+    return out;
+}
+
+/// Edge velocity with the floor used in the coupled Jacobian.
+VectorXd ClippedUe(const FoilState& state) {
+    VectorXd ue = state.glob.U.row(3).transpose();
+    const double uemax = ue.cwiseAbs().maxCoeff();
+    for (int i = 0; i < ue.size(); ++i) ue(i) = std::max(ue(i), 1e-10 * uemax);
+    return ue;
 }
 
 /**
- * @brief Solve the global linear system using augmented system.
- * Variables = [th, ds, sa, ue] at each node.
- * Fourth equation: ue = ueinv + ue_m * (ds * ue)
- * @param state Foil state
+ * @brief Coupled residual [R_BL; R_ue; (cl - cltgt)] at the current state.
+ * @param ue Clipped edge velocity (see ClippedUe)
  */
-void SolveGlob(FoilState& state) {
-    int Nsys = state.glob.Nsys;
-    bool docl = state.oper.givencl;
-
-    /* Get edge velocity and displacement thickness */
-    VectorXd ue = state.glob.U.row(3).transpose();
-    VectorXd ds = state.glob.U.row(1).transpose();
-    double uemax = ue.cwiseAbs().maxCoeff();
-    for (int i = 0; i < Nsys; ++i) {
-        ue(i) = std::max(ue(i), 1e-10 * uemax);
-    }
-
-    /* Get inviscid edge velocity */
-    VectorXd ueinv = GetUeInv(state);
-
-    /* Build augmented system */
-    int NN = 4 * Nsys + (docl ? 1 : 0);
-    bool alloc = state.glob.realloc || state.glob.R_V.rows() != NN ||
-                 state.glob.R_V.cols() != NN;
-
-    if (alloc) {
-        state.glob.R_V.resize(NN, NN);
-    }
-
-    /* Build residual vector */
-    VectorXd R(NN);
+VectorXd AugmentedResidual(const FoilState& state, const VectorXd& ue) {
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    VectorXd R(4 * Nsys + (docl ? 1 : 0));
     R.head(3 * Nsys) = state.glob.R;
+    R.segment(3 * Nsys, Nsys) =
+        ue - (GetUeInv(state) + state.vsol.ue_m * ds.cwiseProduct(ue));
+    if (docl) R(R.size() - 1) = state.post.cl - state.oper.cltgt;
+    return R;
+}
 
-    /* Fourth equation residual: ue - (ueinv + ue_m * (ds .* ue)) */
-    VectorXd mass = ds.cwiseProduct(ue);
-    VectorXd ue_correction = state.vsol.ue_m * mass;
-    R.segment(3 * Nsys, Nsys) = ue - (ueinv + ue_correction);
+/**
+ * @brief Assemble and factor the full augmented Jacobian R_V with an
+ * equilibrated sparse LU. Used by the trust-region step, which needs R_V
+ * and the scales.
+ */
+void SolveGlobAssembled(FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ue = ClippedUe(state);
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    VectorXd R = AugmentedResidual(state, ue);
+    const int NN = static_cast<int>(R.size());
+    state.glob.R_V.resize(NN, NN);
 
     /* Build Jacobian using triplets */
     std::vector<Triplet> triplets;
@@ -734,10 +837,6 @@ void SolveGlob(FoilState& state) {
 
     /* Cl-alpha constraint if requested */
     if (docl) {
-        double cl = state.post.cl;
-        double cltgt = state.oper.cltgt;
-        R(NN - 1) = cl - cltgt;
-
         /* d(cl)/d(alpha) */
         triplets.emplace_back(NN - 1, NN - 1, state.post.cl_alpha);
 
@@ -749,41 +848,9 @@ void SolveGlob(FoilState& state) {
             }
         }
 
-        /* d(ue residual)/d(alpha)
-         * uinv = uinvref * [cos(alpha), sin(alpha)]
-         * d(uinv)/d(alpha) = uinvref * [-sin(alpha), cos(alpha)] * pi/180 */
-        double alpha = state.oper.alpha;
-        for (int i = 0; i < Nsys; ++i) {
-            double duinv_dalpha = 0.0;
-            if (i < state.foil.N) {
-                duinv_dalpha = state.isol.sgnue(i) *
-                               (-state.isol.gamref(i, 0) * Sind(alpha) +
-                                state.isol.gamref(i, 1) * Cosd(alpha));
-            } else if (i - state.foil.N <
-                       static_cast<int>(state.isol.uewiref.rows())) {
-                int iw = i - state.foil.N;
-                duinv_dalpha = -state.isol.uewiref(iw, 0) * Sind(alpha) +
-                               state.isol.uewiref(iw, 1) * Cosd(alpha);
-            }
-            duinv_dalpha *= kDegToRad;
-            triplets.emplace_back(3 * Nsys + i, NN - 1, -duinv_dalpha);
-        }
-    }
-
-    /* Pseudo-transient continuation: add (1/tau)*I to the diagonal of the
-     * 4*Nsys BL rows (not the alpha row — alpha is an outer DV, not a
-     * transient state). setFromTriplets sums duplicate entries, so this
-     * augments any existing diagonal entries. tau is managed by
-     * SolveCoupled via the SER rule; at convergence ||R|| < rtol, the
-     * (1/tau)(U_{n+1} - U_n) term vanishes (U_{n+1} = U_n), so the
-     * converged R = 0 root is unchanged and the adjoint's StoreAdjoint-
-     * Factorization (which uses state.glob.R_U, not R_V) is untouched. */
-    if (state.param.use_ptc && !state.param.use_trust_region &&
-        state.glob.tau > 0.0) {
-        const double lambda = 1.0 / state.glob.tau;
-        for (int i = 0; i < 4 * Nsys; ++i) {
-            triplets.emplace_back(i, i, lambda);
-        }
+        const VectorXd ueinv_alpha = UeInvAlpha(state);
+        for (int i = 0; i < Nsys; ++i)
+            triplets.emplace_back(3 * Nsys + i, NN - 1, -ueinv_alpha(i));
     }
 
     /* Build sparse matrix */
@@ -847,6 +914,77 @@ void SolveGlob(FoilState& state) {
     } else {
         state.glob.dalpha = 0.0;
     }
+}
+
+}  // namespace
+
+/**
+ * @brief Solve the coupled Newton system for dU (and dalpha with a Cl target).
+ *
+ * Variables are [th, ds, sa, ue] at each node; the fourth equation is
+ * ue = ueinv + ue_m (ds ue). The system is factored through the mass-defect
+ * Schur complement (CoupledFactorization), which costs O(N^2) plus one dense
+ * N x N LU per iteration. With a Cl target, the alpha row and column are a
+ * bordering handled with a second solve.
+ *
+ * Pseudo-transient continuation adds (1/tau) to each equation's own variable:
+ * boundary-layer equation k of node i on variable k of node i, and the
+ * edge-velocity equation on ue. At convergence the term multiplies a zero
+ * update, so the root and the adjoint are unchanged.
+ * @param state Foil state
+ */
+void SolveGlob(FoilState& state) {
+    if (state.param.use_trust_region) {
+        SolveGlobAssembled(state);
+        return;
+    }
+    const int Nsys = state.glob.Nsys;
+    const bool docl = state.oper.givencl;
+    const VectorXd ue = ClippedUe(state);
+    const VectorXd ds = state.glob.U.row(1).transpose();
+    const VectorXd R = AugmentedResidual(state, ue);
+    state.glob.coupled_residual = R;
+
+    const double lambda = (state.param.use_ptc && state.glob.tau > 0.0)
+                              ? 1.0 / state.glob.tau
+                              : 0.0;
+    SparseMatrixd bl = state.glob.R_U;
+    if (lambda > 0.0) {
+        std::vector<Triplet> diag;
+        diag.reserve(3 * Nsys);
+        for (int i = 0; i < Nsys; ++i)
+            for (int k = 0; k < 3; ++k)
+                diag.emplace_back(3 * i + k, 4 * i + k, lambda);
+        SparseMatrixd shift(3 * Nsys, 4 * Nsys);
+        shift.setFromTriplets(diag.begin(), diag.end());
+        bl += shift;
+    }
+
+    /* A failed factorization makes Solve throw. */
+    CoupledFactorization factorization;
+    factorization.Compute(bl, state.vsol.ue_m, ue, ds,
+                          VectorXd::Constant(Nsys, 1.0 + lambda));
+    const VectorXd x1 = factorization.Solve(-R.head(4 * Nsys));
+    VectorXd dV = x1;
+    state.glob.dalpha = 0.0;
+    if (docl) {
+        /* [J b; c^T d] [dV; da] = -[R; r_cl] */
+        VectorXd b = VectorXd::Zero(4 * Nsys);
+        b.tail(Nsys) = -UeInvAlpha(state);
+        VectorXd c = VectorXd::Zero(4 * Nsys);
+        for (int i = 0;
+             i < state.foil.N && i < static_cast<int>(state.post.cl_ue.size());
+             ++i)
+            c(4 * i + 3) = state.post.cl_ue(i);
+        const VectorXd x2 = factorization.Solve(b);
+        /* A singular constraint (denom 0 or NaN) leaves dV non-finite. */
+        const double denom = state.post.cl_alpha - c.dot(x2);
+        state.glob.dalpha = (-R(R.size() - 1) - c.dot(x1)) / denom;
+        dV -= state.glob.dalpha * x2;
+    }
+    if (!dV.allFinite())
+        throw std::runtime_error("SolveGlob: linear solve failed");
+    state.glob.dU = Eigen::Map<const MatrixXd>(dV.data(), 4, Nsys);
 }
 
 bool TakeTrustRegionStep(FoilState& state) {
@@ -942,8 +1080,14 @@ bool TakeTrustRegionStep(FoilState& state) {
  * @brief Update state with adaptive under-relaxation (matching mfoil approach)
  * @param state Foil state
  */
-void UpdateState(FoilState& state) {
-    int Nsys = state.glob.Nsys;
+namespace {
+
+/**
+ * @brief mfoil under-relaxation: absolute caps on amplification, shear
+ * stress and ue changes, and at most a 50% decrease in theta and delta*.
+ */
+double AbsoluteRelaxation(const FoilState& state) {
+    const int Nsys = state.glob.Nsys;
     double omega = 1.0;
 
     /* Get max ctau for threshold calculations */
@@ -1035,7 +1179,53 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    /* 6. Limit alpha changes to 2 degrees */
+    return omega;
+}
+
+/**
+ * @brief XFOIL under-relaxation (UPDATE in xbl.f): normalize every change
+ * (amplification by 10, shear stress, theta and delta* by their values, ue
+ * by 0.25 Vinf) and scale the step so that none exceeds +1.5 or -0.5.
+ */
+double RelativeRelaxation(const FoilState& state) {
+    constexpr double kHigh = 1.5;
+    constexpr double kLow = -0.5;
+    double omega = 1.0;
+    auto limit = [&](double change) {
+        if (omega * change > kHigh) omega = kHigh / change;
+        if (omega * change < kLow) omega = kLow / change;
+    };
+    const auto& U = state.glob.U;
+    const auto& dU = state.glob.dU;
+    const auto& turb = state.vsol.turb;
+    for (int i = 0; i < state.glob.Nsys; ++i) {
+        const bool turbulent = i < static_cast<int>(turb.size()) && turb[i];
+        if (turbulent) {
+            if (U(2, i) > 0.0) limit(dU(2, i) / U(2, i));
+        } else {
+            limit(dU(2, i) / 10.0);
+        }
+        if (U(0, i) > 0.0) limit(dU(0, i) / U(0, i));
+        if (U(1, i) > 0.0) limit(dU(1, i) / U(1, i));
+        limit(std::abs(dU(3, i)) / (0.25 * state.oper.Vinf));
+    }
+    return omega;
+}
+
+}  // namespace
+
+void UpdateState(FoilState& state) {
+    const int Nsys = state.glob.Nsys;
+    double omega = state.param.step_limiter == StepLimiter::Relative
+                       ? RelativeRelaxation(state)
+                       : AbsoluteRelaxation(state);
+
+    std::vector<int> turbIdx;
+    for (int i = 0; i < Nsys; ++i)
+        if (i < static_cast<int>(state.vsol.turb.size()) && state.vsol.turb[i])
+            turbIdx.push_back(i);
+
+    /* Limit alpha changes to 2 degrees */
     if (std::abs(state.glob.dalpha) > 2.0) {
         omega = std::min(omega, 2.0 / std::abs(state.glob.dalpha));
     }
@@ -1062,9 +1252,8 @@ void UpdateState(FoilState& state) {
         }
     }
 
-    /* Fix negative ctau after update
-     * Recompute ctmax after update */
-    ctmax = 0.0;
+    /* Fix negative ctau after update */
+    double ctmax = 0.0;
     for (int i : turbIdx) {
         ctmax = std::max(ctmax, state.glob.U(2, i));
     }
@@ -1084,6 +1273,45 @@ void UpdateState(FoilState& state) {
     if (std::abs(alpha_change) > 1e-10) {
         RebuildIsol(state);
     }
+}
+
+/**
+ * @brief ue_m = diag(sgnue) ue_sigma sigma_m from the stored ue_sigma:
+ * the part of CalcUeM that depends on the stagnation point.
+ * @param state Foil state with ue_sigma from CalcUeM
+ */
+static void AssembleUeM(FoilState& state) {
+    const int N = state.foil.N;
+    const int Nw = state.wake.N;
+    const int Nsys = N + Nw;
+    const int Npanel = N + Nw - 2;
+    if (Npanel <= 0) return; /* no panels: nothing to couple */
+    /* 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)] */
+    std::vector<Triplet> triplets;
+    for (int i = 0; i < N - 1; ++i) {
+        double ds = state.foil.s(i + 1) - state.foil.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(i, i, -state.isol.sgnue(i) / ds);
+            triplets.emplace_back(i, i + 1, state.isol.sgnue(i + 1) / ds);
+        }
+    }
+    for (int i = 0; i < Nw - 1; ++i) {
+        double ds = state.wake.s(i + 1) - state.wake.s(i);
+        if (ds > 1e-12) {
+            triplets.emplace_back(N - 1 + i, N + i, -1.0 / ds);
+            triplets.emplace_back(N - 1 + i, N + i + 1, 1.0 / ds);
+        }
+    }
+    state.vsol.sigma_m.resize(Npanel, Nsys);
+    state.vsol.sigma_m.setFromTriplets(triplets.begin(), triplets.end());
+
+    /* 7. ue_m = sgnue * ue_sigma * sigma_m */
+    VectorXd sgue(Nsys);
+    sgue.head(N) = state.isol.sgnue;
+    sgue.tail(Nw).setOnes();
+
+    state.vsol.ue_m =
+        sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
 }
 
 /**
@@ -1122,20 +1350,33 @@ void CalcUeM(FoilState& state) {
         }
     }
 
-    /* 2. B = d(airfoil streamfunction)/d(source) [(N+1) x (N+Nw-2)] */
+    /* 2-3. Bp = -AIC^-1 B, B = d(airfoil streamfunction)/d(source)
+     * [N x (N+Nw-2)]. The airfoil-panel columns depend only on the
+     * geometry and are cached (as XFOIL caches the airfoil part of DIJ);
+     * the wake-panel columns move with the wake. */
     int Npanel = N + Nw - 2; /* N-1 airfoil panels + Nw-1 wake panels */
-    MatrixXd B = MatrixXd::Zero(N + 1, Npanel);
+    auto& Bp_foil = state.isol.Bp_foil;
+    if (Bp_foil.rows() != N || Bp_foil.cols() != N - 1 ||
+        state.isol.Bp_foil_x.cols() != N ||
+        state.isol.Bp_foil_x != state.foil.x) {
+        MatrixXd B = MatrixXd::Zero(N + 1, N - 1);
+        for (int i = 0; i < N; ++i) {
+            Vector2d xi = state.foil.x.col(i);
+            /* Constant source panels on airfoil */
+            for (int j = 0; j < N - 1; ++j) {
+                Matrix2d Xj;
+                Xj.col(0) = state.foil.x.col(j);
+                Xj.col(1) = state.foil.x.col(j + 1);
+                B(i, j) = PanelConstSourceStream(Xj, xi);
+            }
+        }
+        Bp_foil = (-SolveAIC(state, B)).topRows(N);
+        state.isol.Bp_foil_x = state.foil.x;
+    }
 
+    MatrixXd Bw = MatrixXd::Zero(N + 1, Nw - 1);
     for (int i = 0; i < N; ++i) {
         Vector2d xi = state.foil.x.col(i);
-
-        /* Constant source panels on airfoil */
-        for (int j = 0; j < N - 1; ++j) {
-            Matrix2d Xj;
-            Xj.col(0) = state.foil.x.col(j);
-            Xj.col(1) = state.foil.x.col(j + 1);
-            B(i, j) = PanelConstSourceStream(Xj, xi);
-        }
 
         /* Linear source panels on wake */
         for (int j = 0; j < Nw - 1; ++j) {
@@ -1157,29 +1398,28 @@ void CalcUeM(FoilState& state) {
             /* Left half panel */
             PanelLinSourceStream(Xj, xi, a_left, b_left);
             if (j > 0) {
-                B(i, N - 1 + j) += 0.5 * a_left + b_left;
-                B(i, N - 1 + j - 1) += 0.5 * a_left;
+                Bw(i, j) += 0.5 * a_left + b_left;
+                Bw(i, j - 1) += 0.5 * a_left;
             } else {
-                B(i, N - 1 + j) += b_left;
+                Bw(i, j) += b_left;
             }
 
             /* Right half panel */
             Xj.col(0) = Xm;
             Xj.col(1) = X_right;
             PanelLinSourceStream(Xj, xi, a_right, b_right);
-            B(i, N - 1 + j) += a_right + 0.5 * b_right;
+            Bw(i, j) += a_right + 0.5 * b_right;
             if (j < Nw - 2) {
-                B(i, N - 1 + j + 1) += 0.5 * b_right;
+                Bw(i, j + 1) += 0.5 * b_right;
             } else {
-                B(i, N - 1 + j) += 0.5 * b_right;
+                Bw(i, j) += 0.5 * b_right;
             }
         }
     }
 
-    /* 3. Bp = -inv(AIC) * B [N x (N+Nw-2)]
-     * Note: AIC is (N+1) x (N+1), but last row is Kutta condition */
-    MatrixXd Bp = -state.isol.AIC.lu().solve(B);
-    Bp.conservativeResize(N, Npanel); /* Remove last row */
+    MatrixXd Bp(N, Npanel);
+    Bp.leftCols(N - 1) = Bp_foil;
+    Bp.rightCols(Nw - 1) = (-SolveAIC(state, Bw)).topRows(N);
 
     /* 4. Csig = d(wake uei)/d(source) [Nw x (N+Nw-2)] */
     MatrixXd Csig = MatrixXd::Zero(Nw, Npanel);
@@ -1283,94 +1523,40 @@ void CalcUeM(FoilState& state) {
     state.vsol.ue_sigma.topRows(N) = Bp;
     state.vsol.ue_sigma.bottomRows(Nw) = Dw;
 
-    /* 6. sigma_m = d(source)/d(mass) [(N+Nw-2) x (N+Nw)] */
-    std::vector<Triplet> triplets;
-    for (int i = 0; i < N - 1; ++i) {
-        double ds = state.foil.s(i + 1) - state.foil.s(i);
-        if (ds > 1e-12) {
-            triplets.emplace_back(i, i, -state.isol.sgnue(i) / ds);
-            triplets.emplace_back(i, i + 1, state.isol.sgnue(i + 1) / ds);
-        }
-    }
-    for (int i = 0; i < Nw - 1; ++i) {
-        double ds = state.wake.s(i + 1) - state.wake.s(i);
-        if (ds > 1e-12) {
-            triplets.emplace_back(N - 1 + i, N + i, -1.0 / ds);
-            triplets.emplace_back(N - 1 + i, N + i + 1, 1.0 / ds);
-        }
-    }
-    state.vsol.sigma_m.resize(Npanel, Nsys);
-    state.vsol.sigma_m.setFromTriplets(triplets.begin(), triplets.end());
-
-    /* 7. ue_m = sgnue * ue_sigma * sigma_m */
-    VectorXd sgue(Nsys);
-    sgue.head(N) = state.isol.sgnue;
-    sgue.tail(Nw).setOnes();
-
-    state.vsol.ue_m =
-        sgue.asDiagonal() * state.vsol.ue_sigma * state.vsol.sigma_m;
+    AssembleUeM(state);
 }
 
 /**
  * @brief Rebuild sensitivities after stagnation point move
  * @param state Foil state
  */
-void RebuildUeM(FoilState& state) { CalcUeM(state); }
+void RebuildUeM(FoilState& state) {
+    /* Only the signs depend on the stagnation point; reuse ue_sigma. */
+    const int Nsys = state.foil.N + state.wake.N;
+    if (state.wake.N > 0 && state.vsol.ue_sigma.rows() == Nsys &&
+        state.vsol.ue_sigma.cols() == Nsys - 2)
+        AssembleUeM(state);
+    else
+        CalcUeM(state);
+}
 
 /**
- * @brief Rebuild R_V at converged state and store SparseLU factorization
- * for use in adjoint transpose solves.
+ * @brief Factor the coupled Jacobian at the converged state for adjoint
+ * transpose solves (state.glob.coupled_factorization). The factorization is
+ * of the unregularized Jacobian: no pseudo-time terms.
  * @param state Foil state
  */
 void StoreAdjointFactorization(FoilState& state) {
-    int Nsys = state.glob.Nsys;
-
     /* Rebuild global system at converged state to get current R_U */
     BuildGlobSys(state);
-
-    /* Rebuild R_V (same assembly as SolveGlob but without solving) */
-    VectorXd ue = state.glob.U.row(3).transpose();
-    VectorXd ds = state.glob.U.row(1).transpose();
-    double uemax = ue.cwiseAbs().maxCoeff();
-    for (int i = 0; i < Nsys; ++i) {
-        ue(i) = std::max(ue(i), 1e-10 * uemax);
-    }
-
-    int NN = 4 * Nsys; /* Fixed-angle block; trim uses its Schur complement. */
-    state.glob.R_V.resize(NN, NN);
-
-    std::vector<Triplet> triplets;
-    triplets.reserve(state.glob.R_U.nonZeros() + 4 * Nsys);
-
-    /* Copy R_U entries (first 3*Nsys rows) */
-    for (int k = 0; k < state.glob.R_U.outerSize(); ++k) {
-        for (SparseMatrixd::InnerIterator it(state.glob.R_U, k); it; ++it) {
-            triplets.emplace_back(it.row(), it.col(), it.value());
-        }
-    }
-
-    /* Fourth equation: R_ue = ue - ueinv - ue_m * (ds .* ue) */
-    for (int i = 0; i < Nsys; ++i) {
-        int row = 3 * Nsys + i;
-        int ue_idx = 4 * i + 3;
-        triplets.emplace_back(row, ue_idx, 1.0);
-
-        for (int j = 0; j < Nsys; ++j) {
-            double ue_m_ij = state.vsol.ue_m(i, j);
-            if (std::abs(ue_m_ij) > 0.0) {
-                triplets.emplace_back(row, 4 * j + 3, -ue_m_ij * ds(j));
-                triplets.emplace_back(row, 4 * j + 1, -ue_m_ij * ue(j));
-            }
-        }
-    }
-
-    state.glob.R_V.setFromTriplets(triplets.begin(), triplets.end());
-
+    const int Nsys = state.glob.Nsys;
+    auto factorization = std::make_shared<CoupledFactorization>();
     // A ridge solves a different derivative problem. Fail instead of returning
     // a gradient of a regularized model that Python mfoil did not evaluate.
-    auto lu = std::make_shared<Eigen::SparseLU<SparseMatrixd>>();
-    lu->compute(state.glob.R_V);
-    state.glob.lu_factorization = lu->info() == Eigen::Success ? lu : nullptr;
+    const bool ok = factorization->Compute(
+        state.glob.R_U, state.vsol.ue_m, ClippedUe(state),
+        state.glob.U.row(1).transpose(), VectorXd::Ones(Nsys));
+    state.glob.coupled_factorization = ok ? factorization : nullptr;
 }
 
 /**

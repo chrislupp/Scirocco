@@ -48,10 +48,13 @@ void InitBoundaryLayer(FoilState& state);
  * @param x Station arc-length coordinates
  * @param U State matrix at the station
  * @param Aux Auxiliary variables at the station
+ * @param scalar_derivatives Also compute lin_Ret and lin_Ma (dR/dRe, dR/dMa
+ *        for the adjoint); Newton iterations do not need them
  * @return Residual and linearization at the station
  */
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
-                            const Matrix42d& U, const Vector2d& Aux);
+                            const Matrix42d& U, const Vector2d& Aux,
+                            bool scalar_derivatives = true);
 
 /**
  * @brief Compute residual at a transition station (combined laminar +
@@ -62,11 +65,13 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
  * @param x Station arc-length coordinates
  * @param U State matrix at the station
  * @param Aux Auxiliary variables at the station
+ * @param scalar_derivatives Also compute lin_Ret and lin_Ma
  * @return Combined residual and Jacobian at the transition station
  */
 ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                                const Vector2d& x, const Matrix42d& U,
-                               const Vector2d& Aux);
+                               const Vector2d& Aux,
+                               bool scalar_derivatives = true);
 
 /**
  * @brief Thwaites correlation for stagnation initialization

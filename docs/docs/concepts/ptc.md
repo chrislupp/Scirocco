@@ -24,8 +24,10 @@ $$
 \left(R_U + \frac{1}{\tau} I\right) \Delta U = -R .
 $$
 
-Large $\tau$ gives back plain Newton. Small $\tau$ shortens the step towards
-$-\tau R$, a cautious move down the residual. The converged answer,
+where $I$ puts $1/\tau$ on each equation's own unknown: boundary-layer
+equation $k$ of a station on unknown $k$ of that station, and the coupling
+equation on $u_e$. Large $\tau$ gives back plain Newton. Small $\tau$
+shortens the step towards $-\tau R$, a cautious move down the residual. The converged answer,
 $R = 0$, doesn't depend on $\tau$, so PTC changes the path, not the
 destination.
 
@@ -45,15 +47,13 @@ easy case PTC never engages.
 
 ## What it does in practice
 
-PTC is a safeguard, not a speed-up. On this difficult start both variants
-spend about 30 steps stalled near $\|R\| \approx 1$ before Newton takes over:
+PTC is a safeguard, not a speed-up. On this difficult start it never
+engages, and both variants take the same 14 steps:
 
 <ConvergencePlot variant="hard" />
 
-PTC actually reaches $10^{-11}$ first, but then spends ten steps hovering
-just above the default tolerance, `rtol = 1e-11`, which is close to
-round-off for this problem. Its real value is on starts where an undamped
-step would diverge, such as the odd shapes an optimizer tries along the way.
+Its real value is on starts where an undamped step would diverge, such as
+the odd shapes an optimizer tries along the way.
 
 ## Tuning
 

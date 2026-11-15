@@ -2068,7 +2068,8 @@ Vector3d ComputeStationLinMa(const Param& param, const Vector2d& x,
 using namespace detail;
 
 ResidualLin ResidualStation(const Param& param, const Vector2d& x,
-                            const Matrix42d& Uin, const Vector2d& Aux) {
+                            const Matrix42d& Uin, const Vector2d& Aux,
+                            bool scalar_derivatives) {
     /* Compute residual at a boundary layer station
      * U = [th, ds, sa, ue] at two stations
      * Aux = wake gap at each station */
@@ -2328,10 +2329,13 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
      * Ret = ρ·ue·θ/μ_0 in BL closures, with ∂Ret/∂Re = Ret/Re, so
      * ∂R/∂Re = lin_Ret/Re. ComputeStationLinRet replicates the residual
      * structure but tracks only the Ret-derivative path. */
-    result.lin_Ret = ComputeStationLinRet(param, x, Uin, Aux);
+    if (scalar_derivatives) {
+        result.lin_Ret = ComputeStationLinRet(param, x, Uin, Aux);
 
-    /* ∂R/∂Ma·Ma via the analytic Ma chain through KTb, KTl, H0, mu0, rho0. */
-    result.lin_Ma = ComputeStationLinMa(param, x, Uin, Aux);
+        /* ∂R/∂Ma·Ma via the analytic Ma chain through KTb, KTl, H0, mu0,
+         * rho0. */
+        result.lin_Ma = ComputeStationLinMa(param, x, Uin, Aux);
+    }
 
     return result;
 }
@@ -2514,7 +2518,7 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
 
 ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                                const Vector2d& x, const Matrix42d& U,
-                               const Vector2d& Aux) {
+                               const Vector2d& Aux, bool scalar_derivatives) {
     /* Calculates the combined lam + turb residual for a transition station
      * U1 should be laminar; U2 should be turbulent
      * Calculates and linearizes the transition location in the process */
@@ -2666,7 +2670,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     U_lam.col(0) = U1;
     U_lam.col(1) = Utl;
     Vector2d x_lam(x1, xt);
-    auto Rl = ResidualStation(param, x_lam, U_lam, Aux);
+    auto Rl = ResidualStation(param, x_lam, U_lam, Aux, scalar_derivatives);
 
     /* Turbulent residual: xt to x2 */
     param.turb = true;
@@ -2674,7 +2678,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     U_turb.col(0) = Utt;
     U_turb.col(1) = U2;
     Vector2d x_turb(xt, x2);
-    auto Rt = ResidualStation(param, x_turb, U_turb, Aux);
+    auto Rt = ResidualStation(param, x_turb, U_turb, Aux, scalar_derivatives);
 
     /* Combined residual */
     result.value = Rl.value + Rt.value;
@@ -2717,7 +2721,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
      *   (b) ∂xt/∂Ma · (Rl.lin_x.col(1) + Rt.lin_x.col(0))
      *   (c) ∂xt/∂Ma · (Rl_Utl · Utl_xt + Rt_Utt · Utt_xt)
      *   (d) (Rt_Utt · ê_2) · cttr_dMa · Ma */
-    {
+    if (scalar_derivatives) {
         Param p_lam = param_base;
         p_lam.turb = false;
         ThermoMaDeriv d_Ma =
@@ -2761,7 +2765,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
      *   dep] (c) ∂xt/∂Re · (Rl_Utl · Utl_xt + Rt_Utt · Utt_xt)      [Utl, Utt
      *   depend on xt] (d) (Rt_Utt · ê_2) · cttr_dRet·Ret_t [cttr(Re) directly]
      */
-    {
+    if (scalar_derivatives) {
         /* damp_dRet at the two endpoints used in Rxt */
         Param p_lam = param_base;
         p_lam.turb = false;

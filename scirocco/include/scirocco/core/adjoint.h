@@ -81,10 +81,9 @@ void MachSensitivities(FoilState& state, Sensitivity& sens);
  * @brief Solve the viscous adjoint transpose system R_V^T · λ = rhs.
  *
  * Requires that the viscous primal has been converged and that
- * StoreAdjointFactorization has populated state.glob.R_V and
- * state.glob.lu_factorization. If lu_factorization is null this call
- * rebuilds it (idempotent). Returns λ ∈ ℝ^{4·Nsys}.
- * @param state foil state with a valid adjoint LU factorization
+ * StoreAdjointFactorization has populated state.glob.coupled_factorization.
+ * If it is null this call rebuilds it (idempotent). Returns λ ∈ ℝ^{4·Nsys}.
+ * @param state foil state with a valid adjoint factorization
  * @param rhs right-hand side vector of size 4*Nsys
  * @return adjoint solution vector λ of size 4*Nsys
  */

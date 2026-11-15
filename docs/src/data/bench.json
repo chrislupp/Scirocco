@@ -3,8 +3,8 @@
   "case": "NACA 0012, alpha 5 deg, Re 1e6",
   "repetitions": 11,
   "rows": [
-    { "panels": 99, "paneling": 1.2, "inviscid": 0.6, "viscous": 115.8, "gradient": 10.7 },
-    { "panels": 149, "paneling": 1.2, "inviscid": 1.3, "viscous": 93.8, "gradient": 21.0 },
-    { "panels": 199, "paneling": 1.2, "inviscid": 2.3, "viscous": 681.3, "gradient": 35.7 }
+    { "panels": 99, "paneling": 1.2, "inviscid": 0.7, "viscous": 12.5, "gradient": 9.0 },
+    { "panels": 149, "paneling": 1.2, "inviscid": 1.3, "viscous": 22.5, "gradient": 17.5 },
+    { "panels": 199, "paneling": 1.2, "inviscid": 2.3, "viscous": 37.7, "gradient": 29.3 }
   ]
 }

@@ -167,17 +167,22 @@ python examples/kulfan_multipoint_optimization/kulfan_multipoint_optimization.py
 ```
 
 Each point adds a viscous solve and an adjoint per iteration, so the run
-time grows with the number of points. The reference run took 222 IPOPT
-iterations, about 13.5 minutes:
+time grows with the number of points. On an Apple M1 Pro the reference run
+takes 168 IPOPT iterations and about 45 seconds, including server start-up:
 
 ```output
 Return status: Solve_Succeeded
-low_cl:   alpha=-0.988°  Cl=0.3000  Cd=0.00432
-mid_cl:   alpha=+0.363°  Cl=0.5000  Cd=0.00447
+low_cl:   alpha=-1.007°  Cl=0.3000  Cd=0.00434
+mid_cl:   alpha=+0.362°  Cl=0.5000  Cd=0.00446
 high_cl:  alpha=+3.098°  Cl=0.8000  Cd=0.00508
-Σ w·Cd = 0.004601
-constraint violation = 2.2e-11
+Σ w·Cd = 0.004602
+constraint violation = 3.1e-12
 ```
+
+A few trial steps early in the run produce shapes the viscous solve can't
+converge. The server reports the failure, the log shows a traceback, and
+IPOPT treats it as a rejected step and shortens it. Tracebacks of the form
+`Scirocco analysis did not converge` are expected and don't stop the run.
 
 Results from before Philote-Cpp 0.6.0 differ: older versions silently
 truncated large Jacobians, so they aren't a valid comparison.
@@ -192,5 +197,5 @@ for w in [(1, 0, 0), (0.5, 0.5, 0), (0.33, 0.33, 0.33), ...]:
     # ... rerun optimization, save (cd_low, cd_mid, cd_high) ...
 ```
 
-Each weight vector is a separate optimization, so a dense sweep is an
-overnight job.
+Each weight vector is a separate optimization of about a minute, so a
+sweep of a few dozen weight vectors finishes in well under an hour.

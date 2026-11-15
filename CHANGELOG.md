@@ -7,6 +7,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `SCIROCCO_USE_BLAS` CMake option (default on): the dense product and LU of
+  the coupled solve's Schur complement go through BLAS/LAPACK (Accelerate,
+  OpenBLAS, MKL) when CMake finds one, Eigen otherwise. Viscous solves are
+  10-15% faster at 200 panels and 15% at 284 on an M1 Pro.
+- `Param::warm_start` (default on): `Scirocco::Solve` starts a viscous solve
+  from the last converged boundary layer of the same object, as XFOIL does,
+  and falls back to a cold start (after at most 30 iterations) if that does
+  not converge. The previous boundary layer is shifted along each surface
+  to the new stagnation point, as XFOIL's STMOVE does, and its edge
+  velocity is predicted from the new inviscid solution at the old mass
+  defect, so a 0.5-degree polar step mostly takes 5-6 Newton iterations.
+  This also applies across geometry updates through the Philote discipline.
+- `BoundaryLayerMarch` (new header `core/bl_march.h`) and
+  `Param::bl_march` (default on): before each coupled Newton step the
+  boundary layer is re-solved by a mixed-mode march at the current ue, as
+  XFOIL's MRCHDU does. Each station holds a ue-Hk combination fixed (direct
+  mode in attached flow, inverse near separation), transition is placed with
+  `UpdateTransition`'s own test, the stagnation pair and the first wake
+  station are re-solved too, and failed stations are extrapolated. Over 144
+  cases (NACA 0012/2412/4412, 99-284 panels, alpha -2 to 12, Re 5e5 and
+  3e6) the median Newton iteration count drops from 19 to 10 and the mean
+  from 47 to 15, and 142 cases converge without continuation (128 before);
+  converged solutions are unchanged. On the XFOIL comparison cases Scirocco
+  now takes 8-11 steps, like XFOIL.
+- `Param::step_limiter` and `StepLimiter::Relative`: XFOIL's
+  under-relaxation rule as an alternative to the default mfoil rule.
+- `Param::rtol_floor` (1e-8): the coupled Newton solve also stops once the
+  residual is below this and a step no longer halves it, instead of running
+  to `niglob` at the round-off floor.
 - `Param::transition` and `TransitionModel::Captured` (experimental): the
   amplification factor and shear stress live at every node and the laminar
   and turbulent closures are blended smoothly over a transition length
@@ -96,6 +125,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   tags can be rechecked manually.
 
 ### Changed
+- `ResidualStation`, `ResidualTransition` and `BuildGlobSys` take an optional
+  `scalar_derivatives` flag (default true). Newton iterations and the
+  boundary-layer march no longer compute the Re and Mach residual partials,
+  which only the adjoint uses; the solver assembles them once at the accepted
+  solution. Viscous solves are about 15% faster (NACA 0012, 200 panels:
+  28-32 ms cold, 12-15 ms for a 0.5-degree polar step).
+- The influence-matrix LU from the inviscid solve is stored
+  (`Isol::AIC_lu`, `SolveAIC`) and reused by `CalcUeM` and the adjoint
+  instead of refactoring, and `BuildGlobSys` adds the stagnation-point
+  chain as triplets instead of inserting into the compressed matrix.
+- Geometry-only work is cached while the panel nodes are unchanged:
+  `BuildGamma` reuses the influence matrix, its LU and the reference
+  solutions (`Isol::AIC_x`), and `CalcUeM` reuses the airfoil-panel part of
+  the source influence (`Isol::Bp_foil`), as XFOIL caches the airfoil part
+  of its DIJ matrix. `RebuildUeM`, called when the stagnation point moves to
+  another panel, now only reapplies the surface signs. A 0.5-degree polar
+  step at 200 panels takes 15-18 ms instead of 22-25 ms.
+- The coupled viscous Newton system and the viscous adjoint are factored
+  through the mass-defect Schur complement (`CoupledFactorization`, new
+  header `core/coupled_linear.h`) instead of a sparse LU of the assembled
+  `R_V`, whose dense edge-velocity block filled in. Substituting the mass
+  defect for displacement thickness leaves an N x N dense system after a
+  sparse boundary-layer solve. Steps and adjoints are unchanged to round-off;
+  the linear solve per Newton iteration drops from 15 ms to 1.9 ms at 200
+  panels. The boundary-layer block is solved by block forward substitution
+  over its station groups (`BlockTriangularSolver`). A sparse LU of the assembled system remains as a fallback, and the
+  trust-region step still assembles `R_V`.
+- `Glob::lu_factorization` is replaced by `Glob::coupled_factorization`, and
+  `StoreAdjointFactorization` no longer fills `Glob::R_V`; call
+  `coupled_factorization->Assemble()` for the matrix. A viscous `Solve()` no
+  longer factors the adjoint system; `ComputeSensitivities` does, on demand.
 - Viscous `ComputeSensitivities()` is about 13x faster (11.2 s to 0.88 s at
   199 panels on an M1 Pro). The geometric Jacobians in the `R_ue` chain,
   `d(gamma)/d(foil.x)` and the wake sweeps, were rebuilt 16 times per gradient;
@@ -183,6 +243,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   relative.
 
 ### Fixed
+- NACA 0012 at alpha 0 (stagnation point on a node) no longer runs all 200
+  Newton iterations and a continuation restart: the residual stalls near
+  1e-10, above `rtol`, and the round-off floor test now ends the solve.
+- Pseudo-transient continuation added `1/tau` at matrix position `(i, i)`,
+  but boundary-layer rows are ordered `3 * node + equation` and columns
+  `4 * node + variable`, so the term coupled equations to other nodes'
+  variables. Each equation now gets the term on its own variable.
 - Viscous analysis rejects a closed trailing edge instead of returning wrong
   results (#18). The wake model is singular when the trailing-edge gap
   closes: on NACA 0012 a gap of 1e-9 chord or less never converged, and an

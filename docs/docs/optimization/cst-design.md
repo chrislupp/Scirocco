@@ -121,8 +121,9 @@ prob.driver.options["tol"]       = 1e-6
 prob.driver.options["maxiter"]   = 200
 ```
 
-The inviscid case finishes in under a minute; the viscous one takes a few
-minutes, almost all of it in the solves. If SLSQP improves quickly and then
+On an Apple M1 Pro each variant finishes in under 20 seconds, including
+server start-up. The viscous one takes about 80 iterations, almost all of
+the time in the solves. If SLSQP improves quickly and then
 stalls short of convergence, raise `maxiter` to 400.
 
 ## Reading the output
