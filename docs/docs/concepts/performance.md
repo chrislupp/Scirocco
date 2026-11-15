@@ -39,14 +39,14 @@ scirocco/build/bench
   the vortex strengths and the wake run in reverse for every output together.
   Cost grows a little slower than the square of the panel count.
 
-## Compared with finite differences
+## Compared to finite differences
 
 A finite-difference gradient needs one extra viscous solve per input, of
 which there are $2N + 3$. At 99 panels that's 203 solves, about 2.5 s even
 with warm starts; the adjoint takes 9 ms. At 149 panels it's about 7 s
 against 18 ms. And the adjoint result is exact, with no step size to choose.
 
-## Compared with XFOIL
+## Compared to XFOIL
 
 These are viscous analyses alone, without gradients. XFOIL here is the
 Fortran from the CMPLXFOIL sources, built with `gfortran -O2
@@ -73,7 +73,7 @@ Warm starts reuse the geometry-only work and predict the new edge velocity,
 so most take 5-6 steps. XFOIL's convergence tolerance (`EPS1 = 1e-10` on the
 RMS relative change) is about as tight as Scirocco's.
 
-## Compared with CMPLXFOIL in optimization
+## Compared to CMPLXFOIL
 
 In a gradient-based optimization every evaluation is a solve plus a
 gradient. [CMPLXFOIL](https://github.com/mdolab/CMPLXFOIL) computes its
@@ -124,14 +124,8 @@ That is about 250x faster at the same resolution.
 
 - **Robustness.** One of the 8 geometries did not converge in CMPLXFOIL,
   and neither did any of its gradient solves. Scirocco converged on all 8.
-- **Gradient agreement.** Each code's gradient matches its own central
-  finite differences to five digits. The two codes differ from each other by
-  up to a factor of two on some CST coefficients. CMPLXFOIL repanels as the
-  shape changes, so its derivatives include the motion of its panel nodes.
-  Scirocco differentiates at fixed nodes, and its boundary layer follows
-  mfoil rather than XFOIL.
-- **Making CMPLXFOIL's complex step work.** On this machine (gfortran 15,
-  NumPy 2, f2py with the meson backend) CMPLXFOIL needed three fixes:
+- **Making CMPLXFOIL's complex step work.** Built with gfortran 15, NumPy 2,
+  and f2py's meson backend, CMPLXFOIL needed three fixes:
   - Add `-fdefault-double-8` to the f2py step of the complex build. Without
     it, `-fdefault-real-8` widens the wrapper's `double complex` to 32 bytes,
     so Python reads and writes the Fortran common blocks at the wrong
@@ -144,5 +138,5 @@ That is about 250x faster at the same resolution.
   `AeroProblem` also derives Re from Mach and altitude, so the CMPLXFOIL
   cases ran at M = 10⁻⁴ rather than 0.
 
-All timings are on an Apple M1 Pro, with Release builds, `-march=native` and
-Accelerate.
+All timings are on an Apple M1 Pro, with Release builds, `-march=native`, and
+BLAS/LAPACK from the Apple Accelerate framework.

@@ -15,7 +15,7 @@ Pass these to CMake at configure time, for example
 | `SCIROCCO_HDF5_OUTPUT` | `OFF` | The `scirocco_hdf5` library and `hdf5_output_example` |
 | `SCIROCCO_BUILD_PHILOTE` | `OFF` | The Philote gRPC servers. Needs Protobuf, gRPC, and Philote-Cpp. |
 | `SCIROCCO_NATIVE_ARCH` | `ON` | Compile Release builds with `-march=native` |
-| `SCIROCCO_USE_BLAS` | `ON` | Use BLAS/LAPACK (Accelerate on macOS, OpenBLAS or MKL elsewhere) for the dense part of the coupled solve; falls back to Eigen if none is found |
+| `SCIROCCO_USE_BLAS` | `ON` | Use BLAS/LAPACK (the Apple Accelerate framework on macOS, OpenBLAS or MKL elsewhere) for the dense part of the coupled solve; falls back to Eigen if none is found |
 | `SCIROCCO_SANITIZERS` | `OFF` | AddressSanitizer and UndefinedBehaviorSanitizer (GCC or Clang) |
 | `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS` | `OFF` | Extra tests that isolate each piece of the adjoint chain |
 | `SCIROCCO_BUILD_PROBES` | `OFF` | 14 `probe_*` diagnostic programs for adjoint debugging |

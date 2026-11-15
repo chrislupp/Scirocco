@@ -27,7 +27,7 @@ benchmarks:
 - the critical Reynolds number, 519.4.
 
 For each profile, the growth rate is scaled by its asymptotic value and
-compared with both ramps:
+compared to both ramps:
 
 | H | envelope ramp RMS | default ramp RMS |
 | --- | --- | --- |
