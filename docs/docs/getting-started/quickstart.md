@@ -8,6 +8,11 @@ description: Build Scirocco and solve a viscous airfoil in C++.
 Build the library and run a viscous analysis of a NACA 2412. You need CMake
 3.18+, a C++17 compiler, and Eigen 3.4+.
 
+:::tip Working in Python instead?
+Skip the build: run the servers from Docker images and follow
+[Python and MDO frameworks](../python#set-up).
+:::
+
 ## 1. Install the dependencies
 
 <Tabs groupId="os">

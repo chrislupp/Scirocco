@@ -5,6 +5,17 @@ description: Build Scirocco, with optional HDF5 output and Philote servers.
 
 # Installation
 
+:::tip Using Scirocco from Python or an MDO framework?
+You don't have to build anything. Both Philote servers come as Docker
+images:
+
+<DockerRun />
+
+Then continue with [Python and MDO frameworks](../python). Build from source
+when you want the C++ library, HDF5 history files, or a native build on
+Apple silicon. See [Docker](../python/docker) for the image tags.
+:::
+
 The core library needs only Eigen. Everything else is optional: turn on what
 you use. All commands run from the repository root.
 
@@ -13,6 +24,7 @@ you use. All commands run from the repository root.
 | The C++ library | CMake 3.18+, a C++17 compiler, Eigen 3.4+ | (default) |
 | HDF5 history files | HDF5 with C++ bindings | `SCIROCCO_HDF5_OUTPUT=ON` |
 | Philote servers, for Python and MDO frameworks | Protobuf, gRPC, Philote-Cpp 0.6.0 | `SCIROCCO_BUILD_PHILOTE=ON` |
+| Philote servers, without building | Docker | none: use the [images](../python/docker) |
 | The test suites | Google Test, and HDF5 for the reference tests | (on by default) |
 
 CI builds with GCC 14 and Clang 18 on Ubuntu 24.04. macOS with Homebrew works
