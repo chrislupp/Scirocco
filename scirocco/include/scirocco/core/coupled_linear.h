@@ -154,7 +154,7 @@ class CoupledFactorization {
     [[nodiscard]] VectorXd SolveTransposeSchur(const VectorXd& rhs) const;
     [[nodiscard]] bool Accurate(const VectorXd& x, const VectorXd& rhs,
                                 bool transpose) const;
-    bool FactorSchurComplement(MatrixXd s);
+    bool FactorSchurComplement(const MatrixXd& s);
     [[nodiscard]] VectorXd SolveSchurComplement(const VectorXd& r,
                                                 bool transpose) const;
 

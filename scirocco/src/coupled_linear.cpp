@@ -300,13 +300,13 @@ bool CoupledFactorization::ComputeSchur() {
 #endif
     s.diagonal() += d_;
     if (!s.allFinite()) return false;
-    return FactorSchurComplement(std::move(s));
+    return FactorSchurComplement(s);
 }
 
-bool CoupledFactorization::FactorSchurComplement(MatrixXd s) {
+bool CoupledFactorization::FactorSchurComplement(const MatrixXd& s) {
 #ifdef SCIROCCO_HAVE_LAPACK
     const int n = static_cast<int>(s.rows());
-    s_factors_ = std::move(s);
+    s_factors_ = s;
     s_pivots_.assign(n, 0);
     int info = 0;
     dgetrf_(&n, &n, s_factors_.data(), &n, s_pivots_.data(), &info);
