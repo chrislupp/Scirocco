@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
+# Pushes to a branch run one at a time, so an older develop run can never
+# overwrite a newer `next` image. Superseded PR runs are cancelled.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: Build (${{ matrix.target }})
@@ -65,3 +74,21 @@ jobs:
         run: |
           export PATH="$RUNNER_TEMP/smoke-client/bin:$PATH"
           bash scripts/smoke_image.sh "${IMAGE_TAGS%%$'\n'*}" "${{ matrix.kind }}"
+
+      # develop publishes the image that just passed the smoke test as `next`.
+      # Release images (version tags and `latest`) come from release.yml.
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish the tested image as next
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker tag "${IMAGE_TAGS%%$'\n'*}" "$IMAGE:next"
+          docker push "$IMAGE:next"

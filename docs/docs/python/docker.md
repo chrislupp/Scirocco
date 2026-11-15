@@ -16,14 +16,29 @@ side.
 | [`chrislupp/scirocco`](https://hub.docker.com/r/chrislupp/scirocco) | 50051 | Analysis |
 | [`chrislupp/scirocco-kulfan`](https://hub.docker.com/r/chrislupp/scirocco-kulfan) | 50052 | CST geometry |
 
-Images are published for tagged releases. Use a version tag, not `latest`:
+| Tag | Tracks | Updated |
+| --- | --- | --- |
+| `<version>`, for example `0.2.0` | That release | Never |
+| `<major>.<minor>`, `<major>`, `latest` | The newest stable release in that series | On each stable release |
+| `next` | The `develop` branch | On each push to `develop` that passes the image smoke test |
+
+Use a version tag, not `latest`, so your results don't change under you:
 
 ```bash
 docker run --rm -p 50051:50051 chrislupp/scirocco:<version>
 docker run --rm -p 50052:50052 chrislupp/scirocco-kulfan:<version>
 ```
 
-Until the first image is published, build them yourself.
+Use `next` to try changes before they are released. It moves with
+`develop` and can break between pulls, so pull it again before each run:
+
+```bash
+docker pull chrislupp/scirocco:next
+docker run --rm -p 50051:50051 chrislupp/scirocco:next
+```
+
+The two images are published separately, so their `next` tags can briefly
+come from different commits.
 
 ## Build the images
 
