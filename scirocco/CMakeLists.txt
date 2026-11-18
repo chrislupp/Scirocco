@@ -17,6 +17,7 @@ option(SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS
 option(SCIROCCO_BUILD_PROBES
        "Build standalone probe diagnostic binaries" OFF)
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
+option(SCIROCCO_BUILD_CLI "Build the fauXfoil XFOIL-style command-line program" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
@@ -355,6 +356,30 @@ if(SCIROCCO_BUILD_EXAMPLES)
 
     add_executable(docs_figure_data examples/docs_figure_data.cpp)
     target_link_libraries(docs_figure_data scirocco)
+endif()
+
+# fauXfoil: XFOIL-style command-line program
+if(SCIROCCO_BUILD_CLI)
+    add_library(fauxfoil_core STATIC
+        apps/fauxfoil/airfoil.cpp
+        apps/fauxfoil/format.cpp
+        apps/fauxfoil/polar.cpp
+        apps/fauxfoil/session.cpp
+    )
+    target_include_directories(fauxfoil_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/apps/fauxfoil)
+    target_link_libraries(fauxfoil_core PUBLIC scirocco)
+    target_compile_options(fauxfoil_core PRIVATE -Wall -Wextra -Wpedantic)
+
+    add_executable(fauXfoil apps/fauxfoil/main.cpp)
+    target_link_libraries(fauXfoil fauxfoil_core)
+    target_compile_definitions(fauXfoil PRIVATE SCIROCCO_VERSION="${PROJECT_VERSION}")
+    install(TARGETS fauXfoil RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)
+        add_executable(scirocco_fauxfoil_tests tests/fauxfoil_test.cpp)
+        target_link_libraries(scirocco_fauxfoil_tests fauxfoil_core GTest::gtest_main)
+        gtest_discover_tests(scirocco_fauxfoil_tests)
+    endif()
 endif()
 
 # Philote-Cpp discipline interface

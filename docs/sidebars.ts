@@ -17,7 +17,13 @@ const sidebars: SidebarsConfig = {
             type: "category",
             label: "Guides",
             collapsible: false,
-            items: ["guides/analysis", "guides/geometry", "guides/gradients", "guides/hdf5"],
+            items: [
+                "guides/analysis",
+                "guides/geometry",
+                "guides/gradients",
+                "guides/hdf5",
+                "guides/fauxfoil",
+            ],
         },
         {
             type: "category",

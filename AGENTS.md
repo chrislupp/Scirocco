@@ -38,6 +38,7 @@ cmake --build scirocco/build-debug -j
 - `SCIROCCO_BUILD_PROBES=ON` (opt-in) — 14 diagnostic binaries for ad-hoc adjoint debugging
 - `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `quickstart`, `naca_example`, `viscous_example`, `bench`, `docs_figure_data`
 - Coverage uses compiler flags; there is no `SCIROCCO_COVERAGE` option.
+- `SCIROCCO_BUILD_CLI=ON` (default) — `fauXfoil`, an XFOIL-style command-line program (`scirocco/apps/fauxfoil/`)
 - `SCIROCCO_NATIVE_ARCH=ON` (default) — `-march=native` in Release builds
 - `SCIROCCO_USE_BLAS=ON` (default) — BLAS/LAPACK for the dense coupled solve (Eigen fallback)
 

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `fauXfoil`: an interactive command-line program that looks and behaves like
+  XFOIL 6.99 (menus, prompts, abbreviations, per-iteration printout, polar
+  and coordinate file formats) and runs Scirocco. XFOIL batch scripts run
+  unchanged. Built by the new `SCIROCCO_BUILD_CLI` CMake option (default
+  on) and installed with the library.
+- `Glob::iteration_observer`: optional read-only callback that the coupled
+  Newton solve calls at every iteration, and `Glob::relax`, the
+  under-relaxation factor of the last update. Neither changes the solve.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
