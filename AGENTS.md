@@ -31,6 +31,31 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Debug \
 cmake --build scirocco/build-debug -j
 ```
 
+### fauXFOIL
+`fauxfoil/` holds fauXFOIL, an XFOIL-style command line and Qt plot window
+built on Scirocco's public API. It is a separate CMake project that compiles
+the sibling `scirocco/` tree (or, with `-DFAUXFOIL_SCIROCCO_SOURCE=`, finds
+an installed Scirocco):
+```bash
+cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
+cmake --build fauxfoil/build -j
+ctest --test-dir fauxfoil/build --output-on-failure
+```
+Options: `FAUXFOIL_GRAPHICS=OFF` (opt in for the Qt 6 Widgets plot window;
+when ON, configuration fails if Qt is not found, never falling back to
+text-only), `FAUXFOIL_BUILD_TESTS=ON`. The Qt tests run without a display
+(`QT_QPA_PLATFORM=offscreen`). Nothing builds fauXFOIL unless `fauxfoil/`
+is configured; the Scirocco build, Docker images and release artifacts do
+not include it.
+
+fauXFOIL's version is Scirocco's: CMake reads it from
+`project(scirocco VERSION ...)` (or the installed package) and passes it in
+as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
+print. Never hard-code it in `fauxfoil/`; the `fauXFOIL.Version` test
+fails if the binary reports anything else. The screenshots in
+`docs/static/img/fauxfoil-*.png` show the version too; regenerate them
+(`FAUXFOIL_SNAPSHOT_DIR=dir`) when they should match a release.
+
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
@@ -300,6 +325,11 @@ When `scirocco_sensitivity_ref_tests` fails:
 ## Directory Structure
 
 ```
+fauxfoil/              # fauXFOIL: XFOIL-style command line on Scirocco (own CMake project)
+  src/                 # Session, plots, PostScript, font reader; qt/ holds the plot window
+  fonts/               # FauxfoilPlot.ttf (compiled into the program) and make_font.py, its source
+  tests/               # Google Test suites (text and offscreen Qt)
+
 scirocco/
   include/scirocco/
     core/              # Solver modules (geometry, paneling, inviscid, BL, adjoint)

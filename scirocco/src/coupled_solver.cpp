@@ -270,6 +270,7 @@ void SolveCoupled(FoilState& state) {
     state.glob.trust_accepted = 0;
     state.glob.trust_rejected = 0;
     state.glob.coupled_iterations = 0;
+    state.glob.relax = 1.0;
 
     /* As in XFOIL, march the boundary layer before every Newton step,
      * starting with the initial guess. */
@@ -284,6 +285,8 @@ void SolveCoupled(FoilState& state) {
         // iteration.
         CalcForce(state);
         double rnorm = CoupledResidual(state).norm();
+        if (state.glob.iteration_observer)
+            state.glob.iteration_observer(state, iter);
         if (state.param.verb >= 1) {
             std::cout << "  Iteration " << iter << ": |R| = " << rnorm
                       << ", tau = " << state.glob.tau << '\n';
@@ -1232,6 +1235,7 @@ void UpdateState(FoilState& state) {
 
     /* Apply update */
     double alpha_change = omega * state.glob.dalpha;
+    state.glob.relax = omega;
     state.glob.U += omega * state.glob.dU;
     state.oper.alpha += alpha_change;
 

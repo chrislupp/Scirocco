@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `fauXFOIL`: an interactive command-line program that looks and behaves like
+  XFOIL 6.99 (menus, prompts, abbreviations, per-iteration printout, polar
+  and coordinate file formats) and runs Scirocco. XFOIL batch scripts run
+  unchanged. It is a separate CMake project in `fauxfoil/` that builds
+  against the Scirocco source tree beside it or an installed Scirocco.
+- `fauXFOIL` plots: with Qt 6, a native plot window (no X11 needed on
+  macOS) shows XFOIL's plots: Cp(x) after each point and for sequences,
+  pressure vectors (`CPV`), boundary-layer variables (`VPLO`), polars
+  (`PPLO`) and the `GDES` geometry. `HARD` writes PostScript hardcopies to
+  `plot.ps`. Lettering uses FauxfoilPlot, a plotter-style font compiled
+  into the program; hardcopies draw its letters as outlines, so they need
+  no fonts. The window is opt-in with `FAUXFOIL_GRAPHICS=ON`, which
+  requires Qt 6; otherwise `fauXFOIL` is text-only.
+- `fauXFOIL` cursor input and the rest of XFOIL's plot commands: zoom
+  (`Z`, `U`), plot-object size (`SIZE`), annotation (`ANNO`), boundary-layer
+  velocity profiles (`BL`, `BLC`, `BLWT`), reference Cp, force and polar
+  overlays (`CREF`, `FREF`, `RGET`, `RDEL`), polar axis limits (`PPAX`),
+  polar airfoils (`APLO`), `VPLO` blowup, symbols, labels, clipping, dump
+  and overlay, and the `GDES` blowup, window, tick, inch-scale, overlay,
+  curvature and distance commands.
+- `Glob::iteration_observer`: optional read-only callback that the coupled
+  Newton solve calls at every iteration, and `Glob::relax`, the
+  under-relaxation factor of the last update. Neither changes the solve.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
