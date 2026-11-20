@@ -33,6 +33,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -42,10 +43,10 @@
 
 #include "bl_profiles.h"
 #include "display.h"
+#include "font.h"
 #include "format.h"
 #include "plot_scene.h"
 #include "session.h"
-#include "stroke_font.h"
 
 namespace {
 
@@ -275,31 +276,62 @@ bool HasLabel(const fauxfoil::Scene& scene, const std::string& text) {
     return false;
 }
 
-TEST(FauxfoilStrokeFont, CoversPrintableAsciiAndSymbols) {
-    const auto& unknown = fauxfoil::GlyphStrokes("?");
+TEST(FauxfoilFont, CoversPrintableAsciiAndSymbols) {
+    const fauxfoil::PlotFont& font = fauxfoil::PlotFont::Get();
+    EXPECT_NEAR(font.CapHeight(), 0.7, 1e-12);
     std::vector<std::string> characters;
     for (char c = 33; c < 127; ++c) characters.emplace_back(1, c);
-    for (const char* symbol :
-         {"α", "θ", "δ", "τ", "ω", "Δ", "∞", "√", "°", "×"})
+    for (const char* symbol : {"α", "θ", "δ", "τ", "ω", "Δ", "∞", "√", "°", "×",
+                               "β", "γ", "π", "σ", "Ω"})
         characters.emplace_back(symbol);
     for (const std::string& c : characters) {
-        const auto& strokes = fauxfoil::GlyphStrokes(c);
-        ASSERT_FALSE(strokes.empty()) << c;
-        if (c != "?") EXPECT_NE(&strokes, &unknown) << c << " has no glyph";
-        for (const auto& stroke : strokes) {
-            EXPECT_GE(stroke.size(), 2U) << c;
-            for (const auto& p : stroke) {
-                EXPECT_GE(p.x, -0.5) << c;
-                EXPECT_LE(p.x, 4.7) << c;
-                EXPECT_GE(p.y, -2.5) << c;
-                EXPECT_LE(p.y, 7.5) << c;
+        const char32_t code = fauxfoil::CodePoint(c);
+        EXPECT_TRUE(font.Has(code)) << c;
+        const auto& outline = font.Outline(code);
+        ASSERT_FALSE(outline.empty()) << c;
+        for (const auto& contour : outline) {
+            EXPECT_GE(contour.size(), 3U) << c;
+            for (const auto& p : contour) {
+                /* Inside the 0.595-em cell, give or take the pen */
+                EXPECT_GE(p.x, -0.1) << c;
+                EXPECT_LE(p.x, 0.7) << c;
+                EXPECT_GE(p.y, -0.3) << c;
+                EXPECT_LE(p.y, 0.9) << c;
             }
         }
     }
-    EXPECT_TRUE(fauxfoil::GlyphStrokes(" ").empty());
+    EXPECT_TRUE(font.Outline(U' ').empty());
+    /* Characters the font lacks are drawn as '?' */
+    EXPECT_FALSE(font.Has(U'€'));
+    EXPECT_EQ(font.Outline(U'€').size(), font.Outline(U'?').size());
 }
 
-TEST(FauxfoilStrokeFont, LabelsAlignAndSetScripts) {
+TEST(FauxfoilFont, LabelOutlinesFollowTheLayout) {
+    fauxfoil::Label label;
+    label.at = {100.0, 50.0};
+    label.height = 10.0;
+    label.text = "I";
+    const auto outlines = fauxfoil::LabelOutlines(label);
+    ASSERT_FALSE(outlines.empty());
+    double top = -1e9;
+    double bottom = 1e9;
+    double left = 1e9;
+    double right = -1e9;
+    for (const auto& contour : outlines)
+        for (const auto& p : contour) {
+            top = std::max(top, p.y);
+            bottom = std::min(bottom, p.y);
+            left = std::min(left, p.x);
+            right = std::max(right, p.x);
+        }
+    /* Cap height 10 above the baseline, centred in its 8.5-wide cell */
+    EXPECT_NEAR(top, 60.0, 0.5);
+    EXPECT_NEAR(bottom, 50.0, 0.5);
+    EXPECT_NEAR(0.5 * (left + right), 100.0 + 0.5 * fauxfoil::kAdvance * 10.0,
+                0.1);
+}
+
+TEST(FauxfoilFont, LabelsAlignAndSetScripts) {
     fauxfoil::Label label;
     label.at = {100.0, 50.0};
     label.height = 10.0;
@@ -356,6 +388,9 @@ TEST_F(FauxfoilTest, HardAppendsPostScriptPages) {
     text << stream.rdbuf();
     EXPECT_TRUE(Has(text.str(), "%!PS-Adobe-3.0"));
     EXPECT_TRUE(Has(text.str(), "%%Pages: 2\n"));
+    /* Letters are filled outlines, so the file needs no fonts */
+    EXPECT_FALSE(Has(text.str(), "findfont"));
+    EXPECT_TRUE(Has(text.str(), "closepath\nfill\n"));
 }
 
 TEST_F(FauxfoilTest, CpminReportsAndChangesAxis) {

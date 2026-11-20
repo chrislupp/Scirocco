@@ -48,7 +48,11 @@
 
 namespace {
 
+/// The application main() creates, for the tests that need one.
+void App() { ASSERT_NE(QApplication::instance(), nullptr); }
+
 QImage Render(const fauxfoil::Scene& scene, bool paper) {
+    App();
     QImage image(static_cast<int>(fauxfoil::Scene::kWidth),
                  static_cast<int>(fauxfoil::Scene::kHeight),
                  QImage::Format_RGB32);
@@ -84,6 +88,7 @@ TEST(FauxfoilQt, DrawsLinesAndLabelsOnBlack) {
 TEST(FauxfoilQt, KeepsAspectRatioInWideTargets) {
     fauxfoil::Scene scene;
     scene.Segment(0.0, 0.0, fauxfoil::Scene::kWidth, 0.0);
+    App();
     QImage image(2000, 962, QImage::Format_RGB32);
     QPainter painter(&image);
     fauxfoil::RenderScene(painter, scene, QRectF(0, 0, 2000, 962), false);
@@ -92,15 +97,6 @@ TEST(FauxfoilQt, KeepsAspectRatioInWideTargets) {
     const int left = static_cast<int>((2000 - fauxfoil::Scene::kWidth) / 2);
     EXPECT_EQ(image.pixelColor(left - 20, 961), QColor(Qt::black));
     EXPECT_NE(image.pixelColor(left + 20, 961), QColor(Qt::black));
-}
-
-/// One QApplication for the tests that need windows (offscreen platform).
-QApplication& App() {
-    static int argc = 1;
-    static char name[] = "fauxfoil_qt_test";
-    static char* argv[] = {name, nullptr};
-    static QApplication app(argc, argv);
-    return app;
 }
 
 /// Run the event loop until @p done or a timeout.
@@ -181,3 +177,11 @@ TEST(FauxfoilQt, CursorReportsClicksAndKeysInPageCoordinates) {
 }
 
 }  // namespace
+
+/* Qt needs its application object to outlive every widget and font, and
+   to be destroyed before main() returns; gtest_main cannot arrange that */
+int main(int argc, char** argv) {
+    QApplication app(argc, argv);
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

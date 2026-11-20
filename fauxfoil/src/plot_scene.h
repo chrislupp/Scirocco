@@ -180,6 +180,10 @@ std::vector<Glyph> LayoutLabel(const Label& label);
 /// Width of @p label on the page.
 double LabelWidth(const Label& label);
 
+/// Replace Latin letters by Greek ones as a Symbol font assigns them
+/// (a: alpha, b: beta, ...), for "math characters" annotations.
+std::string MathCharacters(const std::string& text);
+
 /// Split UTF-8 text into characters.
 std::vector<std::string> Utf8Characters(const std::string& text);
 

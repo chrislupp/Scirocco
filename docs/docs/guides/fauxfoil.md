@@ -10,14 +10,32 @@ the same menus, prompts, command abbreviations, iteration printout, plots
 and polar file layout. Scirocco does the analysis. If you already drive XFOIL
 by hand or from a script, you can use `fauXFOIL` the same way.
 
-It's built by default (`SCIROCCO_BUILD_CLI=ON`) and installed next to the
-library:
+fauXFOIL is a separate program in the repository's `fauxfoil/` directory,
+next to the library, and uses only Scirocco's public API. Its build compiles
+the Scirocco source tree beside it:
 
 ```bash
-cmake -S scirocco -B scirocco/build -DCMAKE_BUILD_TYPE=Release
-cmake --build scirocco/build -j --target fauXFOIL
-scirocco/build/fauXFOIL
+cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
+cmake --build fauxfoil/build -j
+fauxfoil/build/fauXFOIL
 ```
+
+To build against an installed Scirocco instead, clear the source path and
+point CMake at the installation:
+
+```bash
+cmake -S fauxfoil -B fauxfoil/build -DFAUXFOIL_SCIROCCO_SOURCE= \
+      -DCMAKE_PREFIX_PATH=/path/to/scirocco/install
+```
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `FAUXFOIL_GRAPHICS` | `ON` | Plot window when Qt 6 Widgets is found; text-only otherwise |
+| `FAUXFOIL_BUILD_TESTS` | `ON` | The fauXFOIL tests (needs GoogleTest); run them with `ctest --test-dir fauxfoil/build` |
+| `FAUXFOIL_SCIROCCO_SOURCE` | `../scirocco` | Scirocco source tree to build with; empty to use an installed Scirocco |
+
+Scirocco's own options, such as `SCIROCCO_NATIVE_ARCH`, pass through to the
+library build. `cmake --install fauxfoil/build` installs `fauXFOIL`.
 
 ## A session
 
@@ -59,8 +77,12 @@ When `fauXFOIL` is built with Qt 6, plots open in a window laid out like
 XFOIL's: white lines on black, the same axes, legends and colours. The
 window is native, so it needs no X11 on macOS. Resize it freely; plots are
 redrawn as vectors at the screen's full resolution. Lettering uses
-fauXFOIL's own single-stroke font, which is drawn with the same thin pen as
-the lines, in the style of XFOIL's plotter text.
+FauxfoilPlot, fauXFOIL's own plotter-style font
+(`fauxfoil/fonts/FauxfoilPlot.ttf`). The font is compiled into the program,
+so nothing needs installing, and hardcopies draw its letters as filled
+outlines, so `plot.ps` needs no fonts either. To change a letter, edit its
+strokes in `fauxfoil/fonts/make_font.py` and run that script to rebuild the
+font.
 
 ![Cp plot of NACA 2412 at Re = 10⁶ and α = 4°](/img/fauxfoil-cp.png)
 
@@ -150,7 +172,7 @@ brew install qt                  # macOS
 sudo apt install qt6-base-dev    # Debian, Ubuntu
 ```
 
-Set `SCIROCCO_CLI_GRAPHICS=OFF` to build without Qt even when it's
+Set `FAUXFOIL_GRAPHICS=OFF` to build without Qt even when it's
 installed. On Linux, plots need an X11 or Wayland display. Without one, or
 with `FAUXFOIL_NOGRAPHICS=1` in the environment, `fauXFOIL` runs text-only.
 `FAUXFOIL_SNAPSHOT_DIR=dir` saves every plot shown as `dir/plotNNN.png`.

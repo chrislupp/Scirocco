@@ -32,6 +32,8 @@
 
 #include <QApplication>
 #include <QCursor>
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
@@ -42,13 +44,12 @@
 #include <QScreen>
 #include <QWidget>
 #include <cctype>
-#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <future>
 #include <memory>
 
-#include "stroke_font.h"
+#include "font.h"
 
 namespace fauxfoil {
 
@@ -118,6 +119,65 @@ QPen PlotPen(const QColor& color, double width) {
     return pen;
 }
 
+/// The plot font, registered with Qt from the copy built into the program.
+/// Only the family name is kept: a QFont must not outlive the application,
+/// so one is made for each drawing.
+struct QtPlotFont {
+    static constexpr int kReference = 100;  ///< Pixels per em
+    QString family;
+    double cap = 70.0;  ///< Cap height in pixels at the reference size
+
+    QtPlotFont() {
+        const std::string_view data = PlotFont::Get().Data();
+        const int id = QFontDatabase::addApplicationFontFromData(
+            QByteArray(data.data(), static_cast<qsizetype>(data.size())));
+        const QStringList families = QFontDatabase::applicationFontFamilies(id);
+        family = families.isEmpty() ? QStringLiteral("FauxfoilPlot")
+                                    : families.front();
+        cap = PlotFont::Get().CapHeight() * kReference;
+    }
+
+    [[nodiscard]] QFont Font() const {
+        QFont font(family);
+        font.setPixelSize(kReference);
+        font.setHintingPreference(QFont::PreferNoHinting);
+        /* The font covers every character the plots use; never substitute
+           another font's glyphs (antialiasing is on by default) */
+        font.setStyleStrategy(QFont::NoFontMerging);
+        return font;
+    }
+};
+
+const QtPlotFont& QtFont() {
+    static const QtPlotFont font;
+    return font;
+}
+
+/// Draw a label with the plot font. @p to maps page points to the target
+/// and @p scale is target pixels per page unit.
+template <class Map>
+void DrawLabel(QPainter& painter, const Label& label, const QColor& color,
+               Map to, double scale) {
+    const QtPlotFont& qt_font = QtFont();
+    const PlotFont& plot_font = PlotFont::Get();
+    painter.setFont(qt_font.Font());
+    painter.setPen(color);
+    for (const Glyph& glyph : LayoutLabel(label)) {
+        const char32_t code = CodePoint(glyph.text);
+        if (code == U' ') continue;
+        const QString text = plot_font.Has(code)
+                                 ? QString::fromUtf8(glyph.text.c_str())
+                                 : QStringLiteral("?");
+        const double k = scale * glyph.height / qt_font.cap;
+        painter.save();
+        painter.translate(to(Point{glyph.x, glyph.y}));
+        if (glyph.slant) painter.shear(-0.25, 0.0);
+        painter.scale(k * glyph.width, k);
+        painter.drawText(QPointF(0.0, 0.0), text);
+        painter.restore();
+    }
+}
+
 }  // namespace
 
 void RenderScene(QPainter& painter, const Scene& scene, const QRectF& target,
@@ -159,17 +219,11 @@ void RenderScene(QPainter& painter, const Scene& scene, const QRectF& target,
         if (!stroke.clip.Empty()) painter.setClipRect(target);
     }
 
-    /* Lettering: stroke-font polylines with the same pen */
-    for (const Label& label : scene.labels) {
-        painter.setPen(PlotPen(ColorOf(label.ink, paper), width));
-        painter.setBrush(Qt::NoBrush);
-        for (const auto& stroke : LabelStrokes(label)) {
-            QPolygonF polygon;
-            polygon.reserve(static_cast<int>(stroke.size()));
-            for (const Point& p : stroke) polygon << map.ToTarget(p);
-            painter.drawPolyline(polygon);
-        }
-    }
+    /* Lettering in the plot font */
+    for (const Label& label : scene.labels)
+        DrawLabel(
+            painter, label, ColorOf(label.ink, paper),
+            [&map](const Point& p) { return map.ToTarget(p); }, map.scale);
     painter.restore();
 }
 
@@ -262,11 +316,9 @@ class PlotWindow : public QWidget {
         label.height = 0.5 * box.height();
         label.align = 0.5;
         label.at = {box.center().x(), -(box.center().y() + 0.5 * label.height)};
-        for (const auto& stroke : LabelStrokes(label)) {
-            QPolygonF polygon;
-            for (const Point& p : stroke) polygon << QPointF(p.x, -p.y);
-            painter.drawPolyline(polygon);
-        }
+        DrawLabel(
+            painter, label, green,
+            [](const Point& p) { return QPointF(p.x, -p.y); }, 1.0);
     }
 
     void Finish(std::optional<CursorHit> hit) {

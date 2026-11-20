@@ -34,7 +34,7 @@
 #include <cstdio>
 #include <sstream>
 
-#include "stroke_font.h"
+#include "font.h"
 
 namespace fauxfoil {
 
@@ -154,18 +154,19 @@ std::string PostScript(const std::vector<Scene>& pages) {
             if (clipped) ps << "grestore\n";
         }
 
-        ps << "[] 0 setdash\n";
+        /* Lettering: each character's outline from the plot font, filled */
         for (const Label& label : scene.labels) {
-            ps << RgbOnPaper(label.ink) << " setrgbcolor\n";
-            for (const auto& stroke : LabelStrokes(label)) {
-                ps << "newpath";
-                for (std::size_t i = 0; i < stroke.size(); ++i) {
-                    std::snprintf(buffer, sizeof buffer, " %.2f %.2f %s",
-                                  stroke[i].x, stroke[i].y, i == 0 ? "M" : "L");
+            ps << RgbOnPaper(label.ink) << " setrgbcolor newpath\n";
+            for (const auto& contour : LabelOutlines(label)) {
+                for (std::size_t i = 0; i < contour.size(); ++i) {
+                    std::snprintf(buffer, sizeof buffer, "%.2f %.2f %s ",
+                                  contour[i].x, contour[i].y,
+                                  i == 0 ? "M" : "L");
                     ps << buffer;
                 }
-                ps << " stroke\n";
+                ps << "closepath\n";
             }
+            ps << "fill\n";
         }
         ps << "grestore\nshowpage\n";
     }

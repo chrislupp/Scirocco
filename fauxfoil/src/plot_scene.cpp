@@ -31,6 +31,7 @@
 #include "plot_scene.h"
 
 #include <cmath>
+#include <map>
 
 namespace fauxfoil {
 
@@ -233,6 +234,27 @@ double LabelWidth(const Label& label) {
                  label.height * label.width *
                  static_cast<double>(Utf8Characters(run.text).size());
     return width;
+}
+
+std::string MathCharacters(const std::string& text) {
+    /* The usual Symbol-font assignment of Greek letters to Latin keys */
+    static const std::map<char, const char*> kGreek = {
+        {'a', "α"}, {'b', "β"}, {'c', "χ"}, {'d', "δ"}, {'e', "ε"}, {'f', "φ"},
+        {'g', "γ"}, {'h', "η"}, {'i', "ι"}, {'j', "φ"}, {'k', "κ"}, {'l', "λ"},
+        {'m', "μ"}, {'n', "ν"}, {'o', "o"}, {'p', "π"}, {'q', "θ"}, {'r', "ρ"},
+        {'s', "σ"}, {'t', "τ"}, {'u', "υ"}, {'v', "ν"}, {'w', "ω"}, {'x', "ξ"},
+        {'y', "ψ"}, {'z', "ζ"}, {'A', "A"}, {'B', "B"}, {'C', "X"}, {'D', "Δ"},
+        {'E', "E"}, {'F', "Φ"}, {'G', "Γ"}, {'H', "H"}, {'I', "I"}, {'J', "Θ"},
+        {'K', "K"}, {'L', "Λ"}, {'M', "M"}, {'N', "N"}, {'O', "O"}, {'P', "Π"},
+        {'Q', "Θ"}, {'R', "P"}, {'S', "Σ"}, {'T', "T"}, {'U', "Y"}, {'V', "V"},
+        {'W', "Ω"}, {'X', "Ξ"}, {'Y', "Ψ"}, {'Z', "Z"},
+    };
+    std::string out;
+    for (char c : text) {
+        const auto found = kGreek.find(c);
+        out += found != kGreek.end() ? found->second : std::string(1, c);
+    }
+    return out;
 }
 
 }  // namespace fauxfoil

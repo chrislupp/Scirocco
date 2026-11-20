@@ -50,7 +50,6 @@
 #include "scirocco/properties/bl_properties.h"
 #include "scirocco/scirocco.h"
 #include "solution.h"
-#include "stroke_font.h"
 
 namespace fauxfoil {
 

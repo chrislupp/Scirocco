@@ -31,6 +31,28 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Debug \
 cmake --build scirocco/build-debug -j
 ```
 
+### fauXFOIL
+`fauxfoil/` holds fauXFOIL, an XFOIL-style command line and Qt plot window
+built on Scirocco's public API. It is a separate CMake project that compiles
+the sibling `scirocco/` tree (or, with `-DFAUXFOIL_SCIROCCO_SOURCE=`, finds
+an installed Scirocco):
+```bash
+cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
+cmake --build fauxfoil/build -j
+ctest --test-dir fauxfoil/build --output-on-failure
+```
+Options: `FAUXFOIL_GRAPHICS=ON` (Qt 6 Widgets plot window when found),
+`FAUXFOIL_BUILD_TESTS=ON`. Its tests run without a display
+(`QT_QPA_PLATFORM=offscreen`).
+
+fauXFOIL's version is Scirocco's: CMake reads it from
+`project(scirocco VERSION ...)` (or the installed package) and passes it in
+as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
+print. Never hard-code it in `fauxfoil/`; the `fauXFOIL.Version` test
+fails if the binary reports anything else. The screenshots in
+`docs/static/img/fauxfoil-*.png` show the version too; regenerate them
+(`FAUXFOIL_SNAPSHOT_DIR=dir`) when they should match a release.
+
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
@@ -38,8 +60,6 @@ cmake --build scirocco/build-debug -j
 - `SCIROCCO_BUILD_PROBES=ON` (opt-in) — 14 diagnostic binaries for ad-hoc adjoint debugging
 - `SCIROCCO_BUILD_EXAMPLES=ON` (default) — `quickstart`, `naca_example`, `viscous_example`, `bench`, `docs_figure_data`
 - Coverage uses compiler flags; there is no `SCIROCCO_COVERAGE` option.
-- `SCIROCCO_BUILD_CLI=ON` (default) — `fauXFOIL`, an XFOIL-style command-line program (`scirocco/apps/fauxfoil/`)
-- `SCIROCCO_CLI_GRAPHICS=ON` (default) — `fauXFOIL` plot window, used only when Qt 6 Widgets is found (`scirocco/apps/fauxfoil/qt/`)
 - `SCIROCCO_NATIVE_ARCH=ON` (default) — `-march=native` in Release builds
 - `SCIROCCO_USE_BLAS=ON` (default) — BLAS/LAPACK for the dense coupled solve (Eigen fallback)
 
@@ -302,6 +322,11 @@ When `scirocco_sensitivity_ref_tests` fails:
 ## Directory Structure
 
 ```
+fauxfoil/              # fauXFOIL: XFOIL-style command line on Scirocco (own CMake project)
+  src/                 # Session, plots, PostScript, font reader; qt/ holds the plot window
+  fonts/               # FauxfoilPlot.ttf (compiled into the program) and make_font.py, its source
+  tests/               # Google Test suites (text and offscreen Qt)
+
 scirocco/
   include/scirocco/
     core/              # Solver modules (geometry, paneling, inviscid, BL, adjoint)
