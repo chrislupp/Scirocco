@@ -179,8 +179,12 @@ TEST(FauxfoilQt, CursorReportsClicksAndKeysInPageCoordinates) {
 }  // namespace
 
 /* Qt needs its application object to outlive every widget and font, and
-   to be destroyed before main() returns; gtest_main cannot arrange that */
+   to be destroyed before main() returns; gtest_main cannot arrange that.
+   The tests draw off screen unless told otherwise, so they also run where
+   there is no display, including when CMake lists them at build time. */
 int main(int argc, char** argv) {
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

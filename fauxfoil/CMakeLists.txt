@@ -122,8 +122,8 @@ if(FAUXFOIL_BUILD_TESTS)
         if(TARGET fauxfoil_qt)
             add_executable(fauxfoil_qt_tests tests/fauxfoil_qt_test.cpp)
             target_link_libraries(fauxfoil_qt_tests PRIVATE fauxfoil_qt GTest::gtest)
-            gtest_discover_tests(fauxfoil_qt_tests
-                PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+            # Runs off screen; its main() sets QT_QPA_PLATFORM=offscreen
+            gtest_discover_tests(fauxfoil_qt_tests)
         endif()
     else()
         message(STATUS "fauXFOIL: tests skipped (GoogleTest not found)")
