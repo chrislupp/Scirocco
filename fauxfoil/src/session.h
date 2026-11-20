@@ -74,6 +74,9 @@ class Session {
     /// text-only. Plots are still built for hardcopies either way.
     void SetDisplay(Display* display);
 
+    /// Text printed after the banner, such as why plots are unavailable.
+    void SetNotice(std::string notice) { notice_ = std::move(notice); }
+
    private:
     enum class Target { Alpha, Cl, InviscidCl };
 
@@ -187,6 +190,7 @@ class Session {
     std::istream& in_;
     std::ostream& out_;
     std::string version_;
+    std::string notice_;
 
     /* Buffer airfoil, in Scirocco's clockwise order */
     MatrixXd buffer_;

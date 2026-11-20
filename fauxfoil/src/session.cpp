@@ -668,7 +668,8 @@ int Session::Run(const std::vector<std::string>& args) {
          << "    subject to the Apache License, Version 2.0.\n"
          << '\n'
          << "  Caveat computor\n"
-         << " ===================================================\n";
+         << " ===================================================\n"
+         << notice_;
     try {
         if (!args.empty()) {
             out_ << '\n';

@@ -30,7 +30,7 @@ cmake -S fauxfoil -B fauxfoil/build -DFAUXFOIL_SCIROCCO_SOURCE= \
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `FAUXFOIL_GRAPHICS` | `ON` | Plot window when Qt 6 Widgets is found; text-only otherwise |
+| `FAUXFOIL_GRAPHICS` | `OFF` | The plot window; needs Qt 6 Widgets, and configuration fails without it |
 | `FAUXFOIL_BUILD_TESTS` | `ON` | The fauXFOIL tests (needs GoogleTest); run them with `ctest --test-dir fauxfoil/build` |
 | `FAUXFOIL_SCIROCCO_SOURCE` | `../scirocco` | Scirocco source tree to build with; empty to use an installed Scirocco |
 
@@ -73,7 +73,7 @@ residual.
 
 ## Plots
 
-When `fauXFOIL` is built with Qt 6, plots open in a window laid out like
+When `fauXFOIL` is built with its plot window, plots open in a window laid out like
 XFOIL's: white lines on black, the same axes, legends and colours. The
 window is native, so it needs no X11 on macOS. Resize it freely; plots are
 redrawn as vectors at the screen's full resolution. Lettering uses
@@ -163,17 +163,22 @@ because plots are built either way.
 
 ### Build with plots
 
-The plot window needs Qt 6 (the Widgets module). CMake uses it when it finds
-it and builds a text-only `fauXFOIL` otherwise; the configure step says
-which.
+The plot window is opt-in and needs Qt 6 (the Widgets module):
 
 ```bash
 brew install qt                  # macOS
 sudo apt install qt6-base-dev    # Debian, Ubuntu
+
+cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release \
+      -DFAUXFOIL_GRAPHICS=ON
 ```
 
-Set `FAUXFOIL_GRAPHICS=OFF` to build without Qt even when it's
-installed. On Linux, plots need an X11 or Wayland display. Without one, or
+With `FAUXFOIL_GRAPHICS=ON`, configuration stops with an error if CMake
+cannot find Qt 6; it never falls back to a text-only build. Point
+`CMAKE_PREFIX_PATH` at Qt if it is installed somewhere CMake does not look.
+Without the option, `fauXFOIL` is text-only and says so under its banner,
+as it also does when it was built with the window but finds no display to
+open it on. On Linux, plots need an X11 or Wayland display. Without one, or
 with `FAUXFOIL_NOGRAPHICS=1` in the environment, `fauXFOIL` runs text-only.
 `FAUXFOIL_SNAPSHOT_DIR=dir` saves every plot shown as `dir/plotNNN.png`.
 

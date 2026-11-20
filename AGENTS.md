@@ -41,9 +41,12 @@ cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
 cmake --build fauxfoil/build -j
 ctest --test-dir fauxfoil/build --output-on-failure
 ```
-Options: `FAUXFOIL_GRAPHICS=ON` (Qt 6 Widgets plot window when found),
-`FAUXFOIL_BUILD_TESTS=ON`. Its tests run without a display
-(`QT_QPA_PLATFORM=offscreen`).
+Options: `FAUXFOIL_GRAPHICS=OFF` (opt in for the Qt 6 Widgets plot window;
+when ON, configuration fails if Qt is not found, never falling back to
+text-only), `FAUXFOIL_BUILD_TESTS=ON`. The Qt tests run without a display
+(`QT_QPA_PLATFORM=offscreen`). Nothing builds fauXFOIL unless `fauxfoil/`
+is configured; the Scirocco build, Docker images and release artifacts do
+not include it.
 
 fauXFOIL's version is Scirocco's: CMake reads it from
 `project(scirocco VERSION ...)` (or the installed package) and passes it in

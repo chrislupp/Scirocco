@@ -18,8 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (`PPLO`) and the `GDES` geometry. `HARD` writes PostScript hardcopies to
   `plot.ps`. Lettering uses FauxfoilPlot, a plotter-style font compiled
   into the program; hardcopies draw its letters as outlines, so they need
-  no fonts. The `FAUXFOIL_GRAPHICS` option (default on) uses Qt when it is
-  found; without Qt, `fauXFOIL` stays text-only.
+  no fonts. The window is opt-in with `FAUXFOIL_GRAPHICS=ON`, which
+  requires Qt 6; otherwise `fauXFOIL` is text-only.
 - `fauXFOIL` cursor input and the rest of XFOIL's plot commands: zoom
   (`Z`, `U`), plot-object size (`SIZE`), annotation (`ANNO`), boundary-layer
   velocity profiles (`BL`, `BLC`, `BLWT`), reference Cp, force and polar

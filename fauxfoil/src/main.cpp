@@ -53,9 +53,14 @@ namespace {
 #ifdef FAUXFOIL_WITH_QT
 /// Whether a window can be opened. macOS always has a window server for a
 /// logged-in user; elsewhere an X11 or Wayland display must be named.
+/// Whether plots were turned off with FAUXFOIL_NOGRAPHICS.
+bool GraphicsTurnedOff() {
+    const char* off = std::getenv("FAUXFOIL_NOGRAPHICS");
+    return off != nullptr && *off != '\0' && std::string(off) != "0";
+}
+
 bool HaveDisplay() {
-    if (const char* off = std::getenv("FAUXFOIL_NOGRAPHICS"))
-        if (*off != '\0' && std::string(off) != "0") return false;
+    if (GraphicsTurnedOff()) return false;
     if (std::getenv("QT_QPA_PLATFORM") != nullptr) return true;
 #ifdef __APPLE__
     return true;
@@ -104,6 +109,20 @@ int RunWithGraphics(int argc, char** argv) {
 }
 #endif
 
+/// Why this run has no plot window, for the user; empty when they turned
+/// plots off themselves.
+std::string TextOnlyNotice() {
+#ifdef FAUXFOIL_WITH_QT
+    if (GraphicsTurnedOff()) return "";
+    return "\n Text only: no display found, so plots are not shown.\n"
+           " HARD still writes plots to plot.ps.\n";
+#else
+    return "\n Text only: this fauXFOIL was built without its plot window\n"
+           " (configure with -DFAUXFOIL_GRAPHICS=ON and Qt 6 for plots).\n"
+           " HARD still writes plots to plot.ps.\n";
+#endif
+}
+
 }  // namespace
 
 /**
@@ -123,6 +142,7 @@ int main(int argc, char** argv) {
 #endif
         const std::vector<std::string> args(argv + 1, argv + argc);
         fauxfoil::Session session(std::cin, std::cout, SCIROCCO_VERSION);
+        session.SetNotice(TextOnlyNotice());
         return session.Run(args);
     } catch (const std::exception& error) {
         std::cerr << "fauXFOIL: " << error.what() << '\n';

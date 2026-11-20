@@ -13,7 +13,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 include(GNUInstallDirs)
 
-option(FAUXFOIL_GRAPHICS "Plot window with Qt 6 Widgets when Qt is found" ON)
+option(FAUXFOIL_GRAPHICS "Plot window with Qt 6 Widgets (required when ON)" OFF)
 option(FAUXFOIL_BUILD_TESTS "Build the fauXFOIL tests (needs GoogleTest)" ON)
 set(FAUXFOIL_SCIROCCO_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../scirocco"
     CACHE PATH "Scirocco source tree to build with; empty for an installed Scirocco")
@@ -80,20 +80,23 @@ target_compile_definitions(fauXFOIL PRIVATE
     SCIROCCO_VERSION="${FAUXFOIL_SCIROCCO_VERSION}")
 install(TARGETS fauXFOIL RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# Plot window: Qt 6 Widgets, optional; without it fauXFOIL is text-only
+# Plot window: opt in with FAUXFOIL_GRAPHICS=ON, which then requires Qt 6
+# Widgets; without it fauXFOIL is text-only
 if(FAUXFOIL_GRAPHICS)
-    find_package(Qt6 QUIET COMPONENTS Widgets)
-endif()
-if(FAUXFOIL_GRAPHICS AND Qt6Widgets_FOUND)
+    find_package(Qt6 COMPONENTS Widgets)
+    if(NOT Qt6Widgets_FOUND)
+        message(FATAL_ERROR
+            "FAUXFOIL_GRAPHICS=ON needs Qt 6 Widgets, which was not found. "
+            "Install Qt 6 (brew install qt; apt install qt6-base-dev) and point "
+            "CMAKE_PREFIX_PATH at it, or configure with FAUXFOIL_GRAPHICS=OFF "
+            "for a text-only fauXFOIL.")
+    endif()
     message(STATUS "fauXFOIL: plot window with Qt ${Qt6Widgets_VERSION}")
     add_library(fauxfoil_qt STATIC src/qt/qt_display.cpp)
     target_link_libraries(fauxfoil_qt PUBLIC fauxfoil_core Qt6::Widgets)
     target_compile_options(fauxfoil_qt PRIVATE -Wall -Wextra)
     target_link_libraries(fauXFOIL PRIVATE fauxfoil_qt)
     target_compile_definitions(fauXFOIL PRIVATE FAUXFOIL_WITH_QT)
-elseif(FAUXFOIL_GRAPHICS)
-    message(STATUS "fauXFOIL: text only (Qt 6 Widgets not found)")
-    target_link_libraries(fauXFOIL PRIVATE fauxfoil_core)
 else()
     message(STATUS "fauXFOIL: text only (FAUXFOIL_GRAPHICS=OFF)")
     target_link_libraries(fauXFOIL PRIVATE fauxfoil_core)
@@ -106,10 +109,11 @@ if(FAUXFOIL_BUILD_TESTS)
         enable_testing()
         include(GoogleTest)
         # The banner (and so the plots and polar files) carries the
-        # version CMake read from Scirocco
+        # version CMake read from Scirocco, and says when plots are missing
         add_test(NAME fauXFOIL.Version
             COMMAND ${CMAKE_COMMAND} -DFAUXFOIL=$<TARGET_FILE:fauXFOIL>
                 -DEXPECTED=${FAUXFOIL_SCIROCCO_VERSION}
+                -DTEXT_ONLY=$<NOT:$<BOOL:${FAUXFOIL_GRAPHICS}>>
                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/version_check.cmake)
         add_executable(fauxfoil_tests tests/fauxfoil_test.cpp)

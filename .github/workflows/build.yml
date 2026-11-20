@@ -74,11 +74,14 @@ jobs:
     - name: Build with the plot window
       run: |
         cmake -S fauxfoil -B build-fauxfoil -DCMAKE_BUILD_TYPE=Release \
-          -DSCIROCCO_NATIVE_ARCH=OFF
+          -DSCIROCCO_NATIVE_ARCH=OFF -DFAUXFOIL_GRAPHICS=ON
         cmake --build build-fauxfoil -j2
 
     - name: Test
-      run: ctest --test-dir build-fauxfoil --output-on-failure --no-tests=error
+      run: |
+        ctest --test-dir build-fauxfoil --output-on-failure --no-tests=error
+        # The window's own tests must have run, not just the text-only ones
+        ctest --test-dir build-fauxfoil -R FauxfoilQt --no-tests=error
 
   clang-tidy:
     needs: [format]
