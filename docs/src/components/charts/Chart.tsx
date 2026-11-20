@@ -1,7 +1,7 @@
 import React, { useId, useMemo, useRef, useState } from "react";
 import styles from "./charts.module.css";
 
-export type Role = "1" | "2" | "ref";
+export type Role = "1" | "2" | "3" | "ref";
 
 export interface Series {
     id: string;
@@ -12,6 +12,10 @@ export interface Series {
     dashed?: boolean;
     /** Draw a marker at every point (for short series). */
     markers?: boolean;
+    /** Set false for markers alone, such as measured data. */
+    line?: boolean;
+    /** Hollow markers. */
+    open?: boolean;
 }
 
 export interface Axis {
@@ -43,6 +47,7 @@ const M = { top: 14, right: 18, bottom: 46, left: 58 };
 const ROLE_CLASS: Record<Role, string> = {
     "1": styles.role1,
     "2": styles.role2,
+    "3": styles.role3,
     ref: styles.roleRef,
 };
 
@@ -52,18 +57,30 @@ const defaultFmt = (v: number) => {
     return Number(v.toPrecision(4)).toString();
 };
 
-export function Legend({ series }: { series: Pick<Series, "id" | "label" | "role" | "dashed">[] }) {
+export function Legend({
+    series,
+}: {
+    series: Pick<Series, "id" | "label" | "role" | "dashed" | "markers" | "line" | "open">[];
+}) {
     if (series.length < 2) return null;
     return (
         <ul className={styles.legend}>
             {series.map((s) => (
                 <li key={s.id}>
                     <svg width="22" height="10" aria-hidden="true">
-                        <line
-                            x1="1" y1="5" x2="21" y2="5"
-                            className={`${styles.line} ${ROLE_CLASS[s.role]}`}
-                            strokeDasharray={s.dashed ? "4 3" : undefined}
-                        />
+                        {s.line !== false && (
+                            <line
+                                x1="1" y1="5" x2="21" y2="5"
+                                className={`${styles.line} ${ROLE_CLASS[s.role]}`}
+                                strokeDasharray={s.dashed ? "4 3" : undefined}
+                            />
+                        )}
+                        {s.markers && (
+                            <circle
+                                cx="11" cy="5" r="3.5"
+                                className={`${s.open ? styles.markerOpen : styles.marker} ${ROLE_CLASS[s.role]}`}
+                            />
+                        )}
                     </svg>
                     {s.label}
                 </li>
@@ -149,18 +166,22 @@ export default function Chart({
                     </defs>
                     {y.ticks.map((t) => (
                         <g key={`y${t}`}>
-                            <line x1={M.left} x2={M.left + iw} y1={sy(t)} y2={sy(t)} className={styles.grid} />
+                            <line x1={M.left - 4} x2={M.left} y1={sy(t)} y2={sy(t)} className={styles.axis} />
                             <text x={M.left - 8} y={sy(t)} dy="0.32em" textAnchor="end" className={styles.tick}>
                                 {fmtTick(y)(t)}
                             </text>
                         </g>
                     ))}
                     {x.ticks.map((t) => (
-                        <text key={`x${t}`} x={sx(t)} y={M.top + ih + 18} textAnchor="middle" className={styles.tick}>
-                            {fmtTick(x)(t)}
-                        </text>
+                        <g key={`x${t}`}>
+                            <line x1={sx(t)} x2={sx(t)} y1={M.top + ih} y2={M.top + ih + 4} className={styles.axis} />
+                            <text x={sx(t)} y={M.top + ih + 18} textAnchor="middle" className={styles.tick}>
+                                {fmtTick(x)(t)}
+                            </text>
+                        </g>
                     ))}
                     <line x1={M.left} x2={M.left + iw} y1={M.top + ih} y2={M.top + ih} className={styles.axis} />
+                    <line x1={M.left} x2={M.left} y1={M.top} y2={M.top + ih} className={styles.axis} />
                     <text x={M.left + iw / 2} y={height - 6} textAnchor="middle" className={styles.axisLabel}>
                         {x.label}
                     </text>
@@ -175,11 +196,13 @@ export default function Chart({
                         {underlay?.(sx, sy)}
                         {series.map((s, si) => (
                             <g key={s.id}>
-                                <path
-                                    d={paths[si]}
-                                    className={`${styles.line} ${ROLE_CLASS[s.role]}`}
-                                    strokeDasharray={s.dashed ? "5 4" : undefined}
-                                />
+                                {s.line !== false && (
+                                    <path
+                                        d={paths[si]}
+                                        className={`${styles.line} ${ROLE_CLASS[s.role]}`}
+                                        strokeDasharray={s.dashed ? "5 4" : undefined}
+                                    />
+                                )}
                                 {s.markers &&
                                     s.x.map((xv, i) => (
                                         <circle
@@ -187,7 +210,7 @@ export default function Chart({
                                             cx={sx(xv)}
                                             cy={sy(s.y[i])}
                                             r={3.5}
-                                            className={`${styles.marker} ${ROLE_CLASS[s.role]}`}
+                                            className={`${s.open ? styles.markerOpen : styles.marker} ${ROLE_CLASS[s.role]}`}
                                         />
                                     ))}
                             </g>

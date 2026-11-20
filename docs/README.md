@@ -28,6 +28,9 @@ Write for someone who wants to get something done:
 Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
 `<Next>`, `<CpPlot>`, `<PolarPlot>`, `<ConvergencePlot>`, `<PanelPlot>`,
 `<OnsetPlot>`, `<ShapeGradientPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`,
+the verification and validation figures in `src/components/charts/vv.tsx`
+(`<CodePolarPlot>`, `<CodeTransitionPlot>`, `<CodeDistributionPlot>`,
+`<ExperimentPolarPlot>`, `<GregoryCpPlot>`, `<ColesWadcockCpPlot>`),
 `<BenchTable>`, `<QuickstartSource>` (which shows
 `scirocco/examples/quickstart.cpp` as built by CI), and `<N2>`.
 
@@ -37,7 +40,9 @@ Plots read `src/data/*.json`, written by the `docs_figure_data` example,
 except `onset.json`, which comes from
 `scirocco/validation/onset_envelope/fit_onset.py --docs`, and
 `transition.json`, which comes from
-`scirocco/validation/captured_transition/e387_calibrate.py docs`.
+`scirocco/validation/captured_transition/e387_calibrate.py docs`, and
+`vv_codes.json` and `vv_experiments.json`, which come from
+`scirocco/validation/vv/vv.py` (see its README; it needs XFOIL).
 Timings in `src/data/bench.json` come from the `bench` example. Regenerate
 both after a change to solver results or performance:
 

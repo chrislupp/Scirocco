@@ -45,7 +45,7 @@ export function CpPlot() {
             underlay={(sx, sy) => {
                 // True scale: one chord vertically spans as many pixels as one
                 // chord horizontally. The chord line sits below the -Cp = -1
-                // gridline, clear of the stagnation-point spike.
+                // tick, clear of the stagnation-point spike.
                 const chord = sx(1) - sx(0);
                 return <path className={styles.foilFill} d={foilPath(x, z, sx, (v) => sy(FOIL_CP) - v * chord)} />;
             }}

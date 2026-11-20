@@ -29,8 +29,8 @@ scirocco/build/bench
 - **Viscous solves** take 12-40 ms. Time depends mostly on how many Newton
   steps the case needs; each, with its boundary-layer march, costs about
   2.5 ms at 200 panels. The 199-panel case here takes 14 Newton steps, where
-  the NACA 2412 case in [Viscous coupling](./viscous-coupling) takes 6 (see
-  [PTC](./ptc)). A second solve on the same object, such as the next point
+  the NACA 2412 case in [Viscous coupling](../concepts/viscous-coupling) takes 6 (see
+  [PTC](../concepts/ptc)). A second solve on the same object, such as the next point
   of a polar, starts from the previous solution and reuses everything that
   depends only on the geometry: a 0.5° step takes 8-17 ms at 200 panels.
 - **The full gradient** covers $C_l$, $C_d$, and $C_m$ with respect to every

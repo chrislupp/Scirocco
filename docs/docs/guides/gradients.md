@@ -77,7 +77,7 @@ extra solve per input: `2N + 3` of them.
 On an Apple M1 Pro, the full gradient takes about 9 ms at 99 panels and
 18 ms at 149 panels, less than the viscous solve before it. Finite
 differences over the same inputs would take about 2.5 s and 7 s. See
-[Performance](../concepts/performance) for the full table.
+[Performance](../validation/performance) for the full table.
 
 ## Where the shape gradient is rough
 
