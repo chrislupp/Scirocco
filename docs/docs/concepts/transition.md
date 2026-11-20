@@ -54,7 +54,7 @@ gradient with respect to the shape near the onset is large and oscillates.
 For a smooth bump 0.01c wide, the envelope ramp makes that gradient two to
 four times smaller and removes the oscillation. Use it for shape
 optimization. Leave the default when you need to match XFOIL or mfoil
-results. [Transition validation](./transition-validation) compares both
+results. [Transition validation](../validation/transition) compares both
 ramps with the stability results. The data, solver, and fit are in
 [`scirocco/validation/onset_envelope`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/onset_envelope).
 
@@ -91,7 +91,7 @@ foil.Solve();
   through the mfoil prototype: shape to 1e-8, the scalars to 1e-10.
 - **Limits:** prescribed angle of attack only; a lift target throws.
 
-[Transition validation](./transition-validation) has the full comparison
+[Transition validation](../validation/transition) has the full comparison
 with the Eppler 387 measurements, the gradient sweeps and the derivative
 checks. The formulation and the dead ends are in
 [`scirocco/validation/captured_transition`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/captured_transition).

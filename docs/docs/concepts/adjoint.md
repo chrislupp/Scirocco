@@ -35,7 +35,7 @@ reuses the factorization of $R_U$ from the last Newton step, so each
 adjoint solve is a back-substitution. Most of the cost is in the product
 $\lambda^T R_p$: differentiating the residual, and above all the panel
 influence coefficients, with respect to every node coordinate. See
-[Performance](./performance).
+[Performance](../validation/performance).
 
 ## The chain
 

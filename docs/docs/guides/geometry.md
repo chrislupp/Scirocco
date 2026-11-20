@@ -149,7 +149,7 @@ After a flap, `GeomDerotate()` puts the chord line back on the x-axis, so
 ## How many panels
 
 The default is 199. More panels cost more time, mostly in the viscous solve
-and the gradient; see [Performance](../concepts/performance). Whatever count
+and the gradient; see [Performance](../validation/performance). Whatever count
 you pick, check that your answer doesn't move when you change it.
 
 Panel counts must be between 4 and 4096.

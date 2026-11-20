@@ -5,7 +5,7 @@ description: How the envelope onset ramp and the captured transition model were 
 
 # Transition validation
 
-The two opt-in transition options on the [Transition](./transition) page
+The two opt-in transition options on the [Transition](../concepts/transition) page
 were checked three ways:
 
 | What | Checked against | Result |

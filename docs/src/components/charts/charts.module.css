@@ -14,11 +14,6 @@
     touch-action: pan-y;
 }
 
-.grid {
-    stroke: var(--sc-grid);
-    stroke-width: 1;
-}
-
 .axis {
     stroke: var(--sc-axis);
     stroke-width: 1;
@@ -53,6 +48,11 @@
     --mark: var(--sc-series-2);
 }
 
+.role3 {
+    stroke: var(--sc-series-3);
+    --mark: var(--sc-series-3);
+}
+
 .roleRef {
     stroke: var(--sc-series-ref);
     --mark: var(--sc-series-ref);
@@ -62,6 +62,12 @@
     fill: var(--mark);
     stroke: var(--sc-bg);
     stroke-width: 2;
+}
+
+.markerOpen {
+    fill: var(--sc-bg);
+    stroke: var(--mark);
+    stroke-width: 1.75;
 }
 
 .focus {
@@ -194,4 +200,14 @@
 
 .node {
     fill: var(--sc-series-1);
+}
+
+/* On the dark background the halo eats into the mid-tone series colours, so
+   markers get a thinner halo and hollow markers a heavier ring. */
+:global([data-theme="dark"]) .marker {
+    stroke-width: 1;
+}
+
+:global([data-theme="dark"]) .markerOpen {
+    stroke-width: 2.25;
 }
