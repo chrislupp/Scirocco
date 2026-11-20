@@ -63,12 +63,41 @@ struct Point {
     double y = 0.0;
 };
 
-/// A polyline, or a filled polygon.
+/// An axis-aligned rectangle on the page.
+struct Rect {
+    double x0 = 0.0;
+    double y0 = 0.0;
+    double x1 = 0.0;
+    double y1 = 0.0;
+    [[nodiscard]] bool Empty() const { return x1 <= x0 || y1 <= y0; }
+    [[nodiscard]] bool Contains(const Point& p) const {
+        return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+    }
+};
+
+/// A polyline, or a filled polygon, optionally clipped to a rectangle.
 struct Stroke {
     Ink ink = Ink::Fore;
     Dash dash = Dash::Solid;
     bool fill = false;
     std::vector<Point> points;
+    Rect clip;  ///< Drawn only inside this rectangle unless it is empty
+};
+
+/// Linear map between page coordinates and a plot's own (user)
+/// coordinates: page = origin + scale * user.
+struct UserAxes {
+    bool set = false;
+    double ox = 0.0;
+    double sx = 1.0;
+    double oy = 0.0;
+    double sy = 1.0;
+    [[nodiscard]] Point ToUser(const Point& p) const {
+        return {(p.x - ox) / sx, (p.y - oy) / sy};
+    }
+    [[nodiscard]] Point ToPage(const Point& u) const {
+        return {ox + sx * u.x, oy + sy * u.y};
+    }
 };
 
 /// One piece of a label at one script level.
@@ -83,6 +112,8 @@ struct Glyph {
     double x = 0.0;    ///< Left edge of its cell
     double y = 0.0;    ///< Baseline
     double height = 0.0;
+    double width = 1.0;  ///< Horizontal stretch of the character
+    bool slant = false;  ///< Italic
 };
 
 /// A text label. The text may contain "_{...}" subscripts and "^{...}"
@@ -93,6 +124,8 @@ struct Label {
     double height = 10.0;  ///< Cap height
     double align = 0.0;    ///< 0 left, 0.5 centre, 1 right
     std::string text;
+    double width = 1.0;  ///< Character width factor
+    bool slant = false;  ///< Italic
 };
 
 /// A complete plot. Page coordinates have their origin at the lower left;
@@ -103,6 +136,13 @@ struct Scene {
 
     std::vector<Stroke> strokes;
     std::vector<Label> labels;
+
+    /// Part of the page to show (zoom); the whole page when empty.
+    Rect view;
+    /// The plot's own coordinates (x/c and Cp, x and H, ...) on the page.
+    UserAxes user;
+    /// Airfoil coordinates on the page, where the plot draws the airfoil.
+    UserAxes foil;
 
     /// Add a polyline.
     void Line(std::vector<Point> points, Ink ink = Ink::Fore,
@@ -115,7 +155,17 @@ struct Scene {
     /// Add a label.
     void Text(double x, double y, double height, std::string text,
               Ink ink = Ink::Fore, double align = 0.0);
+    /// Add a plot symbol of the given type (0 square, 1 circle, 2 triangle,
+    /// 3 plus, 4 cross, 5 diamond, 6 yield sign, 7 Y, 8 flipped Y, 9 star,
+    /// 10 flipped star, 11 hourglass, 12 bowtie, 13 five-point star)
+    /// centred on (x, y), @p size across.
+    void Symbol(double x, double y, double size, int type, Ink ink = Ink::Fore);
+    /// Scale everything about the page origin (plot-object size).
+    void Scale(double factor);
 };
+
+/// Page units per "inch": the default page is 11 inches wide.
+inline constexpr double kUnitsPerInch = Scene::kWidth / 11.0;
 
 /// Character advance as a fraction of the cap height: the fixed pitch that
 /// all renderers use, so a label occupies the same space everywhere.

@@ -34,11 +34,13 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 
+#include "bl_profiles.h"
 #include "format.h"
 #include "postscript.h"
 #include "scirocco/core/boundary_layer.h"
@@ -48,6 +50,7 @@
 #include "scirocco/properties/bl_properties.h"
 #include "scirocco/scirocco.h"
 #include "solution.h"
+#include "stroke_font.h"
 
 namespace fauxfoil {
 
@@ -433,17 +436,96 @@ const char* const kVploMenu = R"(
 )";
 
 /// A real as gfortran's list-directed output writes it: 17 significant
-/// digits right-justified in 20 columns, then 5 blanks.
+/// digits, as F right-justified in 20 columns plus 5 blanks for magnitudes
+/// from 0.1 to 1e16, as E right-justified in 25 columns otherwise.
 std::string ListDirected(double value) {
     const double magnitude = std::fabs(value);
-    int integer_digits = 1;
+    char buffer[64];
+    if (magnitude != 0.0 && (magnitude < 0.1 || magnitude >= 1e16)) {
+        char mantissa[40];
+        std::snprintf(mantissa, sizeof mantissa, "%.16e", value);
+        std::string text = mantissa;
+        const std::size_t e = text.find('e');
+        const auto exponent =
+            static_cast<int>(std::strtol(text.c_str() + e + 1, nullptr, 10));
+        std::snprintf(buffer, sizeof buffer, "%sE%c%03d",
+                      text.substr(0, e).c_str(), exponent < 0 ? '-' : '+',
+                      std::abs(exponent));
+        char field[64];
+        std::snprintf(field, sizeof field, "%25s", buffer);
+        return field;
+    }
+    /* Significant digits only: a leading "0." does not count */
+    int integer_digits = magnitude == 0.0 ? 1 : 0;
     if (magnitude >= 1.0)
         integer_digits =
             static_cast<int>(std::floor(std::log10(magnitude))) + 1;
     const int decimals = std::max(0, 17 - integer_digits);
-    char buffer[64];
     std::snprintf(buffer, sizeof buffer, "%20.*f     ", decimals, value);
     return buffer;
+}
+
+/* Xplot11-style annotation menu, as XFOIL shows it */
+const char* const kAnnoMenu =
+    "\n   C haracters           |       \n"
+    "   S lant characters     |       \n"
+    "   M ath characters      |  plot \n"
+    "   P oint symbol         |       \n"
+    "   L ine                 |       \n"
+    "   A rrow                |       \n"
+    " \n"
+    "   W idth of characters  | modify\n"
+    "   T ype of point symbol |       \n"
+    "\n";
+
+const char* const kSymbolTable =
+    "   0  square         7  Y         \n"
+    "   1  circle         8  flipped Y \n"
+    "   2  triangle       9  *         \n"
+    "   3  +             10  flipped * \n"
+    "   4  x             11  hourglass \n"
+    "   5  diamond       12  bowtie    \n"
+    "   6  yield sign    13  star      \n";
+
+/// Number pairs from a text file, in blocks ended by a "999 999" line.
+/// @return False if the file cannot be opened.
+bool ReadPairBlocks(const std::string& path,
+                    std::vector<std::vector<Point>>& blocks) {
+    std::ifstream stream(path);
+    if (!stream) return false;
+    blocks.assign(1, {});
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::replace(line.begin(), line.end(), ',', ' ');
+        std::istringstream row(line);
+        double a = 0.0;
+        double b = 0.0;
+        if (!(row >> a >> b)) continue;
+        if (a == 999.0 && b == 999.0) {
+            blocks.emplace_back();
+            continue;
+        }
+        blocks.back().push_back({a, b});
+    }
+    if (blocks.back().empty() && blocks.size() > 1) blocks.pop_back();
+    return true;
+}
+
+/// The page rectangle spanned by two points, widened to the page's aspect
+/// ratio so a zoom keeps shapes undistorted.
+Rect AspectRect(const Point& a, const Point& b) {
+    Rect r{std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x),
+           std::max(a.y, b.y)};
+    const double aspect = Scene::kWidth / Scene::kHeight;
+    const double cx = 0.5 * (r.x0 + r.x1);
+    const double cy = 0.5 * (r.y0 + r.y1);
+    double w = r.x1 - r.x0;
+    double h = r.y1 - r.y0;
+    if (w < aspect * h)
+        w = aspect * h;
+    else
+        h = w / aspect;
+    return {cx - 0.5 * w, cy - 0.5 * h, cx + 0.5 * w, cy + 0.5 * h};
 }
 
 void NotAvailable(std::ostream& out, const std::string& name) {
@@ -674,7 +756,7 @@ void Session::TopLevel() {
             } else if (command.name == "NINC") {
                 Rename("", true);
             } else if (Is(command, {"Z", "U"})) {
-                /* Zoom/unzoom act on plots; nothing to do without them */
+                ZoomCommand(command.name);
             } else if (Is(command, {"MDES", "QDES", "ISAV", "MSAV", "DELI",
                                     "INTE", "HALF", "BEND", "WDEF", "RDEF"})) {
                 NotAvailable(out_, command.name);
@@ -1014,6 +1096,7 @@ void Session::Gdes() {
         } else if (command.name == "NINC") {
             Rename("", true);
         } else if (Is(command, {"PLOT", "P"})) {
+            airfoil_options_.inches = false;
             PlotAirfoil();
         } else if (command.name == "GRID") {
             airfoil_options_.grid = !airfoil_options_.grid;
@@ -1026,13 +1109,36 @@ void Session::Gdes() {
             PlotAirfoil();
         } else if (command.name == "HARD") {
             Hardcopy();
-        } else if (Is(command,
-                      {"SYMM", "LINS", "TGAP", "LERA", "TCPL", "TFAC", "TSET",
-                       "HIGH", "CAMB", "BEND", "MODI", "M",    "SLOP", "CORN",
-                       "ADDP", "MOVP", "DELP", "NMOV", "DIST", "D",    "CLIS",
-                       "CPLO", "CANG", "CADD", "INPL", "BLOW", "B",    "RESE",
-                       "R",    "WIND", "W",    "TSIZ", "OVER", "O",    "SIZE",
-                       "ANNO", "Z",    "U"})) {
+        } else if (Is(command, {"BLOW", "B"})) {
+            GdesBlowup();
+        } else if (Is(command, {"RESE", "R"})) {
+            airfoil_options_.window_set = false;
+            airfoil_options_.inches = false;
+            PlotAirfoil();
+        } else if (Is(command, {"WIND", "W"})) {
+            GdesWindow();
+        } else if (command.name == "INPL") {
+            airfoil_options_.inches = true;
+            airfoil_options_.window_set = false;
+            PlotAirfoil();
+        } else if (command.name == "TSIZ") {
+            TickSize(v);
+        } else if (Is(command, {"OVER", "O"})) {
+            GdesOverlay(command.arg);
+        } else if (command.name == "CPLO") {
+            Curvatures();
+        } else if (Is(command, {"DIST", "D"})) {
+            Distance();
+        } else if (command.name == "SIZE") {
+            SizeCommand(gdes_size_, v);
+        } else if (command.name == "ANNO") {
+            Annotate();
+        } else if (Is(command, {"Z", "U"})) {
+            ZoomCommand(command.name);
+        } else if (Is(command, {"SYMM", "LINS", "TGAP", "LERA", "TCPL", "TFAC",
+                                "TSET", "HIGH", "CAMB", "BEND", "MODI", "M",
+                                "SLOP", "CORN", "ADDP", "MOVP", "DELP", "NMOV",
+                                "CLIS", "CANG", "CADD"})) {
             NotAvailable(out_, command.name);
         } else {
             out_ << " Command " << A(command.name, 4)
@@ -1259,11 +1365,44 @@ void Session::Oper() {
                 if (plot_kind_ == PlotKind::Cp ||
                     plot_kind_ == PlotKind::CpSequence)
                     Replot();
-            } else if (Is(command,
-                          {"CINC", "HINC", "PSOR", "APLO", "AP",   "ASET",
-                           "PREM", "PNAM", "PPAX", "RGET", "RDEL", "CREF",
-                           "FREF", "ANNO", "SIZE", "BL",   "BLC",  "BLWT",
-                           "FMOM", "FNEW", "VELS", "Z",    "U"})) {
+            } else if (Is(command, {"Z", "U"})) {
+                ZoomCommand(command.name);
+            } else if (command.name == "SIZE") {
+                SizeCommand(oper_size_, v);
+            } else if (command.name == "ANNO") {
+                Annotate();
+            } else if (command.name == "BL") {
+                Profiles(v);
+            } else if (command.name == "BLC") {
+                ProfilesAtCursor();
+            } else if (command.name == "BLWT") {
+                ProfileWeight(v);
+            } else if (command.name == "CREF") {
+                cp_reference_on_ = !cp_reference_on_;
+                out_ << (cp_reference_on_
+                             ? " Reference Cp plotting enabled\n"
+                             : " Reference Cp plotting disabled\n");
+            } else if (command.name == "FREF") {
+                force_reference_on_ = !force_reference_on_;
+                out_ << (force_reference_on_
+                             ? " Reference force plotting enabled\n"
+                             : " Reference force plotting disabled\n");
+            } else if (command.name == "RGET") {
+                ReadReferencePolar(command.arg);
+            } else if (command.name == "RDEL") {
+                DeleteReferencePolar(v);
+            } else if (command.name == "PPAX") {
+                PolarAxesCommand();
+            } else if (Is(command, {"APLO", "AP"})) {
+                if (!polars_.empty()) {
+                    std::vector<int> which;
+                    which.reserve(v.size());
+                    for (double k : v) which.push_back(static_cast<int>(k));
+                    Show(PolarAirfoilsPlot(polars_, which),
+                         PlotKind::PolarAirfoils);
+                }
+            } else if (Is(command, {"CINC", "HINC", "PSOR", "ASET", "PREM",
+                                    "PNAM", "FMOM", "FNEW", "VELS"})) {
                 NotAvailable(out_, command.name);
             } else {
                 NotRecognized(out_, command.name);
@@ -1575,6 +1714,13 @@ void Session::TogglePacc() {
     polar.re = viscous_ ? re_ : 0.0;
     polar.mach = mach_;
     polar.ncrit_top = polar.ncrit_bot = bl_.ncrit;
+    if (foil_) {
+        const MatrixXd& x = foil_->GetFoilCoords();
+        for (Eigen::Index i = 0; i < x.cols(); ++i) {
+            polar.airfoil_x.push_back(x(0, i));
+            polar.airfoil_y.push_back(x(1, i));
+        }
+    }
     const int index = static_cast<int>(polars_.size()) + 1;
     out_ << "\n Polar" << I(index, 3) << " newly created for accumulation\n"
          << " Airfoil archived with polar: " << A(name_, 48) << '\n';
@@ -1917,8 +2063,19 @@ void Session::SetDisplay(Display* display) {
 }
 
 void Session::Show(Scene scene, PlotKind kind) {
+    /* Plot-object size of the menu that draws this plot, then the zoom */
+    double size = oper_size_;
+    if (kind == PlotKind::Bl) size = vplo_size_;
+    if (kind == PlotKind::Airfoil || kind == PlotKind::Curvature)
+        size = gdes_size_;
+    if (size > 0.0) scene.Scale(size / 10.0);
+    scene.view = zoom_;
     plot_ = std::move(scene);
     plot_kind_ = kind;
+    Reshow();
+}
+
+void Session::Reshow() {
     if (display_ != nullptr && graphics_) display_->Show(plot_);
 }
 
@@ -1940,8 +2097,17 @@ Solution Session::CurrentSolution() const {
 }
 
 void Session::PlotCp() {
+    /* Reference data is asked for each time, as XFOIL does */
+    if (cp_reference_on_) ReadCpReference();
+    if (force_reference_on_) ReadForceReference();
     cp_options_.version = version_;
+    cp_options_.cp_reference =
+        cp_reference_on_ && cp_reference_ ? &*cp_reference_ : nullptr;
+    cp_options_.force_reference =
+        force_reference_on_ && force_reference_ ? &*force_reference_ : nullptr;
     Show(CpPlot(CurrentSolution(), cp_options_), PlotKind::Cp);
+    cp_options_.cp_reference = nullptr;
+    cp_options_.force_reference = nullptr;
 }
 
 void Session::PlotPoint() {
@@ -1971,7 +2137,8 @@ void Session::PlotBl() {
 }
 
 void Session::PlotPolars() {
-    Show(PolarPlot(polars_, version_), PlotKind::Polar);
+    Show(PolarPlot(polars_, version_, polar_axes_, reference_polars_),
+         PlotKind::Polar);
 }
 
 void Session::PlotAirfoil() {
@@ -2006,6 +2173,10 @@ void Session::Replot() {
             break;
         case PlotKind::Airfoil:
             PlotAirfoil();
+            break;
+        case PlotKind::PolarAirfoils:
+        case PlotKind::Curvature:
+            Reshow();
             break;
     }
 }
@@ -2104,13 +2275,576 @@ void Session::Vplo() {
             PlotBl();
         } else if (command.name == "HARD") {
             Hardcopy();
-        } else if (Is(command, {"DUMP", "OVER", "BLOW", "SIZE", "ANNO", "SYMB",
-                                "LABE", "CLIP", "FRPL", "Z", "U"})) {
+        } else if (Is(command, {"BLOW", "B"})) {
+            BlBlowup();
+        } else if (command.name == "SYMB") {
+            bl_axes_.symbols = !bl_axes_.symbols;
+            PlotBl();
+        } else if (command.name == "LABE") {
+            bl_axes_.labels = !bl_axes_.labels;
+            PlotBl();
+        } else if (command.name == "CLIP") {
+            bl_axes_.clip = !bl_axes_.clip;
+            PlotBl();
+        } else if (command.name == "DUMP") {
+            DumpBlVariable(command.arg);
+        } else if (command.name == "OVER") {
+            OverlayBlVariable(command.arg);
+        } else if (command.name == "SIZE") {
+            SizeCommand(vplo_size_, command.numbers);
+        } else if (command.name == "ANNO") {
+            Annotate();
+        } else if (Is(command, {"Z", "U"})) {
+            ZoomCommand(command.name);
+        } else if (command.name == "FRPL") {
             NotAvailable(out_, command.name);
         } else {
             NotRecognized(out_, command.name);
         }
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Cursor input, zoom, plot size and annotation                         */
+/* ------------------------------------------------------------------ */
+
+bool Session::CursorReady() {
+    if (display_ == nullptr || !graphics_ || plot_kind_ == PlotKind::None) {
+        out_ << " ***  Cursor input needs the plot window  ***\n";
+        return false;
+    }
+    return true;
+}
+
+std::optional<CursorHit> Session::Cursor(bool done_button) {
+    out_ << std::flush;
+    if (display_ == nullptr) return std::nullopt;
+    return display_->Cursor(done_button);
+}
+
+bool Session::MarkCorners(Point& a, Point& b, bool absolute) {
+    out_ << "\n Mark off corners of blowup area\n"
+         << " (2 identical points default to current area)\n";
+    Point* corners[2] = {&a, &b};
+    for (int k = 0; k < 2; ++k) {
+        const std::optional<CursorHit> hit = Cursor(false);
+        if (!hit) return false;
+        *corners[k] = hit->page;
+        const Point user = plot_.user.set ? plot_.user.ToUser(hit->page)
+                                          : Point{hit->page.x / kUnitsPerInch,
+                                                  hit->page.y / kUnitsPerInch};
+        if (absolute)
+            out_ << " Pt" << I(k + 1, 2) << "  usr x,y" << F(user.x, 13, 6)
+                 << F(user.y, 13, 6) << "   abs X,Y"
+                 << F(hit->page.x / kUnitsPerInch, 13, 6)
+                 << F(hit->page.y / kUnitsPerInch, 13, 6) << '\n';
+        else
+            out_ << " x,y = " << ListDirected(user.x) << ' '
+                 << ListDirected(user.y) << '\n';
+    }
+    return std::hypot(a.x - b.x, a.y - b.y) > 1e-6;
+}
+
+bool Session::ZoomCommand(const std::string& name) {
+    if (name == "U") {
+        zoom_ = Rect{};
+        plot_.view = zoom_;
+        Reshow();
+        return true;
+    }
+    if (name != "Z") return false;
+    if (!CursorReady()) return true;
+    Point a;
+    Point b;
+    if (!MarkCorners(a, b, true)) return true;
+    zoom_ = AspectRect(a, b);
+    plot_.view = zoom_;
+    Reshow();
+    return true;
+}
+
+void Session::SizeCommand(double& size, const std::vector<double>& given) {
+    double value = size;
+    if (!given.empty()) {
+        value = given[0];
+    } else {
+        out_ << " Current plot-object size = " << ListDirected(size) << '\n';
+        AskReal("Enter new plot-object size", value);
+    }
+    if (value > 0.0) size = value;
+}
+
+void Session::Annotate() {
+    if (!CursorReady()) return;
+    constexpr double kText = 17.5;
+    constexpr double kSymbol = 10.0;
+    out_ << kAnnoMenu;
+    for (;;) {
+        out_ << " Select option or <return>:  " << std::flush;
+        const std::string line = Trim(ReadLine());
+        if (line.empty()) return;
+        const char option = static_cast<char>(
+            std::toupper(static_cast<unsigned char>(line[0])));
+        if (option == 'C' || option == 'S' || option == 'M') {
+            out_ << " Click on lower left point of character string...\n";
+            const std::optional<CursorHit> hit = Cursor(false);
+            if (!hit) return;
+            out_ << " Enter character string:  " << std::flush;
+            std::string text = ReadLine();
+            out_ << '\n';
+            if (option == 'M') text = MathCharacters(text);
+            Label label;
+            label.at = hit->page;
+            label.height = kText;
+            label.text = text;
+            label.width = anno_width_;
+            label.slant = option == 'S';
+            plot_.labels.push_back(label);
+            Reshow();
+        } else if (option == 'P') {
+            out_ << " Click on symbol locations ...\n";
+            for (;;) {
+                const std::optional<CursorHit> hit = Cursor(true);
+                if (!hit || hit->key == 'D') break;
+                plot_.Symbol(hit->page.x, hit->page.y, kSymbol, anno_symbol_);
+                Reshow();
+            }
+            out_ << '\n';
+        } else if (option == 'L' || option == 'A') {
+            out_ << " Click on line points, twice on last point...\n";
+            std::vector<Point> points;
+            for (;;) {
+                const std::optional<CursorHit> hit = Cursor(true);
+                if (!hit || hit->key == 'D') break;
+                if (!points.empty() &&
+                    std::hypot(hit->page.x - points.back().x,
+                               hit->page.y - points.back().y) < 3.0)
+                    break;
+                points.push_back(hit->page);
+            }
+            if (points.size() >= 2) {
+                plot_.Line(points);
+                if (option == 'A') {
+                    const Point& tip = points.back();
+                    const Point& from = points[points.size() - 2];
+                    const double length =
+                        std::hypot(tip.x - from.x, tip.y - from.y);
+                    const double dx = (tip.x - from.x) / length;
+                    const double dy = (tip.y - from.y) / length;
+                    constexpr double kHead = 16.0;
+                    constexpr double kHalf = 4.5;
+                    const Point base{tip.x - dx * kHead, tip.y - dy * kHead};
+                    plot_.Line({{base.x - dy * kHalf, base.y + dx * kHalf},
+                                tip,
+                                {base.x + dy * kHalf, base.y - dx * kHalf}});
+                }
+                Reshow();
+            }
+            out_ << '\n';
+        } else if (option == 'W') {
+            out_ << " Enter new character width factor (currently ="
+                 << F(anno_width_, 7, 3) << "):  " << std::flush;
+            const std::vector<double> v = Numbers(ReadLine());
+            out_ << '\n';
+            if (!v.empty() && v[0] > 0.0) anno_width_ = v[0];
+        } else if (option == 'T') {
+            out_ << '\n'
+                 << kSymbolTable << "\n Enter new symbol type (currently ="
+                 << I(anno_symbol_, 2) << "):  " << std::flush;
+            const std::vector<double> v = Numbers(ReadLine());
+            out_ << '\n';
+            if (!v.empty() && v[0] >= 0.0 && v[0] <= 13.0)
+                anno_symbol_ = static_cast<int>(v[0]);
+        } else {
+            out_ << kAnnoMenu;
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Boundary-layer velocity profiles                                     */
+/* ------------------------------------------------------------------ */
+
+namespace {
+
+void PrintProfile(std::ostream& out, const BlProfile& profile) {
+    out << " x y =" << F(profile.wall.x, 8, 4) << F(profile.wall.y, 8, 4)
+        << "    Delta* =" << E(profile.ds, 12, 4)
+        << "    Rtheta =" << F(profile.ret, 10, 2)
+        << "    Hk =" << F(profile.hk, 9, 4) << '\n';
+}
+
+}  // namespace
+
+void Session::Profiles(const std::vector<double>& given) {
+    if (!HaveSolution()) return;
+    const Solution solution = CurrentSolution();
+    if (!solution.viscous) return;
+    int count = 21;
+    if (!given.empty() && given[0] >= 2.0)
+        count = static_cast<int>(given[0]);
+    else
+        out_ << " Using default number of profiles:" << I(count, 12) << '\n';
+    if (plot_kind_ != PlotKind::Cp) PlotCp();
+    const double arc = ArcLength(solution);
+    for (int k = 0; k < count; ++k) {
+        BlProfile profile;
+        if (!ProfileAtArc(solution, arc * k / (count - 1), profile_weight_,
+                          profile))
+            continue;
+        PrintProfile(out_, profile);
+        DrawProfile(plot_, profile);
+    }
+    Reshow();
+}
+
+void Session::ProfilesAtCursor() {
+    if (!HaveSolution()) return;
+    const Solution solution = CurrentSolution();
+    if (!solution.viscous) return;
+    if (plot_kind_ != PlotKind::Cp) PlotCp();
+    if (!CursorReady()) return;
+    out_ << "  \n Locate profiles with cursor, type \"D\" when done...\n";
+    for (;;) {
+        const std::optional<CursorHit> hit = Cursor(true);
+        if (!hit || hit->key == 'D') break;
+        BlProfile profile;
+        if (!ProfileNear(solution, plot_.foil.ToUser(hit->page),
+                         profile_weight_, profile))
+            continue;
+        PrintProfile(out_, profile);
+        DrawProfile(plot_, profile);
+        Reshow();
+    }
+}
+
+void Session::ProfileWeight(const std::vector<double>& given) {
+    double weight = profile_weight_;
+    if (!given.empty()) {
+        weight = given[0];
+    } else {
+        out_ << "\n Current u/Qinf profile plot weight =" << E(weight, 12, 4)
+             << '\n';
+        AskReal("Enter new plot weight", weight);
+    }
+    if (weight > 0.0) profile_weight_ = weight;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reference data                                                       */
+/* ------------------------------------------------------------------ */
+
+void Session::ReadCpReference() {
+    out_ << "\n Enter Cp vs x data filename " << cp_reference_file_ << '\n'
+         << std::flush;
+    const std::string answer = Trim(ReadLine());
+    if (!answer.empty()) cp_reference_file_ = answer;
+    std::vector<std::vector<Point>> blocks;
+    if (cp_reference_file_.empty() ||
+        !ReadPairBlocks(cp_reference_file_, blocks)) {
+        out_ << " GETXYL: File OPEN error.\n";
+        cp_reference_.reset();
+        return;
+    }
+    CpReference reference;
+    for (const auto& block : blocks)
+        reference.points.insert(reference.points.end(), block.begin(),
+                                block.end());
+    reference.label = AskString("Enter data description label");
+    cp_reference_ = reference;
+}
+
+void Session::ReadForceReference() {
+    out_ << " Enter reference  Mach, Re, Alpha, CL, CD, CM:\n" << std::flush;
+    const std::vector<double> v = Numbers(ReadLine());
+    ForceReference reference =
+        force_reference_ ? *force_reference_ : ForceReference{};
+    double* fields[6] = {&reference.mach, &reference.re, &reference.alpha,
+                         &reference.cl,   &reference.cd, &reference.cm};
+    for (std::size_t k = 0; k < v.size() && k < 6; ++k) *fields[k] = v[k];
+    reference.label = AskString("Enter reference force data label");
+    force_reference_ = reference;
+}
+
+void Session::ReadReferencePolar(const std::string& arg) {
+    std::string path = Trim(arg);
+    if (path.empty()) path = AskString("Enter reference polar filename");
+    if (path.empty()) return;
+    std::vector<std::vector<Point>> blocks;
+    if (!ReadPairBlocks(path, blocks)) {
+        out_ << "\n File OPEN error.  Nonexistent file:  " << path << "  \n";
+        return;
+    }
+    ReferencePolar reference;
+    std::vector<Point>* sets[4] = {&reference.cd_cl, &reference.alpha_cl,
+                                   &reference.alpha_cm, &reference.xtr_cl};
+    for (std::size_t k = 0; k < blocks.size() && k < 4; ++k)
+        *sets[k] = blocks[k];
+    reference.label = AskString("Enter label for reference polar");
+    reference_polars_.push_back(reference);
+    if (plot_kind_ == PlotKind::Polar) PlotPolars();
+}
+
+void Session::DeleteReferencePolar(const std::vector<double>& given) {
+    if (reference_polars_.empty()) {
+        out_ << " No reference polars are stored\n";
+        return;
+    }
+    int which = -1;
+    if (!given.empty()) {
+        which = static_cast<int>(given[0]);
+    } else {
+        out_ << "\n        reference polar                          \n"
+             << "       ------------------------------------------\n";
+        for (std::size_t k = 0; k < reference_polars_.size(); ++k)
+            out_ << I(static_cast<long>(k) + 1, 5) << "  "
+                 << A(reference_polars_[k].label, 48) << '\n';
+        AskInt("Specify ref. polar to delete (0 = all, -1 = abort)", which);
+    }
+    if (which == 0)
+        reference_polars_.clear();
+    else if (which > 0 &&
+             static_cast<std::size_t>(which) <= reference_polars_.size())
+        reference_polars_.erase(reference_polars_.begin() + which - 1);
+    if (plot_kind_ == PlotKind::Polar) PlotPolars();
+}
+
+void Session::PolarAxesCommand() {
+    PolarAxes axes = DefaultPolarAxes(polars_, polar_axes_);
+    out_
+        << " Enter new axis annotations, or <return> to leave unchanged...\n\n";
+    struct Row {
+        const char* label;
+        Axis* axis;
+    };
+    const Row rows[] = {{"   Alpha  min, max, delta:", &axes.alpha},
+                        {"     CL   min, max, delta:", &axes.cl},
+                        {"     CD   min, max, delta:", &axes.cd},
+                        {"    -CM   min, max, delta:", &axes.cm}};
+    for (const Row& row : rows) {
+        out_ << row.label << F(row.axis->min, 11, 5) << F(row.axis->max, 11, 5)
+             << F(row.axis->del, 11, 5) << '\n'
+             << std::flush;
+        const std::vector<double> v = Numbers(ReadLine());
+        Axis changed = *row.axis;
+        if (!v.empty()) changed.min = v[0];
+        if (v.size() > 1) changed.max = v[1];
+        if (v.size() > 2) changed.del = v[2];
+        if (changed.max > changed.min && changed.del > 0.0) *row.axis = changed;
+    }
+    axes.set = true;
+    polar_axes_ = axes;
+    if (plot_kind_ == PlotKind::Polar) PlotPolars();
+}
+
+/* ------------------------------------------------------------------ */
+/* VPLO extras                                                          */
+/* ------------------------------------------------------------------ */
+
+void Session::BlBlowup() {
+    if (plot_kind_ != PlotKind::Bl || !CursorReady()) return;
+    Point a;
+    Point b;
+    if (!MarkCorners(a, b, false)) return;
+    const Point ua = plot_.user.ToUser(a);
+    const Point ub = plot_.user.ToUser(b);
+    bl_axes_.x = NiceAxisFor(std::min(ua.x, ub.x), std::max(ua.x, ub.x), 7);
+    bl_axes_.y = NiceAxisFor(std::min(ua.y, ub.y), std::max(ua.y, ub.y), 8);
+    bl_axes_.x_set = true;
+    bl_axes_.y_set = true;
+    PlotBl();
+}
+
+void Session::DumpBlVariable(const std::string& arg) {
+    if (!HaveSolution()) return;
+    const Solution solution = CurrentSolution();
+    if (!solution.viscous) return;
+    std::string path = Trim(arg);
+    if (path.empty()) path = AskString("Enter filename");
+    if (path.empty()) return;
+    std::ofstream stream(path);
+    stream << "#" << (bl_axes_.vs_s ? "     s" : "     x")
+           << "          value\n";
+    for (const auto& curve : BlData(solution, bl_variable_, bl_axes_.vs_s)) {
+        for (const Point& p : curve)
+            stream << F(p.x, 10, 6) << ' ' << E(p.y, 14, 6) << '\n';
+        stream << '\n';
+    }
+}
+
+void Session::OverlayBlVariable(const std::string& arg) {
+    std::string path = Trim(arg);
+    if (path.empty()) path = AskString("Enter filename");
+    if (path.empty()) return;
+    std::vector<std::vector<Point>> blocks;
+    if (!ReadPairBlocks(path, blocks)) {
+        out_ << "\n File OPEN error.  Nonexistent file:  " << path << "  \n";
+        return;
+    }
+    bl_axes_.overlay.clear();
+    for (const auto& block : blocks)
+        bl_axes_.overlay.insert(bl_axes_.overlay.end(), block.begin(),
+                                block.end());
+    PlotBl();
+}
+
+/* ------------------------------------------------------------------ */
+/* GDES plot commands                                                   */
+/* ------------------------------------------------------------------ */
+
+namespace {
+
+std::vector<Point> Contour(const MatrixXd& x) {
+    std::vector<Point> contour;
+    contour.reserve(static_cast<std::size_t>(x.cols()));
+    for (Eigen::Index i = 0; i < x.cols(); ++i)
+        contour.push_back({x(0, i), x(1, i)});
+    return contour;
+}
+
+}  // namespace
+
+void Session::GdesBlowup() {
+    if (plot_kind_ != PlotKind::Airfoil || !CursorReady()) return;
+    Point a;
+    Point b;
+    if (!MarkCorners(a, b, false)) return;
+    const Point ua = plot_.user.ToUser(a);
+    const Point ub = plot_.user.ToUser(b);
+    airfoil_options_.window = {std::min(ua.x, ub.x), std::min(ua.y, ub.y),
+                               std::max(ua.x, ub.x), std::max(ua.y, ub.y)};
+    airfoil_options_.window_set = true;
+    airfoil_options_.inches = false;
+    PlotAirfoil();
+}
+
+void Session::GdesWindow() {
+    if (plot_kind_ != PlotKind::Airfoil || !CursorReady()) return;
+    out_ << "  \n Type I,O,P to In,Out,Pan with cursor...\n";
+    Rect w = airfoil_options_.window_set ? airfoil_options_.window
+                                         : AirfoilWindow(Contour(buffer_));
+    for (;;) {
+        const std::optional<CursorHit> hit = Cursor(true);
+        if (!hit) break;
+        const char key = hit->key;
+        if (key != 0 && key != 'I' && key != 'O' && key != 'P') break;
+        const Point u = plot_.user.ToUser(hit->page);
+        const double factor = key == 'I' ? 0.5 : key == 'O' ? 2.0 : 1.0;
+        const double hw = 0.5 * (w.x1 - w.x0) * factor;
+        const double hh = 0.5 * (w.y1 - w.y0) * factor;
+        w = {u.x - hw, u.y - hh, u.x + hw, u.y + hh};
+        airfoil_options_.window = w;
+        airfoil_options_.window_set = true;
+        airfoil_options_.inches = false;
+        PlotAirfoil();
+    }
+}
+
+void Session::GdesOverlay(const std::string& arg) {
+    std::string path = Trim(arg);
+    if (path.empty()) path = AskString("Enter filename");
+    if (path.empty()) return;
+    AirfoilFile file;
+    std::string error;
+    if (!ReadAirfoilFile(path, file, error)) {
+        out_ << "\n File OPEN error.  Nonexistent file:  " << path << "  \n";
+        return;
+    }
+    std::string name = file.name;
+    if (file.labeled) {
+        out_ << "\n Labeled airfoil file.  Name:  " << A(name, 32) << '\n';
+    } else {
+        out_ << "\n Plain airfoil file\n";
+        name = AskString("Enter airfoil name");
+    }
+    const MatrixXd points =
+        IsCounterclockwise(file.x) ? Reversed(file.x) : file.x;
+    PrintThicknessCamber(points);
+    airfoil_options_.overlay = Contour(points);
+    airfoil_options_.overlay_info = Geometry(name, airfoil_options_.overlay);
+    PlotAirfoil();
+}
+
+void Session::Curvatures() {
+    if (buffer_.cols() < 3) return;
+    const std::vector<Point> contour = Contour(buffer_);
+    const std::vector<double> k = Curvature(contour);
+    const std::size_t n = contour.size();
+    /* Arc length from the upper trailing edge, XFOIL's first point */
+    std::vector<double> s(n, 0.0);
+    for (std::size_t i = n - 1; i-- > 0;)
+        s[i] = s[i + 1] + std::hypot(contour[i].x - contour[i + 1].x,
+                                     contour[i].y - contour[i + 1].y);
+    std::size_t le = 0;
+    std::size_t kmax = 0;
+    std::size_t kmin = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (contour[i].x < contour[le].x) le = i;
+        if (k[i] > k[kmax]) kmax = i;
+        if (k[i] < k[kmin]) kmin = i;
+    }
+    auto stat = [&](const char* name, std::size_t i) {
+        out_ << name << ListDirected(k[i]) << "  at S =  " << ListDirected(s[i])
+             << "  at X =  " << ListDirected(contour[i].x) << '\n';
+    };
+    double exponent = 1.0;
+    for (;;) {
+        out_ << "  \n Airfoil curvature (yellow-upper, cyan-lower) \n";
+        stat("  CVLE  =  ", le);
+        stat("  CVmax =  ", kmax);
+        stat("  CVmin =  ", kmin);
+        out_ << "  \n Enter C for curvature    plot\n"
+             << " Enter N for curvature**N plot\n"
+             << " Hit <cr> to exit\n";
+        const Command command = Parse(AskCommand("..CPLO"));
+        if (command.name.empty()) {
+            if (plot_kind_ == PlotKind::Curvature) PlotAirfoil();
+            return;
+        }
+        if (command.name == "C") {
+            Show(CurvaturePlot(contour, 1.0), PlotKind::Curvature);
+        } else if (command.name == "N") {
+            if (!command.numbers.empty())
+                exponent = command.numbers[0];
+            else
+                AskReal("Enter curvature exponent N", exponent);
+            Show(CurvaturePlot(contour, exponent), PlotKind::Curvature);
+        } else if (Is(command, {"Z", "U"})) {
+            ZoomCommand(command.name);
+        }
+    }
+}
+
+void Session::Distance() {
+    if (!CursorReady()) return;
+    out_ << "\n Click mouse or hit a key on each point\n\n";
+    Point u[2];
+    for (Point& p : u) {
+        const std::optional<CursorHit> hit = Cursor(false);
+        if (!hit) return;
+        p = plot_.user.set ? plot_.user.ToUser(hit->page)
+                           : Point{hit->page.x / kUnitsPerInch,
+                                   hit->page.y / kUnitsPerInch};
+    }
+    const double dx = u[1].x - u[0].x;
+    const double dy = u[1].y - u[0].y;
+    out_ << " x1 =" << F(u[0].x, 10, 6) << "    y1 =" << F(u[0].y, 10, 6)
+         << "\n x2 =" << F(u[1].x, 10, 6) << "    y2 =" << F(u[1].y, 10, 6)
+         << "\n dx =" << F(dx, 10, 6) << "    dy =" << F(dy, 10, 6)
+         << "    ds =" << F(std::hypot(dx, dy), 10, 6) << '\n';
+}
+
+void Session::TickSize(const std::vector<double>& given) {
+    double size = airfoil_options_.tick_size;
+    if (!given.empty()) {
+        size = given[0];
+    } else {
+        out_ << " Current tick-mark size (as fraction of perimeter) = "
+             << ListDirected(size) << '\n';
+        AskReal("Enter new tick-mark size", size);
+    }
+    if (size > 0.0) airfoil_options_.tick_size = size;
+    if (airfoil_options_.ticks) PlotAirfoil();
 }
 
 }  // namespace fauxfoil

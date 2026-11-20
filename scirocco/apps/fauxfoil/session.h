@@ -36,6 +36,7 @@
 
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -131,7 +132,17 @@ class Session {
     void MinimumCp() const;
 
     /* Plots */
-    enum class PlotKind { None, Cp, CpSequence, CpVectors, Bl, Polar, Airfoil };
+    enum class PlotKind {
+        None,
+        Cp,
+        CpSequence,
+        CpVectors,
+        Bl,
+        Polar,
+        PolarAirfoils,
+        Airfoil,
+        Curvature
+    };
     void Show(Scene scene, PlotKind kind);
     [[nodiscard]] bool HaveSolution() const;
     [[nodiscard]] Solution CurrentSolution() const;
@@ -146,6 +157,32 @@ class Session {
     void Vplo();
     void AskAxis(const char* name, Axis& axis,
                  const std::vector<double>& given);
+
+    /* Cursor-driven and reference-data plot commands */
+    bool CursorReady();
+    std::optional<CursorHit> Cursor(bool done_button);
+    bool MarkCorners(Point& a, Point& b, bool absolute);
+    void Reshow();
+    bool ZoomCommand(const std::string& name);
+    void SizeCommand(double& size, const std::vector<double>& given);
+    void Annotate();
+    void Profiles(const std::vector<double>& given);
+    void ProfilesAtCursor();
+    void ProfileWeight(const std::vector<double>& given);
+    void ReadCpReference();
+    void ReadForceReference();
+    void ReadReferencePolar(const std::string& arg);
+    void DeleteReferencePolar(const std::vector<double>& given);
+    void PolarAxesCommand();
+    void BlBlowup();
+    void DumpBlVariable(const std::string& arg);
+    void OverlayBlVariable(const std::string& arg);
+    void GdesBlowup();
+    void GdesWindow();
+    void GdesOverlay(const std::string& arg);
+    void Curvatures();
+    void Distance();
+    void TickSize(const std::vector<double>& given);
 
     std::istream& in_;
     std::ostream& out_;
@@ -192,6 +229,24 @@ class Session {
     BlVariable bl_variable_ = BlVariable::Hk;
     BlAxes bl_axes_;
     AirfoilOptions airfoil_options_;
+
+    /* Zoom, plot-object sizes and annotation settings */
+    Rect zoom_;
+    double oper_size_ = 10.0;
+    double vplo_size_ = 10.0;
+    double gdes_size_ = 10.0;
+    double anno_width_ = 1.0;
+    int anno_symbol_ = 0;
+    double profile_weight_ = 0.02;
+
+    /* Reference data */
+    bool cp_reference_on_ = false;
+    std::string cp_reference_file_;
+    std::optional<CpReference> cp_reference_;
+    bool force_reference_on_ = false;
+    std::optional<ForceReference> force_reference_;
+    std::vector<ReferencePolar> reference_polars_;
+    PolarAxes polar_axes_;
 };
 
 }  // namespace fauxfoil

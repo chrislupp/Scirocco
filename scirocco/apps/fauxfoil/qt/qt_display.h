@@ -60,6 +60,7 @@ class QtDisplay : public Display {
     QtDisplay& operator=(const QtDisplay&) = delete;
 
     void Show(const Scene& scene) override;
+    std::optional<CursorHit> Cursor(bool done_button) override;
 
    private:
     struct Impl;

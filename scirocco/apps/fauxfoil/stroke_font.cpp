@@ -176,6 +176,35 @@ const std::map<std::string, const char*>& Outlines() {
          "2,2 1.4,2.8 0.6,2.8 0,2 0.6,1.2 1.4,1.2 2.6,2.8 3.4,2.8 4,2 "
          "3.4,1.2 2.6,1.2 2,2"},
         {"√", "0,2.4 0.8,2.8 1.8,0 3,6.6 4.6,6.6"},
+        {"β", "0,-2 0,6 3.4,6r 3.4,3.2r 1,3.2; 1,3.2 4,3.2r 4,0r 0,0"},
+        {"γ", "0,4 2,0.5 4,4; 2,0.5 2,-2"},
+        {"ε", "4,4 0,4r 0,0r 4,0; 0,2 3,2"},
+        {"ζ", "0.5,6 3.5,6 0,1.5 0,0r 3,0r 3,-1.6 2,-2"},
+        {"η", "0,0 0,4 4,4r 4,-2"},
+        {"ι", "1.5,4 1.5,0r 3,0"},
+        {"κ", "0,4 0,0; 4,4 0,1.6; 1.4,2.4 4,0"},
+        {"λ", "0,0 2,4; 0.6,6 4,0"},
+        {"μ", "0,-2 0,4; 0,0 4,0r 4,4"},
+        {"ν", "0,4 2,0 4,3 4,4"},
+        {"ξ",
+         "3.5,6 0.8,6 0.8,4.2 3,4.2; 3,4.2 0,4.2r 0,1.6r 3.6,1.6r "
+         "3.6,-2 2.4,-2"},
+        {"π", "0.2,4 4,4; 1.2,4 1.2,0; 3,4 3,0"},
+        {"ρ", "0,-2 0,4r 4,4r 4,0r 0,0"},
+        {"σ", "4,4 0,4r 0,0r 3.2,0r 3.2,4"},
+        {"υ", "0,4 0,0r 4,0r 4,4"},
+        {"φ", "2,6 2,-2; 2,4 0,4r 0,0r 4,0r 4,4r 2,4"},
+        {"χ", "0,4 4,-2; 0,-2 4,4"},
+        {"ψ", "2,5 2,-2; 0,4 0,0r 4,0r 4,4"},
+        {"Γ", "0,0 0,6 4,6"},
+        {"Θ", "0,3 0,6R 4,6R 4,0R 0,0R 0,3; 1,3 3,3"},
+        {"Λ", "0,0 2,6 4,0"},
+        {"Ξ", "0,6 4,6; 0.8,3 3.2,3; 0,0 4,0"},
+        {"Π", "0,0 0,6 4,6 4,0"},
+        {"Σ", "4,6 0,6 2,3 0,0 4,0"},
+        {"Φ", "2,6.5 2,-0.5; 2,5 0,5r 0,1r 4,1r 4,5r 2,5"},
+        {"Ψ", "2,6 2,0; 0,6 0,3r 4,3r 4,6"},
+        {"Ω", "0,0 1.4,0 1.4,0.8 0,2.4 0,6r 4,6r 4,2.4 2.6,0.8 2.6,0 4,0"},
     };
     return kOutlines;
 }
@@ -260,17 +289,41 @@ const std::vector<std::vector<Point>>& GlyphStrokes(const std::string& utf8) {
     return cache.at("?");
 }
 
+std::string MathCharacters(const std::string& text) {
+    /* The usual Symbol-font assignment of Greek letters to Latin keys */
+    static const std::map<char, const char*> kGreek = {
+        {'a', "α"}, {'b', "β"}, {'c', "χ"}, {'d', "δ"}, {'e', "ε"}, {'f', "φ"},
+        {'g', "γ"}, {'h', "η"}, {'i', "ι"}, {'j', "φ"}, {'k', "κ"}, {'l', "λ"},
+        {'m', "μ"}, {'n', "ν"}, {'o', "o"}, {'p', "π"}, {'q', "θ"}, {'r', "ρ"},
+        {'s', "σ"}, {'t', "τ"}, {'u', "υ"}, {'v', "ν"}, {'w', "ω"}, {'x', "ξ"},
+        {'y', "ψ"}, {'z', "ζ"}, {'A', "A"}, {'B', "B"}, {'C', "X"}, {'D', "Δ"},
+        {'E', "E"}, {'F', "Φ"}, {'G', "Γ"}, {'H', "H"}, {'I', "I"}, {'J', "Θ"},
+        {'K', "K"}, {'L', "Λ"}, {'M', "M"}, {'N', "N"}, {'O', "O"}, {'P', "Π"},
+        {'Q', "Θ"}, {'R', "P"}, {'S', "Σ"}, {'T', "T"}, {'U', "Y"}, {'V', "V"},
+        {'W', "Ω"}, {'X', "Ξ"}, {'Y', "Ψ"}, {'Z', "Z"},
+    };
+    std::string out;
+    for (char c : text) {
+        const auto found = kGreek.find(c);
+        out += found != kGreek.end() ? found->second : std::string(1, c);
+    }
+    return out;
+}
+
 std::vector<std::vector<Point>> LabelStrokes(const Label& label) {
     std::vector<std::vector<Point>> strokes;
     for (const Glyph& glyph : LayoutLabel(label)) {
         const double unit = glyph.height / kCapUnits;
-        const double cell = kAdvance * glyph.height;
-        const double left = glyph.x + 0.5 * (cell - kGlyphWidth * unit);
+        const double wide = unit * glyph.width;
+        const double cell = kAdvance * glyph.height * glyph.width;
+        const double left = glyph.x + 0.5 * (cell - kGlyphWidth * wide);
+        const double shear = glyph.slant ? 0.25 : 0.0;
         for (const auto& stroke : GlyphStrokes(glyph.text)) {
             std::vector<Point> page;
             page.reserve(stroke.size());
             for (const Point& p : stroke)
-                page.push_back({left + unit * p.x, glyph.y + unit * p.y});
+                page.push_back({left + wide * p.x + shear * unit * p.y,
+                                glyph.y + unit * p.y});
             strokes.push_back(std::move(page));
         }
     }

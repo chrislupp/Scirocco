@@ -33,16 +33,32 @@
 /// @file display.h
 /// Where a session's plots go.
 
+#include <optional>
+
 #include "plot_scene.h"
 
 namespace fauxfoil {
 
-/// A plot window. Show() may be called from any thread.
+/// A mouse click or key press in the plot window.
+struct CursorHit {
+    Point page;    ///< Where, in page coordinates
+    char key = 0;  ///< Upper-case key typed, or 0 for a mouse button
+};
+
+/// A plot window. Its methods may be called from any thread.
 class Display {
    public:
     virtual ~Display() = default;
     /// Replace the plot on screen with @p scene.
     virtual void Show(const Scene& scene) = 0;
+    /// Wait for a mouse click or key press in the window, as XFOIL's cursor
+    /// input does. With @p done_button a "Done" button is shown; clicking
+    /// it reports the key 'D'.
+    /// @return Nothing when there is no window to click in.
+    virtual std::optional<CursorHit> Cursor(bool done_button) {
+        (void)done_button;
+        return std::nullopt;
+    }
 };
 
 }  // namespace fauxfoil

@@ -64,6 +64,9 @@ struct Polar {
     int mach_type = 1;
     std::string save_file; /**< Empty when points are not saved */
     std::vector<PolarPoint> points;
+    /** Airfoil archived with the polar (APLO, ASET), Scirocco point order */
+    std::vector<double> airfoil_x;
+    std::vector<double> airfoil_y;
 };
 
 /// Full text of a polar save file; @p program and @p version fill the

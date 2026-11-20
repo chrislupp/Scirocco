@@ -147,6 +147,7 @@ Solution Snapshot(const FoilState& state, double xtr_top, double xtr_bot) {
                 static_cast<std::size_t>(j) < state.vsol.turb.size() &&
                 state.vsol.turb[j];
             if (si == 2) st.turbulent = true;
+            st.node = j < n ? j : -1;
             st.cd = scirocco::GetCDi(U, param).value;
             st.cteq = st.turbulent ? scirocco::GetCteq(U, param).value : 0.0;
             lists[si]->push_back(st);

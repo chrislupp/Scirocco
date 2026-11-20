@@ -86,6 +86,53 @@ the lines, in the style of XFOIL's plotter text.
   grid, node ticks and parameters.
 - **Hardcopy.** `HARD` writes the current plot to `plot.ps` as a PostScript
   page, black on white; later hardcopies add pages, as in XFOIL.
+- **Plot size.** `SIZE` in `OPER`, `VPLO` and `GDES` sets the plot-object
+  size (default 10) for the plots that follow.
+
+### Cursor input
+
+Commands that ask XFOIL for cursor input take mouse clicks and key presses
+in the plot window. The window takes keyboard focus while it waits, shows a
+crosshair, and where XFOIL shows a **Done** button so does fauXfoil
+(clicking it is the same as typing `D`).
+
+- **Zoom.** `Z` (any menu) zooms the window onto two clicked corners; `U`
+  unzooms. Each corner is printed in plot and page ("abs", inches)
+  coordinates, as XFOIL prints them.
+- **Annotation.** `ANNO` opens XFOIL's annotation menu: text (`C`), slanted
+  text (`S`), Greek "math" characters (`M`, where `a` is α, `b` is β, ...),
+  point symbols (`P`, 14 types chosen with `T`), lines (`L`) and arrows
+  (`A`), and the character width factor (`W`).
+- **Velocity profiles.** `BL i` draws `i` boundary-layer velocity profiles
+  (21 by default) equally spaced round the airfoil under the Cp plot and
+  lists δ*, Re_θ and H_k at each; `BLC` draws them where you click, and
+  `BLWT` sets their scale. The profile shapes are textbook families fitted
+  to the solver's shape factor: the Pohlhausen quartic when laminar, a
+  power law when turbulent.
+- **Blowup.** `BLOW` in `VPLO` sets the axis limits to a clicked box; in
+  `GDES` it plots only that region of the airfoil. `WIND` in `GDES` moves
+  the region with the cursor: `I` zooms in, `O` out, and `P` or a click
+  pans. `RESE` restores the full view.
+- **Distance.** `DIST` in `GDES` prints the distance between two clicked
+  points.
+
+### Reference data and plot options
+
+- `CREF` overlays measured Cp(x) from a file of "x Cp" lines on each Cp
+  plot. As in XFOIL, the file name and a label are asked for each time; an
+  empty answer keeps the previous file.
+- `FREF` lists measured Mach, Re, α, CL, CD and CM beside the computed
+  values.
+- `RGET f` reads a reference polar in XFOIL's format (CD-CL, α-CL, α-CM and
+  xtr-CL blocks, each ended by a `999 999` line) and plots it with symbols
+  on the polar plot; `RDEL` deletes it. `PPAX` sets the polar plot's axis
+  limits, and `APLO` plots the airfoil stored with each polar.
+- In `VPLO`, `SYMB` marks the stations, `LABE` hides the header and titles,
+  `CLIP` clips curves to the axes, `DUMP f` writes the plotted variable to a
+  file and `OVER f` overlays "x value" data from a file.
+- In `GDES`, `TICK` and `TSIZ` mark the points, `INPL` plots the airfoil at
+  one inch per chord, `OVER f` overlays another airfoil with its
+  parameters, and `CPLO` plots the surface curvature.
 
 ![Polar plot of NACA 2412 at Re = 10⁶](/img/fauxfoil-polar.png)
 
@@ -126,10 +173,11 @@ As with XFOIL, a file name on the command line is loaded at startup
 | Menu | Commands |
 |---|---|
 | Top level | `QUIT`, `OPER`, `GDES`, `NACA`, `LOAD`, `SAVE`, `PSAV`, `REVE`, `NORM`, `XYCM`, `PCOP`, `PANE`, `PPAR`, `PLOP`, `NAME`, `NINC` |
-| `OPER` | `VISC`, `RE`, `MACH`, `TYPE` (type 1), `ITER`, `INIT`, `ALFA`, `CL`, `CLI`, `ASEQ`, `CSEQ`, `!`, `VPAR`, `SEQP`, `PACC`, `PGET`, `PWRT`, `PSUM`, `PLIS`, `PDEL`, `PPLO`, `GRID`, `CPIO`, `CPX`, `CPV`, `VPLO`, `HARD`, `CPMI`, `CPWR`, `DUMP`, `CPMN`, `NAME`, `NINC` |
+| `OPER` | `VISC`, `RE`, `MACH`, `TYPE` (type 1), `ITER`, `INIT`, `ALFA`, `CL`, `CLI`, `ASEQ`, `CSEQ`, `!`, `VPAR`, `SEQP`, `PACC`, `PGET`, `PWRT`, `PSUM`, `PLIS`, `PDEL`, `PPLO`, `APLO`, `PPAX`, `RGET`, `RDEL`, `GRID`, `CPIO`, `CREF`, `FREF`, `CPX`, `CPV`, `VPLO`, `ANNO`, `HARD`, `SIZE`, `CPMI`, `BL`, `BLC`, `BLWT`, `CPWR`, `DUMP`, `CPMN`, `NAME`, `NINC` |
 | `VPAR` | `SHOW`, `N`, `NT`, `NB`, `WAKE`, `INIT`, `LAG`, `GB`, `CTR`, `REST` |
-| `VPLO` | `H`, `DT`, `DB`, `UE`, `CF`, `CD`, `N`, `CT`, `RT`, `RTL`, `X`, `Y`, `XPLO`, `RESE`, `GRID`, `HARD` |
-| `GDES` | `GSET`, `EXEC`, `ADEG`, `ARAD`, `TRAN`, `SCAL`, `UNIT`, `DERO`, `FLAP`, `PLOT`, `GRID`, `TICK`, `GPAR`, `HARD`, `NAME`, `NINC` |
+| `VPLO` | `H`, `DT`, `DB`, `UE`, `CF`, `CD`, `N`, `CT`, `RT`, `RTL`, `DUMP`, `OVER`, `X`, `Y`, `XPLO`, `BLOW`, `RESE`, `SIZE`, `ANNO`, `HARD`, `GRID`, `SYMB`, `LABE`, `CLIP` |
+| `GDES` | `GSET`, `EXEC`, `ADEG`, `ARAD`, `TRAN`, `SCAL`, `UNIT`, `DERO`, `FLAP`, `DIST`, `CPLO`, `PLOT`, `INPL`, `BLOW`, `RESE`, `WIND`, `TSIZ`, `TICK`, `GRID`, `GPAR`, `OVER`, `SIZE`, `ANNO`, `HARD`, `NAME`, `NINC` |
+| Any menu | `Z`, `U` |
 
 Abbreviations work as in XFOIL (`a` for `ALFA`, `as` for `ASEQ`, `v` for
 `VISC`, and so on). The menus list every XFOIL command; one that `fauXfoil`
@@ -155,11 +203,15 @@ sets `niglob`.
 
 ## How it differs from XFOIL
 
-- **Plots.** There is no cursor input, so zooming (`Z`, `U`, `BLOW`),
-  annotation (`ANNO`) and plot sizing (`SIZE`) are unavailable, as are
-  boundary-layer profiles (`BL`), reference data overlays (`CREF`, `OVER`)
-  and the Tollmien-Schlichting frequency lines on the `N` plot. When no
-  plot window shows the Cp plot, inviscid results are printed instead.
+- **Plots.** The `N` plot has no Tollmien-Schlichting frequency lines
+  (`FRPL`): XFOIL draws them from Orr-Sommerfeld stability data that
+  Scirocco does not have. When no plot window shows the Cp plot, inviscid
+  results are printed instead.
+- **Not yet available.** Polar sorting and editing (`PSOR`, `PREM`, `PNAM`,
+  `ASET`), Cp-min and hinge-moment columns (`CINC`, `HINC`), flap hinge
+  moments and point velocities (`FMOM`, `FNEW`, `VELS`), the `GDES`
+  geometry editors other than those listed above, and inverse design
+  (`MDES`, `QDES`).
 - **Paneling.** `PANE` uses Scirocco's curvature-based spacing. Only the
   node count (`PPAR N`, default 160) can be changed. As in XFOIL, `LOAD`
   uses the file's points directly as panel nodes, so run `PANE` after

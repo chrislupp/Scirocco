@@ -30,6 +30,8 @@
 */
 #include "plot_scene.h"
 
+#include <cmath>
+
 namespace fauxfoil {
 
 namespace {
@@ -44,22 +46,121 @@ constexpr double kSuperShift = 0.55;
 
 void Scene::Line(std::vector<Point> points, Ink ink, Dash dash) {
     if (points.size() < 2) return;
-    strokes.push_back({ink, dash, false, std::move(points)});
+    strokes.push_back({ink, dash, false, std::move(points), Rect{}});
 }
 
 void Scene::Segment(double x1, double y1, double x2, double y2, Ink ink,
                     Dash dash) {
-    strokes.push_back({ink, dash, false, {{x1, y1}, {x2, y2}}});
+    strokes.push_back({ink, dash, false, {{x1, y1}, {x2, y2}}, Rect{}});
 }
 
 void Scene::Fill(std::vector<Point> points, Ink ink) {
     if (points.size() < 3) return;
-    strokes.push_back({ink, Dash::Solid, true, std::move(points)});
+    strokes.push_back({ink, Dash::Solid, true, std::move(points), Rect{}});
 }
 
 void Scene::Text(double x, double y, double height, std::string text, Ink ink,
                  double align) {
     labels.push_back({ink, {x, y}, height, align, std::move(text)});
+}
+
+void Scene::Symbol(double x, double y, double size, int type, Ink ink) {
+    const double r = 0.5 * size;
+    auto line = [&](std::initializer_list<Point> unit) {
+        std::vector<Point> points;
+        for (const Point& p : unit)
+            points.push_back({x + r * p.x, y + r * p.y});
+        Line(points, ink);
+    };
+    constexpr double kPi = 3.14159265358979323846;
+    switch (type) {
+        case 0:
+            line({{-1, -1}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}});
+            break;
+        case 1: {
+            std::vector<Point> circle;
+            for (int k = 0; k <= 16; ++k) {
+                const double t = 2.0 * kPi * k / 16.0;
+                circle.push_back({x + r * std::cos(t), y + r * std::sin(t)});
+            }
+            Line(circle, ink);
+            break;
+        }
+        case 2:
+            line({{-1, -0.7}, {1, -0.7}, {0, 1}, {-1, -0.7}});
+            break;
+        case 3:
+            line({{-1, 0}, {1, 0}});
+            line({{0, -1}, {0, 1}});
+            break;
+        case 4:
+            line({{-1, -1}, {1, 1}});
+            line({{-1, 1}, {1, -1}});
+            break;
+        case 5:
+            line({{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {0, -1}});
+            break;
+        case 6:
+            line({{-1, 0.7}, {1, 0.7}, {0, -1}, {-1, 0.7}});
+            break;
+        case 7:
+            line({{0, -1}, {0, 0}});
+            line({{-0.9, 0.9}, {0, 0}, {0.9, 0.9}});
+            break;
+        case 8:
+            line({{0, 1}, {0, 0}});
+            line({{-0.9, -0.9}, {0, 0}, {0.9, -0.9}});
+            break;
+        case 9:
+        case 10: {
+            const double turn = type == 9 ? 0.0 : kPi / 6.0;
+            for (int k = 0; k < 3; ++k) {
+                const double t = turn + kPi * k / 3.0;
+                line(
+                    {{std::cos(t), std::sin(t)}, {-std::cos(t), -std::sin(t)}});
+            }
+            break;
+        }
+        case 11:
+            line({{-1, 1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}});
+            break;
+        case 12:
+            line({{-1, -1}, {-1, 1}, {1, -1}, {1, 1}, {-1, -1}});
+            break;
+        default: {
+            std::vector<Point> star;
+            for (int k = 0; k <= 10; ++k) {
+                const double t = kPi / 2.0 + kPi * k / 5.0;
+                const double rr = k % 2 == 0 ? r : 0.4 * r;
+                star.push_back({x + rr * std::cos(t), y + rr * std::sin(t)});
+            }
+            Line(star, ink);
+            break;
+        }
+    }
+}
+
+void Scene::Scale(double factor) {
+    if (factor == 1.0) return;
+    for (Stroke& stroke : strokes) {
+        for (Point& p : stroke.points) {
+            p.x *= factor;
+            p.y *= factor;
+        }
+        stroke.clip = {stroke.clip.x0 * factor, stroke.clip.y0 * factor,
+                       stroke.clip.x1 * factor, stroke.clip.y1 * factor};
+    }
+    for (Label& label : labels) {
+        label.at.x *= factor;
+        label.at.y *= factor;
+        label.height *= factor;
+    }
+    for (UserAxes* axes : {&user, &foil}) {
+        axes->ox *= factor;
+        axes->oy *= factor;
+        axes->sx *= factor;
+        axes->sy *= factor;
+    }
 }
 
 std::vector<std::string> Utf8Characters(const std::string& text) {
@@ -112,8 +213,9 @@ std::vector<Glyph> LayoutLabel(const Label& label) {
                              : run.level > 0 ? kSuperShift * label.height
                                              : 0.0;
         for (const std::string& character : Utf8Characters(run.text)) {
-            glyphs.push_back({character, x, shift, height});
-            x += kAdvance * height;
+            glyphs.push_back(
+                {character, x, shift, height, label.width, label.slant});
+            x += kAdvance * height * label.width;
         }
     }
     const double left = label.at.x - label.align * x;
@@ -128,7 +230,7 @@ double LabelWidth(const Label& label) {
     double width = 0.0;
     for (const TextRun& run : ParseLabel(label.text))
         width += kAdvance * (run.level == 0 ? 1.0 : kScriptScale) *
-                 label.height *
+                 label.height * label.width *
                  static_cast<double>(Utf8Characters(run.text).size());
     return width;
 }

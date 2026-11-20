@@ -32,9 +32,16 @@
 
 #include <gtest/gtest.h>
 
+#include <QApplication>
 #include <QColor>
 #include <QImage>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QWidget>
+#include <chrono>
+#include <future>
+#include <thread>
 
 #include "plot_scene.h"
 #include "qt/qt_display.h"
@@ -85,6 +92,92 @@ TEST(FauxfoilQt, KeepsAspectRatioInWideTargets) {
     const int left = static_cast<int>((2000 - fauxfoil::Scene::kWidth) / 2);
     EXPECT_EQ(image.pixelColor(left - 20, 961), QColor(Qt::black));
     EXPECT_NE(image.pixelColor(left + 20, 961), QColor(Qt::black));
+}
+
+/// One QApplication for the tests that need windows (offscreen platform).
+QApplication& App() {
+    static int argc = 1;
+    static char name[] = "fauxfoil_qt_test";
+    static char* argv[] = {name, nullptr};
+    static QApplication app(argc, argv);
+    return app;
+}
+
+/// Run the event loop until @p done or a timeout.
+template <class Done>
+bool Pump(Done done) {
+    const auto end =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!done()) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        if (std::chrono::steady_clock::now() > end) return false;
+    }
+    return true;
+}
+
+QWidget* PlotWindow() {
+    for (QWidget* w : QApplication::topLevelWidgets())
+        if (w->windowTitle() == "fauXfoil" && w->isVisible()) return w;
+    return nullptr;
+}
+
+TEST(FauxfoilQt, CursorReportsClicksAndKeysInPageCoordinates) {
+    App();
+    fauxfoil::QtDisplay display;
+    fauxfoil::Scene scene;
+    scene.Segment(0.0, 0.0, 100.0, 100.0);
+    display.Show(scene);
+    ASSERT_TRUE(Pump([] { return PlotWindow() != nullptr; }));
+    QWidget* window = PlotWindow();
+    window->resize(1245, 962);
+    QApplication::processEvents();
+
+    /* A click in the middle of the window is the middle of the page */
+    auto click = std::async(std::launch::async,
+                            [&display] { return display.Cursor(false); });
+    ASSERT_TRUE(
+        Pump([window] { return window->cursor().shape() == Qt::CrossCursor; }));
+    const QPointF centre(window->width() / 2.0, window->height() / 2.0);
+    QMouseEvent press(QEvent::MouseButtonPress, centre,
+                      window->mapToGlobal(centre), Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(window, &press);
+    ASSERT_TRUE(Pump([&click] {
+        return click.wait_for(std::chrono::seconds(0)) ==
+               std::future_status::ready;
+    }));
+    const auto hit = click.get();
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->key, 0);
+    EXPECT_NEAR(hit->page.x, 0.5 * fauxfoil::Scene::kWidth, 2.0);
+    EXPECT_NEAR(hit->page.y, 0.5 * fauxfoil::Scene::kHeight, 2.0);
+
+    /* A key press reports the key, upper case */
+    auto key = std::async(std::launch::async,
+                          [&display] { return display.Cursor(true); });
+    ASSERT_TRUE(
+        Pump([window] { return window->cursor().shape() == Qt::CrossCursor; }));
+    QKeyEvent typed(QEvent::KeyPress, Qt::Key_D, Qt::NoModifier, "d");
+    QApplication::sendEvent(window, &typed);
+    ASSERT_TRUE(Pump([&key] {
+        return key.wait_for(std::chrono::seconds(0)) ==
+               std::future_status::ready;
+    }));
+    const auto pressed = key.get();
+    ASSERT_TRUE(pressed.has_value());
+    EXPECT_EQ(pressed->key, 'D');
+
+    /* Closing the window ends cursor input */
+    auto closed = std::async(std::launch::async,
+                             [&display] { return display.Cursor(false); });
+    ASSERT_TRUE(
+        Pump([window] { return window->cursor().shape() == Qt::CrossCursor; }));
+    window->close();
+    ASSERT_TRUE(Pump([&closed] {
+        return closed.wait_for(std::chrono::seconds(0)) ==
+               std::future_status::ready;
+    }));
+    EXPECT_FALSE(closed.get().has_value());
 }
 
 }  // namespace

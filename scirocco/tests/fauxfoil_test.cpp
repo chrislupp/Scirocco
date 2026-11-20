@@ -33,12 +33,14 @@
 
 #include <gtest/gtest.h>
 
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "bl_profiles.h"
 #include "display.h"
 #include "format.h"
 #include "plot_scene.h"
@@ -249,11 +251,22 @@ TEST_F(FauxfoilTest, ParametersLockedWhileAccumulating) {
 /* Plots                                                                   */
 /* ---------------------------------------------------------------------- */
 
-/// Keeps every plot a session shows.
+/// Keeps every plot a session shows and answers cursor requests from a
+/// script of clicks (page coordinates).
 class RecordingDisplay : public fauxfoil::Display {
    public:
     void Show(const fauxfoil::Scene& scene) override { shown.push_back(scene); }
+    std::optional<fauxfoil::CursorHit> Cursor(bool /*done_button*/) override {
+        if (hits.empty()) return std::nullopt;
+        const fauxfoil::CursorHit hit = hits.front();
+        hits.pop_front();
+        return hit;
+    }
+    void Click(double x, double y, char key = 0) {
+        hits.push_back({{x, y}, key});
+    }
     std::vector<fauxfoil::Scene> shown;
+    std::deque<fauxfoil::CursorHit> hits;
 };
 
 bool HasLabel(const fauxfoil::Scene& scene, const std::string& text) {
@@ -402,6 +415,198 @@ TEST_F(FauxfoilTest, PolarPlotShowsStoredPolar) {
     const auto& polar = display.shown.back();
     EXPECT_TRUE(HasLabel(polar, "NACA 0012   Re = 1000000   Ma = 0.000"));
     EXPECT_TRUE(HasLabel(polar, "x_{tr} /c"));
+}
+
+TEST_F(FauxfoilTest, ZoomMarksCornersAndUnzoomRestores) {
+    RecordingDisplay display;
+    display.Click(200.0, 700.0);
+    display.Click(600.0, 400.0);
+    const std::string out =
+        Run("naca 0012\noper\na 2\nz\nu\n\nquit\n", {}, &display);
+    EXPECT_TRUE(Has(out,
+                    "\n Mark off corners of blowup area\n"
+                    " (2 identical points default to current area)\n"
+                    " Pt 1  usr x,y"));
+    EXPECT_TRUE(Has(out, "   abs X,Y"));
+    ASSERT_EQ(display.shown.size(), 3U);
+    EXPECT_FALSE(display.shown[1].view.Empty());
+    /* The zoomed view keeps the page's aspect ratio */
+    const fauxfoil::Rect& v = display.shown[1].view;
+    EXPECT_NEAR((v.x1 - v.x0) / (v.y1 - v.y0),
+                fauxfoil::Scene::kWidth / fauxfoil::Scene::kHeight, 1e-9);
+    EXPECT_TRUE(display.shown[2].view.Empty());
+}
+
+TEST_F(FauxfoilTest, CursorCommandsNeedThePlotWindow) {
+    const std::string out = Run("naca 0012\noper\na 2\nz\nanno\n\nquit\n");
+    EXPECT_TRUE(Has(out, " ***  Cursor input needs the plot window  ***\n"));
+}
+
+TEST_F(FauxfoilTest, AnnotationAddsTextSymbolsAndLines) {
+    RecordingDisplay display;
+    display.Click(500.0, 600.0); /* text */
+    display.Click(300.0, 300.0); /* symbol */
+    display.Click(0.0, 0.0, 'D');
+    display.Click(100.0, 500.0); /* arrow */
+    display.Click(400.0, 520.0);
+    display.Click(400.0, 520.0);
+    const std::string out =
+        Run("naca 0012\noper\na 2\nanno\nm\nabc\np\na\nw\n2\nt\n5\n\n"
+            "\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, "   M ath characters      |  plot \n"));
+    EXPECT_TRUE(Has(out,
+                    " Select option or <return>:   Click on lower left "
+                    "point of character string...\n Enter character "
+                    "string:  \n"));
+    EXPECT_TRUE(Has(out, " Click on symbol locations ...\n"));
+    EXPECT_TRUE(Has(out, " Click on line points, twice on last point...\n"));
+    EXPECT_TRUE(Has(out,
+                    " Enter new character width factor (currently =  "
+                    "1.000):  \n"));
+    EXPECT_TRUE(Has(out, "  13  star      \n"));
+    EXPECT_TRUE(Has(out, " Enter new symbol type (currently = 0):  \n"));
+    const auto& last = display.shown.back();
+    EXPECT_TRUE(HasLabel(last, "αβχ"));
+    /* Arrow: shaft plus head */
+    EXPECT_GE(display.shown.front().strokes.size() + 3, last.strokes.size());
+    EXPECT_GT(last.strokes.size(), display.shown.front().strokes.size());
+}
+
+TEST_F(FauxfoilTest, BoundaryLayerProfilesListStations) {
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 2412\noper\nvisc 1e6\na 4\nbl\nbl 5\nblwt\n0.05\n\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, " Using default number of profiles:          21\n"));
+    EXPECT_TRUE(Has(out, " x y =  1.0000  0.0013    Delta* ="));
+    EXPECT_TRUE(
+        Has(out, "\n Current u/Qinf profile plot weight =  0.2000E-01\n"));
+    std::size_t lines = 0;
+    for (std::size_t at = out.find(" x y ="); at != std::string::npos;
+         at = out.find(" x y =", at + 1))
+        ++lines;
+    EXPECT_EQ(lines, 26U);
+    /* Profiles are green strokes on the Cp plot */
+    int green = 0;
+    for (const auto& stroke : display.shown.back().strokes)
+        green += stroke.ink == fauxfoil::Ink::Green;
+    EXPECT_GE(green, 10);
+}
+
+TEST(FauxfoilProfiles, FamiliesSpanTheBoundaryLayer) {
+    double ratio = 0.0;
+    /* Laminar, near Blasius: delta/delta* close to 1/0.3 */
+    EXPECT_NEAR(fauxfoil::ProfileU(0.0, 2.55, false, &ratio), 0.0, 1e-12);
+    EXPECT_NEAR(fauxfoil::ProfileU(1.0, 2.55, false), 1.0, 1e-12);
+    EXPECT_NEAR(ratio, 1.0 / 0.3, 0.05);
+    /* Turbulent power law: H = 1.4 gives the 1/5 law, delta = 6 delta* */
+    EXPECT_NEAR(fauxfoil::ProfileU(0.5, 1.4, true, &ratio), std::pow(0.5, 0.2),
+                1e-12);
+    EXPECT_NEAR(ratio, 6.0, 1e-12);
+}
+
+TEST_F(FauxfoilTest, ReferenceCpAndForcesOverlay) {
+    {
+        std::ofstream data("cp.dat");
+        data << "0.0 1.0\n0.5 -0.5\n1.0 0.2\n";
+    }
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 0012\noper\ncref\nfref\na 2\ncp.dat\nTunnel\n"
+            "0 1e6 2 0.2 0.006 0.0\nRef\n\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, " Reference Cp plotting enabled\n"));
+    EXPECT_TRUE(Has(out, " Reference force plotting enabled\n"));
+    EXPECT_TRUE(Has(out, "\n Enter Cp vs x data filename \n"));
+    EXPECT_TRUE(Has(out, " Enter reference  Mach, Re, Alpha, CL, CD, CM:\n"));
+    ASSERT_FALSE(display.shown.empty());
+    EXPECT_TRUE(HasLabel(display.shown.back(), "Tunnel"));
+    EXPECT_TRUE(HasLabel(display.shown.back(), "0.2000"));
+}
+
+TEST_F(FauxfoilTest, ReferencePolarsAndPolarAxes) {
+    {
+        std::ofstream data("ref.dat");
+        data << "0.006 0.2\n999 999\n0 0.0\n2 0.22\n999 999\n";
+    }
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 0012\noper\nrdel\nrget ref.dat\nTunnel\npacc\n\n\na 0\n"
+            "pplo\nppax\n\n0 1 0.25\n\n\naplo\nrdel\n1\nrdel\n\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, " No reference polars are stored\n"));
+    EXPECT_TRUE(Has(out, "\nEnter label for reference polar   s>  "));
+    EXPECT_TRUE(Has(out,
+                    " Enter new axis annotations, or <return> to leave "
+                    "unchanged...\n\n   Alpha  min, max, delta:   "
+                    "-4.00000   10.00000    2.00000\n"));
+    EXPECT_TRUE(Has(out,
+                    "    -CM   min, max, delta:   -0.25000    0.00000    "
+                    "0.05000\n"));
+    EXPECT_TRUE(Has(out,
+                    "\n        reference polar                          \n"
+                    "       ------------------------------------------\n"
+                    "    1  Tunnel"));
+    EXPECT_TRUE(Has(out, "Specify ref. polar to delete (0 = all, -1 = abort)"));
+    /* PPLO, PPAX replot, APLO */
+    ASSERT_GE(display.shown.size(), 4U);
+    const auto& polar = display.shown[display.shown.size() - 2];
+    EXPECT_TRUE(HasLabel(polar, "Tunnel"));
+    EXPECT_TRUE(HasLabel(polar, "0.25"));
+    EXPECT_TRUE(HasLabel(display.shown.back(), "1  NACA 0012"));
+}
+
+TEST_F(FauxfoilTest, VploBlowupDumpAndToggles) {
+    RecordingDisplay display;
+    display.Click(300.0, 300.0);
+    display.Click(800.0, 600.0);
+    const std::string out =
+        Run("naca 0012\noper\nvisc 1e6\na 2\nvplo\nblow\nsymb\nclip\n"
+            "labe\ndump hk.txt\nsize 5\nfrpl\n\n\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, " x,y = "));
+    EXPECT_TRUE(Has(out, " FRPL command not available in Scirocco\n"));
+    EXPECT_FALSE(Has(out, "SYMB command not"));
+    std::ifstream dump("hk.txt");
+    EXPECT_TRUE(static_cast<bool>(dump));
+    /* LABE hides the header */
+    EXPECT_TRUE(HasLabel(display.shown[2], "NACA 0012"));
+    EXPECT_FALSE(HasLabel(display.shown.back(), "NACA 0012"));
+}
+
+TEST_F(FauxfoilTest, GdesDistanceCurvatureAndTicks) {
+    RecordingDisplay display;
+    display.Click(300.0, 160.0);
+    display.Click(800.0, 160.0);
+    const std::string out =
+        Run("naca 0012\ngdes\ndist\ntsiz\n\ncplo\nc\n\ninpl\nplot\n\n"
+            "quit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, "\n Click mouse or hit a key on each point\n\n x1 ="));
+    EXPECT_TRUE(Has(out, " dx =  0."));
+    EXPECT_TRUE(Has(out,
+                    " Current tick-mark size (as fraction of perimeter) "
+                    "=   5.0000000000000001E-004\n"));
+    EXPECT_TRUE(Has(out,
+                    "  \n Airfoil curvature (yellow-upper, cyan-lower) \n"
+                    "  CVLE  =  "));
+    EXPECT_TRUE(Has(out, " Hit <cr> to exit\n\n..CPLO   c>  "));
+    bool curvature = false;
+    for (const auto& scene : display.shown)
+        curvature = curvature || HasLabel(scene, "Curvature vs X");
+    EXPECT_TRUE(curvature);
+}
+
+TEST_F(FauxfoilTest, SizeScalesLaterPlots) {
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 0012\noper\na 2\nsize\n5\ncpx\n\nquit\n", {}, &display);
+    EXPECT_TRUE(
+        Has(out, " Current plot-object size =   10.000000000000000     \n"));
+    ASSERT_EQ(display.shown.size(), 2U);
+    EXPECT_NEAR(display.shown[1].labels[0].height,
+                0.5 * display.shown[0].labels[0].height, 1e-12);
 }
 
 }  // namespace

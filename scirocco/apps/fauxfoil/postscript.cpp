@@ -132,6 +132,17 @@ std::string PostScript(const std::vector<Scene>& pages) {
                 while (parts >> v) ps << v / scale << ' ';
                 ps << "] 0 setdash\n";
             }
+            const bool clipped = !stroke.clip.Empty();
+            if (clipped) {
+                std::snprintf(
+                    buffer, sizeof buffer,
+                    "gsave newpath %.2f %.2f M %.2f %.2f L %.2f %.2f L "
+                    "%.2f %.2f L closepath clip\n",
+                    stroke.clip.x0, stroke.clip.y0, stroke.clip.x1,
+                    stroke.clip.y0, stroke.clip.x1, stroke.clip.y1,
+                    stroke.clip.x0, stroke.clip.y1);
+                ps << buffer;
+            }
             ps << "newpath\n";
             for (std::size_t i = 0; i < stroke.points.size(); ++i) {
                 std::snprintf(buffer, sizeof buffer, "%.2f %.2f %s\n",
@@ -140,6 +151,7 @@ std::string PostScript(const std::vector<Scene>& pages) {
                 ps << buffer;
             }
             ps << (stroke.fill ? "closepath fill\n" : "stroke\n");
+            if (clipped) ps << "grestore\n";
         }
 
         ps << "[] 0 setdash\n";

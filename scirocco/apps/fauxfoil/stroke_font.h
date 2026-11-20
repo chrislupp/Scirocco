@@ -47,6 +47,10 @@ namespace fauxfoil {
 /// no strokes.
 const std::vector<std::vector<Point>>& GlyphStrokes(const std::string& utf8);
 
+/// Replace Latin letters by Greek ones as a Symbol font assigns them
+/// (a: alpha, b: beta, ...), for "math characters" annotations.
+std::string MathCharacters(const std::string& text);
+
 /// Polylines of a whole label on the page.
 std::vector<std::vector<Point>> LabelStrokes(const Label& label);
 

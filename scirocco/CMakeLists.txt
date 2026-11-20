@@ -363,6 +363,7 @@ endif()
 if(SCIROCCO_BUILD_CLI)
     add_library(fauxfoil_core STATIC
         apps/fauxfoil/airfoil.cpp
+        apps/fauxfoil/bl_profiles.cpp
         apps/fauxfoil/format.cpp
         apps/fauxfoil/plot_scene.cpp
         apps/fauxfoil/plots.cpp

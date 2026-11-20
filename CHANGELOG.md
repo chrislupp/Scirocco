@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (`PPLO`) and the `GDES` geometry. `HARD` writes PostScript hardcopies to
   `plot.ps`. New CMake option `SCIROCCO_CLI_GRAPHICS` (default on); without
   Qt, `fauXfoil` stays text-only.
+- `fauXfoil` cursor input and the rest of XFOIL's plot commands: zoom
+  (`Z`, `U`), plot-object size (`SIZE`), annotation (`ANNO`), boundary-layer
+  velocity profiles (`BL`, `BLC`, `BLWT`), reference Cp, force and polar
+  overlays (`CREF`, `FREF`, `RGET`, `RDEL`), polar axis limits (`PPAX`),
+  polar airfoils (`APLO`), `VPLO` blowup, symbols, labels, clipping, dump
+  and overlay, and the `GDES` blowup, window, tick, inch-scale, overlay,
+  curvature and distance commands.
 - `Glob::iteration_observer`: optional read-only callback that the coupled
   Newton solve calls at every iteration, and `Glob::relax`, the
   under-relaxation factor of the last update. Neither changes the solve.
