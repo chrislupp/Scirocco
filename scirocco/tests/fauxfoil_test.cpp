@@ -39,8 +39,11 @@
 #include <string>
 #include <vector>
 
+#include "display.h"
 #include "format.h"
+#include "plot_scene.h"
 #include "session.h"
+#include "stroke_font.h"
 
 namespace {
 
@@ -66,10 +69,12 @@ class FauxfoilTest : public ::testing::Test {
     }
 
     static std::string Run(const std::string& script,
-                           const std::vector<std::string>& args = {}) {
+                           const std::vector<std::string>& args = {},
+                           fauxfoil::Display* display = nullptr) {
         std::istringstream in(script);
         std::ostringstream out;
         fauxfoil::Session session(in, out, "0.2.0");
+        session.SetDisplay(display);
         EXPECT_EQ(session.Run(args), 0);
         return out.str();
     }
@@ -238,6 +243,165 @@ TEST_F(FauxfoilTest, ParametersLockedWhileAccumulating) {
     EXPECT_TRUE(Has(out,
                     "\n * Polar is being accumulated.\n"
                     " * Cannot change its parameters in midstream.\n"));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Plots                                                                   */
+/* ---------------------------------------------------------------------- */
+
+/// Keeps every plot a session shows.
+class RecordingDisplay : public fauxfoil::Display {
+   public:
+    void Show(const fauxfoil::Scene& scene) override { shown.push_back(scene); }
+    std::vector<fauxfoil::Scene> shown;
+};
+
+bool HasLabel(const fauxfoil::Scene& scene, const std::string& text) {
+    for (const auto& label : scene.labels)
+        if (label.text.find(text) != std::string::npos) return true;
+    return false;
+}
+
+TEST(FauxfoilStrokeFont, CoversPrintableAsciiAndSymbols) {
+    const auto& unknown = fauxfoil::GlyphStrokes("?");
+    std::vector<std::string> characters;
+    for (char c = 33; c < 127; ++c) characters.emplace_back(1, c);
+    for (const char* symbol :
+         {"α", "θ", "δ", "τ", "ω", "Δ", "∞", "√", "°", "×"})
+        characters.emplace_back(symbol);
+    for (const std::string& c : characters) {
+        const auto& strokes = fauxfoil::GlyphStrokes(c);
+        ASSERT_FALSE(strokes.empty()) << c;
+        if (c != "?") EXPECT_NE(&strokes, &unknown) << c << " has no glyph";
+        for (const auto& stroke : strokes) {
+            EXPECT_GE(stroke.size(), 2U) << c;
+            for (const auto& p : stroke) {
+                EXPECT_GE(p.x, -0.5) << c;
+                EXPECT_LE(p.x, 4.7) << c;
+                EXPECT_GE(p.y, -2.5) << c;
+                EXPECT_LE(p.y, 7.5) << c;
+            }
+        }
+    }
+    EXPECT_TRUE(fauxfoil::GlyphStrokes(" ").empty());
+}
+
+TEST(FauxfoilStrokeFont, LabelsAlignAndSetScripts) {
+    fauxfoil::Label label;
+    label.at = {100.0, 50.0};
+    label.height = 10.0;
+    label.align = 1.0;
+    label.text = "C_{L}";
+    const auto glyphs = fauxfoil::LayoutLabel(label);
+    ASSERT_EQ(glyphs.size(), 2U);
+    EXPECT_NEAR(fauxfoil::LabelWidth(label), fauxfoil::kAdvance * 17.0, 1e-12);
+    /* Right-aligned: the last cell ends at the anchor */
+    EXPECT_NEAR(glyphs[1].x + fauxfoil::kAdvance * glyphs[1].height, 100.0,
+                1e-12);
+    EXPECT_LT(glyphs[1].height, glyphs[0].height);
+    EXPECT_LT(glyphs[1].y, glyphs[0].y);
+}
+
+TEST_F(FauxfoilTest, EachPointIsPlotted) {
+    RecordingDisplay display;
+    Run("naca 0012\noper\na 2\n\nquit\n", {}, &display);
+    ASSERT_EQ(display.shown.size(), 1U);
+    EXPECT_TRUE(HasLabel(display.shown[0], "NACA 0012"));
+    EXPECT_TRUE(HasLabel(display.shown[0], "C_{Dp}"));
+    EXPECT_FALSE(display.shown[0].strokes.empty());
+}
+
+TEST_F(FauxfoilTest, SequencePlotListsEveryPoint) {
+    RecordingDisplay display;
+    Run("naca 0012\noper\naseq 0 4 2\n\nquit\n", {}, &display);
+    ASSERT_EQ(display.shown.size(), 3U);
+    const auto& last = display.shown.back();
+    for (const char* alpha : {"0.000", "2.000", "4.000"})
+        EXPECT_TRUE(HasLabel(last, alpha)) << alpha;
+}
+
+TEST_F(FauxfoilTest, GraphicsFlagOffStopsPlots) {
+    RecordingDisplay display;
+    const std::string out =
+        Run("plop\ng\n\nnaca 0012\noper\na 2\n\nquit\n", {}, &display);
+    EXPECT_TRUE(Has(out, "  G raphics-enable flag:        T\n"));
+    EXPECT_TRUE(Has(out, "  G raphics-enable flag:        F\n"));
+    EXPECT_TRUE(display.shown.empty());
+}
+
+TEST_F(FauxfoilTest, HardAppendsPostScriptPages) {
+    const std::string out =
+        Run("naca 0012\noper\na 2\nhard\ncpv\nhard\n\nquit\n");
+    EXPECT_TRUE(Has(out,
+                    ".OPERi   c>   Writing   PostScript to file  "
+                    "plot.ps ...\n"));
+    EXPECT_TRUE(Has(out,
+                    ".OPERi   c>   Appending PostScript to file  "
+                    "plot.ps ...\n"));
+    std::ifstream stream("plot.ps");
+    std::stringstream text;
+    text << stream.rdbuf();
+    EXPECT_TRUE(Has(text.str(), "%!PS-Adobe-3.0"));
+    EXPECT_TRUE(Has(text.str(), "%%Pages: 2\n"));
+}
+
+TEST_F(FauxfoilTest, CpminReportsAndChangesAxis) {
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 0012\noper\na 2\ncpmi\n-3\ncpmi\n\n\nquit\n", {}, &display);
+    EXPECT_TRUE(Has(out, " Current CPmin =  -2.0000000000000000     \n"));
+    EXPECT_TRUE(Has(out, " Current CPmin =  -3.0000000000000000     \n"));
+    EXPECT_TRUE(Has(out, "\nEnter new CPmin   r>  "));
+    EXPECT_TRUE(HasLabel(display.shown.back(), "-3.0"));
+}
+
+TEST_F(FauxfoilTest, VploMenuAndAxisLimits) {
+    RecordingDisplay display;
+    const std::string out =
+        Run("naca 0012\noper\nvisc 1e6\na 2\nvplo\n?\nx\n0 1 0.25\nn\n"
+            "zz\n\n\nquit\n",
+            {}, &display);
+    EXPECT_TRUE(Has(out, "   N      Plot amplification ratio\n"));
+    EXPECT_TRUE(Has(out, "   FRPL   Toggle TS frequency plotting\n"));
+    EXPECT_TRUE(Has(out,
+                    " Currently, Xmin,Xmax,Xdel =     0.0000     1.4000     "
+                    "0.2000\n Enter new  Xmin,Xmax,Xdel: \n"));
+    EXPECT_TRUE(Has(out,
+                    "..VPLO   c>   ZZ   command not recognized.  Type a \"?\" "
+                    "for list\n"));
+    /* Cp after the point, H on entering VPLO, then H with new limits, N */
+    ASSERT_EQ(display.shown.size(), 4U);
+    EXPECT_TRUE(HasLabel(display.shown[1], "H_{k}"));
+    EXPECT_TRUE(HasLabel(display.shown[2], "0.75"));
+    EXPECT_TRUE(HasLabel(display.shown[3], "A/A_{0}"));
+}
+
+TEST_F(FauxfoilTest, GdesPlotsBufferAirfoil) {
+    RecordingDisplay display;
+    Run("naca 4415\ngdes\ngrid\n\nquit\n", {}, &display);
+    ASSERT_EQ(display.shown.size(), 2U);
+    EXPECT_TRUE(HasLabel(display.shown[0], "NACA 4415"));
+    EXPECT_TRUE(HasLabel(display.shown[0], "thick."));
+    EXPECT_TRUE(HasLabel(display.shown[0], "0.150"));
+    /* GRID off removes the dotted grid */
+    auto dotted = [](const fauxfoil::Scene& scene) {
+        int count = 0;
+        for (const auto& stroke : scene.strokes)
+            count += stroke.dash == fauxfoil::Dash::Dotted;
+        return count;
+    };
+    EXPECT_GT(dotted(display.shown[0]), 0);
+    EXPECT_EQ(dotted(display.shown[1]), 0);
+}
+
+TEST_F(FauxfoilTest, PolarPlotShowsStoredPolar) {
+    RecordingDisplay display;
+    Run("naca 0012\noper\nvisc 1e6\npacc\n\n\naseq 0 2 2\npplo\n\nquit\n", {},
+        &display);
+    ASSERT_FALSE(display.shown.empty());
+    const auto& polar = display.shown.back();
+    EXPECT_TRUE(HasLabel(polar, "NACA 0012   Re = 1000000   Ma = 0.000"));
+    EXPECT_TRUE(HasLabel(polar, "x_{tr} /c"));
 }
 
 }  // namespace

@@ -40,6 +40,8 @@
 #include <vector>
 
 #include "airfoil.h"
+#include "display.h"
+#include "plots.h"
 #include "polar.h"
 #include "scirocco/config.h"
 #include "scirocco/data/param.h"
@@ -66,6 +68,10 @@ class Session {
     ///        airfoil file, as "xfoil file.dat" does.
     /// @return Process exit status.
     int Run(const std::vector<std::string>& args);
+
+    /// Show plots in @p display (not owned); null leaves the session
+    /// text-only. Plots are still built for hardcopies either way.
+    void SetDisplay(Display* display);
 
    private:
     enum class Target { Alpha, Cl, InviscidCl };
@@ -124,6 +130,23 @@ class Session {
     void WriteDump(const std::string& arg);
     void MinimumCp() const;
 
+    /* Plots */
+    enum class PlotKind { None, Cp, CpSequence, CpVectors, Bl, Polar, Airfoil };
+    void Show(Scene scene, PlotKind kind);
+    [[nodiscard]] bool HaveSolution() const;
+    [[nodiscard]] Solution CurrentSolution() const;
+    void PlotCp();
+    void PlotPoint();
+    void PlotCpVectors();
+    void PlotBl();
+    void PlotPolars();
+    void PlotAirfoil();
+    void Replot();
+    void Hardcopy();
+    void Vplo();
+    void AskAxis(const char* name, Axis& axis,
+                 const std::vector<double>& given);
+
     std::istream& in_;
     std::ostream& out_;
     std::string version_;
@@ -156,6 +179,19 @@ class Session {
     bool pacc_ = false;
     int active_ = -1;
     bool graphics_ = false;
+
+    /* Plots */
+    Display* display_ = nullptr;
+    Scene plot_;
+    PlotKind plot_kind_ = PlotKind::None;
+    std::vector<Scene> hardcopies_;
+    CpOptions cp_options_;
+    bool sequence_polar_ = false;
+    bool in_sequence_ = false;
+    std::vector<Solution> sequence_;
+    BlVariable bl_variable_ = BlVariable::Hk;
+    BlAxes bl_axes_;
+    AirfoilOptions airfoil_options_;
 };
 
 }  // namespace fauxfoil

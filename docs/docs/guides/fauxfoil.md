@@ -6,8 +6,8 @@ description: fauXfoil runs Scirocco behind XFOIL's menus, prompts, output and po
 # Use the XFOIL-style command line
 
 `fauXfoil` is an interactive program that looks and behaves like XFOIL 6.99:
-the same menus, prompts, command abbreviations, iteration printout and
-polar file layout. Scirocco does the analysis. If you already drive XFOIL
+the same menus, prompts, command abbreviations, iteration printout, plots
+and polar file layout. Scirocco does the analysis. If you already drive XFOIL
 by hand or from a script, you can use `fauXfoil` the same way.
 
 It's built by default (`SCIROCCO_BUILD_CLI=ON`) and installed next to the
@@ -53,11 +53,66 @@ an iteration or two more than XFOIL's `rms` criterion would. The transition
 location solves the same amplification equation as the solver's transition
 residual.
 
+## Plots
+
+When `fauXfoil` is built with Qt 6, plots open in a window laid out like
+XFOIL's: white lines on black, the same axes, legends and colours. The
+window is native, so it needs no X11 on macOS. Resize it freely; plots are
+redrawn as vectors at the screen's full resolution. Lettering uses
+fauXfoil's own single-stroke font, which is drawn with the same thin pen as
+the lines, in the style of XFOIL's plotter text.
+
+![Cp plot of NACA 2412 at Re = 10⁶ and α = 4°](/img/fauxfoil-cp.png)
+
+- **Cp(x).** Drawn after every `ALFA`, `CL` or `CLI` point, and by `CPX`.
+  Viscous Cp is blue on the upper surface and red on the lower, with the
+  inviscid Cp dashed (`CPIO` toggles it) and the displacement surfaces
+  drawn on the airfoil below. `CPMI` sets the top of the Cp axis and
+  `GRID` adds a grid.
+- **Sequences.** During `ASEQ` and `CSEQ` the Cp curves of all points are
+  overlaid with a table of results. `SEQP` plots the polar instead while
+  `PACC` is on.
+- **Pressure vectors.** `CPV` draws the airfoil at its angle of attack with
+  a pressure vector at each node.
+- **Boundary layer.** `VPLO` opens XFOIL's menu: `H`, `DT`, `DB`, `UE`,
+  `CF`, `CD`, `N`, `CT`, `RT` and `RTL` plot one variable on both surfaces
+  and the wake; `X` and `Y` set axis limits, `XPLO` switches between x and
+  arc length, `RESE` resets the limits and `GRID` toggles the grid.
+- **Polars.** `PPLO` plots the stored polars: CL against CD, CL and CM
+  against α, and CL against transition location.
+- **Geometry.** `GDES` plots the buffer airfoil with its area, thickness,
+  camber, leading-edge radius and trailing-edge angle, and redraws it after
+  every change. `PLOT` redraws it; `GRID`, `TICK` and `GPAR` toggle the
+  grid, node ticks and parameters.
+- **Hardcopy.** `HARD` writes the current plot to `plot.ps` as a PostScript
+  page, black on white; later hardcopies add pages, as in XFOIL.
+
+![Polar plot of NACA 2412 at Re = 10⁶](/img/fauxfoil-polar.png)
+
+As in XFOIL, `PLOP` and `G` turn plotting off. `HARD` still works then,
+because plots are built either way.
+
+### Build with plots
+
+The plot window needs Qt 6 (the Widgets module). CMake uses it when it finds
+it and builds a text-only `fauXfoil` otherwise; the configure step says
+which.
+
+```bash
+brew install qt                  # macOS
+sudo apt install qt6-base-dev    # Debian, Ubuntu
+```
+
+Set `SCIROCCO_CLI_GRAPHICS=OFF` to build without Qt even when it's
+installed. On Linux, plots need an X11 or Wayland display. Without one, or
+with `FAUXFOIL_NOGRAPHICS=1` in the environment, `fauXfoil` runs text-only.
+`FAUXFOIL_SNAPSHOT_DIR=dir` saves every plot shown as `dir/plotNNN.png`.
+
 ## Scripts
 
 `fauXfoil` reads commands from standard input, so XFOIL batch scripts run
 unchanged, including the usual `PLOP`, `G`, `<return>` opening that turns
-off graphics:
+off plotting:
 
 ```bash
 fauXfoil < polar_script.txt
@@ -71,9 +126,10 @@ As with XFOIL, a file name on the command line is loaded at startup
 | Menu | Commands |
 |---|---|
 | Top level | `QUIT`, `OPER`, `GDES`, `NACA`, `LOAD`, `SAVE`, `PSAV`, `REVE`, `NORM`, `XYCM`, `PCOP`, `PANE`, `PPAR`, `PLOP`, `NAME`, `NINC` |
-| `OPER` | `VISC`, `RE`, `MACH`, `TYPE` (type 1), `ITER`, `INIT`, `ALFA`, `CL`, `CLI`, `ASEQ`, `CSEQ`, `!`, `VPAR`, `PACC`, `PGET`, `PWRT`, `PSUM`, `PLIS`, `PDEL`, `CPWR`, `DUMP`, `CPMN`, `NAME`, `NINC` |
+| `OPER` | `VISC`, `RE`, `MACH`, `TYPE` (type 1), `ITER`, `INIT`, `ALFA`, `CL`, `CLI`, `ASEQ`, `CSEQ`, `!`, `VPAR`, `SEQP`, `PACC`, `PGET`, `PWRT`, `PSUM`, `PLIS`, `PDEL`, `PPLO`, `GRID`, `CPIO`, `CPX`, `CPV`, `VPLO`, `HARD`, `CPMI`, `CPWR`, `DUMP`, `CPMN`, `NAME`, `NINC` |
 | `VPAR` | `SHOW`, `N`, `NT`, `NB`, `WAKE`, `INIT`, `LAG`, `GB`, `CTR`, `REST` |
-| `GDES` | `GSET`, `EXEC`, `ADEG`, `ARAD`, `TRAN`, `SCAL`, `UNIT`, `DERO`, `FLAP`, `NAME`, `NINC` |
+| `VPLO` | `H`, `DT`, `DB`, `UE`, `CF`, `CD`, `N`, `CT`, `RT`, `RTL`, `X`, `Y`, `XPLO`, `RESE`, `GRID`, `HARD` |
+| `GDES` | `GSET`, `EXEC`, `ADEG`, `ARAD`, `TRAN`, `SCAL`, `UNIT`, `DERO`, `FLAP`, `PLOT`, `GRID`, `TICK`, `GPAR`, `HARD`, `NAME`, `NINC` |
 
 Abbreviations work as in XFOIL (`a` for `ALFA`, `as` for `ASEQ`, `v` for
 `VISC`, and so on). The menus list every XFOIL command; one that `fauXfoil`
@@ -99,8 +155,11 @@ sets `niglob`.
 
 ## How it differs from XFOIL
 
-- **No graphics.** Plot commands are listed but unavailable. Inviscid
-  results, which XFOIL shows only on the Cp plot, are printed instead.
+- **Plots.** There is no cursor input, so zooming (`Z`, `U`, `BLOW`),
+  annotation (`ANNO`) and plot sizing (`SIZE`) are unavailable, as are
+  boundary-layer profiles (`BL`), reference data overlays (`CREF`, `OVER`)
+  and the Tollmien-Schlichting frequency lines on the `N` plot. When no
+  plot window shows the Cp plot, inviscid results are printed instead.
 - **Paneling.** `PANE` uses Scirocco's curvature-based spacing. Only the
   node count (`PPAR N`, default 160) can be changed. As in XFOIL, `LOAD`
   uses the file's points directly as panel nodes, so run `PANE` after

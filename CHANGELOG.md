@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   and coordinate file formats) and runs Scirocco. XFOIL batch scripts run
   unchanged. Built by the new `SCIROCCO_BUILD_CLI` CMake option (default
   on) and installed with the library.
+- `fauXfoil` plots: with Qt 6, a native plot window (no X11 needed on
+  macOS) shows XFOIL's plots: Cp(x) after each point and for sequences,
+  pressure vectors (`CPV`), boundary-layer variables (`VPLO`), polars
+  (`PPLO`) and the `GDES` geometry. `HARD` writes PostScript hardcopies to
+  `plot.ps`. New CMake option `SCIROCCO_CLI_GRAPHICS` (default on); without
+  Qt, `fauXfoil` stays text-only.
 - `Glob::iteration_observer`: optional read-only callback that the coupled
   Newton solve calls at every iteration, and `Glob::relax`, the
   under-relaxation factor of the last update. Neither changes the solve.

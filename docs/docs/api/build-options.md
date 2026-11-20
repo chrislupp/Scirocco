@@ -13,6 +13,7 @@ Pass these to CMake at configure time, for example
 | `SCIROCCO_BUILD_TESTS` | `ON` | Solver, geometry, Jacobian, and adjoint tests. The reference suites also need HDF5. |
 | `SCIROCCO_BUILD_EXAMPLES` | `ON` | `quickstart`, `naca_example`, `viscous_example`, `bench`, and `docs_figure_data` |
 | `SCIROCCO_BUILD_CLI` | `ON` | `fauXfoil`, the [XFOIL-style command line](../guides/fauxfoil.md) |
+| `SCIROCCO_CLI_GRAPHICS` | `ON` | Give `fauXfoil` a [plot window](../guides/fauxfoil.md#plots) when Qt 6 Widgets is found; text-only otherwise |
 | `SCIROCCO_HDF5_OUTPUT` | `OFF` | The `scirocco_hdf5` library and `hdf5_output_example` |
 | `SCIROCCO_BUILD_PHILOTE` | `OFF` | The Philote gRPC servers. Needs Protobuf, gRPC, and Philote-Cpp. |
 | `SCIROCCO_NATIVE_ARCH` | `ON` | Compile Release builds with `-march=native` |

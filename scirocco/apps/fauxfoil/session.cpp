@@ -40,12 +40,14 @@
 #include <stdexcept>
 
 #include "format.h"
+#include "postscript.h"
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/paneling.h"
 #include "scirocco/data/state.h"
 #include "scirocco/properties/bl_properties.h"
 #include "scirocco/scirocco.h"
+#include "solution.h"
 
 namespace fauxfoil {
 
@@ -395,6 +397,54 @@ const char* const kTypeTable =
 
 const char* const kPolarRule =
     " ==============================================================\n";
+
+const char* const kVploMenu = R"(
+   <cr>   Return to OPER menu
+
+   H      Plot kinematic shape parameter
+   DT     Plot top    side Dstar and Theta
+   DB     Plot bottom side Dstar and Theta
+   UE     Plot edge velocity
+   CF     Plot skin friction coefficient
+   CD     Plot dissipation coefficient
+   N      Plot amplification ratio
+   CT     Plot max shear coefficient
+   RT     Plot Re_theta
+   RTL    Plot log(Re_theta)
+
+   DUMP f Write current plot variable to file
+   OVER f Overlay current plot variable from file
+
+   X  rrr Change x-axis limits
+   Y  rrr Change y-axis limits on current plot
+   XPLO   Toggle plotting  vs  x or s
+
+   BLOW   Cursor blowup of current plot
+   RESE   Reset to default x,y-axis limits
+   SIZE r Change absolute plot-object size
+  .ANNO   Annotate plot
+   HARD   Hardcopy current plot
+
+   GRID   Toggle grid plotting
+   SYMB   Toggle node-symbol plotting
+   LABE   Toggle label plotting
+   CLIP   Toggle line-plot clipping
+   FRPL   Toggle TS frequency plotting
+)";
+
+/// A real as gfortran's list-directed output writes it: 17 significant
+/// digits right-justified in 20 columns, then 5 blanks.
+std::string ListDirected(double value) {
+    const double magnitude = std::fabs(value);
+    int integer_digits = 1;
+    if (magnitude >= 1.0)
+        integer_digits =
+            static_cast<int>(std::floor(std::log10(magnitude))) + 1;
+    const int decimals = std::max(0, 17 - integer_digits);
+    char buffer[64];
+    std::snprintf(buffer, sizeof buffer, "%20.*f     ", decimals, value);
+    return buffer;
+}
 
 void NotAvailable(std::ostream& out, const std::string& name) {
     out << ' ' << A(name, 4) << " command not available in Scirocco\n";
@@ -867,6 +917,7 @@ void Session::Gdes() {
         return;
     }
     out_ << "\n You are working with the buffer airfoil\n";
+    PlotAirfoil();
     Command previous;
     for (;;) {
         Command command = Parse(AskCommand(".GDES"));
@@ -878,6 +929,7 @@ void Session::Gdes() {
             out_ << kGdesMenu;
         } else if (command.name == "GSET") {
             if (foil_) buffer_ = foil_->GetFoilCoords();
+            PlotAirfoil();
         } else if (Is(command, {"EXEC", "X"})) {
             SetCurrentFromBuffer();
             out_ << "\n Current airfoil nodes set from buffer airfoil nodes ("
@@ -891,6 +943,7 @@ void Session::Gdes() {
             if (command.name == "ADEG") angle *= kPi / 180.0;
             buffer_ = Rotated(buffer_, angle);
             PrintThicknessCamber(buffer_);
+            PlotAirfoil();
         } else if (Is(command, {"TRAN", "T"})) {
             double dx = v.size() > 0 ? v[0] : 0.0;
             double dy = v.size() > 1 ? v[1] : 0.0;
@@ -898,14 +951,17 @@ void Session::Gdes() {
             if (v.size() < 2) AskReal("Enter delta(y)", dy);
             buffer_.row(0).array() += dx;
             buffer_.row(1).array() += dy;
+            PlotAirfoil();
         } else if (Is(command, {"SCAL", "S"})) {
             double scale = v.empty() ? 1.0 : v[0];
             if (v.empty()) AskReal("Enter scale factor", scale);
             buffer_ *= scale;
             PrintThicknessCamber(buffer_);
+            PlotAirfoil();
         } else if (command.name == "UNIT") {
             buffer_ = Normalized(buffer_);
             PrintThicknessCamber(buffer_);
+            PlotAirfoil();
         } else if (command.name == "DERO") {
             auto chord_angle = [](const MatrixXd& x) {
                 const Vector2d le = LeadingEdge(x);
@@ -922,6 +978,7 @@ void Session::Gdes() {
             out_ << "\nRotating buffer airfoil by " << F(angle, 8, 3)
                  << " deg.\n";
             PrintThicknessCamber(buffer_);
+            PlotAirfoil();
         } else if (Is(command, {"FLAP", "F"})) {
             double x = v.size() > 0 ? v[0] : 0.0;
             double y = v.size() > 1 ? v[1] : 0.0;
@@ -951,18 +1008,31 @@ void Session::Gdes() {
             buffer_ = scratch.geom.xpoint;
             out_ << '\n';
             PrintThicknessCamber(buffer_);
+            PlotAirfoil();
         } else if (command.name == "NAME") {
             Rename(command.arg, false);
         } else if (command.name == "NINC") {
             Rename("", true);
+        } else if (Is(command, {"PLOT", "P"})) {
+            PlotAirfoil();
+        } else if (command.name == "GRID") {
+            airfoil_options_.grid = !airfoil_options_.grid;
+            PlotAirfoil();
+        } else if (command.name == "TICK") {
+            airfoil_options_.ticks = !airfoil_options_.ticks;
+            PlotAirfoil();
+        } else if (command.name == "GPAR") {
+            airfoil_options_.parameters = !airfoil_options_.parameters;
+            PlotAirfoil();
+        } else if (command.name == "HARD") {
+            Hardcopy();
         } else if (Is(command,
                       {"SYMM", "LINS", "TGAP", "LERA", "TCPL", "TFAC", "TSET",
                        "HIGH", "CAMB", "BEND", "MODI", "M",    "SLOP", "CORN",
                        "ADDP", "MOVP", "DELP", "NMOV", "DIST", "D",    "CLIS",
-                       "CPLO", "CANG", "CADD", "PLOT", "P",    "INPL", "BLOW",
-                       "B",    "RESE", "R",    "WIND", "W",    "TSIZ", "TICK",
-                       "GRID", "GPAR", "OVER", "O",    "SIZE", "ANNO", "HARD",
-                       "Z",    "U"})) {
+                       "CPLO", "CANG", "CADD", "INPL", "BLOW", "B",    "RESE",
+                       "R",    "WIND", "W",    "TSIZ", "OVER", "O",    "SIZE",
+                       "ANNO", "Z",    "U"})) {
             NotAvailable(out_, command.name);
         } else {
             out_ << " Command " << A(command.name, 4)
@@ -1148,12 +1218,51 @@ void Session::Oper() {
                 Rename("", true);
             } else if (command.name == "VPAR") {
                 Vpar();
+            } else if (Is(command, {"CPX", "CP"})) {
+                if (HaveSolution()) PlotCp();
+            } else if (command.name == "CPV") {
+                if (HaveSolution()) PlotCpVectors();
+            } else if (Is(command, {"VPLO", "VP"})) {
+                Vplo();
+            } else if (Is(command, {"PPLO", "PP"})) {
+                if (!polars_.empty()) PlotPolars();
+            } else if (command.name == "HARD") {
+                Hardcopy();
+            } else if (command.name == "GRID") {
+                cp_options_.grid = !cp_options_.grid;
+                out_ << (cp_options_.grid ? " Cp grid overlay enabled\n"
+                                          : " Cp grid overlay disabled\n");
+                if (plot_kind_ == PlotKind::Cp ||
+                    plot_kind_ == PlotKind::CpSequence)
+                    Replot();
+            } else if (command.name == "CPIO") {
+                cp_options_.inviscid = !cp_options_.inviscid;
+                out_ << (cp_options_.inviscid
+                             ? " Inviscid Cp overlay enabled\n"
+                             : " Inviscid Cp overlay disabled\n");
+                if (plot_kind_ == PlotKind::Cp) Replot();
+            } else if (command.name == "SEQP") {
+                sequence_polar_ = !sequence_polar_;
+                out_ << (sequence_polar_
+                             ? " Polar will be plotted during point sequence\n"
+                             : " Cp(x) will be plotted during point "
+                               "sequence\n");
+            } else if (command.name == "CPMI") {
+                double cp_min = cp_options_.cp_min;
+                if (!v.empty()) {
+                    cp_min = v[0];
+                } else {
+                    out_ << " Current CPmin = " << ListDirected(cp_min) << '\n';
+                    AskReal("Enter new CPmin", cp_min);
+                }
+                cp_options_.cp_min = cp_min;
+                if (plot_kind_ == PlotKind::Cp ||
+                    plot_kind_ == PlotKind::CpSequence)
+                    Replot();
             } else if (Is(command,
-                          {"SEQP", "CINC", "HINC", "PSOR", "PPLO", "PP",
-                           "APLO", "AP",   "ASET", "PREM", "PNAM", "PPAX",
-                           "RGET", "RDEL", "GRID", "CPIO", "CREF", "FREF",
-                           "CPX",  "CP",   "CPV",  "VPLO", "VP",   "ANNO",
-                           "HARD", "SIZE", "CPMI", "BL",   "BLC",  "BLWT",
+                          {"CINC", "HINC", "PSOR", "APLO", "AP",   "ASET",
+                           "PREM", "PNAM", "PPAX", "RGET", "RDEL", "CREF",
+                           "FREF", "ANNO", "SIZE", "BL",   "BLC",  "BLWT",
                            "FMOM", "FNEW", "VELS", "Z",    "U"})) {
                 NotAvailable(out_, command.name);
             } else {
@@ -1411,15 +1520,18 @@ void Session::SolvePoint(Target target, double value) {
         if (given_cl) state.oper.cltgt = value;
         converged = foil_->Solve();
         const FoilState& after = foil_->GetState();
-        /* XFOIL draws these on the Cp plot; without graphics, print them */
-        out_ << "       a =" << F(after.oper.alpha, 7, 3)
-             << "      CL =" << F(after.post.cl, 8, 4) << '\n'
-             << "      Cm =" << F(after.post.cm, 8, 4)
-             << "    CDp =" << F(after.post.cdpi, 9, 5) << '\n';
+        /* XFOIL shows these only on the Cp plot; print them when no plot
+           window shows it */
+        if (display_ == nullptr || !graphics_)
+            out_ << "       a =" << F(after.oper.alpha, 7, 3)
+                 << "      CL =" << F(after.post.cl, 8, 4) << '\n'
+                 << "      Cm =" << F(after.post.cm, 8, 4)
+                 << "    CDp =" << F(after.post.cdpi, 9, 5) << '\n';
         if (!converged) out_ << " *** CL target not reached\n";
     }
     if (converged && pacc_) AddPolarPoint();
     out_ << std::flush;
+    PlotPoint();
 }
 
 void Session::Sequence(Target target, const std::vector<double>& range) {
@@ -1432,7 +1544,15 @@ void Session::Sequence(Target target, const std::vector<double>& range) {
             ? 1
             : static_cast<int>(std::lround(std::fabs((last - first) / step))) +
                   1;
-    for (int k = 0; k < count; ++k) SolvePoint(target, first + k * step);
+    in_sequence_ = true;
+    sequence_.clear();
+    try {
+        for (int k = 0; k < count; ++k) SolvePoint(target, first + k * step);
+    } catch (...) {
+        in_sequence_ = false;
+        throw;
+    }
+    in_sequence_ = false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1784,6 +1904,212 @@ void Session::MinimumCp() const {
         const double cmin_v = minimum(state.post.cp, xv);
         out_ << "  Minimum Viscous  Cp =" << F(cmin_v, 8, 4)
              << "   at x =" << F(xv, 8, 4) << '\n';
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Plots                                                                */
+/* ------------------------------------------------------------------ */
+
+void Session::SetDisplay(Display* display) {
+    display_ = display;
+    graphics_ = display != nullptr;
+}
+
+void Session::Show(Scene scene, PlotKind kind) {
+    plot_ = std::move(scene);
+    plot_kind_ = kind;
+    if (display_ != nullptr && graphics_) display_->Show(plot_);
+}
+
+bool Session::HaveSolution() const {
+    return foil_ && foil_->GetCp().size() > 0;
+}
+
+Solution Session::CurrentSolution() const {
+    const FoilState& state = foil_->GetState();
+    double xtr_top = 1.0;
+    double xtr_bot = 1.0;
+    if (state.oper.viscous && state.glob.U.cols() > state.foil.N) {
+        xtr_top = FindTransition(state, 1).x;
+        xtr_bot = FindTransition(state, 0).x;
+    }
+    Solution solution = Snapshot(state, xtr_top, xtr_bot);
+    solution.name = name_;
+    return solution;
+}
+
+void Session::PlotCp() {
+    cp_options_.version = version_;
+    Show(CpPlot(CurrentSolution(), cp_options_), PlotKind::Cp);
+}
+
+void Session::PlotPoint() {
+    if (!HaveSolution()) return;
+    if (!in_sequence_) {
+        PlotCp();
+        return;
+    }
+    sequence_.push_back(CurrentSolution());
+    if (sequence_polar_ && pacc_ && !polars_.empty()) {
+        PlotPolars();
+        return;
+    }
+    cp_options_.version = version_;
+    Show(CpSequencePlot(sequence_, cp_options_), PlotKind::CpSequence);
+}
+
+void Session::PlotCpVectors() {
+    Show(CpVectorPlot(CurrentSolution()), PlotKind::CpVectors);
+}
+
+void Session::PlotBl() {
+    if (!HaveSolution()) return;
+    const Solution solution = CurrentSolution();
+    if (!solution.viscous) return;
+    Show(BlPlot(solution, bl_variable_, bl_axes_), PlotKind::Bl);
+}
+
+void Session::PlotPolars() {
+    Show(PolarPlot(polars_, version_), PlotKind::Polar);
+}
+
+void Session::PlotAirfoil() {
+    if (buffer_.cols() < 2) return;
+    std::vector<Point> contour;
+    contour.reserve(static_cast<std::size_t>(buffer_.cols()));
+    for (Eigen::Index i = 0; i < buffer_.cols(); ++i)
+        contour.push_back({buffer_(0, i), buffer_(1, i)});
+    Show(AirfoilPlot(contour, Geometry(name_, contour), airfoil_options_),
+         PlotKind::Airfoil);
+}
+
+void Session::Replot() {
+    switch (plot_kind_) {
+        case PlotKind::None:
+            break;
+        case PlotKind::Cp:
+            if (HaveSolution()) PlotCp();
+            break;
+        case PlotKind::CpSequence:
+            cp_options_.version = version_;
+            Show(CpSequencePlot(sequence_, cp_options_), PlotKind::CpSequence);
+            break;
+        case PlotKind::CpVectors:
+            if (HaveSolution()) PlotCpVectors();
+            break;
+        case PlotKind::Bl:
+            PlotBl();
+            break;
+        case PlotKind::Polar:
+            PlotPolars();
+            break;
+        case PlotKind::Airfoil:
+            PlotAirfoil();
+            break;
+    }
+}
+
+void Session::Hardcopy() {
+    if (plot_kind_ == PlotKind::None) {
+        out_ << " ***  No current plot  ***\n";
+        return;
+    }
+    out_ << (hardcopies_.empty()
+                 ? " Writing   PostScript to file  plot.ps ...\n"
+                 : " Appending PostScript to file  plot.ps ...\n");
+    hardcopies_.push_back(plot_);
+    std::ofstream stream("plot.ps");
+    stream << PostScript(hardcopies_);
+}
+
+void Session::AskAxis(const char* name, Axis& axis,
+                      const std::vector<double>& given) {
+    std::vector<double> values = given;
+    if (values.empty()) {
+        const std::string n = name;
+        out_ << " Currently, " << n << "min," << n << "max," << n
+             << "del =" << F(axis.min, 11, 4) << F(axis.max, 11, 4)
+             << F(axis.del, 11, 4) << "\n Enter new  " << n << "min," << n
+             << "max," << n << "del: \n"
+             << std::flush;
+        values = Numbers(ReadLine());
+    }
+    Axis changed = axis;
+    if (!values.empty()) changed.min = values[0];
+    if (values.size() > 1) changed.max = values[1];
+    if (values.size() > 2) changed.del = values[2];
+    if (changed.max > changed.min && changed.del > 0.0) axis = changed;
+}
+
+void Session::Vplo() {
+    PlotBl();
+    struct Choice {
+        const char* name;
+        BlVariable variable;
+    };
+    static const Choice kChoices[] = {
+        {"H", BlVariable::Hk},
+        {"DT", BlVariable::DstarThetaTop},
+        {"DB", BlVariable::DstarThetaBottom},
+        {"UE", BlVariable::Ue},
+        {"CF", BlVariable::Cf},
+        {"CD", BlVariable::Dissipation},
+        {"N", BlVariable::Amplification},
+        {"CT", BlVariable::Ctau},
+        {"RT", BlVariable::RetTheta},
+        {"RTL", BlVariable::LogRetTheta},
+    };
+    for (;;) {
+        const Command command = Parse(AskCommand("..VPLO"));
+        if (command.name.empty()) return;
+        bool chosen = false;
+        for (const Choice& choice : kChoices) {
+            if (command.name == choice.name) {
+                bl_variable_ = choice.variable;
+                bl_axes_.y_set = false;
+                PlotBl();
+                chosen = true;
+            }
+        }
+        if (chosen) continue;
+        if (command.name == "?") {
+            out_ << kVploMenu;
+        } else if (command.name == "X" || command.name == "Y") {
+            const bool x = command.name == "X";
+            BlAxes current = bl_axes_;
+            if (HaveSolution())
+                current =
+                    DefaultBlAxes(CurrentSolution(), bl_variable_, bl_axes_);
+            Axis axis = x ? current.x : current.y;
+            AskAxis(x ? "X" : "Y", axis, command.numbers);
+            if (x) {
+                bl_axes_.x = axis;
+                bl_axes_.x_set = true;
+            } else {
+                bl_axes_.y = axis;
+                bl_axes_.y_set = true;
+            }
+            PlotBl();
+        } else if (command.name == "XPLO") {
+            bl_axes_.vs_s = !bl_axes_.vs_s;
+            bl_axes_.x_set = false;
+            PlotBl();
+        } else if (command.name == "RESE") {
+            bl_axes_.x_set = false;
+            bl_axes_.y_set = false;
+            PlotBl();
+        } else if (command.name == "GRID") {
+            bl_axes_.grid = !bl_axes_.grid;
+            PlotBl();
+        } else if (command.name == "HARD") {
+            Hardcopy();
+        } else if (Is(command, {"DUMP", "OVER", "BLOW", "SIZE", "ANNO", "SYMB",
+                                "LABE", "CLIP", "FRPL", "Z", "U"})) {
+            NotAvailable(out_, command.name);
+        } else {
+            NotRecognized(out_, command.name);
+        }
     }
 }
 

@@ -28,6 +28,8 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
+#include <atomic>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <string>
@@ -35,21 +37,90 @@
 
 #include "session.h"
 
+#ifdef FAUXFOIL_WITH_QT
+#include <QApplication>
+#include <thread>
+
+#include "qt/qt_display.h"
+#endif
+
 #ifndef SCIROCCO_VERSION
 #define SCIROCCO_VERSION "unknown"
 #endif
+
+namespace {
+
+#ifdef FAUXFOIL_WITH_QT
+/// Whether a window can be opened. macOS always has a window server for a
+/// logged-in user; elsewhere an X11 or Wayland display must be named.
+bool HaveDisplay() {
+    if (const char* off = std::getenv("FAUXFOIL_NOGRAPHICS"))
+        if (*off != '\0' && std::string(off) != "0") return false;
+    if (std::getenv("QT_QPA_PLATFORM") != nullptr) return true;
+#ifdef __APPLE__
+    return true;
+#else
+    return std::getenv("DISPLAY") != nullptr ||
+           std::getenv("WAYLAND_DISPLAY") != nullptr;
+#endif
+}
+
+/// Run the session on a worker thread while Qt runs the plot window on the
+/// main thread, as macOS requires.
+int RunWithGraphics(int argc, char** argv) {
+    QApplication app(argc, argv);
+    QApplication::setApplicationName("fauXfoil");
+    QApplication::setQuitOnLastWindowClosed(false);
+    const char* snapshots = std::getenv("FAUXFOIL_SNAPSHOT_DIR");
+    fauxfoil::QtDisplay display(snapshots != nullptr ? snapshots : "");
+
+    /* Qt has removed its own options from argv */
+    const std::vector<std::string> args(argv + 1, argv + argc);
+    std::atomic<int> status{0};
+    std::atomic<bool> finished{false};
+    std::thread worker([&] {
+        try {
+            fauxfoil::Session session(std::cin, std::cout, SCIROCCO_VERSION);
+            session.SetDisplay(&display);
+            status = session.Run(args);
+        } catch (const std::exception& error) {
+            std::cerr << "fauXfoil: " << error.what() << '\n';
+            status = 1;
+        } catch (...) {
+            status = 1;
+        }
+        finished = true;
+        QMetaObject::invokeMethod(&app, &QCoreApplication::quit,
+                                  Qt::QueuedConnection);
+    });
+    QApplication::exec();
+    if (!finished) {
+        /* Quit from the window while the session waits for input */
+        std::cout << '\n' << std::flush;
+        std::_Exit(status);
+    }
+    worker.join();
+    return status;
+}
+#endif
+
+}  // namespace
 
 /**
  * @brief fauXfoil: an XFOIL-style interactive front end to Scirocco.
  *
  * Reads commands from standard input, so it runs interactively or from a
  * script piped in ("fauXfoil < commands.txt"). An optional argument names an
- * airfoil file to load at startup.
+ * airfoil file to load at startup. Plots open in a window when fauXfoil is
+ * built with Qt and a display is available.
  * @return Process exit status.
  */
 int main(int argc, char** argv) {
     std::ios::sync_with_stdio(false);
     try {
+#ifdef FAUXFOIL_WITH_QT
+        if (HaveDisplay()) return RunWithGraphics(argc, argv);
+#endif
         const std::vector<std::string> args(argv + 1, argv + argc);
         fauxfoil::Session session(std::cin, std::cout, SCIROCCO_VERSION);
         return session.Run(args);
