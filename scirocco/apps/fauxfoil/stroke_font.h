@@ -31,7 +31,7 @@
 #pragma once
 
 /// @file stroke_font.h
-/// fauXfoil's plot lettering: a single-stroke vector font drawn with the
+/// fauXFOIL's plot lettering: a single-stroke vector font drawn with the
 /// same thin pen as the plot lines, in the style of plotter text.
 
 #include <string>

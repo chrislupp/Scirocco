@@ -7,18 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
-- `fauXfoil`: an interactive command-line program that looks and behaves like
+- `fauXFOIL`: an interactive command-line program that looks and behaves like
   XFOIL 6.99 (menus, prompts, abbreviations, per-iteration printout, polar
   and coordinate file formats) and runs Scirocco. XFOIL batch scripts run
   unchanged. Built by the new `SCIROCCO_BUILD_CLI` CMake option (default
   on) and installed with the library.
-- `fauXfoil` plots: with Qt 6, a native plot window (no X11 needed on
+- `fauXFOIL` plots: with Qt 6, a native plot window (no X11 needed on
   macOS) shows XFOIL's plots: Cp(x) after each point and for sequences,
   pressure vectors (`CPV`), boundary-layer variables (`VPLO`), polars
   (`PPLO`) and the `GDES` geometry. `HARD` writes PostScript hardcopies to
   `plot.ps`. New CMake option `SCIROCCO_CLI_GRAPHICS` (default on); without
-  Qt, `fauXfoil` stays text-only.
-- `fauXfoil` cursor input and the rest of XFOIL's plot commands: zoom
+  Qt, `fauXFOIL` stays text-only.
+- `fauXFOIL` cursor input and the rest of XFOIL's plot commands: zoom
   (`Z`, `U`), plot-object size (`SIZE`), annotation (`ANNO`), boundary-layer
   velocity profiles (`BL`, `BLC`, `BLWT`), reference Cp, force and polar
   overlays (`CREF`, `FREF`, `RGET`, `RDEL`), polar axis limits (`PPAX`),

@@ -28,7 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-/* Tests for fauXfoil, the XFOIL-style command-line front end. Expected strings
+/* Tests for fauXFOIL, the XFOIL-style command-line front end. Expected strings
  * are copied from XFOIL 6.99 sessions so the layout stays identical. */
 
 #include <gtest/gtest.h>
@@ -213,7 +213,7 @@ TEST_F(FauxfoilTest, ViscousPolarMatchesXfoilLayout) {
 
     const std::vector<std::string> lines = Lines("polar.txt");
     ASSERT_EQ(lines.size(), 14u);
-    EXPECT_EQ(lines[1], "       fauXfoil      Version 0.2.0");
+    EXPECT_EQ(lines[1], "       fauXFOIL      Version 0.2.0");
     EXPECT_EQ(lines[3].size(), 71u);
     EXPECT_EQ(lines[5],
               " 1 1 Reynolds number fixed          Mach number fixed         ");

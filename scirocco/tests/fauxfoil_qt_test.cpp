@@ -28,7 +28,7 @@
     therein. The DoD does not exercise any editorial, security, or other
     control over the information you may find at these locations.
 */
-/* Renders fauXfoil plots with Qt off screen (QT_QPA_PLATFORM=offscreen). */
+/* Renders fauXFOIL plots with Qt off screen (QT_QPA_PLATFORM=offscreen). */
 
 #include <gtest/gtest.h>
 
@@ -117,7 +117,7 @@ bool Pump(Done done) {
 
 QWidget* PlotWindow() {
     for (QWidget* w : QApplication::topLevelWidgets())
-        if (w->windowTitle() == "fauXfoil" && w->isVisible()) return w;
+        if (w->windowTitle() == "fauXFOIL" && w->isVisible()) return w;
     return nullptr;
 }
 

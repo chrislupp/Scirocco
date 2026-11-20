@@ -1,22 +1,22 @@
 ---
 title: Use the XFOIL-style command line
-description: fauXfoil runs Scirocco behind XFOIL's menus, prompts, output and polar files.
+description: fauXFOIL runs Scirocco behind XFOIL's menus, prompts, output and polar files.
 ---
 
 # Use the XFOIL-style command line
 
-`fauXfoil` is an interactive program that looks and behaves like XFOIL 6.99:
+`fauXFOIL` is an interactive program that looks and behaves like XFOIL 6.99:
 the same menus, prompts, command abbreviations, iteration printout, plots
 and polar file layout. Scirocco does the analysis. If you already drive XFOIL
-by hand or from a script, you can use `fauXfoil` the same way.
+by hand or from a script, you can use `fauXFOIL` the same way.
 
 It's built by default (`SCIROCCO_BUILD_CLI=ON`) and installed next to the
 library:
 
 ```bash
 cmake -S scirocco -B scirocco/build -DCMAKE_BUILD_TYPE=Release
-cmake --build scirocco/build -j --target fauXfoil
-scirocco/build/fauXfoil
+cmake --build scirocco/build -j --target fauXFOIL
+scirocco/build/fauXFOIL
 ```
 
 ## A session
@@ -55,11 +55,11 @@ residual.
 
 ## Plots
 
-When `fauXfoil` is built with Qt 6, plots open in a window laid out like
+When `fauXFOIL` is built with Qt 6, plots open in a window laid out like
 XFOIL's: white lines on black, the same axes, legends and colours. The
 window is native, so it needs no X11 on macOS. Resize it freely; plots are
 redrawn as vectors at the screen's full resolution. Lettering uses
-fauXfoil's own single-stroke font, which is drawn with the same thin pen as
+fauXFOIL's own single-stroke font, which is drawn with the same thin pen as
 the lines, in the style of XFOIL's plotter text.
 
 ![Cp plot of NACA 2412 at Re = 10⁶ and α = 4°](/img/fauxfoil-cp.png)
@@ -93,7 +93,7 @@ the lines, in the style of XFOIL's plotter text.
 
 Commands that ask XFOIL for cursor input take mouse clicks and key presses
 in the plot window. The window takes keyboard focus while it waits, shows a
-crosshair, and where XFOIL shows a **Done** button so does fauXfoil
+crosshair, and where XFOIL shows a **Done** button so does fauXFOIL
 (clicking it is the same as typing `D`).
 
 - **Zoom.** `Z` (any menu) zooms the window onto two clicked corners; `U`
@@ -142,7 +142,7 @@ because plots are built either way.
 ### Build with plots
 
 The plot window needs Qt 6 (the Widgets module). CMake uses it when it finds
-it and builds a text-only `fauXfoil` otherwise; the configure step says
+it and builds a text-only `fauXFOIL` otherwise; the configure step says
 which.
 
 ```bash
@@ -152,21 +152,21 @@ sudo apt install qt6-base-dev    # Debian, Ubuntu
 
 Set `SCIROCCO_CLI_GRAPHICS=OFF` to build without Qt even when it's
 installed. On Linux, plots need an X11 or Wayland display. Without one, or
-with `FAUXFOIL_NOGRAPHICS=1` in the environment, `fauXfoil` runs text-only.
+with `FAUXFOIL_NOGRAPHICS=1` in the environment, `fauXFOIL` runs text-only.
 `FAUXFOIL_SNAPSHOT_DIR=dir` saves every plot shown as `dir/plotNNN.png`.
 
 ## Scripts
 
-`fauXfoil` reads commands from standard input, so XFOIL batch scripts run
+`fauXFOIL` reads commands from standard input, so XFOIL batch scripts run
 unchanged, including the usual `PLOP`, `G`, `<return>` opening that turns
 off plotting:
 
 ```bash
-fauXfoil < polar_script.txt
+fauXFOIL < polar_script.txt
 ```
 
 As with XFOIL, a file name on the command line is loaded at startup
-(`fauXfoil myfoil.dat`).
+(`fauXFOIL myfoil.dat`).
 
 ## Commands
 
@@ -180,7 +180,7 @@ As with XFOIL, a file name on the command line is loaded at startup
 | Any menu | `Z`, `U` |
 
 Abbreviations work as in XFOIL (`a` for `ALFA`, `as` for `ASEQ`, `v` for
-`VISC`, and so on). The menus list every XFOIL command; one that `fauXfoil`
+`VISC`, and so on). The menus list every XFOIL command; one that `fauXFOIL`
 lacks prints `command not available in Scirocco`.
 
 `VPAR` settings map to Scirocco's [`Param`](../api/solver-params.md):
@@ -195,7 +195,7 @@ sets `niglob`.
   plain, ISES and MSES single-element files in either direction.
 - Polar save files (`PACC`, `PWRT`) use XFOIL's layout column for column,
   so tools that read XFOIL polars read these. The header line names
-  fauXfoil and the Scirocco version instead of XFOIL. `PACC` appends to an existing
+  fauXFOIL and the Scirocco version instead of XFOIL. `PACC` appends to an existing
   polar file after checking its Mach, Reynolds number and Ncrit, as XFOIL
   does.
 - `CPWR` writes x and Cp; `DUMP` writes s, x, y, Ue, δ*, θ, Cf, H, H*, P,

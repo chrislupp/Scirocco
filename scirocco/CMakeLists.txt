@@ -17,8 +17,8 @@ option(SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS
 option(SCIROCCO_BUILD_PROBES
        "Build standalone probe diagnostic binaries" OFF)
 option(SCIROCCO_BUILD_EXAMPLES "Build example programs" ON)
-option(SCIROCCO_BUILD_CLI "Build the fauXfoil XFOIL-style command-line program" ON)
-option(SCIROCCO_CLI_GRAPHICS "Give fauXfoil a Qt 6 plot window when Qt is found" ON)
+option(SCIROCCO_BUILD_CLI "Build the fauXFOIL XFOIL-style command-line program" ON)
+option(SCIROCCO_CLI_GRAPHICS "Give fauXFOIL a Qt 6 plot window when Qt is found" ON)
 option(SCIROCCO_HDF5_OUTPUT "Build HDF5 output writer library" OFF)
 option(SCIROCCO_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(SCIROCCO_NATIVE_ARCH "Use -march=native for Release builds" ON)
@@ -359,7 +359,7 @@ if(SCIROCCO_BUILD_EXAMPLES)
     target_link_libraries(docs_figure_data scirocco)
 endif()
 
-# fauXfoil: XFOIL-style command-line program
+# fauXFOIL: XFOIL-style command-line program
 if(SCIROCCO_BUILD_CLI)
     add_library(fauxfoil_core STATIC
         apps/fauxfoil/airfoil.cpp
@@ -377,27 +377,27 @@ if(SCIROCCO_BUILD_CLI)
     target_link_libraries(fauxfoil_core PUBLIC scirocco)
     target_compile_options(fauxfoil_core PRIVATE -Wall -Wextra -Wpedantic)
 
-    add_executable(fauXfoil apps/fauxfoil/main.cpp)
-    target_compile_definitions(fauXfoil PRIVATE SCIROCCO_VERSION="${PROJECT_VERSION}")
-    install(TARGETS fauXfoil RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    add_executable(fauXFOIL apps/fauxfoil/main.cpp)
+    target_compile_definitions(fauXFOIL PRIVATE SCIROCCO_VERSION="${PROJECT_VERSION}")
+    install(TARGETS fauXFOIL RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-    # Plot window: Qt 6 Widgets, optional; without it fauXfoil is text-only
+    # Plot window: Qt 6 Widgets, optional; without it fauXFOIL is text-only
     if(SCIROCCO_CLI_GRAPHICS)
         find_package(Qt6 QUIET COMPONENTS Widgets)
     endif()
     if(SCIROCCO_CLI_GRAPHICS AND Qt6Widgets_FOUND)
-        message(STATUS "fauXfoil: plot window with Qt ${Qt6Widgets_VERSION}")
+        message(STATUS "fauXFOIL: plot window with Qt ${Qt6Widgets_VERSION}")
         add_library(fauxfoil_qt STATIC apps/fauxfoil/qt/qt_display.cpp)
         target_link_libraries(fauxfoil_qt PUBLIC fauxfoil_core Qt6::Widgets)
         target_compile_options(fauxfoil_qt PRIVATE -Wall -Wextra)
-        target_link_libraries(fauXfoil fauxfoil_qt)
-        target_compile_definitions(fauXfoil PRIVATE FAUXFOIL_WITH_QT)
+        target_link_libraries(fauXFOIL fauxfoil_qt)
+        target_compile_definitions(fauXFOIL PRIVATE FAUXFOIL_WITH_QT)
     elseif(SCIROCCO_CLI_GRAPHICS)
-        message(STATUS "fauXfoil: text only (Qt 6 Widgets not found)")
-        target_link_libraries(fauXfoil fauxfoil_core)
+        message(STATUS "fauXFOIL: text only (Qt 6 Widgets not found)")
+        target_link_libraries(fauXFOIL fauxfoil_core)
     else()
-        message(STATUS "fauXfoil: text only (SCIROCCO_CLI_GRAPHICS=OFF)")
-        target_link_libraries(fauXfoil fauxfoil_core)
+        message(STATUS "fauXFOIL: text only (SCIROCCO_CLI_GRAPHICS=OFF)")
+        target_link_libraries(fauXFOIL fauxfoil_core)
     endif()
 
     if(SCIROCCO_BUILD_TESTS AND GTest_FOUND)

@@ -182,7 +182,7 @@ using Reply = std::function<void(std::optional<CursorHit>)>;
 class PlotWindow : public QWidget {
    public:
     PlotWindow() {
-        setWindowTitle("fauXfoil");
+        setWindowTitle("fauXFOIL");
         setAttribute(Qt::WA_ShowWithoutActivating);
         setAttribute(Qt::WA_OpaquePaintEvent);
         setFocusPolicy(Qt::StrongFocus);
@@ -331,7 +331,7 @@ void QtDisplay::Show(const Scene& scene) {
             try {
                 impl->Show(*copy);
             } catch (...) {
-                std::fputs("fauXfoil: the plot could not be drawn\n", stderr);
+                std::fputs("fauXFOIL: the plot could not be drawn\n", stderr);
             }
         },
         Qt::QueuedConnection);
@@ -358,7 +358,7 @@ std::optional<CursorHit> QtDisplay::Cursor(bool done_button) {
                         promise->set_value(hit);
                     });
             } catch (...) {
-                std::fputs("fauXfoil: cursor input failed\n", stderr);
+                std::fputs("fauXFOIL: cursor input failed\n", stderr);
                 try {
                     promise->set_value(std::nullopt);
                 } catch (const std::future_error& error) {

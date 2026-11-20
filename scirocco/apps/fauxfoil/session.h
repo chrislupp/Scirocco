@@ -31,7 +31,7 @@
 #pragma once
 
 /// @file session.h
-/// The fauXfoil command interpreter: XFOIL's menus, prompts and output, with
+/// The fauXFOIL command interpreter: XFOIL's menus, prompts and output, with
 /// Scirocco doing the analysis.
 
 #include <iosfwd>

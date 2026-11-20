@@ -61,7 +61,7 @@ using scirocco::Vector4d;
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr const char* kProgram = "fauXfoil";
+constexpr const char* kProgram = "fauXFOIL";
 
 /// Thrown by the prompts when input ends; unwinds to Run().
 struct EndOfInput {};

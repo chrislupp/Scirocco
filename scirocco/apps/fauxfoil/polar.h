@@ -74,7 +74,7 @@ struct Polar {
 std::string FormatPolar(const Polar& polar, const std::string& program,
                         const std::string& version);
 
-/// Read a polar save file written by fauXfoil or XFOIL.
+/// Read a polar save file written by fauXFOIL or XFOIL.
 /// @return false if the file cannot be opened or has no polar header.
 bool ReadPolarFile(const std::string& path, Polar& polar);
 

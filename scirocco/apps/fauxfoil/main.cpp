@@ -69,7 +69,7 @@ bool HaveDisplay() {
 /// main thread, as macOS requires.
 int RunWithGraphics(int argc, char** argv) {
     QApplication app(argc, argv);
-    QApplication::setApplicationName("fauXfoil");
+    QApplication::setApplicationName("fauXFOIL");
     QApplication::setQuitOnLastWindowClosed(false);
     const char* snapshots = std::getenv("FAUXFOIL_SNAPSHOT_DIR");
     fauxfoil::QtDisplay display(snapshots != nullptr ? snapshots : "");
@@ -84,7 +84,7 @@ int RunWithGraphics(int argc, char** argv) {
             session.SetDisplay(&display);
             status = session.Run(args);
         } catch (const std::exception& error) {
-            std::cerr << "fauXfoil: " << error.what() << '\n';
+            std::cerr << "fauXFOIL: " << error.what() << '\n';
             status = 1;
         } catch (...) {
             status = 1;
@@ -107,11 +107,11 @@ int RunWithGraphics(int argc, char** argv) {
 }  // namespace
 
 /**
- * @brief fauXfoil: an XFOIL-style interactive front end to Scirocco.
+ * @brief fauXFOIL: an XFOIL-style interactive front end to Scirocco.
  *
  * Reads commands from standard input, so it runs interactively or from a
- * script piped in ("fauXfoil < commands.txt"). An optional argument names an
- * airfoil file to load at startup. Plots open in a window when fauXfoil is
+ * script piped in ("fauXFOIL < commands.txt"). An optional argument names an
+ * airfoil file to load at startup. Plots open in a window when fauXFOIL is
  * built with Qt and a display is available.
  * @return Process exit status.
  */
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         fauxfoil::Session session(std::cin, std::cout, SCIROCCO_VERSION);
         return session.Run(args);
     } catch (const std::exception& error) {
-        std::cerr << "fauXfoil: " << error.what() << '\n';
+        std::cerr << "fauXFOIL: " << error.what() << '\n';
         return 1;
     } catch (...) {
         return 1;

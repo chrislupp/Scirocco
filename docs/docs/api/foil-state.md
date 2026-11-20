@@ -142,7 +142,7 @@ evaluated and before the convergence test. It receives the state and the
 0-based iteration number. From iteration 1 on, `glob.dU` holds the step
 that produced the current `glob.U` and `glob.relax` the under-relaxation
 factor applied to it. The callback reads the state; it must not modify it,
-and it does not change the solve. [`fauXfoil`](../guides/fauxfoil.md) uses it to
+and it does not change the solve. [`fauXFOIL`](../guides/fauxfoil.md) uses it to
 print XFOIL's iteration lines.
 
 ```cpp

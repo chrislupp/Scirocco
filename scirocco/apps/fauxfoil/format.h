@@ -31,7 +31,7 @@
 #pragma once
 
 /// @file format.h
-/// Fortran edit descriptors, so fauXfoil columns line up with XFOIL's output.
+/// Fortran edit descriptors, so fauXFOIL columns line up with XFOIL's output.
 
 #include <string>
 

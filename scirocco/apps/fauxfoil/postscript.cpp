@@ -95,7 +95,7 @@ std::string PostScript(const std::vector<Scene>& pages) {
     std::ostringstream ps;
     ps << "%!PS-Adobe-3.0\n"
        << "%%Title: plot.ps\n"
-       << "%%Creator: fauXfoil\n"
+       << "%%Creator: fauXFOIL\n"
        << "%%Pages: " << pages.size() << '\n'
        << "%%Orientation: Landscape\n"
        << "%%BoundingBox: 0 0 612 792\n"
