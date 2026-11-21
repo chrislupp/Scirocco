@@ -83,6 +83,7 @@ ApplicationWindow {
 
     IconRail {
         id: rail
+        z: 3  // above the main area so hover labels show over it
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: statusBar.top
@@ -257,10 +258,10 @@ ApplicationWindow {
                         width: 28; height: 28
                         radius: Theme.rControl
                         color: hudCloseMa.containsMouse ? Theme.hover : "transparent"
-                        Text {
+                        Icon {
                             anchors.centerIn: parent
-                            text: "✕"
-                            font.pixelSize: 12
+                            name: "close"
+                            size: 16
                             color: Theme.textMuted
                         }
                         MouseArea {
@@ -340,10 +341,10 @@ ApplicationWindow {
                         width: 28; height: 28
                         radius: Theme.rControl
                         color: arrowsCloseMa.containsMouse ? Theme.hover : "transparent"
-                        Text {
+                        Icon {
                             anchors.centerIn: parent
-                            text: "✕"
-                            font.pixelSize: 12
+                            name: "close"
+                            size: 16
                             color: Theme.textMuted
                         }
                         MouseArea {

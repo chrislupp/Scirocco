@@ -33,25 +33,16 @@ Rectangle {
         spacing: Theme.s1
 
         // Brand mark
-        Item {
+        Image {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 32
-            Layout.preferredHeight: 32
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 22; height: 22
-                radius: 4
-                color: "transparent"
-                border.width: 1.5
-                border.color: Theme.accent
-            }
-            Rectangle {
-                anchors.centerIn: parent
-                width: 8; height: 8
-                radius: 4
-                color: Theme.accent
-            }
+            Layout.preferredWidth: 34
+            Layout.preferredHeight: 26
+            source: Theme.darkMode
+                    ? "qrc:/qt/qml/SciroccoViewer/resources/logo-dark.svg"
+                    : "qrc:/qt/qml/SciroccoViewer/resources/logo.svg"
+            sourceSize: Qt.size(34, 26)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
         }
 
         Item { Layout.preferredHeight: Theme.s3 }
@@ -59,6 +50,7 @@ Rectangle {
         // Airfoil view
         RailButton {
             icon: "airfoil"
+            tip: "Airfoil only"
             checked: root.activeSection === 0
             onClicked: root.sectionClicked(root.activeSection === 0 ? -1 : 0)
         }
@@ -66,13 +58,15 @@ Rectangle {
         // Charts
         RailButton {
             icon: "chart"
+            tip: "Charts"
             checked: root.activeSection === 1
             onClicked: root.sectionClicked(root.activeSection === 1 ? -1 : 1)
         }
 
         // Data inspector
         RailButton {
-            icon: "data"
+            icon: "results"
+            tip: "Results"
             checked: root.activeSection === 2
             onClicked: root.sectionClicked(root.activeSection === 2 ? -1 : 2)
         }
@@ -83,6 +77,7 @@ Rectangle {
         RailButton {
             id: hudButton
             icon: "hud"
+            tip: "HUD"
             checked: root.hudEnabled
             onClicked: {
                 var pos = hudButton.mapToItem(null, 0, 0)
@@ -93,6 +88,7 @@ Rectangle {
         // Panels toggle
         RailButton {
             icon: "panels"
+            tip: "Panel nodes"
             checked: root.panelsEnabled
             onClicked: {
                 root.panelsEnabled = !root.panelsEnabled
@@ -104,6 +100,7 @@ Rectangle {
         RailButton {
             id: arrowsButton
             icon: "arrows"
+            tip: "Cp arrows"
             checked: root.arrowsEnabled
             onClicked: {
                 var pos = arrowsButton.mapToItem(null, 0, 0)
@@ -113,7 +110,8 @@ Rectangle {
 
         // Export video
         RailButton {
-            icon: "export"
+            icon: "video"
+            tip: "Export video"
             checked: false
             onClicked: root.exportRequested()
         }
@@ -123,18 +121,19 @@ Rectangle {
         // Theme toggle
         RailButton {
             icon: Theme.darkMode ? "sun" : "moon"
+            tip: Theme.darkMode ? "Light theme" : "Dark theme"
             checked: false
             onClicked: Theme.darkMode = !Theme.darkMode
         }
     }
 
     component RailButton: Rectangle {
+        id: button
         property string icon
+        property string tip
         property bool checked: false
         signal clicked()
         signal rightClicked()
-        onCheckedChanged: iconCanvas.requestPaint()
-        onIconChanged: iconCanvas.requestPaint()
 
         Layout.alignment: Qt.AlignHCenter
         Layout.preferredWidth: 36
@@ -142,108 +141,27 @@ Rectangle {
         radius: Theme.rControl
         color: checked ? Theme.active : mouseArea.containsMouse ? Theme.hover : "transparent"
 
-        Canvas {
-            id: iconCanvas
+        Behavior on color { ColorAnimation { duration: 120 } }
+
+        // Accent bar marking the active item.
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            x: -(Theme.railWidth - parent.width) / 2
+            width: 3
+            height: button.checked ? 18 : 0
+            radius: 1.5
+            color: Theme.accent
+            Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        }
+
+        Icon {
             anchors.centerIn: parent
-            width: 20; height: 20
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.strokeStyle = parent.checked ? Theme.accent.toString() : Theme.textMuted.toString()
-                ctx.lineWidth = 1.5
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-
-                if (parent.icon === "airfoil") {
-                    // Simplified airfoil shape
-                    ctx.beginPath()
-                    ctx.moveTo(18, 10)
-                    ctx.bezierCurveTo(14, 4, 4, 5, 2, 10)
-                    ctx.bezierCurveTo(4, 14, 14, 15, 18, 10)
-                    ctx.stroke()
-                } else if (parent.icon === "chart") {
-                    // Line chart icon
-                    ctx.beginPath()
-                    ctx.moveTo(2, 16)
-                    ctx.lineTo(7, 8)
-                    ctx.lineTo(12, 12)
-                    ctx.lineTo(18, 4)
-                    ctx.stroke()
-                    ctx.beginPath()
-                    ctx.moveTo(2, 18)
-                    ctx.lineTo(18, 18)
-                    ctx.stroke()
-                } else if (parent.icon === "data") {
-                    // Table/grid icon
-                    ctx.beginPath()
-                    ctx.moveTo(2, 4); ctx.lineTo(18, 4)
-                    ctx.moveTo(2, 10); ctx.lineTo(18, 10)
-                    ctx.moveTo(2, 16); ctx.lineTo(18, 16)
-                    ctx.moveTo(10, 4); ctx.lineTo(10, 16)
-                    ctx.stroke()
-                } else if (parent.icon === "hud") {
-                    // Text/info icon
-                    ctx.beginPath()
-                    ctx.moveTo(4, 5); ctx.lineTo(16, 5)
-                    ctx.moveTo(4, 10); ctx.lineTo(13, 10)
-                    ctx.moveTo(4, 15); ctx.lineTo(10, 15)
-                    ctx.stroke()
-                } else if (parent.icon === "panels") {
-                    // Dots/nodes icon
-                    ctx.beginPath()
-                    ctx.moveTo(2, 10)
-                    ctx.bezierCurveTo(6, 6, 14, 6, 18, 10)
-                    ctx.stroke()
-                    var dots = [3, 7, 11, 15]
-                    for (var d = 0; d < dots.length; d++) {
-                        ctx.beginPath()
-                        var dy = 10 - 2.5 * Math.sin((dots[d] - 2) / 16 * Math.PI)
-                        ctx.arc(dots[d], dy, 2, 0, 2 * Math.PI)
-                        ctx.fillStyle = ctx.strokeStyle
-                        ctx.fill()
-                    }
-                } else if (parent.icon === "export") {
-                    // Film/export icon
-                    ctx.beginPath()
-                    ctx.moveTo(10, 3); ctx.lineTo(10, 13)
-                    ctx.moveTo(6, 9); ctx.lineTo(10, 13); ctx.lineTo(14, 9)
-                    ctx.stroke()
-                    ctx.beginPath()
-                    ctx.moveTo(3, 16); ctx.lineTo(17, 16)
-                    ctx.stroke()
-                } else if (parent.icon === "sun") {
-                    ctx.beginPath()
-                    ctx.arc(10, 10, 4, 0, 2 * Math.PI)
-                    ctx.stroke()
-                    var rays = 8
-                    for (var r = 0; r < rays; r++) {
-                        var a = r * Math.PI * 2 / rays
-                        ctx.beginPath()
-                        ctx.moveTo(10 + 6 * Math.cos(a), 10 + 6 * Math.sin(a))
-                        ctx.lineTo(10 + 8 * Math.cos(a), 10 + 8 * Math.sin(a))
-                        ctx.stroke()
-                    }
-                } else if (parent.icon === "moon") {
-                    ctx.beginPath()
-                    ctx.arc(10, 10, 6, 0, 2 * Math.PI)
-                    ctx.stroke()
-                    ctx.fillStyle = (parent.parent && parent.parent.color) ? parent.parent.color.toString() : Theme.railBg.toString()
-                    ctx.beginPath()
-                    ctx.arc(13, 8, 5, 0, 2 * Math.PI)
-                    ctx.fill()
-                } else if (parent.icon === "arrows") {
-                    // Arrows icon
-                    ctx.beginPath()
-                    ctx.moveTo(10, 16); ctx.lineTo(10, 4)
-                    ctx.moveTo(6, 7); ctx.lineTo(10, 4); ctx.lineTo(14, 7)
-                    ctx.stroke()
-                    ctx.beginPath()
-                    ctx.moveTo(4, 16); ctx.lineTo(16, 16)
-                    ctx.stroke()
-                }
-            }
-
-            Component.onCompleted: requestPaint()
+            name: button.icon
+            size: 20
+            color: button.checked ? Theme.accent
+                 : mouseArea.containsMouse ? Theme.textPrimary
+                 : Theme.textMuted
+            Behavior on color { ColorAnimation { duration: 120 } }
         }
 
         MouseArea {
@@ -257,6 +175,42 @@ Rectangle {
                     parent.rightClicked()
                 else
                     parent.clicked()
+            }
+        }
+
+        // Label shown to the right of the rail on hover.
+        Rectangle {
+            visible: tipTimer.shown && button.tip !== ""
+            x: parent.width + (Theme.railWidth - parent.width) / 2 + Theme.s2
+            anchors.verticalCenter: parent.verticalCenter
+            width: tipText.implicitWidth + 2 * Theme.s2
+            height: tipText.implicitHeight + Theme.s1 * 2
+            radius: Theme.rControl
+            color: Theme.panelBgSolid
+            border.width: 1
+            border.color: Theme.panelBorder
+            z: 100
+
+            Text {
+                id: tipText
+                anchors.centerIn: parent
+                text: button.tip
+                font.pixelSize: Theme.fsCaption
+                color: Theme.textPrimary
+            }
+        }
+
+        Timer {
+            id: tipTimer
+            property bool shown: false
+            interval: 450
+            running: mouseArea.containsMouse && !shown
+            onTriggered: shown = true
+        }
+        Connections {
+            target: mouseArea
+            function onContainsMouseChanged() {
+                if (!mouseArea.containsMouse) tipTimer.shown = false
             }
         }
     }

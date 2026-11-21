@@ -24,6 +24,37 @@ Item {
         onPaint: draw()
     }
 
+    // Shown until a file is open.
+    Column {
+        id: emptyState
+        anchors.centerIn: parent
+        spacing: Theme.s4
+        visible: reader.numIterations === 0
+
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            source: Theme.darkMode
+                    ? "qrc:/qt/qml/SciroccoViewer/resources/logo-full-dark.svg"
+                    : "qrc:/qt/qml/SciroccoViewer/resources/logo-full.svg"
+            sourceSize: Qt.size(220, 151)
+            opacity: 0.9
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Open an HDF5 file to begin"
+            font.pixelSize: Theme.fsControl
+            color: Theme.textMuted
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: (Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O") + " or double-click"
+            font.pixelSize: Theme.fsCaption
+            color: Theme.textDim
+        }
+    }
+
     onShowArrowsChanged: canvas.requestPaint()
     onShowPanelsChanged: canvas.requestPaint()
     onArrowLineWidthChanged: canvas.requestPaint()
@@ -136,13 +167,8 @@ Item {
         ctx.clearRect(0, 0, canvas.width, canvas.height)
 
         var foil = reader.airfoilSeries
-        if (foil.length === 0) {
-            ctx.fillStyle = Theme.textDim.toString()
-            ctx.font = Theme.fsControl + "px sans-serif"
-            ctx.textAlign = "center"
-            ctx.fillText("Open an HDF5 file to begin", canvas.width / 2, canvas.height / 2)
-            return
-        }
+        if (foil.length === 0)
+            return  // emptyState shows instead
 
         computeBounds()
 

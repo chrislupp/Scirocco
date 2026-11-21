@@ -26,10 +26,10 @@ Panel {
                 width: 28; height: 28
                 radius: Theme.rControl
                 color: closeMa.containsMouse ? Theme.hover : "transparent"
-                Text {
+                Icon {
                     anchors.centerIn: parent
-                    text: "✕"
-                    font.pixelSize: 12
+                    name: "close"
+                    size: 16
                     color: Theme.textMuted
                 }
                 MouseArea {

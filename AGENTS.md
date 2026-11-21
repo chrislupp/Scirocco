@@ -70,16 +70,26 @@ the HDF5 files `scirocco::Hdf5Writer` writes (`SCIROCCO_HDF5_OUTPUT=ON`,
 see `scirocco/examples/hdf5_output_example.cpp`). It is a separate CMake
 project like fauXFOIL, but reads only the HDF5 file and does not link
 Scirocco, so its reader (`viewer/src/hdf5_reader.cpp`) must follow any
-change to the writer's group and dataset names. It needs Qt 6.5+ (Core,
-Gui, Qml, Quick, QuickControls2, Widgets, Charts) and HDF5 (C, C++):
+change to the writer's group and dataset names. It needs Qt 6.6+ (Core,
+Gui, Qml, Quick, QuickControls2, Svg, Widgets, Charts) and HDF5 (C, C++):
 ```bash
 cmake -S viewer -B viewer/build -DCMAKE_BUILD_TYPE=Release
 cmake --build viewer/build -j
 viewer/build/SciroccoViewer.app/Contents/MacOS/SciroccoViewer alpha_sweep.h5
 ```
-On macOS it builds as an app bundle. Nothing builds it unless `viewer/` is
-configured; the Scirocco build, Docker images and release artifacts do not
-include it.
+`--theme light` starts in the light theme; `--screenshot out.png` saves the
+window once it has drawn and quits, for checking UI changes without a
+screen recorder. On macOS it builds as an app bundle. Nothing builds it
+unless `viewer/` is configured; the Scirocco build, Docker images and
+release artifacts do not include it.
+
+The viewer shows the Scirocco logo straight from `docs/static/img/` (the
+CMake file adds those SVGs as resources), so it changes with the docs. The
+app icon is generated: after a logo change, run
+`viewer/resources/make_app_icon.py` (needs `rsvg-convert` and `iconutil`
+on macOS) and commit `app-icon.svg` and `AppIcon.icns`. UI icons are SVG
+path data on a 24-unit grid in `viewer/qml/components/Icon.qml`, drawn in
+the theme's colours; add new ones there rather than as image files.
 
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements

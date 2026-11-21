@@ -16,7 +16,6 @@ Rectangle {
                 reader.setCurrentIteration(0)
             playTimer.start()
         }
-        playIcon.requestPaint()
     }
 
     Rectangle {
@@ -40,11 +39,12 @@ Rectangle {
             color: prevMa.containsMouse ? Theme.hover : "transparent"
             opacity: reader.currentIteration > 0 ? 1.0 : 0.3
 
-            Text {
+            Icon {
                 anchors.centerIn: parent
-                text: "◀"
-                font.pixelSize: 10
-                color: Theme.textMuted
+                name: "prev"
+                size: 16
+                strokeWidth: 1.8
+                color: prevMa.containsMouse ? Theme.textPrimary : Theme.textMuted
             }
             MouseArea {
                 id: prevMa
@@ -128,11 +128,12 @@ Rectangle {
             color: nextMa.containsMouse ? Theme.hover : "transparent"
             opacity: reader.currentIteration < reader.numIterations - 1 ? 1.0 : 0.3
 
-            Text {
+            Icon {
                 anchors.centerIn: parent
-                text: "▶"
-                font.pixelSize: 10
-                color: Theme.textMuted
+                name: "next"
+                size: 16
+                strokeWidth: 1.8
+                color: nextMa.containsMouse ? Theme.textPrimary : Theme.textMuted
             }
             MouseArea {
                 id: nextMa
@@ -150,26 +151,13 @@ Rectangle {
             color: playMa.containsMouse ? Theme.hover : "transparent"
             opacity: reader.numIterations > 1 ? 1.0 : 0.3
 
-            Canvas {
+            Icon {
                 id: playIcon
                 anchors.centerIn: parent
-                width: 12; height: 12
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-                    ctx.fillStyle = playTimer.running ? Theme.accent.toString() : Theme.textMuted.toString()
-                    if (playTimer.running) {
-                        ctx.fillRect(1, 1, 3.5, 10)
-                        ctx.fillRect(7.5, 1, 3.5, 10)
-                    } else {
-                        ctx.beginPath()
-                        ctx.moveTo(1, 0)
-                        ctx.lineTo(12, 6)
-                        ctx.lineTo(1, 12)
-                        ctx.closePath()
-                        ctx.fill()
-                    }
-                }
+                name: playTimer.running ? "pause" : "play"
+                size: 16
+                color: playTimer.running ? Theme.accent
+                     : playMa.containsMouse ? Theme.textPrimary : Theme.textMuted
             }
 
             MouseArea {
@@ -185,7 +173,6 @@ Rectangle {
                             reader.setCurrentIteration(0)
                         playTimer.start()
                     }
-                    playIcon.requestPaint()
                 }
             }
         }
@@ -199,7 +186,6 @@ Rectangle {
                     reader.setCurrentIteration(reader.currentIteration + 1)
                 } else {
                     stop()
-                    playIcon.requestPaint()
                 }
             }
         }

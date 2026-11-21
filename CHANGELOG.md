@@ -16,9 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   HDF5 files `Hdf5Writer` writes and steps through their iterations. It
   shows the airfoil and wake with optional panel nodes and Cp arrows, Cp
   and boundary-layer distributions, and the cl, cd and cm history, with
-  light and dark themes and video export of the iteration sequence. It is
-  a separate CMake project that needs Qt 6.5+ (Quick, Quick Controls,
-  Charts) and HDF5; the Scirocco build does not include it.
+  light and dark themes and video export of the iteration sequence. It
+  carries the Scirocco logo and app icon. It is a separate CMake project
+  that needs Qt 6.6+ (Quick, Quick Controls, Svg, Charts) and HDF5; the
+  Scirocco build does not include it.
 
 ## [0.3.1] - 2026-11-21
 
