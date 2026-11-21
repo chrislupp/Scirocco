@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-21
+
 ### Fixed
 - `fauXFOIL` Cp plot: the wake displacement edges on the airfoil sketch now
   start at the trailing-edge displacement points and share the wake delta*
@@ -412,5 +414,6 @@ Initial public release.
 
 [0.1.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.1.0
 [0.2.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.2.0
-[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.3.0
+[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/chrislupp/Scirocco/releases/tag/v0.3.1
