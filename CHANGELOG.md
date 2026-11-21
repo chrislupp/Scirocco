@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- `fauXFOIL` Cp plot: the wake displacement edges on the airfoil sketch now
+  start at the trailing-edge displacement points and share the wake delta*
+  between the sides as XFOIL does, instead of splitting it evenly about the
+  wake centreline, which left a visible break at the trailing edge. Where
+  the boundary layer is thick (separated flow at high alpha), wake edge
+  points that would fold back behind the trailing edge are left out.
+
 ## [0.3.0] - 2026-11-21
 
 ### Added

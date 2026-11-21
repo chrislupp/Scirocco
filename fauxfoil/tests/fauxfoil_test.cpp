@@ -32,6 +32,7 @@
  * are copied from XFOIL 6.99 sessions so the layout stays identical. */
 
 #include <gtest/gtest.h>
+#include <scirocco/scirocco.h>
 
 #include <algorithm>
 #include <deque>
@@ -47,6 +48,7 @@
 #include "format.h"
 #include "plot_scene.h"
 #include "session.h"
+#include "solution.h"
 
 namespace {
 
@@ -642,6 +644,29 @@ TEST_F(FauxfoilTest, SizeScalesLaterPlots) {
     ASSERT_EQ(display.shown.size(), 2U);
     EXPECT_NEAR(display.shown[1].labels[0].height,
                 0.5 * display.shown[0].labels[0].height, 1e-12);
+}
+
+TEST(FauxfoilSolution, WakeDisplacementJoinsTheTrailingEdge) {
+    /* Each wake displacement edge starts where its side's displacement
+       surface ends and runs downstream from there, attached and separated
+       (alpha 17: thick upper boundary layer) alike. */
+    for (const double alpha : {4.0, 17.0}) {
+        SCOPED_TRACE(alpha);
+        scirocco::Scirocco foil("4412", 159);
+        foil.SetOper(alpha, -1.0, 3e6, 0.0);
+        ASSERT_TRUE(foil.Solve());
+        const fauxfoil::Solution s = fauxfoil::Snapshot(foil.GetState(), 0, 0);
+        ASSERT_TRUE(s.viscous);
+        ASSERT_GE(s.wake_upper.size(), 2U);
+        ASSERT_GE(s.wake_lower.size(), 2U);
+        EXPECT_EQ(s.wake_upper.front().x, s.dstar_top.back().x);
+        EXPECT_EQ(s.wake_upper.front().y, s.dstar_top.back().y);
+        EXPECT_EQ(s.wake_lower.front().x, s.dstar_bottom.back().x);
+        EXPECT_EQ(s.wake_lower.front().y, s.dstar_bottom.back().y);
+        for (const auto* edge : {&s.wake_upper, &s.wake_lower})
+            for (std::size_t k = 1; k < edge->size(); ++k)
+                EXPECT_GT((*edge)[k].x, (*edge)[k - 1].x) << "point " << k;
+    }
 }
 
 }  // namespace
