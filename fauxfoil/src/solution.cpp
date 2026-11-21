@@ -165,8 +165,29 @@ Solution Snapshot(const FoilState& state, double xtr_top, double xtr_bot) {
                 {s.airfoil[j].x + nrm.x * ds, s.airfoil[j].y + nrm.y * ds});
         }
     }
-    for (std::size_t k = 0; k < s.wake.size(); ++k) {
-        const Point& a = s.wake[k == 0 ? 0 : k - 1];
+    /* Wake displacement edges, drawn as XFOIL's CPDISP draws them: each
+       edge starts at its side's trailing-edge displacement point, and the
+       wake delta* (which carries both sides plus the trailing-edge gap) is
+       shared out in proportion to each side's delta* plus half the gap.
+       Near the trailing edge the surface and wake normals differ, so where
+       the boundary layer is thick (separated flow at high alpha) the first
+       wake edge points can fall behind the trailing-edge displacement
+       point; they are left out so the edge does not fold back on itself. */
+    const int te_top = state.vsol.Is[1].back();
+    const int te_bot = state.vsol.Is[0].back();
+    const double gap = std::hypot(s.airfoil[n - 1].x - s.airfoil[0].x,
+                                  s.airfoil[n - 1].y - s.airfoil[0].y);
+    const double ds_wake = state.post.ds(n);
+    double share_top = 0.5;
+    double share_bot = 0.5;
+    if (ds_wake != 0.0) {
+        share_top = (state.post.ds(te_top) + 0.5 * gap) / ds_wake;
+        share_bot = (state.post.ds(te_bot) + 0.5 * gap) / ds_wake;
+    }
+    if (!s.dstar_top.empty()) s.wake_upper.push_back(s.dstar_top.back());
+    if (!s.dstar_bottom.empty()) s.wake_lower.push_back(s.dstar_bottom.back());
+    for (std::size_t k = 1; k < s.wake.size(); ++k) {
+        const Point& a = s.wake[k - 1];
         const Point& b = s.wake[k + 1 < s.wake.size() ? k + 1 : k];
         double tx = b.x - a.x;
         double ty = b.y - a.y;
@@ -174,11 +195,15 @@ Solution Snapshot(const FoilState& state, double xtr_top, double xtr_bot) {
         if (t <= 0.0) continue;
         tx /= t;
         ty /= t;
-        const double half = 0.5 * state.post.ds(n + static_cast<int>(k));
-        s.wake_upper.push_back(
-            {s.wake[k].x - ty * half, s.wake[k].y + tx * half});
-        s.wake_lower.push_back(
-            {s.wake[k].x + ty * half, s.wake[k].y - tx * half});
+        const double ds = state.post.ds(n + static_cast<int>(k));
+        const Point upper{s.wake[k].x - ty * ds * share_top,
+                          s.wake[k].y + tx * ds * share_top};
+        const Point lower{s.wake[k].x + ty * ds * share_bot,
+                          s.wake[k].y - tx * ds * share_bot};
+        if (s.wake_upper.empty() || upper.x > s.wake_upper.back().x)
+            s.wake_upper.push_back(upper);
+        if (s.wake_lower.empty() || lower.x > s.wake_lower.back().x)
+            s.wake_lower.push_back(lower);
     }
     return s;
 }
