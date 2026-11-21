@@ -276,7 +276,7 @@ A release is a PR from `develop` to `main` labelled `release` and one of
 `docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
 and publishes. Its `homebrew` job then points the `scirocco` and
 `fauxfoil` formulae in `chrislupp/homebrew-tools` at a stable release
-(`scripts/homebrew_formula.py`; needs the `HOMEBREW_TAP_TOKEN` secret).
+(`scripts/homebrew_formula.py`; `RELEASE_TOKEN` must be able to push there).
 Those changes come only from the job: agents never commit a docs version
 snapshot or a version bump made by hand.
 

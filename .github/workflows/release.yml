@@ -257,23 +257,14 @@ jobs:
   # ── Homebrew formula ─────────────────────────────────────────────
   # Point the scirocco and fauxfoil formulae in chrislupp/homebrew-tools at
   # the new stable release. A separate job, so a failure here leaves the
-  # published release intact; rerun it once fixed. Needs HOMEBREW_TAP_TOKEN,
-  # a token that can push to the tap.
+  # published release intact; rerun it once fixed. RELEASE_TOKEN must be
+  # able to push to the tap.
   homebrew:
     needs: release
     if: needs.release.outputs.is_prerelease == 'false'
     runs-on: ubuntu-24.04
 
     steps:
-    - name: Require a tap token
-      env:
-        TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      run: |
-        if [ -z "$TOKEN" ]; then
-          echo "::error::Add a HOMEBREW_TAP_TOKEN secret with contents write access to chrislupp/homebrew-tools, then rerun this job."
-          exit 1
-        fi
-
     - name: Checkout release tag
       uses: actions/checkout@v4
       with:
@@ -283,7 +274,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: chrislupp/homebrew-tools
-        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        token: ${{ secrets.RELEASE_TOKEN }}
         path: homebrew-tools
 
     - name: Update and push the formulae
