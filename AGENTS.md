@@ -53,8 +53,8 @@ fauXFOIL's version is Scirocco's: CMake reads it from
 as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
 print. Never hard-code it in `fauxfoil/`; the `fauXFOIL.Version` test
 fails if the binary reports anything else. The screenshots in
-`docs/static/img/fauxfoil-*.png` show the version too; regenerate them
-(`FAUXFOIL_SNAPSHOT_DIR=dir`) when they should match a release.
+`docs/static/img/fauxfoil-*.png` show the version too; see
+[Releases](#releases) for regenerating them.
 
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
@@ -240,6 +240,16 @@ that is how the gradient speedups from #26–#28 were lost.
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
 
+Label every PR when you open it (`gh pr create --label ...`), matching its
+commit category:
+
+| PR | Label |
+|----|-------|
+| `Docs:` | `documentation` |
+| `Add:`, `Refactor:`, `CI:` | `enhancement` |
+| `Fix:` | `bug` (and `documentation` when it fixes the docs) |
+| Release, `develop` → `main` | `release` and `major`, `minor` or `patch` (see [Releases](#releases)) |
+
 Before marking a PR ready for review:
 - All CI checks pass (build + full test suite).
 - `clang-format` and `clang-tidy` produce no new warnings.
@@ -247,6 +257,32 @@ Before marking a PR ready for review:
 
 Squash-merge is preferred for feature branches; merge commits are used for
 release integrations (`develop` → `main`).
+
+### Releases
+
+A release is a PR from `develop` to `main` labelled `release` and one of
+`major`, `minor` or `patch`, merged with a merge commit. On merge,
+`.github/workflows/release.yml` makes every versioned change: it bumps
+`scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
+(`scripts/release_docs.py`: `docs/versioned_docs/`,
+`docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
+and publishes. Those changes come only from the job: agents never commit
+a docs version snapshot or a version bump made by hand.
+
+Prepare a release on a `docs/` branch into `develop`, merged before the
+release PR:
+
+1. Run `scripts/fauxfoil_screenshots.sh <bump>` with the release's bump
+   label and commit the two PNGs it writes. It builds fauXFOIL with the
+   coming version in a temporary worktree; the pictures come from this
+   script, never from hand-picked or edited plots.
+2. Build the docs as they will look after the release: in a throwaway
+   worktree, run `scripts/release_docs.py <version> false`, then
+   `npm run build` in `docs/`. Delete the worktree; commit nothing from it.
+   Links in `docs/src/pages/` and redirects resolve against the default
+   docs version, so a page moved since the last release needs
+   `createRedirects` in `docs/docusaurus.config.ts` (a static redirect to
+   it fails until the release) and a homepage link that looks the page up.
 
 ### Commit messages
 

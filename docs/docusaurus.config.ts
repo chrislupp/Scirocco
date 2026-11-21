@@ -92,6 +92,18 @@ const config: Config = {
                     { from: "/docs/concepts/solver-params", to: "/docs/api/solver-params" },
                     { from: "/docs/contributing/claude-code", to: "/docs/contributing" },
                 ],
+                // Pages that moved to validation/ after 0.2.0. A redirect is
+                // made only for a version whose build has the new page, so
+                // /docs/concepts/... keeps serving 0.2.0 until it is replaced.
+                createRedirects(existingPath: string) {
+                    const moved = existingPath.match(
+                        /^(\/docs(?:\/next)?)\/validation\/(performance|transition)$/,
+                    );
+                    if (!moved) return undefined;
+                    const [, base, page] = moved;
+                    const old = page === "transition" ? "transition-validation" : page;
+                    return `${base}/concepts/${old}`;
+                },
             },
         ],
     ],
