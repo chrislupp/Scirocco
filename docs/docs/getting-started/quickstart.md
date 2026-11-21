@@ -92,6 +92,9 @@ Point CMake at the install prefix when you configure:
 cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/Scirocco/install
 ```
 
+If you installed Scirocco with [Homebrew](./installation#homebrew), skip the
+install step and use `-DCMAKE_PREFIX_PATH="$(brew --prefix)"`.
+
 [Installation](./installation) covers the other ways to build, including
 the optional HDF5 and Philote components.
 

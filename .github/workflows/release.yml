@@ -17,6 +17,9 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'release') ||
        contains(github.event.pull_request.labels.*.name, 'prerelease'))
     runs-on: ubuntu-24.04
+    outputs:
+      tag_version: ${{ steps.version.outputs.tag_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
 
     steps:
     # ── Checkout ──────────────────────────────────────────────────────
@@ -250,3 +253,42 @@ jobs:
             --title "chore: merge release ${{ steps.version.outputs.tag_version }} back to develop" \
             --body "Automatic merge of release changes back to develop failed due to conflicts. Please resolve manually."
         fi
+
+  # ── Homebrew formula ─────────────────────────────────────────────
+  # Point the scirocco and fauxfoil formulae in chrislupp/homebrew-tools at
+  # the new stable release. A separate job, so a failure here leaves the
+  # published release intact; rerun it once fixed. RELEASE_TOKEN must be
+  # able to push to the tap.
+  homebrew:
+    needs: release
+    if: needs.release.outputs.is_prerelease == 'false'
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout release tag
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.release.outputs.tag_version }}
+
+    - name: Checkout Homebrew tap
+      uses: actions/checkout@v4
+      with:
+        repository: chrislupp/homebrew-tools
+        token: ${{ secrets.RELEASE_TOKEN }}
+        path: homebrew-tools
+
+    - name: Update and push the formulae
+      env:
+        TAG: ${{ needs.release.outputs.tag_version }}
+      run: |
+        python3 scripts/homebrew_formula.py "$TAG" \
+          homebrew-tools/Formula/scirocco.rb homebrew-tools/Formula/fauxfoil.rb
+        cd homebrew-tools
+        if git diff --quiet; then
+          echo "Formulae already point at $TAG"
+          exit 0
+        fi
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -am "Update Scirocco and fauXFOIL to ${TAG#v}"
+        git push origin HEAD

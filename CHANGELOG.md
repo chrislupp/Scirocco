@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Homebrew formulae: `brew install chrislupp/tools/scirocco` installs the
+  core library, headers and CMake package from the release source, and
+  `brew install chrislupp/tools/fauxfoil` installs `fauXFOIL` with its Qt
+  plot window. The release workflow's new `homebrew` job points both
+  formulae in `chrislupp/homebrew-tools` at each stable release.
+
 ## [0.3.1] - 2026-11-21
 
 ### Fixed
