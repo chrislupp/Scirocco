@@ -51,6 +51,13 @@ The formula has the core library only. Build from source for HDF5 history
 files, the Philote servers, the tests or the examples. Upgrade with
 `brew upgrade scirocco`.
 
+[fauXFOIL](../guides/fauxfoil), the XFOIL-style command line, has its own
+formula, so library users don't get it or Qt:
+
+```bash
+brew install chrislupp/tools/fauxfoil
+```
+
 ## The C++ library from source
 
 <Tabs groupId="os">

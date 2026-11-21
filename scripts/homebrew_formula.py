@@ -1,10 +1,11 @@
-"""Point the Homebrew formula at a release's source archive.
+"""Point the Homebrew formulae at a release's source archive.
 
-Usage: python3 scripts/homebrew_formula.py <tag> <path/to/scirocco.rb>
+Usage: python3 scripts/homebrew_formula.py <tag> <formula.rb>...
 
 The release workflow runs this against a checkout of chrislupp/homebrew-tools
-after it publishes a stable release. It downloads the tag's GitHub source
-archive, hashes it, and rewrites the formula's stable `url` and `sha256`.
+after it publishes a stable release, for scirocco.rb and fauxfoil.rb. Both
+build from the same source. It downloads the tag's GitHub source archive,
+hashes it, and rewrites each formula's stable `url` and `sha256`.
 """
 
 import hashlib
@@ -42,15 +43,19 @@ def archive_sha256(url, attempts=5):
             time.sleep(10 * attempt)
 
 
-def main(tag, path):
+def main(tag, paths):
     url = ARCHIVE.format(tag=tag)
     sha256 = archive_sha256(url)
-    formula = Path(path)
-    formula.write_text(bump(formula.read_text(), url, sha256))
-    print(f"{formula}: {url} sha256 {sha256}")
+    # Check every formula before writing any, so a bad one changes nothing
+    formulae = {
+        Path(path): bump(Path(path).read_text(), url, sha256) for path in paths
+    }
+    for formula, text in formulae.items():
+        formula.write_text(text)
+        print(f"{formula}: {url} sha256 {sha256}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         sys.exit(__doc__.strip().splitlines()[2])
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2:])

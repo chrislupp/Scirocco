@@ -255,9 +255,10 @@ jobs:
         fi
 
   # ── Homebrew formula ─────────────────────────────────────────────
-  # Point chrislupp/homebrew-tools at the new stable release. A separate job,
-  # so a failure here leaves the published release intact; rerun it once
-  # fixed. Needs HOMEBREW_TAP_TOKEN, a token that can push to the tap.
+  # Point the scirocco and fauxfoil formulae in chrislupp/homebrew-tools at
+  # the new stable release. A separate job, so a failure here leaves the
+  # published release intact; rerun it once fixed. Needs HOMEBREW_TAP_TOKEN,
+  # a token that can push to the tap.
   homebrew:
     needs: release
     if: needs.release.outputs.is_prerelease == 'false'
@@ -285,17 +286,18 @@ jobs:
         token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         path: homebrew-tools
 
-    - name: Update and push the formula
+    - name: Update and push the formulae
       env:
         TAG: ${{ needs.release.outputs.tag_version }}
       run: |
-        python3 scripts/homebrew_formula.py "$TAG" homebrew-tools/Formula/scirocco.rb
+        python3 scripts/homebrew_formula.py "$TAG" \
+          homebrew-tools/Formula/scirocco.rb homebrew-tools/Formula/fauxfoil.rb
         cd homebrew-tools
         if git diff --quiet; then
-          echo "Formula already points at $TAG"
+          echo "Formulae already point at $TAG"
           exit 0
         fi
         git config user.name  "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git commit -am "Update Scirocco to ${TAG#v}"
+        git commit -am "Update Scirocco and fauXFOIL to ${TAG#v}"
         git push origin HEAD

@@ -48,6 +48,14 @@ text-only), `FAUXFOIL_BUILD_TESTS=ON`. The Qt tests run without a display
 is configured; the Scirocco build, Docker images and release artifacts do
 not include it.
 
+Homebrew ships it as its own formula. `chrislupp/homebrew-tools` has
+`scirocco` (the library) and `fauxfoil`, which builds `fauxfoil/` with Qt
+from the same release tarball against the installed `scirocco`. Library
+users never get fauXFOIL or Qt. Both formulae carry the same `url` and
+`sha256`, and the release job updates them together (see
+[Releases](#releases)). Keep fauXFOIL buildable against an installed
+Scirocco (`-DFAUXFOIL_SCIROCCO_SOURCE=`); the formula depends on it.
+
 fauXFOIL's version is Scirocco's: CMake reads it from
 `project(scirocco VERSION ...)` (or the installed package) and passes it in
 as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
@@ -266,11 +274,11 @@ A release is a PR from `develop` to `main` labelled `release` and one of
 `scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
 (`scripts/release_docs.py`: `docs/versioned_docs/`,
 `docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
-and publishes. Its `homebrew` job then points the formula in
-`chrislupp/homebrew-tools` at a stable release (`scripts/homebrew_formula.py`;
-needs the `HOMEBREW_TAP_TOKEN` secret). Those changes come only from the
-job: agents never commit a docs version snapshot or a version bump made by
-hand.
+and publishes. Its `homebrew` job then points the `scirocco` and
+`fauxfoil` formulae in `chrislupp/homebrew-tools` at a stable release
+(`scripts/homebrew_formula.py`; needs the `HOMEBREW_TAP_TOKEN` secret).
+Those changes come only from the job: agents never commit a docs version
+snapshot or a version bump made by hand.
 
 Prepare a release on a `docs/` branch into `develop`, merged before the
 release PR:
