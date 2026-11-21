@@ -27,9 +27,9 @@
     /* Chart roles (validated: see docs/README.md) */
     --sc-series-1: #2c55a8;
     --sc-series-2: #d0612a;
+    --sc-series-3: #0f8a76;
     --sc-series-ref: #8a94a6;
-    --sc-axis: #c7d2e1;
-    --sc-grid: #edf1f7;
+    --sc-axis: #7f8ba2;
 
     /* Infima */
     --ifm-color-primary: #2c55a8;
@@ -90,9 +90,9 @@
 
     --sc-series-1: #5f8fe6;
     --sc-series-2: #d9733d;
-    --sc-series-ref: #6b7891;
-    --sc-axis: #2a3856;
-    --sc-grid: #111b30;
+    --sc-series-3: #2fa585;
+    --sc-series-ref: #a3adc0;
+    --sc-axis: #4d5f84;
 
     --ifm-color-primary: #8fb6f0;
     --ifm-color-primary-dark: #73a3ec;

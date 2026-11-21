@@ -133,3 +133,28 @@ double rnorm = solved.GetState().glob.R.norm();
 
 Writing to `glob.U` or the Jacobian directly is outside the supported API;
 the unit tests show how it's done.
+
+### Watch the Newton iteration
+
+`glob.iteration_observer` is an optional callback that the coupled viscous
+solve calls at every Newton iteration, after the residual and forces are
+evaluated and before the convergence test. It receives the state and the
+0-based iteration number. From iteration 1 on, `glob.dU` holds the step
+that produced the current `glob.U` and `glob.relax` the under-relaxation
+factor applied to it. The callback reads the state; it must not modify it,
+and it does not change the solve. [`fauXFOIL`](../guides/fauxfoil.md) uses it to
+print XFOIL's iteration lines.
+
+```cpp
+scirocco::Scirocco foil("2412", 160);
+foil.SetOper(4.0, -1.0, 1.0e6, 0.0);
+foil.GetState().glob.iteration_observer =
+    [](const scirocco::FoilState& s, int iteration) {
+        std::printf("%3d  CL = %.4f  CD = %.5f\n", iteration, s.post.cl,
+                    s.post.cd);
+    };
+foil.Solve();
+```
+
+`Glob::relax` and `Glob::iteration_observer` are declared in
+[`data/glob.h`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/include/scirocco/data/glob.h).

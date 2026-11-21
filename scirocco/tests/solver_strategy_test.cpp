@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <limits>
+#include <vector>
 
 #include "scirocco/core/bl_march.h"
 #include "scirocco/core/coupled_linear.h"
@@ -477,4 +478,35 @@ TEST(SolverStrategy, FailedWarmStartMatchesColdStart) {
     cold.SetOper(16.0, -1.0, 1e6, 0.0);
     EXPECT_EQ(warm_ok, cold.Solve());
     if (warm_ok) EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-6);
+}
+
+/// The observer is called once per Newton iteration and leaves the solve
+/// unchanged.
+TEST(SolverStrategy, IterationObserver) {
+    Scirocco plain("2412", 99);
+    plain.SetOper(3.0, -1.0, 1e6, 0.2);
+    ASSERT_TRUE(plain.Solve());
+
+    Scirocco watched("2412", 99);
+    watched.SetOper(3.0, -1.0, 1e6, 0.2);
+    std::vector<int> iterations;
+    std::vector<double> relax;
+    watched.GetState().glob.iteration_observer = [&](const FoilState& s,
+                                                     int iter) {
+        iterations.push_back(iter);
+        relax.push_back(s.glob.relax);
+    };
+    ASSERT_TRUE(watched.Solve());
+
+    ASSERT_FALSE(iterations.empty());
+    EXPECT_EQ(static_cast<int>(iterations.size()),
+              watched.GetState().glob.coupled_iterations);
+    for (std::size_t k = 0; k < iterations.size(); ++k) {
+        EXPECT_EQ(iterations[k], static_cast<int>(k));
+        EXPECT_GT(relax[k], 0.0);
+        EXPECT_LE(relax[k], 1.0);
+    }
+    EXPECT_EQ(relax.front(), 1.0);
+    EXPECT_EQ(watched.GetCl(), plain.GetCl());
+    EXPECT_EQ(watched.GetCd(), plain.GetCd());
 }

@@ -16,6 +16,14 @@ import {
     ShapeGradientPlot,
     TransitionSweepPlot,
 } from "@site/src/components/charts";
+import {
+    CodeDistributionPlot,
+    CodePolarPlot,
+    CodeTransitionPlot,
+    ColesWadcockCpPlot,
+    ExperimentPolarPlot,
+    GregoryCpPlot,
+} from "@site/src/components/charts/vv";
 
 export default {
     ...MDXComponents,
@@ -34,4 +42,10 @@ export default {
     TransitionSweepPlot,
     E387DragPlot,
     ShapeGradientPlot,
+    CodePolarPlot,
+    CodeTransitionPlot,
+    CodeDistributionPlot,
+    ExperimentPolarPlot,
+    GregoryCpPlot,
+    ColesWadcockCpPlot,
 };

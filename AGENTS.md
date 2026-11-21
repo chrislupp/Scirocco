@@ -31,6 +31,31 @@ cmake -S scirocco -B scirocco/build-debug -DCMAKE_BUILD_TYPE=Debug \
 cmake --build scirocco/build-debug -j
 ```
 
+### fauXFOIL
+`fauxfoil/` holds fauXFOIL, an XFOIL-style command line and Qt plot window
+built on Scirocco's public API. It is a separate CMake project that compiles
+the sibling `scirocco/` tree (or, with `-DFAUXFOIL_SCIROCCO_SOURCE=`, finds
+an installed Scirocco):
+```bash
+cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
+cmake --build fauxfoil/build -j
+ctest --test-dir fauxfoil/build --output-on-failure
+```
+Options: `FAUXFOIL_GRAPHICS=OFF` (opt in for the Qt 6 Widgets plot window;
+when ON, configuration fails if Qt is not found, never falling back to
+text-only), `FAUXFOIL_BUILD_TESTS=ON`. The Qt tests run without a display
+(`QT_QPA_PLATFORM=offscreen`). Nothing builds fauXFOIL unless `fauxfoil/`
+is configured; the Scirocco build, Docker images and release artifacts do
+not include it.
+
+fauXFOIL's version is Scirocco's: CMake reads it from
+`project(scirocco VERSION ...)` (or the installed package) and passes it in
+as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
+print. Never hard-code it in `fauxfoil/`; the `fauXFOIL.Version` test
+fails if the binary reports anything else. The screenshots in
+`docs/static/img/fauxfoil-*.png` show the version too; see
+[Releases](#releases) for regenerating them.
+
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
@@ -215,6 +240,16 @@ that is how the gradient speedups from #26–#28 were lost.
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
 
+Label every PR when you open it (`gh pr create --label ...`), matching its
+commit category:
+
+| PR | Label |
+|----|-------|
+| `Docs:` | `documentation` |
+| `Add:`, `Refactor:`, `CI:` | `enhancement` |
+| `Fix:` | `bug` (and `documentation` when it fixes the docs) |
+| Release, `develop` → `main` | `release` and `major`, `minor` or `patch` (see [Releases](#releases)) |
+
 Before marking a PR ready for review:
 - All CI checks pass (build + full test suite).
 - `clang-format` and `clang-tidy` produce no new warnings.
@@ -222,6 +257,32 @@ Before marking a PR ready for review:
 
 Squash-merge is preferred for feature branches; merge commits are used for
 release integrations (`develop` → `main`).
+
+### Releases
+
+A release is a PR from `develop` to `main` labelled `release` and one of
+`major`, `minor` or `patch`, merged with a merge commit. On merge,
+`.github/workflows/release.yml` makes every versioned change: it bumps
+`scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
+(`scripts/release_docs.py`: `docs/versioned_docs/`,
+`docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
+and publishes. Those changes come only from the job: agents never commit
+a docs version snapshot or a version bump made by hand.
+
+Prepare a release on a `docs/` branch into `develop`, merged before the
+release PR:
+
+1. Run `scripts/fauxfoil_screenshots.sh <bump>` with the release's bump
+   label and commit the two PNGs it writes. It builds fauXFOIL with the
+   coming version in a temporary worktree; the pictures come from this
+   script, never from hand-picked or edited plots.
+2. Build the docs as they will look after the release: in a throwaway
+   worktree, run `scripts/release_docs.py <version> false`, then
+   `npm run build` in `docs/`. Delete the worktree; commit nothing from it.
+   Links in `docs/src/pages/` and redirects resolve against the default
+   docs version, so a page moved since the last release needs
+   `createRedirects` in `docs/docusaurus.config.ts` (a static redirect to
+   it fails until the release) and a homepage link that looks the page up.
 
 ### Commit messages
 
@@ -300,6 +361,11 @@ When `scirocco_sensitivity_ref_tests` fails:
 ## Directory Structure
 
 ```
+fauxfoil/              # fauXFOIL: XFOIL-style command line on Scirocco (own CMake project)
+  src/                 # Session, plots, PostScript, font reader; qt/ holds the plot window
+  fonts/               # FauxfoilPlot.ttf (compiled into the program) and make_font.py, its source
+  tests/               # Google Test suites (text and offscreen Qt)
+
 scirocco/
   include/scirocco/
     core/              # Solver modules (geometry, paneling, inviscid, BL, adjoint)

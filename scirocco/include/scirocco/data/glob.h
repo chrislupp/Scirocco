@@ -30,6 +30,7 @@
 */
 #pragma once
 
+#include <functional>
 #include <memory>
 
 #include "scirocco/config.h"
@@ -37,6 +38,12 @@
 namespace scirocco {
 
 class CoupledFactorization;
+struct FoilState;
+
+/** Progress callback for the coupled Newton solve (see
+ *  Glob::iteration_observer). Arguments: the current state and the 0-based
+ *  iteration. */
+using IterationObserver = std::function<void(const FoilState&, int)>;
 
 /* Global system variables */
 struct Glob {
@@ -84,6 +91,14 @@ struct Glob {
        norm, used by the SER tau update in SolveCoupled. */
     double tau = 0.0;
     double R_norm_prev = 0.0;
+
+    /* Under-relaxation factor of the last Newton update (1 = full step) */
+    double relax = 1.0;
+    /* Optional, read-only progress callback: called at every coupled Newton
+       iteration after the residual and forces are evaluated, before the
+       convergence test. At iteration k > 0, dU and relax describe the step
+       that produced the current U. It does not affect the solve. */
+    IterationObserver iteration_observer;
 };
 
 }  // namespace scirocco
