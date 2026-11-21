@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "@docusaurus/Link";
 import Layout from "@theme/Layout";
+import { useLatestVersion } from "@docusaurus/plugin-content-docs/client";
 import CodeBlock from "@theme/CodeBlock";
 import HeroFoil from "@site/src/components/HeroFoil";
 import { useQuickstartCode } from "@site/src/components/QuickstartSource";
@@ -12,6 +13,19 @@ const viscous149 = bench.rows.find((r) => r.panels === 149)!;
 
 /** Format like std::cout's default (six significant digits). */
 const g6 = (v: number) => Number(v.toPrecision(6)).toString();
+
+/**
+ * The timings page in the docs version served at /docs. It moved from
+ * concepts/ to validation/ after 0.2.0, so look it up rather than hard-code
+ * a path that one of the versions lacks.
+ */
+function usePerformancePath() {
+    const { docs } = useLatestVersion(undefined); // default docs plugin
+    const page =
+        docs.find((d) => d.id === "validation/performance") ??
+        docs.find((d) => d.id === "concepts/performance");
+    return page?.path ?? "/docs/validation/performance";
+}
 
 function Hero() {
     return (
@@ -42,6 +56,7 @@ function Hero() {
 
 function Program() {
     const code = useQuickstartCode();
+    const performance = usePerformancePath();
     return (
         <section className={styles.section}>
             <div className={styles.sectionHead}>
@@ -62,7 +77,7 @@ function Program() {
                         panels, paneling takes {Math.round(viscous149.paneling)} ms and the viscous solve{" "}
                         {Math.round(viscous149.viscous)} ms.
                     </p>
-                    <Link className={styles.more} to="/docs/concepts/performance">
+                    <Link className={styles.more} to={performance}>
                         See all timings
                     </Link>
                 </div>
