@@ -278,13 +278,19 @@ first, and every layer lands in `develop`: merge the bottom PR into
 Merging a PR into the branch below it leaves its commits outside `develop`;
 that is how the gradient speedups from #26–#28 were lost.
 
-Delete a `feature/`, `fix/` or `docs/` branch, locally and on `origin`,
-once it is merged into `develop` (`gh pr merge --squash --delete-branch`,
-or `git push origin --delete <branch>` and `git branch -D <branch>`). In
-a stack, retarget the next PR to `develop` before deleting the branch
-below it. `main` and `develop` are protected: never delete them, and
-never pass `--delete-branch` when merging a release PR (`develop` →
-`main`).
+A `feature/`, `fix/` or `docs/` branch is deleted once it is merged into
+`develop`. GitHub deletes the branch on `origin` when the PR merges (the
+repository has "Automatically delete head branches" on). After merging,
+check that it is gone (`git ls-remote --heads origin <branch>` prints
+nothing); if it is still there, delete it with
+`git push origin --delete <branch>`. Then delete the local branch
+(`git branch -D <branch>`) and prune its remote-tracking ref
+(`git fetch --prune`). In a stack, GitHub retargets the next PR to
+`develop` when it deletes the branch below; check that it did.
+
+`main` and `develop` are protected branches that GitHub refuses to
+delete. Never delete them or try to, and never pass `--delete-branch`
+when merging a release PR (`develop` → `main`).
 
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
