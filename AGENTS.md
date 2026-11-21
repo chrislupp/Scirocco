@@ -266,8 +266,11 @@ A release is a PR from `develop` to `main` labelled `release` and one of
 `scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
 (`scripts/release_docs.py`: `docs/versioned_docs/`,
 `docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
-and publishes. Those changes come only from the job: agents never commit
-a docs version snapshot or a version bump made by hand.
+and publishes. Its `homebrew` job then points the formula in
+`chrislupp/homebrew-tools` at a stable release (`scripts/homebrew_formula.py`;
+needs the `HOMEBREW_TAP_TOKEN` secret). Those changes come only from the
+job: agents never commit a docs version snapshot or a version bump made by
+hand.
 
 Prepare a release on a `docs/` branch into `develop`, merged before the
 release PR:

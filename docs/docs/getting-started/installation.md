@@ -22,6 +22,7 @@ you use. All commands run from the repository root.
 | You want | You need | Build option |
 | --- | --- | --- |
 | The C++ library | CMake 3.18+, a C++17 compiler, Eigen 3.4+ | (default) |
+| The C++ library, without building | Homebrew, on macOS or Linux | none: use the [formula](#homebrew) |
 | HDF5 history files | HDF5 with C++ bindings | `SCIROCCO_HDF5_OUTPUT=ON` |
 | Philote servers, for Python and MDO frameworks | Protobuf, gRPC, Philote-Cpp 0.6.0 | `SCIROCCO_BUILD_PHILOTE=ON` |
 | Philote servers, without building | Docker | none: use the [images](../python/docker) |
@@ -30,7 +31,27 @@ you use. All commands run from the repository root.
 CI builds with GCC 14 and Clang 18 on Ubuntu 24.04. macOS with Homebrew works
 too.
 
-## The C++ library
+## Homebrew
+
+On macOS or Linux, Homebrew installs the C++ library from
+[chrislupp/tools](https://github.com/chrislupp/homebrew-tools), a tap that
+follows each release:
+
+```bash
+brew install chrislupp/tools/scirocco
+```
+
+This builds the core library from the release's source and installs its
+headers and CMake package. On macOS the dense solves use Accelerate; on
+Linux, OpenBLAS. CMake finds the package under Homebrew's prefix, so link it
+as shown in [the quickstart](./quickstart#use-it-in-your-own-project) and add
+`-DCMAKE_PREFIX_PATH="$(brew --prefix)"` if CMake can't find it.
+
+The formula has the core library only. Build from source for HDF5 history
+files, the Philote servers, the tests or the examples. Upgrade with
+`brew upgrade scirocco`.
+
+## The C++ library from source
 
 <Tabs groupId="os">
 <TabItem value="mac" label="macOS">
