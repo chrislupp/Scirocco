@@ -54,6 +54,7 @@ jobs:
       run: |
         find scirocco/include scirocco/src scirocco/tests scirocco/examples \
           fauxfoil/src fauxfoil/tests \
+          gui/src \
           -name '*.h' -o -name '*.cpp' | \
           xargs clang-format-17 --dry-run --Werror
 

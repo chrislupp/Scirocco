@@ -48,14 +48,21 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
 
     QStringList args;
     args << "-y"
-         << "-f" << "rawvideo"
-         << "-pix_fmt" << "rgba"
+         << "-f"
+         << "rawvideo"
+         << "-pix_fmt"
+         << "rgba"
          << "-s" << QString("%1x%2").arg(grabW_).arg(grabH_) << "-r"
-         << QString::number(fps) << "-i" << "pipe:0"
-         << "-c:v" << "libx264"
-         << "-pix_fmt" << "yuv420p"
-         << "-preset" << "medium"
-         << "-crf" << "15" << outputPath;
+         << QString::number(fps) << "-i"
+         << "pipe:0"
+         << "-c:v"
+         << "libx264"
+         << "-pix_fmt"
+         << "yuv420p"
+         << "-preset"
+         << "medium"
+         << "-crf"
+         << "15" << outputPath;
 
     ffmpeg_->start(ffmpegBin, args);
     if (!ffmpeg_->waitForStarted(3000)) {
