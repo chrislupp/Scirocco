@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
                 "guides/gradients",
                 "guides/hdf5",
                 "guides/fauxfoil",
+                "guides/gui",
             ],
         },
         {

@@ -54,6 +54,7 @@ jobs:
       run: |
         find scirocco/include scirocco/src scirocco/tests scirocco/examples \
           fauxfoil/src fauxfoil/tests \
+          gui/src \
           -name '*.h' -o -name '*.cpp' | \
           xargs clang-format-17 --dry-run --Werror
 
@@ -82,6 +83,45 @@ jobs:
         ctest --test-dir build-fauxfoil --output-on-failure --no-tests=error
         # The window's own tests must have run, not just the text-only ones
         ctest --test-dir build-fauxfoil -R FauxfoilQt --no-tests=error
+
+  gui:
+    needs: [format]
+    runs-on: ubuntu-24.04
+    name: Scirocco Viewer
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Ubuntu 24.04 ships Qt 6.4; the viewer needs 6.6 or later.
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.8.3'
+        modules: 'qtcharts'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev libgl1-mesa-dev libxkbcommon-dev
+
+    - name: Build
+      run: |
+        cmake -S gui -B build-gui -DCMAKE_BUILD_TYPE=Release
+        cmake --build build-gui -j2
+
+    # Load the QML offscreen and draw one frame; fail on any QML error.
+    - name: Smoke test
+      env:
+        QT_QPA_PLATFORM: offscreen
+        QT_QUICK_BACKEND: software
+      run: |
+        set -o pipefail
+        build-gui/SciroccoViewer --screenshot smoke.png 2>&1 | tee smoke.log
+        test -s smoke.png
+        if grep -E 'qrc:|Error|is not a type|Cannot (open|assign)' smoke.log; then
+          exit 1
+        fi
 
   clang-tidy:
     needs: [format]
