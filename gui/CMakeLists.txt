@@ -55,9 +55,12 @@ endforeach()
 # --- QML module ---
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+# The module's build directory would otherwise be named after its URI,
+# SciroccoViewer, which clashes with the executable outside a macOS bundle.
 qt_add_qml_module(scirocco_viewer_app
     URI SciroccoViewer
     VERSION 1.0
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/qml/SciroccoViewer
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
