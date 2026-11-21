@@ -50,7 +50,7 @@ const config: Config = {
                     // browsers and text extraction when its CSS was blocked.
                     rehypePlugins: [[rehypeKatex, { output: "html" }]],
                     editUrl: `${GITHUB}/tree/develop/docs/`,
-                    lastVersion: "0.2.0",
+                    lastVersion: "0.3.0",
                     versions: {
                         current: {
                             label: "Next",

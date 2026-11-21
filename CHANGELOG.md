@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-21
+
 ### Added
 - `fauXFOIL`: an interactive command-line program that looks and behaves like
   XFOIL 6.99 (menus, prompts, abbreviations, per-iteration printout, polar
@@ -401,5 +403,6 @@ Initial public release.
 - Apache 2.0 license.
 
 [0.1.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.1.0
-[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.2.0
+[Unreleased]: https://github.com/chrislupp/Scirocco/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/chrislupp/Scirocco/releases/tag/v0.3.0
