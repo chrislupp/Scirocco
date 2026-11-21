@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `brew install chrislupp/tools/fauxfoil` installs `fauXFOIL` with its Qt
   plot window. The release workflow's new `homebrew` job points both
   formulae in `chrislupp/homebrew-tools` at each stable release.
-- Scirocco Viewer: a Qt 6 Quick desktop program in `viewer/` that opens the
+- Scirocco Viewer: a Qt 6 Quick desktop program in `gui/` that opens the
   HDF5 files `Hdf5Writer` writes and steps through their iterations. It
   shows the airfoil and wake with optional panel nodes and Cp arrows, Cp
   and boundary-layer distributions, and the cl, cd and cm history, with
