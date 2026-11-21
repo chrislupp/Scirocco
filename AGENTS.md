@@ -240,6 +240,16 @@ that is how the gradient speedups from #26–#28 were lost.
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
 
+Label every PR when you open it (`gh pr create --label ...`), matching its
+commit category:
+
+| PR | Label |
+|----|-------|
+| `Docs:` | `documentation` |
+| `Add:`, `Refactor:`, `CI:` | `enhancement` |
+| `Fix:` | `bug` (and `documentation` when it fixes the docs) |
+| Release, `develop` → `main` | `release` and `major`, `minor` or `patch` (see [Releases](#releases)) |
+
 Before marking a PR ready for review:
 - All CI checks pass (build + full test suite).
 - `clang-format` and `clang-tidy` produce no new warnings.
