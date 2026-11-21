@@ -77,11 +77,17 @@ cmake -S gui -B gui/build -DCMAKE_BUILD_TYPE=Release
 cmake --build gui/build -j
 gui/build/SciroccoViewer.app/Contents/MacOS/SciroccoViewer alpha_sweep.h5
 ```
-`--theme light` starts in the light theme; `--screenshot out.png` saves the
-window once it has drawn and quits, for checking UI changes without a
-screen recorder. On macOS it builds as an app bundle. Nothing builds it
-unless `gui/` is configured; the Scirocco build, Docker images and
-release artifacts do not include it.
+`--theme light` starts in the light theme, `--set name=value` sets a
+main-window property (`activeSection=1`, `showCpArrows=true`, ...), and
+`--screenshot out.png` saves the window once it has drawn and quits: use
+them to check UI changes without a screen recorder
+(`QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2` needs no display). The
+docs picture `docs/static/img/gui-overview.png` comes from
+`scripts/gui_screenshot.sh`, never from a hand-made capture. On macOS it
+builds as an app bundle. The CI `Scirocco Viewer` job builds it with Qt
+from `install-qt-action` (Ubuntu's Qt is too old) and loads its QML
+offscreen. The Scirocco build, Docker images and release artifacts do not
+include it. The user guide is `docs/docs/guides/gui.md`.
 
 The viewer shows the Scirocco logo straight from `docs/static/img/` (the
 CMake file adds those SVGs as resources), so it changes with the docs. The

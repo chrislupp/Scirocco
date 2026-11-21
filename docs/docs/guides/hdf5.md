@@ -72,6 +72,8 @@ plain string order breaks after `iteration_999`.
 A complete version is
 [`scirocco/examples/hdf5_output_example.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/examples/hdf5_output_example.cpp).
 For servers driven from Python, see [Record an HDF5 history](../python/hdf5-history).
+To look through a file on screen, open it in
+[Scirocco Viewer](gui.md).
 
 <Next items={[
   { to: "/docs/api/hdf5-writer", title: "Hdf5Writer reference", body: "Every method and the full file layout." },
