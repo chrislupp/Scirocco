@@ -1,5 +1,4 @@
-#ifndef SCIROCCO_GUI_ITERATION_DATA_H
-#define SCIROCCO_GUI_ITERATION_DATA_H
+#pragma once
 
 #include <QObject>
 #include <QPointF>
@@ -23,7 +22,7 @@ struct IterationData {
     Q_PROPERTY(bool viscous MEMBER viscous)
     Q_PROPERTY(int foilN MEMBER foilN)
 
-public:
+   public:
     double alpha{}, Re{}, Ma{};
     double cl{}, cd{}, cdf{}, cdp{}, cdpi{}, cm{};
     double chord{1.0};
@@ -41,5 +40,3 @@ public:
 
     bool hasSensitivities{};
 };
-
-#endif

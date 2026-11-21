@@ -51,8 +51,8 @@ void readMatrix2xN(H5::Group& grp, const std::string& name,
     xout.resize(cols);
     yout.resize(cols);
     for (int j = 0; j < cols; ++j) {
-        xout[j] = buf[j];            // row 0
-        yout[j] = buf[cols + j];     // row 1
+        xout[j] = buf[j];         // row 0
+        yout[j] = buf[cols + j];  // row 1
     }
 }
 
@@ -73,7 +73,8 @@ Hdf5Reader::~Hdf5Reader() = default;
 
 void Hdf5Reader::openFile(const QString& path) {
     try {
-        file_ = std::make_unique<H5::H5File>(path.toStdString(), H5F_ACC_RDONLY);
+        file_ =
+            std::make_unique<H5::H5File>(path.toStdString(), H5F_ACC_RDONLY);
     } catch (H5::Exception&) {
         return;
     }
@@ -226,7 +227,7 @@ void Hdf5Reader::buildCpArrows() {
 }
 
 QList<QPointF> Hdf5Reader::vecToSeries(const QVector<double>& xv,
-                                        const QVector<double>& yv) const {
+                                       const QVector<double>& yv) const {
     QList<QPointF> pts;
     int n = std::min(xv.size(), yv.size());
     pts.reserve(n);

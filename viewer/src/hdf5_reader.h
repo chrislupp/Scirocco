@@ -1,5 +1,4 @@
-#ifndef SCIROCCO_GUI_HDF5_READER_H
-#define SCIROCCO_GUI_HDF5_READER_H
+#pragma once
 
 #include <H5Cpp.h>
 
@@ -15,31 +14,29 @@ class Hdf5Reader : public QObject {
     Q_OBJECT
 
     Q_PROPERTY(int numIterations READ numIterations NOTIFY fileChanged)
-    Q_PROPERTY(int currentIteration READ currentIteration
-                   WRITE setCurrentIteration NOTIFY iterationChanged)
+    Q_PROPERTY(int currentIteration READ currentIteration WRITE
+                   setCurrentIteration NOTIFY iterationChanged)
     Q_PROPERTY(IterationData data READ data NOTIFY iterationChanged)
     Q_PROPERTY(QString filePath READ filePath NOTIFY fileChanged)
 
-    Q_PROPERTY(QList<QPointF> airfoilSeries READ airfoilSeries
-                   NOTIFY iterationChanged)
+    Q_PROPERTY(
+        QList<QPointF> airfoilSeries READ airfoilSeries NOTIFY iterationChanged)
     Q_PROPERTY(
         QList<QPointF> wakeSeries READ wakeSeries NOTIFY iterationChanged)
     Q_PROPERTY(QList<QPointF> cpSeries READ cpSeries NOTIFY iterationChanged)
     Q_PROPERTY(QList<QPointF> cpiSeries READ cpiSeries NOTIFY iterationChanged)
-    Q_PROPERTY(QList<QPointF> arrowBases READ arrowBases
-                   NOTIFY iterationChanged)
     Q_PROPERTY(
-        QList<QPointF> arrowTips READ arrowTips NOTIFY iterationChanged)
-    Q_PROPERTY(QList<qreal> arrowCpValues READ arrowCpValues
-                   NOTIFY iterationChanged)
+        QList<QPointF> arrowBases READ arrowBases NOTIFY iterationChanged)
+    Q_PROPERTY(QList<QPointF> arrowTips READ arrowTips NOTIFY iterationChanged)
+    Q_PROPERTY(
+        QList<qreal> arrowCpValues READ arrowCpValues NOTIFY iterationChanged)
     Q_PROPERTY(bool hasArrows READ hasArrows NOTIFY iterationChanged)
-
 
     Q_PROPERTY(QList<QPointF> clHistory READ clHistory NOTIFY fileChanged)
     Q_PROPERTY(QList<QPointF> cdHistory READ cdHistory NOTIFY fileChanged)
     Q_PROPERTY(QList<QPointF> cmHistory READ cmHistory NOTIFY fileChanged)
 
-public:
+   public:
     explicit Hdf5Reader(QObject* parent = nullptr);
     ~Hdf5Reader() override;
 
@@ -57,7 +54,6 @@ public:
     QList<qreal> arrowCpValues() const { return arrowCpValues_; }
     bool hasArrows() const { return !arrowBases_.isEmpty(); }
 
-
     QList<QPointF> clHistory() const { return clHistory_; }
     QList<QPointF> cdHistory() const { return cdHistory_; }
     QList<QPointF> cmHistory() const { return cmHistory_; }
@@ -66,11 +62,11 @@ public:
     Q_INVOKABLE void setCurrentIteration(int index);
     Q_INVOKABLE QList<QPointF> distributionSeries(const QString& name) const;
 
-signals:
+   signals:
     void fileChanged();
     void iterationChanged();
 
-private:
+   private:
     void loadIteration(int index);
     void loadCoeffHistory();
     void buildSeries();
@@ -97,5 +93,3 @@ private:
     QList<QPointF> cdHistory_;
     QList<QPointF> cmHistory_;
 };
-
-#endif

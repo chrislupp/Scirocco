@@ -1,9 +1,10 @@
 #include "video_exporter.h"
-#include "hdf5_reader.h"
 
 #include <QFile>
 #include <QImage>
 #include <QQuickItemGrabResult>
+
+#include "hdf5_reader.h"
 
 VideoExporter::VideoExporter(Hdf5Reader* reader, QObject* parent)
     : QObject(parent), reader_(reader) {
@@ -12,8 +13,8 @@ VideoExporter::VideoExporter(Hdf5Reader* reader, QObject* parent)
 }
 
 void VideoExporter::exportVideo(QQuickItem* captureItem,
-                                const QString& outputPath,
-                                bool darkMode, int fps, int scale) {
+                                const QString& outputPath, bool darkMode,
+                                int fps, int scale) {
     if (exporting_ || !captureItem || reader_->numIterations() < 2) return;
 
     captureItem_ = captureItem;
@@ -36,7 +37,10 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
 
     QString ffmpegBin = "ffmpeg";
     for (auto path : {"/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"}) {
-        if (QFile::exists(path)) { ffmpegBin = path; break; }
+        if (QFile::exists(path)) {
+            ffmpegBin = path;
+            break;
+        }
     }
 
     ffmpeg_ = new QProcess(this);
@@ -46,14 +50,12 @@ void VideoExporter::exportVideo(QQuickItem* captureItem,
     args << "-y"
          << "-f" << "rawvideo"
          << "-pix_fmt" << "rgba"
-         << "-s" << QString("%1x%2").arg(grabW_).arg(grabH_)
-         << "-r" << QString::number(fps)
-         << "-i" << "pipe:0"
+         << "-s" << QString("%1x%2").arg(grabW_).arg(grabH_) << "-r"
+         << QString::number(fps) << "-i" << "pipe:0"
          << "-c:v" << "libx264"
          << "-pix_fmt" << "yuv420p"
          << "-preset" << "medium"
-         << "-crf" << "15"
-         << outputPath;
+         << "-crf" << "15" << outputPath;
 
     ffmpeg_->start(ffmpegBin, args);
     if (!ffmpeg_->waitForStarted(3000)) {
@@ -94,37 +96,37 @@ void VideoExporter::captureNextFrame() {
         return;
     }
 
-    connect(result.data(), &QQuickItemGrabResult::ready, this,
-            [this, result]() {
-        QImage img = result->image();
-        if (img.size() != QSize(grabW_, grabH_))
-            img = img.scaled(grabW_, grabH_, Qt::IgnoreAspectRatio,
-                             Qt::SmoothTransformation);
-        if (img.format() != QImage::Format_RGBA8888)
-            img = img.convertToFormat(QImage::Format_RGBA8888);
+    connect(
+        result.data(), &QQuickItemGrabResult::ready, this, [this, result]() {
+            QImage img = result->image();
+            if (img.size() != QSize(grabW_, grabH_))
+                img = img.scaled(grabW_, grabH_, Qt::IgnoreAspectRatio,
+                                 Qt::SmoothTransformation);
+            if (img.format() != QImage::Format_RGBA8888)
+                img = img.convertToFormat(QImage::Format_RGBA8888);
 
-        int rowBytes = grabW_ * 4;
-        for (int y = 0; y < img.height(); y++)
-            ffmpeg_->write(reinterpret_cast<const char*>(img.scanLine(y)),
-                           rowBytes);
+            int rowBytes = grabW_ * 4;
+            for (int y = 0; y < img.height(); y++)
+                ffmpeg_->write(reinterpret_cast<const char*>(img.scanLine(y)),
+                               rowBytes);
 
-        currentFrame_++;
-        progress_ = (currentFrame_ * 100) / totalFrames_;
-        emit progressChanged();
+            currentFrame_++;
+            progress_ = (currentFrame_ * 100) / totalFrames_;
+            emit progressChanged();
 
-        if (currentFrame_ >= totalFrames_) {
-            ffmpeg_->closeWriteChannel();
-            ffmpeg_->waitForFinished(10000);
-            ffmpeg_->deleteLater();
-            ffmpeg_ = nullptr;
+            if (currentFrame_ >= totalFrames_) {
+                ffmpeg_->closeWriteChannel();
+                ffmpeg_->waitForFinished(10000);
+                ffmpeg_->deleteLater();
+                ffmpeg_ = nullptr;
 
-            reader_->setCurrentIteration(originalIteration_);
-            exporting_ = false;
-            emit exportingChanged();
-            emit finished(outputPath_);
-        } else {
-            reader_->setCurrentIteration(currentFrame_);
-            timer_.start(200);
-        }
-    });
+                reader_->setCurrentIteration(originalIteration_);
+                exporting_ = false;
+                emit exportingChanged();
+                emit finished(outputPath_);
+            } else {
+                reader_->setCurrentIteration(currentFrame_);
+                timer_.start(200);
+            }
+        });
 }

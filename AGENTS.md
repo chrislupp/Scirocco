@@ -64,6 +64,23 @@ fails if the binary reports anything else. The screenshots in
 `docs/static/img/fauxfoil-*.png` show the version too; see
 [Releases](#releases) for regenerating them.
 
+### Scirocco Viewer
+`viewer/` holds Scirocco Viewer, a Qt 6 Quick (QML) program for looking at
+the HDF5 files `scirocco::Hdf5Writer` writes (`SCIROCCO_HDF5_OUTPUT=ON`,
+see `scirocco/examples/hdf5_output_example.cpp`). It is a separate CMake
+project like fauXFOIL, but reads only the HDF5 file and does not link
+Scirocco, so its reader (`viewer/src/hdf5_reader.cpp`) must follow any
+change to the writer's group and dataset names. It needs Qt 6.5+ (Core,
+Gui, Qml, Quick, QuickControls2, Widgets, Charts) and HDF5 (C, C++):
+```bash
+cmake -S viewer -B viewer/build -DCMAKE_BUILD_TYPE=Release
+cmake --build viewer/build -j
+viewer/build/SciroccoViewer.app/Contents/MacOS/SciroccoViewer alpha_sweep.h5
+```
+On macOS it builds as an app bundle. Nothing builds it unless `viewer/` is
+configured; the Scirocco build, Docker images and release artifacts do not
+include it.
+
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
 - `SCIROCCO_BUILD_SENSITIVITY_DEBUG_TESTS=ON` (opt-in) — 3 chain-piece isolators: `scirocco_sensitivity_tests`, `scirocco_viscous_residual_tests`, `scirocco_viscous_output_ping_tests`
@@ -376,6 +393,10 @@ fauxfoil/              # fauXFOIL: XFOIL-style command line on Scirocco (own CMa
   src/                 # Session, plots, PostScript, font reader; qt/ holds the plot window
   fonts/               # FauxfoilPlot.ttf (compiled into the program) and make_font.py, its source
   tests/               # Google Test suites (text and offscreen Qt)
+
+viewer/                # Scirocco Viewer: Qt Quick viewer for HDF5 output (own CMake project)
+  src/                 # HDF5 reader and video exporter exposed to QML
+  qml/                 # Main window, charts and airfoil canvas; components/ holds panels
 
 scirocco/
   include/scirocco/
