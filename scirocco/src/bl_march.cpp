@@ -58,6 +58,8 @@ struct Station {
     int position; /* Index along the surface */
     Vector2d xi;  /* xi at prev and node */
     Vector2d aux; /* Wake gap at prev and node */
+    /* Fraction of the interval at which a trip sits; negative if none */
+    double trip_frac = -1.0;
 };
 
 ResidualLin Residual(FoilState& state, const Station& st, Kind kind) {
@@ -67,7 +69,9 @@ ResidualLin Residual(FoilState& state, const Station& st, Kind kind) {
     Param param = BuildParam(state, st.surface);
     if (kind == Kind::Transition) {
         param.turb = false;
-        return ResidualTransition(state, param, st.xi, pair, st.aux, false);
+        IntervalTrip trip{st.trip_frac};
+        return ResidualTransition(state, param, st.xi, pair, st.aux, false,
+                                  st.trip_frac >= 0.0 ? &trip : nullptr);
     }
     StationParam(state, param, st.node);
     return ResidualStation(param, st.xi, pair, st.aux, false);
@@ -116,7 +120,9 @@ bool SolveStation(FoilState& state, const Station& st, bool upstream_turbulent,
          * UpdateTransition (XFOIL's TRCHEK). */
         if (!upstream_turbulent) {
             const double amp = AmplifyInterval(state, jp, j);
-            const Kind want = amp > ncrit ? Kind::Transition : Kind::Laminar;
+            const Kind want = amp > ncrit || st.trip_frac >= 0.0
+                                  ? Kind::Transition
+                                  : Kind::Laminar;
             if (want != kind && switches < kMaxSwitches) {
                 ++switches;
                 if (want == Kind::Transition) {
@@ -205,7 +211,7 @@ void Extrapolate(FoilState& state, const Station& st, bool upstream_turbulent) {
         return;
     }
     const double amp = AmplifyInterval(state, jp, j);
-    state.vsol.turb[j] = amp > state.param.ncrit;
+    state.vsol.turb[j] = amp > state.param.ncrit || st.trip_frac >= 0.0;
     U(2, j) = state.vsol.turb[j] ? 0.05 : amp;
 }
 
@@ -319,6 +325,7 @@ int BoundaryLayerMarch(FoilState& state) {
                 }
             }
         }
+        const Trip trip = FindTrip(state, si);
         for (int i = start; i < n; ++i) {
             const int j = Is[i];
             const int jp = Is[i - 1];
@@ -329,6 +336,7 @@ int BoundaryLayerMarch(FoilState& state) {
             st.node = j;
             st.position = i;
             st.xi = Vector2d(state.isol.xi(jp), state.isol.xi(j));
+            if (i == trip.station) st.trip_frac = trip.frac;
             if (si == 2 && state.vsol.wgap.size() > i)
                 st.aux = Vector2d(state.vsol.wgap(i - 1), state.vsol.wgap(i));
             else

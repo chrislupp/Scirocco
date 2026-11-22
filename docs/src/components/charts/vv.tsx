@@ -339,6 +339,47 @@ export function ExperimentPolarPlot() {
     );
 }
 
+/** Tripped NACA 0012 drag polar against Ladson's roughness-strip data. */
+export function TrippedPolarPlot() {
+    const c = experimentCase("0012_re6e6_trip");
+    const code = (k: Code): Series => {
+        const pts = c[k]!.points.filter((p) => p.converged);
+        return { id: k, ...CODE_STYLE[k], x: pts.map((p) => p.cd!), y: pts.map((p) => p.cl!) };
+    };
+    const grit = (name: "80 grit" | "120 grit" | "180 grit", open: boolean): Series => {
+        const m = measured.ladson[name];
+        const idx = m.alpha.map((v, i) => [v, i] as const).filter(([v, i]) => v >= -0.5 && m.cd[i] <= 0.02).map(([, i]) => i);
+        return {
+            id: name,
+            label: `Ladson, ${name}`,
+            role: "ref",
+            line: false,
+            markers: true,
+            open,
+            x: idx.map((i) => m.cd[i]),
+            y: idx.map((i) => m.cl[i]),
+        };
+    };
+    return (
+        <Chart
+            title="NACA 0012 drag polar at Re 6 million with transition tripped at 5% chord"
+            width={480}
+            height={340}
+            series={[code("scirocco"), code("xfoil"), grit("80 grit", false), grit("180 grit", true)]}
+            x={{ domain: [0, 0.02], ticks: [0, 0.005, 0.01, 0.015, 0.02], label: "Cd" }}
+            y={{ domain: [0, 2], ticks: [0, 0.5, 1, 1.5, 2], label: "Cl" }}
+            fx={f5}
+            fy={f3}
+            caption={
+                <>
+                    NACA 0012, Re = 6×10⁶, M = 0.15, ncrit = 9, 199 panels, trips at x/c = 0.05 on both surfaces in
+                    the codes and in Ladson's test (80- and 180-grit strips shown).{missing(c)}
+                </>
+            }
+        />
+    );
+}
+
 /** Upper-surface pressure on NACA 0012 against Gregory & O'Reilly. */
 export function GregoryCpPlot({ alpha }: { alpha: 0 | 10 | 15 }) {
     const c = experimentCase("0012_re288e4");

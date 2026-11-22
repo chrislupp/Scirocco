@@ -34,6 +34,7 @@
 
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
+#include "scirocco/core/transition.h"
 #include "scirocco/properties/bl_properties.h"
 
 namespace scirocco {
@@ -225,6 +226,7 @@ void InitBoundaryLayer(FoilState& state) {
         /* March over rest of points */
         bool tran = false; /* Transition flag */
         int i = i0 + 1;
+        const Trip trip = FindTrip(state, si);
 
         while (i < Nsurf) {
             /* Initialize with previous state and new ue */
@@ -254,8 +256,10 @@ void InitBoundaryLayer(FoilState& state) {
                 /* Use transition residual at transition stations */
                 ResidualLin res;
                 if (tran) {
-                    res =
-                        ResidualTransition(state, param, xpair, Upair, Auxpair);
+                    IntervalTrip here{trip.frac};
+                    res = ResidualTransition(
+                        state, param, xpair, Upair, Auxpair, true,
+                        i == trip.station ? &here : nullptr);
                 } else {
                     res = ResidualStation(param, xpair, Upair, Auxpair);
                 }
@@ -369,7 +373,8 @@ void InitBoundaryLayer(FoilState& state) {
             }
 
             /* Check for transition (laminar only) */
-            if (!param.turb && !tran && U(2, i) > param.ncrit) {
+            if (!param.turb && !tran &&
+                (U(2, i) > param.ncrit || i == trip.station)) {
                 tran = true;
                 continue; /* Redo station with transition */
             }
@@ -2516,9 +2521,40 @@ WakeResult WakeSys(const FoilState& state, Param& param) {
     return result;
 }
 
+namespace {
+
+/**
+ * @brief Amplification at a trip, from the laminar amplification equation
+ * over the part of the interval ahead of it:
+ * n_t - n1 - (xt - x1) (damp1 + damp_t) / 2 = 0, with theta, delta* and ue
+ * interpolated to the trip (weight w2 on U2).
+ */
+double AmplificationAtTrip(const Param& param_base, const Vector4d& U1,
+                           const Vector4d& U2, double dxt, double w2) {
+    Param param = param_base;
+    param.turb = false;
+    const double damp1 = GetDamp(U1, param).value;
+    Vector4d Ut = (1.0 - w2) * U1 + w2 * U2;
+    Ut(2) = U1(2) + damp1 * dxt;
+    constexpr int nNewton = 20;
+    for (int it = 0; it < nNewton; ++it) {
+        const auto [dampt, dampt_Ut] = GetDamp(Ut, param);
+        const double R = Ut(2) - U1(2) - 0.5 * dxt * (damp1 + dampt);
+        if (std::abs(R) < 1e-12) break;
+        double dn = -R / (1.0 - 0.5 * dxt * dampt_Ut(2));
+        const double dmax = 0.5 * (1.01 - static_cast<double>(it) / nNewton);
+        if (std::abs(dn) > dmax) dn *= dmax / std::abs(dn);
+        Ut(2) += dn;
+    }
+    return Ut(2);
+}
+
+}  // namespace
+
 ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                                const Vector2d& x, const Matrix42d& U,
-                               const Vector2d& Aux, bool scalar_derivatives) {
+                               const Vector2d& Aux, bool scalar_derivatives,
+                               IntervalTrip* trip) {
     /* Calculates the combined lam + turb residual for a transition station
      * U1 should be laminar; U2 should be turbulent
      * Calculates and linearizes the transition location in the process */
@@ -2545,8 +2581,17 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
 
     double sa1 = U1(2); /* Amplification at point 1 */
 
+    /* Forced transition (XFOIL's TRCHEK2): the interval holds a trip, and
+     * the amplification is still below ncrit there. Otherwise free
+     * transition comes first and the trip plays no part. */
+    const bool forced = trip != nullptr &&
+                        AmplificationAtTrip(param_base, U1, U2, trip->frac * dx,
+                                            trip->frac) < ncrit;
+    if (trip != nullptr) trip->forced = forced;
+    if (forced) xt = x1 + trip->frac * dx;
+
     /* Newton iteration to find xt */
-    for (int iNewton = 0; iNewton < nNewton; ++iNewton) {
+    for (int iNewton = 0; !forced && iNewton < nNewton; ++iNewton) {
         double w2 = (xt - x1) / dx;
         double w1 = 1.0 - w2;
 
@@ -2603,6 +2648,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
 
     double Rxt_xt =
         -0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * dampt_Ut.dot(Ut_xt);
+    if (forced) Rxt_xt = 1.0; /* Not used: xt is prescribed */
 
     /* Rxt_U = d(Rxt)/d(U1, U2) at fixed xt */
     Vector8d Rxt_U = Vector8d::Zero();
@@ -2626,6 +2672,15 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     Vector4d xt_U2 = xt_U.tail<4>();
     double xt_x1 = -Rxt_x1 / Rxt_xt;
     double xt_x2 = -Rxt_x2 / Rxt_xt;
+    if (forced) {
+        /* xt = x1 + f (x2 - x1) with the fraction f fixed by the geometry:
+         * no dependence on the states. With these, Ut_x1 and Ut_x2 below
+         * come out zero: the interpolation weights do not change. */
+        xt_U1.setZero();
+        xt_U2.setZero();
+        xt_x1 = w1;
+        xt_x2 = w2;
+    }
 
     /* Include derivatives w.r.t. xt in Ut_x */
     Ut_x1 += Ut_xt * xt_x1;
@@ -2671,6 +2726,16 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
     U_lam.col(1) = Utl;
     Vector2d x_lam(x1, xt);
     auto Rl = ResidualStation(param, x_lam, U_lam, Aux, scalar_derivatives);
+    if (forced) {
+        /* The amplification at the trip is not ncrit and is not a state:
+         * the laminar part contributes momentum and shape parameter only,
+         * neither of which depends on the amplification. */
+        Rl.value(2) = 0.0;
+        Rl.lin_U.row(2).setZero();
+        Rl.lin_x.row(2).setZero();
+        Rl.lin_Ret(2) = 0.0;
+        Rl.lin_Ma(2) = 0.0;
+    }
 
     /* Turbulent residual: xt to x2 */
     param.turb = true;
@@ -2710,6 +2775,17 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                           Rt.lin_x.col(0) * xt_x2 + Rl_Utl * Utl_x2 +
                           Rt_Utt * Utt_x2;
 
+    if (forced) {
+        /* dR/df: xt moves by dx per unit f, directly and through the
+         * states interpolated to it. */
+        Vector4d Utl_xt = Ut_xt;
+        Utl_xt(2) = 0.0;
+        Vector4d Utt_xt = Ut_xt;
+        Utt_xt(2) = cttr_Ut.dot(Ut_xt);
+        trip->R_frac = dx * (Rl.lin_x.col(1) + Rt.lin_x.col(0) +
+                             Rl_Utl * Utl_xt + Rt_Utt * Utt_xt);
+    }
+
     /* ∂R/∂Ma·Ma for transition station — mirrors the xt(Re) chain below
      * exactly, just with GetDamp_dMa / GetCttr_dMa / GetRet/Ret value
      * replaced by their Ma-specific analogues. At fixed U, xt depends on
@@ -2730,7 +2806,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         double dampt_dMa = GetDamp_dMa(Ut, p_lam, d_Ma);
         double Ma_v = param_base.Minf;
         double Rxt_dMa_Ma = -0.5 * (xt - x1) * (damp1_dMa + dampt_dMa) * Ma_v;
-        double xt_dMa_Ma = -Rxt_dMa_Ma / Rxt_xt;
+        double xt_dMa_Ma = forced ? 0.0 : -Rxt_dMa_Ma / Rxt_xt;
 
         Vector3d dR_dxt_direct = Rl.lin_x.col(1) + Rt.lin_x.col(0);
         Vector4d Utl_xt_ma = Ut_xt;
@@ -2777,7 +2853,7 @@ ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
         (void)unused_Rett_U;
         double Rxt_Re_Re =
             -0.5 * (xt - x1) * (damp1_dRet * Ret1_v + dampt_dRet * Rett_v);
-        double xt_dRe_Re = -Rxt_Re_Re / Rxt_xt;
+        double xt_dRe_Re = forced ? 0.0 : -Rxt_Re_Re / Rxt_xt;
 
         /* ∂R/∂xt direct (Rl uses x[1]=xt, Rt uses x[0]=xt): */
         Vector3d dR_dxt_direct = Rl.lin_x.col(1) + Rt.lin_x.col(0);

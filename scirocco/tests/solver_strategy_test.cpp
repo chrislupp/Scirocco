@@ -10,6 +10,7 @@
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/paneling.h"
+#include "scirocco/core/transition.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
@@ -555,4 +556,165 @@ TEST(SolverStrategy, IterationObserver) {
     EXPECT_EQ(relax.front(), 1.0);
     EXPECT_EQ(watched.GetCl(), plain.GetCl());
     EXPECT_EQ(watched.GetCd(), plain.GetCd());
+}
+
+namespace {
+
+/// NACA 2412 at Re 1e6 with trips on the upper and lower surfaces.
+Scirocco TrippedFoil(double alpha, double xtrip_upper, double xtrip_lower) {
+    Scirocco foil("2412", 160);
+    foil.SetOper(alpha, -1.0, 1e6, 0.0);
+    foil.GetState().param.xtrip_upper = xtrip_upper;
+    foil.GetState().param.xtrip_lower = xtrip_lower;
+    return foil;
+}
+
+}  // namespace
+
+/* A trip ahead of free transition moves transition to the trip and adds
+ * drag; the lower surface, laminar to the trailing edge when free, turns
+ * turbulent at its trip. */
+TEST(ForcedTransition, TripSetsTransitionLocation) {
+    Scirocco free_foil = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(free_foil.Solve());
+    const auto& f = free_foil.GetState();
+    EXPECT_FALSE(f.vsol.tripped[0]);
+    EXPECT_FALSE(f.vsol.tripped[1]);
+    EXPECT_FALSE(f.vsol.turb[f.vsol.Is[0].back()]);
+    EXPECT_GT(f.vsol.Xt(1, 1), 0.3);
+
+    Scirocco foil = TrippedFoil(4.0, 0.2, 0.6);
+    ASSERT_TRUE(foil.Solve());
+    const auto& s = foil.GetState();
+    EXPECT_TRUE(s.vsol.tripped[0]);
+    EXPECT_TRUE(s.vsol.tripped[1]);
+    EXPECT_NEAR(s.vsol.Xt(1, 1), 0.2, 1e-12);
+    EXPECT_NEAR(s.vsol.Xt(0, 1), 0.6, 1e-12);
+    EXPECT_GT(foil.GetCd(), 1.2 * free_foil.GetCd());
+
+    /* Laminar up to the trip interval, turbulent from it on */
+    for (int si = 0; si < 2; ++si) {
+        const Trip trip = FindTrip(s, si);
+        const auto& Is = s.vsol.Is[si];
+        ASSERT_GT(trip.station, 0);
+        for (int i = 0; i < static_cast<int>(Is.size()); ++i)
+            EXPECT_EQ(s.vsol.turb[Is[i]], i >= trip.station)
+                << "surface " << si << " station " << i;
+    }
+}
+
+/* XFOIL's rule: whichever comes first. A trip behind free transition
+ * changes nothing. */
+TEST(ForcedTransition, TripBehindFreeTransitionIsInactive) {
+    Scirocco free_foil = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(free_foil.Solve());
+    Scirocco foil = TrippedFoil(4.0, 0.7, 1.0);
+    ASSERT_TRUE(foil.Solve());
+    EXPECT_FALSE(foil.GetState().vsol.tripped[1]);
+    EXPECT_NEAR(foil.GetCl(), free_foil.GetCl(), 1e-9);
+    EXPECT_NEAR(foil.GetCd(), free_foil.GetCd(), 1e-10);
+    EXPECT_NEAR(foil.GetState().vsol.Xt(1, 1),
+                free_foil.GetState().vsol.Xt(1, 1), 1e-8);
+}
+
+/* The solution is continuous where the trip takes over from free
+ * transition: a trip just ahead of the free location barely changes it. */
+TEST(ForcedTransition, ContinuousAtFreeTransitionLocation) {
+    Scirocco free_foil = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(free_foil.Solve());
+    const double xt = free_foil.GetState().vsol.Xt(1, 1);
+
+    Scirocco ahead = TrippedFoil(4.0, xt - 1e-6, 1.0);
+    ASSERT_TRUE(ahead.Solve());
+    EXPECT_TRUE(ahead.GetState().vsol.tripped[1]);
+    EXPECT_NEAR(ahead.GetCd(), free_foil.GetCd(), 1e-7);
+    EXPECT_NEAR(ahead.GetCl(), free_foil.GetCl(), 1e-5);
+
+    Scirocco behind = TrippedFoil(4.0, xt + 1e-6, 1.0);
+    ASSERT_TRUE(behind.Solve());
+    EXPECT_FALSE(behind.GetState().vsol.tripped[1]);
+    EXPECT_NEAR(behind.GetCd(), free_foil.GetCd(), 1e-10);
+}
+
+TEST(ForcedTransition, FindTripLocatesInterval) {
+    Scirocco foil = TrippedFoil(4.0, 0.2, 0.6);
+    ASSERT_TRUE(foil.Solve());
+    FoilState s = foil.GetState();
+    for (int si = 0; si < 2; ++si) {
+        const double xtrip = si == 0 ? 0.6 : 0.2;
+        const Trip trip = FindTrip(s, si);
+        const auto& Is = s.vsol.Is[si];
+        ASSERT_GT(trip.station, 0);
+        EXPECT_FALSE(trip.at_node);
+        const double x1 = s.foil.x(0, Is[trip.station - 1]);
+        const double x2 = s.foil.x(0, Is[trip.station]);
+        EXPECT_LT(x1, xtrip);
+        EXPECT_LE(xtrip, x2);
+        EXPECT_NEAR(x1 + trip.frac * (x2 - x1), xtrip, 1e-14);
+    }
+
+    /* No trip: at 1 or more, or behind the trailing-edge node */
+    s.param.xtrip_upper = 1.0;
+    EXPECT_LT(FindTrip(s, 1).station, 0);
+    s.param.xtrip_upper = 5.0;
+    EXPECT_LT(FindTrip(s, 1).station, 0);
+    EXPECT_LT(FindTrip(s, 2).station, 0); /* The wake has none */
+
+    /* At alpha = 4 the stagnation point is on the lower side behind
+     * x/c = 0.001: past that trip for the lower surface (XFOIL leaves the
+     * side free), while the upper surface, which runs around the leading
+     * edge, finds it on its own side. */
+    s.param.xtrip_lower = 0.001;
+    s.param.xtrip_upper = 0.001;
+    EXPECT_LT(FindTrip(s, 0).station, 0);
+    const Trip upper = FindTrip(s, 1);
+    ASSERT_GT(upper.station, 0);
+    EXPECT_GT(s.foil.x(1, s.vsol.Is[1][upper.station]), 0.0);
+
+    /* Ahead of the leading edge: at the leading-edge node */
+    s.param.xtrip_upper = -0.1;
+    const Trip nose = FindTrip(s, 1);
+    ASSERT_GT(nose.station, 0);
+    EXPECT_TRUE(nose.at_node);
+    EXPECT_EQ(nose.frac, 1.0);
+}
+
+/* A new trip on a solved object (warm start) gives the cold-start result. */
+TEST(ForcedTransition, WarmStartFollowsNewTrip) {
+    Scirocco warm = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(warm.Solve());
+    warm.GetState().param.xtrip_upper = 0.2;
+    warm.GetState().param.xtrip_lower = 0.6;
+    ASSERT_TRUE(warm.Solve());
+
+    Scirocco cold = TrippedFoil(4.0, 0.2, 0.6);
+    ASSERT_TRUE(cold.Solve());
+    EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-8);
+    EXPECT_NEAR(warm.GetCd(), cold.GetCd(), 1e-9);
+
+    /* And back to free transition */
+    warm.GetState().param.xtrip_upper = 1.0;
+    warm.GetState().param.xtrip_lower = 1.0;
+    ASSERT_TRUE(warm.Solve());
+    Scirocco free_foil = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(free_foil.Solve());
+    EXPECT_NEAR(warm.GetCd(), free_foil.GetCd(), 1e-9);
+}
+
+/* Without the boundary-layer march (mfoil's iteration) the trip gives the
+ * same solution. */
+TEST(ForcedTransition, SameSolutionWithoutMarch) {
+    Scirocco march = TrippedFoil(2.0, 0.3, 0.3);
+    ASSERT_TRUE(march.Solve());
+    Scirocco plain = TrippedFoil(2.0, 0.3, 0.3);
+    plain.GetState().param.bl_march = false;
+    ASSERT_TRUE(plain.Solve());
+    EXPECT_NEAR(march.GetCl(), plain.GetCl(), 1e-8);
+    EXPECT_NEAR(march.GetCd(), plain.GetCd(), 1e-9);
+}
+
+TEST(ForcedTransition, CapturedModelRejectsTrip) {
+    Scirocco foil = TrippedFoil(4.0, 0.2, 1.0);
+    foil.GetState().param.transition = TransitionModel::Captured;
+    EXPECT_THROW(foil.Solve(), std::invalid_argument);
 }

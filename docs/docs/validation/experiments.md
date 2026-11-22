@@ -14,6 +14,7 @@ same strengths and errors:
 | Lift slope, α = 0…8° | NACA 0012, Re = 6×10⁶ | 0.112 /deg | 0.113 /deg | 0.108 /deg (Ladson) |
 | Cl,max | same | 1.74 at 18° | 1.74 at 18° | 1.60 at 16.4° (Abbott), 1.61 at 17.1° (Ladson) |
 | Cd at Cl = 0…1.25 | same | 9–17% below, 14% on average | 9–17% below, 13% on average | Abbott & von Doenhoff |
+| Cd at Cl = 0…1.25, tripped at 5% chord | same | 2–4% below on average | 2–4% below on average | Ladson, three grit sizes |
 | Upper-surface Cp, RMS error | NACA 0012, α = 0 / 10 / 15° | 0.018 / 0.047 / 0.25 | 0.016 / 0.043 / 0.26 | Gregory & O'Reilly |
 | Cp, RMS error | NACA 4412, α = 13.87° | 0.19 | 0.19 | Coles & Wadcock |
 
@@ -23,10 +24,12 @@ same strengths and errors:
   stall and over-predict Cl,max by about 8%. The NACA 0012 stalls abruptly
   from the leading edge, which an integral boundary layer coupled to a
   panel method doesn't capture.
-- **Drag is low.** Both codes are 9–17% below Abbott and von Doenhoff's
-  free-transition drag. The codes agree with each other to 1%, so the gap
-  is in the shared model or in the conditions, not in Scirocco's
-  implementation. Possible contributors are ncrit (the tunnel's turbulence
+- **Tripped drag is close.** With the trips of Ladson's test, both codes
+  are within 2–4% of his drag on average.
+- **Free-transition drag is low.** Both codes are 9–17% below Abbott and
+  von Doenhoff's free-transition drag. The codes agree with each other to
+  1%, so the gap is in the shared model or in the conditions, not in
+  Scirocco's implementation. Possible contributors are ncrit (the tunnel's turbulence
   level isn't known well enough to set it) and the accuracy of the
   digitized data.
 
@@ -41,8 +44,30 @@ at α = 3°, between two converged points.
   trip barely changes lift. Abbott and von Doenhoff's are untripped.
 - **Drag:** only Abbott and von Doenhoff's data are shown. Ladson's tripped
   drag is 0.0081 at zero lift, 37% above Abbott and von Doenhoff's
-  untripped value, and Scirocco can't trip the boundary layer (see
-  [Transition limits](../concepts/transition#limits)).
+  untripped value; the next section compares it with tripped solutions.
+
+### Tripped drag
+
+Ladson fixed transition with roughness strips at 5% chord on both surfaces.
+Setting [`xtrip_upper` and `xtrip_lower`](../concepts/transition#forced-transition)
+to 0.05 (`XTR 0.05 0.05` in XFOIL) reproduces that:
+
+<TrippedPolarPlot />
+
+- **Zero lift:** Cd is 0.00791 (Scirocco) and 0.00793 (XFOIL) against
+  0.0080–0.0081 measured. With free transition the codes give 0.0051.
+- **Up to Cl = 1.25:** Scirocco is 4.0%, 2.7% and 1.9% below the 80-, 120-
+  and 180-grit data on average (XFOIL 3.7%, 2.4% and 1.6%), against 25%
+  below with free transition. Point by point the difference runs from 8.5%
+  below to 2.9% above.
+- **Code to code:** Scirocco's Cd is within 1.0% of XFOIL's and its Cl
+  within 0.4%. Above α = 5° the upper surface transitions freely ahead of
+  the trip in both codes, and from 15° the stagnation point has passed the
+  lower trip, which both codes then ignore.
+- **Not converged:** Scirocco at α = 13° and 14°, where the lower trip sits
+  just behind the stagnation point (see
+  [Transition limits](../concepts/transition#limits)). XFOIL converges
+  there.
 
 ## NACA 0012 surface pressure
 

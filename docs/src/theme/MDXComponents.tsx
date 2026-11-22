@@ -23,6 +23,7 @@ import {
     ColesWadcockCpPlot,
     ExperimentPolarPlot,
     GregoryCpPlot,
+    TrippedPolarPlot,
 } from "@site/src/components/charts/vv";
 
 export default {
@@ -47,5 +48,6 @@ export default {
     CodeDistributionPlot,
     ExperimentPolarPlot,
     GregoryCpPlot,
+    TrippedPolarPlot,
     ColesWadcockCpPlot,
 };

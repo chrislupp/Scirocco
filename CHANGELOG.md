@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Forced transition: `Param::xtrip_upper` and `Param::xtrip_lower` set a
+  trip on each surface as x/c. The boundary layer turns turbulent at the
+  trip unless e^N transition comes first, as in XFOIL (`XIFSET`,
+  `TRCHEK2`); the default of 1 leaves a surface free. Shape, angle of
+  attack, Reynolds number and Mach number derivatives account for the trip
+  and match mfoil complex-step references. `FindTrip` locates the trip,
+  `FoilState::vsol.tripped` tells whether it set transition. Cut-cell
+  model only: `TransitionModel::Captured` throws if a trip is set. A trip
+  close behind the stagnation point may not converge.
+- `fauXFOIL`: `VPAR`'s `XTR` sets the trips. Polar files record them and
+  the iteration report shows `forced` transition at the trip.
+- Validation: NACA 0012 drag at Re = 6e6 with transition tripped at 5%
+  chord, against Ladson's roughness-strip data and XFOIL (the "Wind-tunnel
+  data" page). `vv.py` cases and `vv_polar` take trip positions.
+  `vv_polar` sets `warm_start = true`, which its sweeps relied on while
+  that was the default.
+
+### Changed
+- `FoilState::vsol.Xt` now holds the transition location of the current
+  solution (xi and x per surface, the trailing-edge node's where a surface
+  stays laminar). `BuildGlobSys` updates it; before, only the
+  boundary-layer initialization set it, to an interval midpoint.
+
 ## [0.4.0] - 2026-11-27
 
 ### Added

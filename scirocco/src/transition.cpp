@@ -86,6 +86,53 @@ double AmplifyInterval(const FoilState& state, int ip, int ii,
     return U2(2);
 }
 
+Trip FindTrip(const FoilState& state, int si) {
+    Trip trip;
+    if (si < 0 || si > 1) return trip;
+    const double xc =
+        si == 0 ? state.param.xtrip_lower : state.param.xtrip_upper;
+    if (!(xc < 1.0)) return trip;
+
+    const auto& Is = state.vsol.Is[si];
+    const int n = static_cast<int>(Is.size());
+    if (n < 2) return trip;
+    auto x = [&](int i) { return state.foil.x(0, Is[i]); };
+    const double xt = xc * state.geom.chord;
+    if (!(xt < x(n - 1))) return trip; /* At or behind the trailing edge */
+
+    /* Stations i0 and i0 + 1 are the stagnation pair, which the solver keeps
+     * laminar: the first interval that can hold transition ends at i0 + 2. */
+    const int i0 =
+        state.isol.xi(Is[0]) < 1e-8 * state.isol.xi(Is[n - 1]) ? 1 : 0;
+    const int first = i0 + 2;
+    if (n <= first) return trip;
+
+    /* Walk upstream from the trailing edge, so that a surface that wraps
+     * around the leading edge is searched on its own side only. Here
+     * xt <= x(i) always. */
+    for (int i = n - 1; i >= first; --i) {
+        if (x(i - 1) < xt) {
+            trip.station = i;
+            trip.frac = (xt - x(i - 1)) / (x(i) - x(i - 1));
+            return trip;
+        }
+        if (x(i - 1) >= x(i)) {
+            /* Station i is the leading edge and the trip is ahead of it. */
+            trip.station = i;
+            trip.frac = 1.0;
+            trip.at_node = true;
+            return trip;
+        }
+    }
+    if (x(i0) < xt) {
+        /* Inside the stagnation pair: act at its downstream node. */
+        trip.station = first;
+        trip.frac = 0.0;
+        trip.at_node = true;
+    }
+    return trip; /* Otherwise the stagnation point is past the trip */
+}
+
 int MarchAmplification(FoilState& state, int si) {
     /* Marches amplification equation on surface si
      * Returns: index of last laminar station before transition (in Is array)
@@ -96,6 +143,7 @@ int MarchAmplification(FoilState& state, int si) {
     if (N == 0) return -1;
 
     const double ncrit = state.param.ncrit;
+    const Trip trip = FindTrip(state, si);
 
     /* No amplification at first station */
     state.glob.U(2, Is[0]) = 0.0;
@@ -116,8 +164,8 @@ int MarchAmplification(FoilState& state, int si) {
                       << " (surface " << si << ")\n";
         }
 
-        /* Check for transition */
-        if (U2(2) > ncrit) {
+        /* Check for transition: free, or forced by the trip */
+        if (U2(2) > ncrit || i == trip.station) {
             /* Transition found - return last laminar station */
             return i - 1;
         } else {

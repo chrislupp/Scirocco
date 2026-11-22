@@ -96,6 +96,47 @@ with the Eppler 387 measurements, the gradient sweeps and the derivative
 checks. The formulation and the dead ends are in
 [`scirocco/validation/captured_transition`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/captured_transition).
 
+## Forced transition
+
+A trip strip fixes where the boundary layer turns turbulent. Set its
+position on each surface as a fraction of the chord:
+
+```cpp
+scirocco::Scirocco foil("2412", 160);
+foil.SetOper(4.0, -1.0, 1e6, 0.0);  // alpha = 4 deg, Re = 1e6
+foil.GetState().param.xtrip_upper = 0.2;
+foil.GetState().param.xtrip_lower = 0.6;
+foil.Solve();
+
+const auto& vsol = foil.GetState().vsol;
+std::printf("cl = %.4f  cd = %.5f  upper: x/c = %.3f %s  lower: x/c = %.3f %s\n",
+            foil.GetCl(), foil.GetCd(),
+            vsol.Xt(1, 1), vsol.tripped[1] ? "(trip)" : "(free)",
+            vsol.Xt(0, 1), vsol.tripped[0] ? "(trip)" : "(free)");
+```
+
+```output
+cl = 0.6671  cd = 0.00927  upper: x/c = 0.200 (trip)  lower: x/c = 0.600 (trip)
+```
+
+Without the trips the same case gives cl = 0.7202 and cd = 0.00693, with
+transition at x/c = 0.397 on the upper surface and a lower surface that
+stays laminar to the trailing edge.
+
+The rule is XFOIL's: transition happens at the trip or where the
+amplification reaches `ncrit`, whichever comes first. A trip behind free
+transition changes nothing, and the default of 1 leaves a surface free.
+After a solve, `vsol.Xt(si, 1)` holds the transition x on the lower
+(`si = 0`) and upper (`si = 1`) surface, and `vsol.tripped[si]` tells
+whether the trip set it.
+
+Use it to model a roughness strip or a turbulator, or to compare with
+tripped wind-tunnel data: see
+[the tripped NACA 0012](../validation/experiments#tripped-drag).
+Derivatives with respect to shape, angle of attack, Reynolds number and
+Mach number account for the trip and match complex-step references. The
+trip stays at its x/c, so it does not move with the shape.
+
 ## How transition moves during a solve
 
 Transition is part of the Newton iteration: as the solution changes, the
@@ -116,11 +157,29 @@ amplification starts to grow, and refining the paneling does not remove the
 spikes. See
 [where the shape gradient is rough](../guides/gradients#where-the-shape-gradient-is-rough).
 
-There is no way to force transition (a trip strip) through the public API
-or the Philote server. The amplification model is the standard one from
-XFOIL and mfoil, with the same strengths and weaknesses: it is good for
-smooth airfoils at moderate Reynolds numbers, and does not model bypass
-transition from high free-stream turbulence.
+The amplification model is the standard one from XFOIL and mfoil, with the
+same strengths and weaknesses: it is good for smooth airfoils at moderate
+Reynolds numbers, and does not model bypass transition from high
+free-stream turbulence.
+
+[Forced transition](#forced-transition) has these limits:
+
+- **Trips close behind the stagnation point may not converge.** There the
+  boundary layer is too thin for the turbulent closure ($Re_\theta$ below
+  about 100), and `Solve()` returns `false`. This rules out a trip at
+  x/c = 0 as a way to get a fully turbulent solution, and can affect the
+  lower surface at high angles of attack, where the stagnation point sits
+  just ahead of the trip. Move the trip a few percent of chord downstream.
+  XFOIL converges in these cases.
+- **A trip the stagnation point has passed is ignored.** At a high angle of
+  attack the stagnation point can move behind a lower-surface trip near the
+  leading edge. That surface then transitions freely, as in XFOIL.
+- **The trip is placed by x, not along a chord line.** It is at
+  x = `xtrip` × chord, interpolated linearly between panel nodes, which
+  assumes the leading edge at x = 0.
+- **Cut cell only.** With `TransitionModel::Captured`, `Solve()` throws
+  `std::invalid_argument` if a trip is set.
+- **Not on the Philote server**, which does not expose solver parameters.
 
 Source: [`transition.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/transition.cpp),
 [`bl_properties.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/bl_properties.cpp).

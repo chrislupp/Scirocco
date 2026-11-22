@@ -126,6 +126,13 @@ struct Param {
     double ncrit = 9.0;                   /**< Critical amplification factor */
     OnsetModel onset = OnsetModel::Cubic; /**< Amplification onset ramp */
     TransitionModel transition = TransitionModel::CutCell; /**< Transition */
+    /** Forced transition (trip) on the upper surface at
+     *  x = xtrip_upper * chord: the boundary layer turns turbulent there
+     *  unless e^N transition comes first. 1 or more: free transition only.
+     *  Cut cell only (see FindTrip). */
+    double xtrip_upper = 1.0;
+    /** Forced transition on the lower surface, as xtrip_upper. */
+    double xtrip_lower = 1.0;
     double capt_L = 60.0; /**< Captured: 10-90% transition length [theta],
                                calibrated on E387 drag (UIUC Vol 5) */
     double capt_ws = 1.0; /**< Captured: onset switch width in n */

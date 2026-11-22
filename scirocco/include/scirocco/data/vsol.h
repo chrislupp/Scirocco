@@ -51,7 +51,14 @@ struct Vsol {
         turb;        /**< Flag indicating turbulent (true) or laminar (false) */
     double xt = 0.0; /**< Transition location (xi) on current surface */
     Matrix2d Xt = Matrix2d::Zero(); /**< Transition xi/x for lower and upper
-                                       surfaces [2x2] */
+                                       surfaces [2x2]; the trailing-edge
+                                       node's where a surface stays laminar.
+                                       Set by BuildGlobSys */
+    std::array<bool, 2> tripped{
+        {false, false}}; /**< True where transition on the lower/upper
+                              surface is forced by the trip (Param::xtrip_*),
+                              false where it is free or absent. Set by
+                              BuildGlobSys */
 };
 
 }  // namespace scirocco

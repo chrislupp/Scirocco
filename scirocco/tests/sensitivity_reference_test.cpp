@@ -677,6 +677,109 @@ TEST_F(SensitivityReferenceTest, EnvelopeOnsetMachSensitivity) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Forced transition (Param::xtrip_upper, xtrip_lower)
+ *   NACA 2412, 160 panels, alpha=4, Re=1e6, trips at x/c = 0.2 (upper) and
+ *   0.6 (lower), both ahead of free transition. Reference: mfoil_cs with
+ *   param.xtrip (extract_sensitivity_reference.py --trip-only).
+ * ---------------------------------------------------------------------------
+ */
+TEST_F(SensitivityReferenceTest, ForcedTransitionShapeSensitivity) {
+    const std::string g = "trip_shape/";
+    auto test_nodes = readIntVector(getFile(), g + "test_nodes");
+    MatrixXd dcl_ref = readMatrix(getFile(), g + "dcl_dx");
+    MatrixXd dcd_ref = readMatrix(getFile(), g + "dcd_dx");
+    MatrixXd dcm_ref = readMatrix(getFile(), g + "dcm_dx");
+    MatrixXd x_base = readMatrix(getFile(), g + "x_base");
+    VectorXd xtrip = readVector(getFile(), g + "xtrip");
+    VectorXd xt_ref = readVector(getFile(), g + "xt");
+
+    auto N_ref = static_cast<int>(x_base.cols());
+    Scirocco foil("2412", N_ref - 1);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    auto& s = foil.GetState();
+    s.param.xtrip_lower = xtrip(0);
+    s.param.xtrip_upper = xtrip(1);
+    s.foil.x = x_base;
+    s.foil.N = N_ref;
+    RecomputeArcLength(s);
+    s.oper.viscous = true;
+    s.oper.initbl = true;
+    s.param.verb = 0;
+    s.isol.AIC.resize(0, 0);
+    s.isol.gamref.resize(0, 0);
+    s.isol.gam.resize(0);
+    SolveViscous(s);
+    ASSERT_TRUE(s.glob.conv) << "viscous solve failed to converge";
+    CalcForce(s);
+
+    /* The same solution as mfoil, with transition at both trips */
+    EXPECT_NEAR(s.post.cl, readScalar<double>(getFile(), g + "cl_base"), 1e-9);
+    EXPECT_NEAR(s.post.cd, readScalar<double>(getFile(), g + "cd_base"), 1e-11);
+    EXPECT_NEAR(s.post.cm, readScalar<double>(getFile(), g + "cm_base"), 1e-9);
+    for (int si = 0; si < 2; ++si) {
+        EXPECT_TRUE(s.vsol.tripped[si]) << "surface " << si;
+        EXPECT_NEAR(s.vsol.Xt(si, 1), xtrip(si), 1e-12);
+        EXPECT_NEAR(s.vsol.Xt(si, 1), xt_ref(si), 1e-12);
+    }
+
+    Sensitivity sens = ViscousSensitivities(s);
+    for (const auto& [name, got, ref] :
+         {std::tuple<const char*, const MatrixXd&, const MatrixXd&>{
+              "dcl/dx", sens.dcl_dx, dcl_ref},
+          {"dcd/dx", sens.dcd_dx, dcd_ref},
+          {"dcm/dx", sens.dcm_dx, dcm_ref}}) {
+        for (int n : test_nodes) {
+            for (int d = 0; d < 2; ++d) {
+                double err = std::abs(got(d, n) - ref(d, n));
+                double rel = err / std::max(std::abs(ref(d, n)), 1e-30);
+                EXPECT_TRUE(rel < TOL_VISC_SHAPE || err < 1e-10)
+                    << name << " node=" << n << " dim=" << d
+                    << " scirocco=" << got(d, n) << " ref=" << ref(d, n)
+                    << " rel=" << rel;
+            }
+        }
+    }
+}
+
+namespace {
+
+/** Solve NACA 2412 at alpha=4, Re=1e6 with the trips of trip_shape/. */
+Sensitivity TripScalarSensitivities(double Ma) {
+    Scirocco foil("2412", 160);
+    foil.SetOper(4.0, -1.0, 1e6, Ma);
+    foil.GetState().param.xtrip_lower = 0.6;
+    foil.GetState().param.xtrip_upper = 0.2;
+    EXPECT_TRUE(foil.Solve());
+    EXPECT_TRUE(foil.GetState().vsol.tripped[0]);
+    EXPECT_TRUE(foil.GetState().vsol.tripped[1]);
+    return foil.ComputeSensitivities();
+}
+
+}  // namespace
+
+TEST_F(SensitivityReferenceTest, ForcedTransitionScalarSensitivity) {
+    const std::string g = "trip_scalar/";
+    auto ref = [&](const char* name) {
+        return readScalar<double>(getFile(), g + name);
+    };
+    const Sensitivity sens = TripScalarSensitivities(0.0);
+    EXPECT_LT(RelErr(sens.dcl_dalpha, ref("dcl_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcd_dalpha, ref("dcd_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcm_dalpha, ref("dcm_dalpha")),
+              TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcl_dRe, ref("dcl_dRe")), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcd_dRe, ref("dcd_dRe")), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(sens.dcm_dRe, ref("dcm_dRe")), TOL_VISC_SCALAR_ALPHA);
+
+    const Sensitivity mach = TripScalarSensitivities(0.3);
+    EXPECT_LT(RelErr(mach.dcl_dMa, ref("dcl_dMa")), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(mach.dcd_dMa, ref("dcd_dMa")), TOL_VISC_SCALAR_ALPHA);
+    EXPECT_LT(RelErr(mach.dcm_dMa, ref("dcm_dMa")), TOL_VISC_SCALAR_ALPHA);
+}
+
+/* ---------------------------------------------------------------------------
  * Captured transition (TransitionModel::Captured), primal only.
  *   NACA 2412, 160 panels, cumulative arc length. Reference: cl/cd/cm from
  *   mfoil_captured.solve_captured (extract_sensitivity_reference.py
