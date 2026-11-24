@@ -1,7 +1,8 @@
 # Verification and validation data
 
 Scripts behind the documentation pages
-[XFOIL and mfoil](../../../docs/docs/validation/xfoil-mfoil.md) and
+[XFOIL and mfoil](../../../docs/docs/validation/xfoil-mfoil.md),
+[flexfoil](../../../docs/docs/validation/flexfoil.md) and
 [Wind-tunnel data](../../../docs/docs/validation/experiments.md).
 
 ## Reproducing
@@ -20,8 +21,9 @@ On Linux, replace `-framework Accelerate` with the BLAS and LAPACK libraries
 the library was configured with (for example `-lopenblas`), or configure
 with `-DSCIROCCO_USE_BLAS=OFF`.
 
-Then, with XFOIL 6.99 on the `PATH` (or set `XFOIL`) and NumPy and SciPy
-installed for mfoil:
+Then, with XFOIL 6.99 on the `PATH` (or set `XFOIL`), NumPy, SciPy and
+Matplotlib installed for mfoil, and flexfoil for `codes`
+(`pip install flexfoil==1.1.6`):
 
 ```bash
 python3 scirocco/validation/vv/vv.py codes ./vv_polar docs/src/data/vv_codes.json

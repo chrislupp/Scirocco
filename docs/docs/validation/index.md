@@ -1,6 +1,6 @@
 ---
 title: Verification and validation
-description: How Scirocco is checked against mfoil, XFOIL and wind-tunnel data.
+description: How Scirocco is checked against mfoil, XFOIL, flexfoil and wind-tunnel data.
 ---
 
 # Verification and validation
@@ -13,6 +13,7 @@ need different references:
 | --- | --- | --- | --- |
 | Does Scirocco implement its model correctly? | mfoil, the Python code whose model Scirocco implements | Identical forces and transition locations wherever both converge | [XFOIL and mfoil](./xfoil-mfoil) |
 | How close is it to the standard tool? | XFOIL 6.99 | Cl within 0.3–0.5% on average, Cd within 0.5–1% | [XFOIL and mfoil](./xfoil-mfoil) |
+| Does an independent XFOIL port agree? | flexfoil 1.1.6, a Rust rewrite of XFOIL | flexfoil matches XFOIL to 0.01%, so Scirocco differs from it as from XFOIL | [flexfoil](./flexfoil) |
 | Does it predict measured flow? | Published wind-tunnel data | Lift slope 3.5% high, Cd 9–17% low, Cl,max 8% high | [Wind-tunnel data](./experiments) |
 | Are the transition options accurate? | Stability theory, Eppler 387 drag | Captured transition is about three times closer to measured drag | [Transition validation](./transition) |
 | How fast is it? | XFOIL, CMPLXFOIL, finite differences | Faster viscous solves at 200+ panels; gradients 6x faster than complex step | [Performance](./performance) |

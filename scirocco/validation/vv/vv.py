@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Data for the documentation's verification and validation pages.
 
-    vv.py codes       DRIVER OUT.json   Scirocco, XFOIL and mfoil
+    vv.py codes       DRIVER OUT.json   Scirocco, XFOIL, mfoil and flexfoil
     vv.py experiments DRIVER OUT.json   Scirocco and XFOIL against wind-tunnel data
 
 DRIVER is vv_polar built against the library (see README.md). Every code runs
 on the same panel nodes: mfoil panels the airfoil, Scirocco takes the nodes,
 arc lengths and tangents unchanged, and XFOIL loads the nodes without
-repaneling (PCOP). Scirocco and XFOIL sweep each polar in order, as a user
-would, so every point warm-starts from the previous one; mfoil solves each
-point from a cold start.
+repaneling (PCOP), as does flexfoil. Scirocco and XFOIL sweep each polar in
+order, as a user would, so every point warm-starts from the previous one;
+mfoil and flexfoil solve each point from a cold start.
 """
 import argparse
 import json
@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ProcessPoolExecutor
+from importlib import metadata
 from pathlib import Path
 
 import numpy as np
@@ -178,6 +179,71 @@ def run_mfoil(pool, naca, re, ma, alphas, dist):
     return points, dists
 
 
+def flexfoil_coords(x):
+    """flexfoil's flat coordinate list, from the upper trailing edge, as XFOIL."""
+    return [float(v) for v in x.T[::-1].ravel()]
+
+
+def flexfoil_dist(b, alpha, ma):
+    """Surface distribution from flexfoil's boundary-layer stations.
+
+    Station 0 of each side is the stagnation point; the rest are the panel
+    nodes. Cp follows from the edge velocity with XFOIL's Karman-Tsien
+    correction (CPCALC). flexfoil normalizes Cf by the local edge velocity,
+    so Cf * ue^2 is XFOIL's Cf, based on the freestream; that holds only for
+    incompressible flow, so Cf is left out when M > 0.
+    """
+    def side(key):
+        return np.concatenate((np.array(b[f"{key}_lower"][1:])[::-1],
+                               b[f"{key}_upper"][1:]))
+    ue = side("ue")
+    cpinc = 1.0 - ue**2
+    beta = np.sqrt(1.0 - ma**2)
+    cp = cpinc / (beta + 0.5 * ma**2 / (1.0 + beta) * cpinc)
+    d = dict(alpha=alpha, x=side("x"), cp=cp, theta=side("theta"),
+             dstar=side("delta_star"))
+    if ma == 0:
+        d["cf"] = side("cf") * ue**2
+    return d
+
+
+def flexfoil_point(args):
+    flat, re, ma, alpha, want_dist = args
+    from flexfoil import _rustfoil as ff
+    failed = dict(alpha=alpha, converged=False), None
+    if not re:
+        r = ff.analyze_inviscid(flat, alpha)
+        if not r["success"]:
+            return failed
+        p = dict(alpha=alpha, converged=True, cl=r["cl"], cd=0.0, cm=r["cm"])
+        # The inviscid solver reports Cp at panel midpoints.
+        d = dict(alpha=alpha, x=r["cp_x"], cp=r["cp"]) if want_dist else None
+        return p, d
+    r = ff.analyze_faithful(flat, alpha, reynolds=re, mach=ma, ncrit=NCRIT,
+                            max_iterations=100)
+    if not (r["success"] and r["converged"]):
+        return failed
+    p = dict(alpha=alpha, converged=True, cl=r["cl"], cd=r["cd"], cm=r["cm"],
+             xtr_upper=r["x_tr_upper"], xtr_lower=r["x_tr_lower"])
+    d = None
+    if want_dist:
+        # analyze_faithful returns no distributions; solve the point again.
+        b = ff.get_bl_distribution(flat, alpha, reynolds=re, mach=ma,
+                                   ncrit=NCRIT, max_iterations=100)
+        if b["success"] and b["converged"]:
+            d = flexfoil_dist(b, alpha, ma)
+    return p, d
+
+
+def run_flexfoil(pool, x, re, ma, alphas, dist):
+    flat = flexfoil_coords(x)
+    results = list(pool.map(flexfoil_point,
+                            [(flat, re, ma, a, a in dist) for a in alphas]))
+    points = {p["alpha"]: p for p, _ in results}
+    dists = {d["alpha"]: d for _, d in results if d}
+    return points, dists
+
+
 def clean(obj, digits=6):
     """Round floats and convert NumPy values for a compact JSON file."""
     if isinstance(obj, dict):
@@ -209,6 +275,8 @@ def run_case(case, driver, codes, pool):
             runs["xfoil"] = run_xfoil(workdir, re, ma, alphas, dist, x.shape[1])
         if "mfoil" in codes:
             runs["mfoil"] = run_mfoil(pool, naca, re, ma, alphas, dist)
+        if "flexfoil" in codes:
+            runs["flexfoil"] = run_flexfoil(pool, x, re, ma, alphas, dist)
     for code, (points, dists) in runs.items():
         out[code] = dict(points=[points[a] for a in alphas],
                          distributions=[dists[a] for a in dist if a in dists])
@@ -228,9 +296,10 @@ def main():
     driver = args.driver.resolve()
     with ProcessPoolExecutor(args.workers) as pool:
         if args.mode == "codes":
-            cases = [run_case(c, driver, ("scirocco", "xfoil", "mfoil"), pool)
-                     for c in CODE_CASES]
-            data = dict(cases=cases)
+            codes = ("scirocco", "xfoil", "mfoil", "flexfoil")
+            cases = [run_case(c, driver, codes, pool) for c in CODE_CASES]
+            data = dict(cases=cases,
+                        versions=dict(flexfoil=metadata.version("flexfoil")))
         else:
             cases = [run_case(c, driver, ("scirocco", "xfoil"), pool)
                      for c in EXPERIMENT_CASES]

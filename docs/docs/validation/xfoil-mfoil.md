@@ -110,6 +110,7 @@ start.
 
 The scripts are in
 [`scirocco/validation/vv`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/vv).
-`vv.py codes` runs all three codes and writes `docs/src/data/vv_codes.json`,
-which the figures on this page read. It needs XFOIL on the `PATH` and takes
+`vv.py codes` runs all three codes, and [flexfoil](./flexfoil), and writes
+`docs/src/data/vv_codes.json`, which the figures on this page read. It needs
+XFOIL on the `PATH` and the `flexfoil` Python package, and takes
 about 80 seconds on an Apple M1 Pro; the mfoil solves dominate.
