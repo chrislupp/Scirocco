@@ -47,6 +47,7 @@ const sidebars: SidebarsConfig = {
             items: [
                 "validation/index",
                 "validation/xfoil-mfoil",
+                "validation/flexfoil",
                 "validation/experiments",
                 "validation/transition",
                 "validation/performance",
