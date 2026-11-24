@@ -101,6 +101,13 @@ XFOIL's to 5e-6.
 
 flexfoil reports inviscid Cp at panel midpoints rather than at the nodes.
 
+## Speed
+
+Scirocco solves a single point about twice as fast as flexfoil at 200
+panels, and a warm-started polar 2.4 to 4.7 times as fast, depending on
+whether flexfoil solves the points in parallel; see
+[Performance](./performance#compared-to-flexfoil).
+
 ## Reproducing
 
 [`scirocco/validation/vv`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/vv)

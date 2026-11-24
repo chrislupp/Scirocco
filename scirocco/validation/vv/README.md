@@ -44,3 +44,23 @@ arguments.
 | `CLCD_Ladson_expdata.dat` | Ladson, NASA TM-4074, 1988 |
 | `CL_Gregory_expdata.dat`, `CP_Gregory_expdata.dat` | Gregory & O'Reilly, ARC R&M 3726, 1970, digitized |
 | `naca4412.cp.expt.dat` | Coles & Wadcock, AIAA J. 17(4), 1979 |
+
+## flexfoil timings
+
+The flexfoil comparison on the
+[Performance](../../../docs/docs/validation/performance.md) page. Build the
+timer like `vv_polar`, and flexfoil from source at full optimization (the
+PyPI wheel is built for size):
+
+```bash
+c++ -O3 -march=native -std=c++17 -I scirocco/include \
+    -I scirocco/build-release/include -isystem /opt/homebrew/include/eigen3 \
+    scirocco/validation/vv/flexfoil_timing.cpp \
+    scirocco/build-release/libscirocco.a -framework Accelerate -o flexfoil_timing
+git clone https://github.com/flexcompute/flexfoil
+cd flexfoil/packages/flexfoil-python
+CARGO_PROFILE_RELEASE_OPT_LEVEL=3 RUSTFLAGS="-C target-cpu=native" \
+    maturin build --release -o wheels && pip install wheels/*.whl
+cd -
+python3 scirocco/validation/vv/flexfoil_timing.py ./flexfoil_timing ./vv_polar
+```

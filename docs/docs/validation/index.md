@@ -16,7 +16,7 @@ need different references:
 | Does an independent XFOIL port agree? | flexfoil 1.1.6, a Rust rewrite of XFOIL | flexfoil matches XFOIL to 0.01%, so Scirocco differs from it as from XFOIL | [flexfoil](./flexfoil) |
 | Does it predict measured flow? | Published wind-tunnel data | Lift slope 3.5% high, Cd 9–17% low, Cl,max 8% high | [Wind-tunnel data](./experiments) |
 | Are the transition options accurate? | Stability theory, Eppler 387 drag | Captured transition is about three times closer to measured drag | [Transition validation](./transition) |
-| How fast is it? | XFOIL, CMPLXFOIL, finite differences | Faster viscous solves at 200+ panels; gradients 6x faster than complex step | [Performance](./performance) |
+| How fast is it? | XFOIL, flexfoil, CMPLXFOIL, finite differences | Faster viscous solves than XFOIL at 200+ panels, about twice flexfoil's speed; gradients 6x faster than complex step | [Performance](./performance) |
 
 ## Test suite
 
