@@ -17,23 +17,29 @@ concurrency:
 
 jobs:
   build:
-    name: Build (${{ matrix.target }})
-    runs-on: ubuntu-24.04
+    name: Build (${{ matrix.target }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
 
+    # Each architecture builds and smoke-tests on a native runner, so no
+    # image is ever tested under emulation.
     strategy:
       fail-fast: false
       matrix:
+        target: [scirocco-server, kulfan-server]
+        arch: [amd64, arm64]
         include:
           - target: scirocco-server
             image: chrislupp/scirocco
             dockerfile: docker/scirocco-server/Dockerfile
-            port: 50051
             kind: analysis
           - target: kulfan-server
             image: chrislupp/scirocco-kulfan
             dockerfile: docker/kulfan-server/Dockerfile
-            port: 50052
             kind: geometry
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v4
@@ -41,27 +47,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Compute image tags
+      - name: Compute image labels
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ matrix.image }}
-          tags: |
-            type=ref,event=branch
-            # PR builds get a pr-N tag (not pushed, used for cache/labels only).
-            type=ref,event=pr
 
       - name: Build local image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
           push: false
           load: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: scirocco-ci:${{ matrix.kind }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max
 
       - name: Install smoke-test client
         run: |
@@ -69,13 +72,13 @@ jobs:
           "$RUNNER_TEMP/smoke-client/bin/pip" install philote-mdo==0.8.0
 
       - name: Smoke-test image and invalid-request recovery
-        env:
-          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           export PATH="$RUNNER_TEMP/smoke-client/bin:$PATH"
-          bash scripts/smoke_image.sh "${IMAGE_TAGS%%$'\n'*}" "${{ matrix.kind }}"
+          bash scripts/smoke_image.sh "scirocco-ci:${{ matrix.kind }}" "${{ matrix.kind }}"
 
-      # develop publishes the image that just passed the smoke test as `next`.
+      # develop publishes the images that just passed the smoke test as
+      # `next`. Each runner pushes its image by digest only (no tag); the
+      # `next` job tags the multi-arch manifest once every image has passed.
       # Release images (version tags and `latest`) come from release.yml.
       - name: Log in to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
@@ -84,11 +87,75 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Publish the tested image as next
+      # Same builder and inputs as the tested build, so every layer comes
+      # from its cache and the pushed image is the one that was tested.
+      - name: Push the tested image by digest
+        id: push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+
+      - name: Record the digest
         if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         env:
-          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - name: Upload the digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.kind }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  next:
+    name: Publish next (${{ matrix.image }})
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+
+    strategy:
+      matrix:
+        include:
+          - image: chrislupp/scirocco
+            kind: analysis
+          - image: chrislupp/scirocco-kulfan
+            kind: geometry
+
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.kind }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag the multi-arch manifest as next
+        working-directory: ${{ runner.temp }}/digests
+        env:
           IMAGE: ${{ matrix.image }}
         run: |
-          docker tag "${IMAGE_TAGS%%$'\n'*}" "$IMAGE:next"
-          docker push "$IMAGE:next"
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          test "${#sources[@]}" -eq 2
+          docker buildx imagetools create -t "$IMAGE:next" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:next"

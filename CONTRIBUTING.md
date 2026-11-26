@@ -297,17 +297,22 @@ snapshot-generation failures stop the release before publication.
 It prepares and commits these changes locally, then runs
 `scripts/validate_release.sh` against that prepared revision. This gate runs the
 Python tests, full C++ sensitivity and RPC suite, installed-consumer check,
-documentation build/typecheck, and both Docker builds with malformed-request
-recovery and valid-request smoke tests. Any failure stops publication.
+and documentation build/typecheck. A second job builds both Docker images on
+native `linux/amd64` and `linux/arm64` runners from the prepared commit, runs
+the malformed-request recovery and valid-request smoke tests against each, and
+pushes each tested image to Docker Hub by digest only, without a tag. Any
+failure stops publication.
 
-Only after validation does the workflow push the release commit/tag and publish
-the already-tested local images, followed by the GitHub release. The atomic Git
+Only after every image passes does the workflow push the release commit/tag,
+tag the multi-arch manifests built from those digests, and create the GitHub
+release. The atomic Git
 push uses an explicit lease on the original `main` revision to reject concurrent
 changes. Stable releases receive version, minor, major, and `latest` image
 tags; prereleases receive only their full version tag. Manual tag pushes do not
-publish images. The Docker workflow validates images on PRs and branch pushes,
-and on pushes to `develop` it also publishes each image that passed its smoke
-test as `next`. No other branch publishes images.
+publish images. The Docker workflow builds and smoke-tests both images on
+amd64 and arm64 runners on PRs and branch pushes. On pushes to `develop` it
+pushes each tested image by digest and, once all four have passed, tags the
+two multi-arch manifests as `next`. No other branch publishes images.
 
 For a local validation run without publication, install the dependencies listed
 in `scripts/validate_release.sh`, including a running Docker daemon, then run:

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseValidationTest(unittest.TestCase):
-    def run_validation(self, failure=""):
+    def run_validation(self, failure="", extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
             mock = temp / "command"
@@ -33,7 +33,8 @@ class ReleaseValidationTest(unittest.TestCase):
                 ["bash", "scripts/validate_release.sh"], cwd=ROOT,
                 env={**os.environ, "PATH": f"{temp}:{os.environ['PATH']}",
                      "PHILOTE_CPP_DIR": "/test/philote", "COMMAND_LOG": str(log),
-                     "FAIL_MATCH": failure}, capture_output=True, text=True,
+                     "FAIL_MATCH": failure, **(extra_env or {})},
+                capture_output=True, text=True,
             )
             return result, log.read_text().splitlines()
 
@@ -43,6 +44,12 @@ class ReleaseValidationTest(unittest.TestCase):
         for kind in ("analysis", "geometry"):
             self.assertTrue(any(f"--kind {kind}" in c for c in commands))
         self.assertFalse(any(c.startswith(("docker push", "docker tag")) for c in commands))
+
+    def test_validate_images_zero_skips_docker(self):
+        result, commands = self.run_validation(extra_env={"VALIDATE_IMAGES": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any("run build" in c for c in commands))
+        self.assertFalse(any(c.startswith("docker ") for c in commands))
 
     def test_each_failed_gate_stops_validation_and_cleans_up_containers(self):
         for failure in (

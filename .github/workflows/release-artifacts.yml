@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   artifacts:
-    name: Install source and exercise published images
+    name: Install the released source
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -35,7 +35,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libeigen3-dev
-          python3 -m pip install philote-mdo==0.8.0
       - name: Build released source archive and test a relocated install
         run: |
           gh api "repos/$GITHUB_REPOSITORY/tarball/$RELEASE_TAG" > "$RUNNER_TEMP/source.tar.gz"
@@ -45,7 +44,37 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DSCIROCCO_NATIVE_ARCH=OFF -DSCIROCCO_BUILD_PHILOTE=OFF
           cmake --build "$RUNNER_TEMP/released-build" -j2
           ctest --test-dir "$RUNNER_TEMP/released-build" -R '^InstalledConsumer$' --output-on-failure --no-tests=error
-      - name: Pull exact version images and test Python connectivity and recovery
+  images:
+    name: Exercise published images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate tag and require an existing published release
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft == false' | grep -qx true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the Python client
+        run: python3 -m pip install philote-mdo==0.8.0
+      - name: Pull this architecture's images and test Python connectivity and recovery
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
@@ -56,8 +85,10 @@ jobs:
               image=chrislupp/scirocco-kulfan
               port=50052
             fi
-            docker pull "$image:$version"
+            docker buildx imagetools inspect "$image:$version"
+            docker pull --platform "linux/${{ matrix.arch }}" "$image:$version"
             docker image inspect "$image:$version" --format '{{json .RepoDigests}}'
+            test "$(docker image inspect "$image:$version" --format '{{.Architecture}}')" = "${{ matrix.arch }}"
             container=$(docker run --rm -d -p "127.0.0.1::$port" "$image:$version")
             trap 'docker logs "$container"; docker stop "$container" >/dev/null 2>&1 || true' EXIT
             address=$(docker port "$container" "$port/tcp")

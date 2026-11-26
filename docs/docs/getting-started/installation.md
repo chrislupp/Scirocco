@@ -12,8 +12,7 @@ images:
 <DockerRun />
 
 Then continue with [Python and MDO frameworks](../python). Build from source
-when you want the C++ library, HDF5 history files, or a native build on
-Apple silicon. See [Docker](../python/docker) for the image tags.
+when you want the C++ library or HDF5 history files. See [Docker](../python/docker) for the image tags.
 :::
 
 The core library needs only Eigen. Everything else is optional: turn on what
