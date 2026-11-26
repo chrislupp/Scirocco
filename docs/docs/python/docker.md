@@ -30,9 +30,11 @@ The commands on this site use the tag that matches the docs you're reading:
 
 Stop the servers with `docker stop scirocco scirocco-kulfan`.
 
-The images are built for `linux/amd64`. On Apple silicon, Docker Desktop
-runs them under emulation: they work, but solve more slowly than a native
-build, and Docker prints a platform warning when it starts them.
+Each tag holds a `linux/amd64` and a `linux/arm64` image, and Docker
+pulls the one that matches your machine, so the servers run natively on
+Apple silicon and Arm Linux hosts. Both are built and smoke-tested on
+native runners of their own architecture before the tag moves. Pass
+`--platform linux/amd64` to `docker run` to pick one explicitly.
 
 Use `next` to try changes before they are released. It moves with
 `develop` and can change between pulls, so pull it again before each run:

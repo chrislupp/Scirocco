@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `linux/arm64` Docker images: every `chrislupp/scirocco` and
+  `chrislupp/scirocco-kulfan` tag (`next`, versions and `latest`) is now a
+  multi-arch manifest with `linux/amd64` and `linux/arm64` images, each
+  built and smoke-tested on a native runner, so the servers run without
+  emulation on Apple silicon and Arm hosts.
 - Homebrew formulae: `brew install chrislupp/tools/scirocco` installs the
   core library, headers and CMake package from the release source, and
   `brew install chrislupp/tools/fauxfoil` installs `fauXFOIL` with its Qt
