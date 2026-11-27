@@ -12,8 +12,10 @@ on:
 jobs:
   packaging:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
     - name: Test release version progression
       run: python3 -m unittest discover -s scripts -p 'test_*.py'
     - name: Install core dependencies
@@ -26,6 +28,7 @@ jobs:
 
   python-reference:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     name: Python complex-step reference
     steps:
     - uses: actions/checkout@v4
@@ -39,11 +42,13 @@ jobs:
 
   format:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     name: Format
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install clang-format-17
       run: |
@@ -61,10 +66,12 @@ jobs:
   fauxfoil:
     needs: [format]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     name: fauXFOIL
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install dependencies
       run: |
@@ -87,10 +94,12 @@ jobs:
   gui:
     needs: [format]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     name: Scirocco Viewer
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     # Ubuntu 24.04 ships Qt 6.4; the viewer needs 6.6 or later.
     - name: Install Qt
@@ -127,6 +136,7 @@ jobs:
     needs: [format]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     name: Clang-Tidy
 
@@ -136,6 +146,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install Dependencies
       run: |
@@ -174,6 +185,7 @@ jobs:
   build:
     needs: [format]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
@@ -191,6 +203,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install Dependencies
       run: |
@@ -280,6 +293,7 @@ jobs:
   build-debug-suite:
     needs: [format]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     name: GCC 14 / Release / Sensitivity-Debug Suite
 
@@ -289,6 +303,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install Dependencies
       run: |
@@ -339,6 +354,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - uses: ./.github/actions/apt-setup
 
     - name: Install Dependencies
       run: |
