@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `false`): starts each viscous `Compute` from the previous one.
 
 ### Changed
+- fauXFOIL plots are tagged `Scirocco` and `Scirocco V <version>` instead
+  of `fauXFOIL` and `fauXFOIL V <version>`, naming the solver that produced
+  them. The program name, prompt and banner are unchanged.
 - `Param::warm_start` now defaults to `false`, so a viscous `Solve()`
   starts cold and gives the same result whatever the object solved before.
   Near stall the coupled equations can have more than one converged
