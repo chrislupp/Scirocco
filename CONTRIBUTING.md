@@ -314,6 +314,14 @@ amd64 and arm64 runners on PRs and branch pushes. On pushes to `develop` it
 pushes each tested image by digest and, once all four have passed, tags the
 two multi-arch manifests as `next`. No other branch publishes images.
 
+While a release PR is open, the release job runs as the **Release dry run**
+check on every push and label change. It prepares and validates the release
+commit exactly as a merge would (version, CHANGELOG, docs snapshot,
+`validate_release.sh`), and checks that `RELEASE_TOKEN` can push to this
+repository and `chrislupp/homebrew-tools` and that the Docker Hub credentials
+log in. It creates no tag and pushes and publishes nothing. It is a required
+check on `main`, so a release PR cannot merge until it passes.
+
 For a local validation run without publication, install the dependencies listed
 in `scripts/validate_release.sh`, including a running Docker daemon, then run:
 

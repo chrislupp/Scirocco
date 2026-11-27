@@ -18,6 +18,11 @@ jobs:
     - uses: ./.github/actions/apt-setup
     - name: Test release version progression
       run: python3 -m unittest discover -s scripts -p 'test_*.py'
+    # The release job runs these tests with VALIDATE_IMAGES=0 set.
+    - name: Test release scripts as the release job runs them
+      env:
+        VALIDATE_IMAGES: '0'
+      run: python3 -m unittest discover -s scripts -p 'test_*.py'
     - name: Install core dependencies
       run: sudo apt-get update && sudo apt-get install -y libeigen3-dev
     - name: Build documented default and test installed consumer
