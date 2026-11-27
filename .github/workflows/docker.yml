@@ -19,6 +19,8 @@ jobs:
   build:
     name: Build (${{ matrix.target }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    # About 2.5 minutes with a warm cache; a cold build takes longer.
+    timeout-minutes: 30
 
     # Each architecture builds and smoke-tests on a native runner, so no
     # image is ever tested under emulation.
@@ -123,6 +125,7 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     strategy:
       matrix:

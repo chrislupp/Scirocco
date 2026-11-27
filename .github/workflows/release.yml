@@ -117,6 +117,13 @@ jobs:
 
     - name: Install validation dependencies
       run: |
+        # Same as .github/actions/apt-setup, inlined because this job checks
+        # out a tree that may predate that action.
+        grep -rl packages.microsoft.com /etc/apt/sources.list.d 2>/dev/null \
+          | xargs -r sudo rm -f
+        printf '%s\n' 'Acquire::Retries "3";' \
+          'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' \
+          | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
         sudo apt-get update
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
           libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
