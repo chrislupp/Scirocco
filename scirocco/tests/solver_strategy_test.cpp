@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -214,6 +215,7 @@ TEST(SolverStrategy, RoundOffFloorEndsNewton) {
  * iterations, same answer as a cold start. */
 TEST(SolverStrategy, WarmStartReusesPreviousSolution) {
     Scirocco warm("0012", 200);
+    warm.GetState().param.warm_start = true;
     warm.SetOper(8.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(warm.Solve());
     warm.SetOper(8.5, -1.0, 1e6, 0.0);
@@ -227,6 +229,25 @@ TEST(SolverStrategy, WarmStartReusesPreviousSolution) {
               cold.GetState().glob.coupled_iterations);
     EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-8);
     EXPECT_NEAR(warm.GetCd(), cold.GetCd(), 1e-9);
+}
+
+/* With the default settings a solve does not depend on earlier solves on
+ * the same object. NACA 0012 at Re 2e5 and 14.25 deg has two converged
+ * boundary layers (Cl = 0.71 and 0.93), and a warm sweep may land on either
+ * one: which depends on round-off, so it varies between builds. */
+TEST(SolverStrategy, DefaultSolveIgnoresEarlierSolves) {
+    EXPECT_FALSE(Param{}.warm_start);
+    Scirocco fresh("0012", 160);
+    fresh.SetOper(14.25, -1.0, 2e5, 0.0);
+    ASSERT_TRUE(fresh.Solve());
+
+    Scirocco reused("0012", 160);
+    for (const double alpha : {13.5, 13.75, 14.0, 14.25}) {
+        reused.SetOper(alpha, -1.0, 2e5, 0.0);
+        ASSERT_TRUE(reused.Solve());
+    }
+    EXPECT_NEAR(reused.GetCl(), fresh.GetCl(), 1e-10);
+    EXPECT_NEAR(reused.GetCd(), fresh.GetCd(), 1e-10);
 }
 
 /* A cold solve on a reused object follows the same Newton path as one on a
@@ -493,6 +514,7 @@ TEST(SolverStrategy, SingularLiftConstraintThrows) {
  * must give exactly what a fresh object gives. */
 TEST(SolverStrategy, FailedWarmStartMatchesColdStart) {
     Scirocco warm("0012", 99);
+    warm.GetState().param.warm_start = true;
     warm.SetOper(2.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(warm.Solve());
     warm.SetOper(16.0, -1.0, 1e6, 0.0);

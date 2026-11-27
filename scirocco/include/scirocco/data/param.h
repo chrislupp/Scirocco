@@ -113,12 +113,14 @@ struct Param {
 
     /* Newton globalization for the cut-cell transition model */
     StepLimiter step_limiter = StepLimiter::Absolute; /**< Under-relaxation */
-    bool bl_march = true;   /**< Re-solve the boundary layer by a mixed-mode
-                                 march before each Newton step (see
-                                 bl_march.h); false gives mfoil's iteration */
-    bool warm_start = true; /**< Scirocco::Solve starts a viscous solve from
-                                 the last converged boundary layer of the same
-                                 object (cold start if that fails) */
+    bool bl_march = true;    /**< Re-solve the boundary layer by a mixed-mode
+                                  march before each Newton step (see
+                                  bl_march.h); false gives mfoil's iteration */
+    bool warm_start = false; /**< Scirocco::Solve starts a viscous solve
+                                  from the last converged boundary layer of
+                                  the same object (cold start if that
+                                  fails). Off by default: near stall the
+                                  result can then depend on earlier solves */
 
     /* Viscous parameters */
     double ncrit = 9.0;                   /**< Critical amplification factor */

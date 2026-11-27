@@ -34,7 +34,8 @@ significant digits stored, which leaves a largest transition difference of
   correction at M = 0.4.
 - **How each code runs.** Scirocco and XFOIL sweep each polar the way a user
   would, starting at the angle nearest 0° and continuing up, then down, each
-  point warm-starting from the last. mfoil solves every point from a cold
+  point warm-starting from the last (Scirocco with `warm_start = true`; see
+  [warm starts](../concepts/viscous-coupling#warm-starts)). mfoil solves every point from a cold
   start. XFOIL is version 6.99 with 100 iterations allowed per point.
 - **Precision.** XFOIL's forces and distributions are read from its binary
   polar dump, in double precision, not from the rounded text polar.

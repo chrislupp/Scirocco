@@ -49,6 +49,7 @@ C++ source).
 | `npanel` | Panel count. `x` has `2 * (npanel + 1)` entries. |
 | `naca` or `coordinates` | Exactly one. A NACA string, or `{"x": [...], "z": [...]}`. Only initializes the solver; `x` supplies the shape analyzed. |
 | `hdf5_file` | Optional history file, written by the server. Needs `SCIROCCO_HDF5_OUTPUT=ON`. |
+| `warm_start` | Optional, default `false`. `true` starts each viscous analysis from the previous one: faster, but near stall the result can depend on the order of evaluations ([warm starts](../concepts/viscous-coupling#warm-starts)). |
 
 | Inputs | |
 | --- | --- |

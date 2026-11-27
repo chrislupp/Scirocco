@@ -35,7 +35,8 @@ differences skip |Cl| < 0.05. The cases and nodes are those of
 - **Same physics.** ncrit = 9, free transition on both surfaces, at most
   100 Newton iterations per point.
 - **How each code runs.** Scirocco and XFOIL sweep each polar from the
-  angle nearest 0°, each point warm-starting from the last. flexfoil's
+  angle nearest 0°, each point warm-starting from the last (Scirocco with
+  `warm_start = true`). flexfoil's
   Python interface has no warm start, so it solves every point from a cold
   start, like mfoil.
 - **Version.** flexfoil 1.1.6 from PyPI (`pip install flexfoil==1.1.6`),
