@@ -3,7 +3,7 @@ if(POLICY CMP0144)
     cmake_policy(SET CMP0144 NEW)
 endif()
 
-project(scirocco VERSION 0.3.1 LANGUAGES CXX)
+project(scirocco VERSION 0.4.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
