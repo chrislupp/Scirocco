@@ -30,9 +30,8 @@ stored as HDF5 files in `scirocco/tests/`. Most functions agree to 1e-10.
 
 - **Forced transition near the leading edge.** Tripped drag is compared
   with one data set, trips at 5% chord (see
-  [Wind-tunnel data](./experiments#tripped-drag)). Trips close behind the
-  stagnation point may not converge (see
-  [Transition limits](../concepts/transition#limits)).
+  [Wind-tunnel data](./experiments#tripped-drag)). Trips at 1% chord and
+  less are only checked for convergence, not against data.
 - **Separated flow.** Near and past stall, the codes agree with each other
   but not with measurements. See [Wind-tunnel data](./experiments).
 - **Transonic flow.** The compressibility correction doesn't capture

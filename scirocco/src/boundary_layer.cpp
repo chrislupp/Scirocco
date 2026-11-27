@@ -60,6 +60,9 @@ Param BuildParam(const FoilState& state, int si) {
     param.wake = (si == 2);
     param.turb = param.wake; /* Wake is fully turbulent (matches mfoil) */
     param.simi = false;
+    /* The captured model blends the two closures itself */
+    if (param.transition != TransitionModel::CutCell)
+        param.cf_laminar_floor = false;
 
     return param;
 }
@@ -408,7 +411,25 @@ void InitBoundaryLayer(FoilState& state) {
  */
 namespace detail {
 
+/* True where GetCf returns the laminar value at a turbulent station
+ * (Param::cf_laminar_floor). */
+bool CfFloorActive(const Vector4d& U, const Param& param) {
+    if (!param.turb || param.wake || !param.cf_laminar_floor) return false;
+    Param lam = param;
+    lam.turb = false;
+    return GetCfBase(U, lam).value > GetCfBase(U, param).value;
+}
+
 double GetCf_dRet(const Vector4d& U, const Param& param) {
+    if (CfFloorActive(U, param)) {
+        Param lam = param;
+        lam.turb = false;
+        return GetCfBase_dRet(U, lam);
+    }
+    return GetCfBase_dRet(U, param);
+}
+
+double GetCfBase_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) return 0.0;
     auto [Hk, unused_Hk_U] = GetHk(U, param);
     (void)unused_Hk_U;
@@ -532,7 +553,7 @@ double GetCDi_Lam_dRet(const Vector4d& U, const Param& param) {
 
 double GetCDi_TurbWall_dRet(const Vector4d& U, const Param& param) {
     if (param.wake) return 0.0;
-    auto [cf, unused_cf_U] = GetCf(U, param);
+    auto [cf, unused_cf_U] = GetCfBase(U, param);
     (void)unused_cf_U;
     auto [Hk, unused_Hk_U] = GetHk(U, param);
     (void)unused_Hk_U;
@@ -542,7 +563,7 @@ double GetCDi_TurbWall_dRet(const Vector4d& U, const Param& param) {
     (void)unused_Us_U;
     auto [Ret, unused_Ret_U] = GetRet(U, param);
     (void)unused_Ret_U;
-    double cf_dRet = GetCf_dRet(U, param);
+    double cf_dRet = GetCfBase_dRet(U, param);
     double Hs_dRet = GetHs_dRet(U, param);
     double Us_dRet = GetUs_dRet(U, param);
     double lr = std::log(Ret);
@@ -1085,6 +1106,16 @@ double GetUs_dMa(const Vector4d& U, const Param& param,
 
 double GetCf_dMa(const Vector4d& U, const Param& param,
                  const ThermoMaDeriv& d) {
+    if (CfFloorActive(U, param)) {
+        Param lam = param;
+        lam.turb = false;
+        return GetCfBase_dMa(U, lam, d);
+    }
+    return GetCfBase_dMa(U, param, d);
+}
+
+double GetCfBase_dMa(const Vector4d& U, const Param& param,
+                     const ThermoMaDeriv& d) {
     if (param.wake || param.Minf <= 0) return 0.0;
     auto [Hk, unused_Hk_U] = GetHk(U, param);
     (void)unused_Hk_U;
@@ -1179,7 +1210,7 @@ double GetCDi_Lam_dMa(const Vector4d& U, const Param& param,
 double GetCDi_TurbWall_dMa(const Vector4d& U, const Param& param,
                            const ThermoMaDeriv& d) {
     if (param.wake || param.Minf <= 0) return 0.0;
-    auto [cf, unused_cf_U] = GetCf(U, param);
+    auto [cf, unused_cf_U] = GetCfBase(U, param);
     (void)unused_cf_U;
     auto [Hk, unused_Hk_U] = GetHk(U, param);
     (void)unused_Hk_U;
@@ -1189,7 +1220,7 @@ double GetCDi_TurbWall_dMa(const Vector4d& U, const Param& param,
     (void)unused_Us_U;
     auto [Ret, unused_Ret_U] = GetRet(U, param);
     (void)unused_Ret_U;
-    double cf_dMa = GetCf_dMa(U, param, d);
+    double cf_dMa = GetCfBase_dMa(U, param, d);
     double Hs_dMa = GetHs_dMa(U, param, d);
     double Us_dMa = GetUs_dMa(U, param, d);
     double Hk_dMa = GetHk_dMa(U, param, d);

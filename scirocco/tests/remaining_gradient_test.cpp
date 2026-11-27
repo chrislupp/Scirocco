@@ -89,6 +89,7 @@ TEST_P(RemainingGradientTest, PythonOutputsAndAllExposedDerivatives) {
     auto group = file.openGroup(GetParam());
     const MatrixXd x = ReadMatrix(group, "x");
     Scirocco foil("0012", x.cols() - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     auto& state = foil.GetState();
     state.foil.x = x;
     if (group.attrExists("chord")) state.geom.chord = Attribute(group, "chord");

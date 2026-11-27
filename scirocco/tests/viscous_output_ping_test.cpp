@@ -41,6 +41,7 @@ class ViscousOutputPingTest : public ::testing::Test {
     void SetUp() override {
         foil_.SetOper(3.0, -1.0, 1e6, 0.0);
         auto& s = foil_.GetState();
+        s.param.cf_laminar_floor = false; /* as mfoil */
         s.oper.viscous = true;
         s.oper.initbl = true;
         s.param.verb = 0;

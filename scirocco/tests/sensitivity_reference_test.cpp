@@ -42,12 +42,14 @@
 #include <vector>
 
 #include "scirocco/core/adjoint.h"
+#include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/wake.h"
 #include "scirocco/data/state.h"
+#include "scirocco/properties/bl_properties.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
@@ -195,6 +197,7 @@ TEST_F(SensitivityReferenceTest, InviscidShapeSensitivity) {
      * the complex-step derivatives were computed on */
     int N_ref = x_base.cols();
     Scirocco foil("2412", N_ref - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(5.0);
     auto& state = foil.GetState();
     state.foil.x = x_base;
@@ -262,6 +265,8 @@ TEST_F(SensitivityReferenceTest, InviscidAlphaSensitivity) {
     double dcm_ref = readScalar<double>(getFile(), "inviscid_alpha/dcm_dalpha");
 
     Scirocco foil("2412", 80);
+
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(5.0);
     foil.Solve();
 
@@ -292,6 +297,7 @@ TEST_F(SensitivityReferenceTest, InviscidMachSensitivity) {
 
     double Ma0 = 0.3;
     Scirocco foil("0012", 100);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 0.0, Ma0);
     foil.Solve();
 
@@ -330,6 +336,7 @@ static std::pair<Sensitivity, MatrixXd> CheckViscousShapeGroup(
 
     int N_ref = x_base.cols();
     Scirocco foil(naca, N_ref - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(alpha, -1.0, Re, 0.0);
     auto& s = foil.GetState();
     s.foil.x = x_base;
@@ -459,6 +466,8 @@ TEST_F(SensitivityReferenceTest, ViscousAlphaSensitivity) {
     double dcm_ref = readScalar<double>(getFile(), "viscous_alpha/dcm_dalpha");
 
     Scirocco foil("0012", 100);
+
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     foil.Solve();
     auto sens = foil.ComputeSensitivities();
@@ -488,6 +497,8 @@ TEST_F(SensitivityReferenceTest, ViscousMachSensitivity) {
     double dcm_ref = readScalar<double>(getFile(), "viscous_mach/dcm_dMa");
 
     Scirocco foil("0012", 100);
+
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 1e6, 0.3);
     foil.Solve();
     auto sens = foil.ComputeSensitivities();
@@ -517,6 +528,8 @@ TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
     double dcm_ref = readScalar<double>(getFile(), "viscous_re/dcm_dRe");
 
     Scirocco foil("0012", 100);
+
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     foil.Solve();
     auto sens = foil.ComputeSensitivities();
@@ -551,6 +564,7 @@ TEST_F(SensitivityReferenceTest, ViscousReSensitivity) {
 TEST_F(SensitivityReferenceTest, ViscousReLaminarTrailingEdge) {
     const std::string g = "viscous_re_laminar_te/";
     Scirocco foil("2412", 160);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(4.0, -1.0, 1e6, 0.0);
     ASSERT_TRUE(foil.Solve());
     const auto& s = foil.GetState();
@@ -586,6 +600,7 @@ TEST_F(SensitivityReferenceTest, EnvelopeOnsetShapeSensitivity) {
 
     auto N_ref = static_cast<int>(x_base.cols());
     Scirocco foil("2412", N_ref - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(4.0, -1.0, 1e6, 0.0);
     auto& s = foil.GetState();
     s.param.onset = OnsetModel::Envelope;
@@ -627,6 +642,7 @@ namespace {
 /** Solve NACA 2412 at alpha=4, Re=1e6 with the envelope onset model. */
 Sensitivity EnvelopeScalarSensitivities(double Ma) {
     Scirocco foil("2412", 160);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(4.0, -1.0, 1e6, Ma);
     foil.GetState().param.onset = OnsetModel::Envelope;
     EXPECT_TRUE(foil.Solve());
@@ -695,6 +711,7 @@ TEST_F(SensitivityReferenceTest, ForcedTransitionShapeSensitivity) {
 
     auto N_ref = static_cast<int>(x_base.cols());
     Scirocco foil("2412", N_ref - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(4.0, -1.0, 1e6, 0.0);
     auto& s = foil.GetState();
     s.param.xtrip_lower = xtrip(0);
@@ -746,6 +763,7 @@ namespace {
 /** Solve NACA 2412 at alpha=4, Re=1e6 with the trips of trip_shape/. */
 Sensitivity TripScalarSensitivities(double Ma) {
     Scirocco foil("2412", 160);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(4.0, -1.0, 1e6, Ma);
     foil.GetState().param.xtrip_lower = 0.6;
     foil.GetState().param.xtrip_upper = 0.2;
@@ -777,6 +795,126 @@ TEST_F(SensitivityReferenceTest, ForcedTransitionScalarSensitivity) {
     EXPECT_LT(RelErr(mach.dcl_dMa, ref("dcl_dMa")), TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(RelErr(mach.dcd_dMa, ref("dcd_dMa")), TOL_VISC_SCALAR_ALPHA);
     EXPECT_LT(RelErr(mach.dcm_dMa, ref("dcm_dMa")), TOL_VISC_SCALAR_ALPHA);
+}
+
+/* ---------------------------------------------------------------------------
+ * Laminar floor on the turbulent skin friction (Param::cf_laminar_floor)
+ *   NACA 2412, 160 panels, alpha=4, Re=1e6, lower trip at x/c = 0.01 (small
+ *   Re_theta) and free transition behind a bubble on the upper surface: the
+ *   floor acts on both. Reference: mfoil_cs with param.cf_laminar_floor
+ *   (extract_sensitivity_reference.py --cf-floor-only).
+ * ---------------------------------------------------------------------------
+ */
+namespace {
+
+/** Number of turbulent stations of surface si where the laminar skin
+ *  friction is the larger one. */
+int FloorStations(const FoilState& s, int si) {
+    int count = 0;
+    Param param = BuildParam(s, si);
+    for (int j : s.vsol.Is[si]) {
+        if (!s.vsol.turb[j]) continue;
+        StationParam(s, param, j);
+        const Vector4d U = s.glob.U.col(j);
+        if (GetCf(U, param).value > GetCfBase(U, param).value) ++count;
+    }
+    return count;
+}
+
+}  // namespace
+
+TEST_F(SensitivityReferenceTest, CfLaminarFloorShapeSensitivity) {
+    const std::string g = "cf_floor_shape/";
+    auto test_nodes = readIntVector(getFile(), g + "test_nodes");
+    MatrixXd dcl_ref = readMatrix(getFile(), g + "dcl_dx");
+    MatrixXd dcd_ref = readMatrix(getFile(), g + "dcd_dx");
+    MatrixXd dcm_ref = readMatrix(getFile(), g + "dcm_dx");
+    MatrixXd x_base = readMatrix(getFile(), g + "x_base");
+    VectorXd xtrip = readVector(getFile(), g + "xtrip");
+    VectorXd xt_ref = readVector(getFile(), g + "xt");
+
+    auto N_ref = static_cast<int>(x_base.cols());
+    Scirocco foil("2412", N_ref - 1);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    auto& s = foil.GetState();
+    ASSERT_TRUE(s.param.cf_laminar_floor) << "the floor is the default";
+    s.param.xtrip_lower = xtrip(0);
+    s.param.xtrip_upper = xtrip(1);
+    s.foil.x = x_base;
+    s.foil.N = N_ref;
+    RecomputeArcLength(s);
+    s.oper.viscous = true;
+    s.oper.initbl = true;
+    s.param.verb = 0;
+    s.isol.AIC.resize(0, 0);
+    s.isol.gamref.resize(0, 0);
+    s.isol.gam.resize(0);
+    SolveViscous(s);
+    ASSERT_TRUE(s.glob.conv) << "viscous solve failed to converge";
+    CalcForce(s);
+
+    /* The same solution as mfoil, with the floor acting on both surfaces */
+    EXPECT_NEAR(s.post.cl, readScalar<double>(getFile(), g + "cl_base"), 1e-9);
+    EXPECT_NEAR(s.post.cd, readScalar<double>(getFile(), g + "cd_base"), 1e-11);
+    EXPECT_NEAR(s.post.cm, readScalar<double>(getFile(), g + "cm_base"), 1e-9);
+    EXPECT_TRUE(s.vsol.tripped[0]);
+    EXPECT_FALSE(s.vsol.tripped[1]);
+    for (int si = 0; si < 2; ++si) {
+        EXPECT_NEAR(s.vsol.Xt(si, 1), xt_ref(si), 1e-9) << "surface " << si;
+        EXPECT_GT(FloorStations(s, si), 0) << "surface " << si;
+    }
+
+    Sensitivity sens = ViscousSensitivities(s);
+    for (const auto& [name, got, ref] :
+         {std::tuple<const char*, const MatrixXd&, const MatrixXd&>{
+              "dcl/dx", sens.dcl_dx, dcl_ref},
+          {"dcd/dx", sens.dcd_dx, dcd_ref},
+          {"dcm/dx", sens.dcm_dx, dcm_ref}}) {
+        for (int n : test_nodes) {
+            for (int d = 0; d < 2; ++d) {
+                double err = std::abs(got(d, n) - ref(d, n));
+                double rel = err / std::max(std::abs(ref(d, n)), 1e-30);
+                EXPECT_TRUE(rel < TOL_VISC_SHAPE || err < 1e-10)
+                    << name << " node=" << n << " dim=" << d
+                    << " scirocco=" << got(d, n) << " ref=" << ref(d, n)
+                    << " rel=" << rel;
+            }
+        }
+    }
+}
+
+TEST_F(SensitivityReferenceTest, CfLaminarFloorScalarSensitivity) {
+    const std::string g = "cf_floor_scalar/";
+    auto solve = [](double Ma) {
+        Scirocco foil("2412", 160);
+        foil.SetOper(4.0, -1.0, 1e6, Ma);
+        foil.GetState().param.xtrip_lower = 0.01;
+        EXPECT_TRUE(foil.Solve());
+        EXPECT_GT(FloorStations(foil.GetState(), 0), 0);
+        EXPECT_GT(FloorStations(foil.GetState(), 1), 0);
+        return foil.ComputeSensitivities();
+    };
+    const Sensitivity s0 = solve(0.0);
+    for (const auto& [name, got] :
+         {std::pair<const char*, double>{"dcl_dalpha", s0.dcl_dalpha},
+          {"dcd_dalpha", s0.dcd_dalpha},
+          {"dcm_dalpha", s0.dcm_dalpha},
+          {"dcl_dRe", s0.dcl_dRe},
+          {"dcd_dRe", s0.dcd_dRe},
+          {"dcm_dRe", s0.dcm_dRe}}) {
+        auto ref = readScalar<double>(getFile(), g + name);
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
+            << name << " scirocco=" << got << " ref=" << ref;
+    }
+    const Sensitivity sm = solve(0.3);
+    for (const auto& [name, got] :
+         {std::pair<const char*, double>{"dcl_dMa", sm.dcl_dMa},
+          {"dcd_dMa", sm.dcd_dMa},
+          {"dcm_dMa", sm.dcm_dMa}}) {
+        auto ref = readScalar<double>(getFile(), g + name);
+        EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
+            << name << " scirocco=" << got << " ref=" << ref;
+    }
 }
 
 /* ---------------------------------------------------------------------------

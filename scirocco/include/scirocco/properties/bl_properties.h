@@ -84,6 +84,15 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param);
  */
 ScalarLin4 GetCf(const Vector4d& U, const Param& param);
 
+/** @brief Skin friction coefficient of the station's own correlation: as
+ *  GetCf, but without the laminar floor on the turbulent value
+ *  (Param::cf_laminar_floor). The turbulent wall dissipation uses this.
+ *  @param U     State vector [theta, ds, sa, ue]
+ *  @param param Flow parameter struct
+ *  @return ScalarLin4 value and linearization w.r.t. U
+ */
+ScalarLin4 GetCfBase(const Vector4d& U, const Param& param);
+
 /** @brief Dissipation coefficient (combined turbulent / laminar with floor
  * switch)
  *  @param U     State vector [theta, ds, sa, ue]
@@ -366,6 +375,9 @@ double GetUs_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
  *  @return scalar d(Cf)/dMa
  */
 double GetCf_dMa(const Vector4d& U, const Param& param, const ThermoMaDeriv& d);
+/** As GetCf_dMa, for GetCfBase (no laminar floor). */
+double GetCfBase_dMa(const Vector4d& U, const Param& param,
+                     const ThermoMaDeriv& d);
 
 /** @brief d(CDi)/dMa — dissipation coefficient.
  *  @param U     State vector [theta, ds, sa, ue]
@@ -403,6 +415,8 @@ double GetCDixt_dMa(const Vector4d& U, double x, const Param& param,
 
 /** @brief d(cf)/dRet at fixed U. */
 double GetCf_dRet(const Vector4d& U, const Param& param);
+/** As GetCf_dRet, for GetCfBase (no laminar floor). */
+double GetCfBase_dRet(const Vector4d& U, const Param& param);
 /** @brief d(Hs)/dRet at fixed U (zero for laminar). */
 double GetHs_dRet(const Vector4d& U, const Param& param);
 /** @brief d(Us)/dRet at fixed U. */

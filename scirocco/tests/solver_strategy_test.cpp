@@ -5,12 +5,14 @@
 #include <vector>
 
 #include "scirocco/core/bl_march.h"
+#include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/coupled_linear.h"
 #include "scirocco/core/coupled_solver.h"
 #include "scirocco/core/forces.h"
 #include "scirocco/core/inviscid.h"
 #include "scirocco/core/paneling.h"
 #include "scirocco/core/transition.h"
+#include "scirocco/properties/bl_properties.h"
 #include "scirocco/scirocco.h"
 
 using namespace scirocco;
@@ -740,4 +742,55 @@ TEST(ForcedTransition, CapturedModelTripActsOnlyAheadOfTransition) {
     const double free = solve(1.0);
     EXPECT_GT(solve(0.2), 1.1 * free);
     EXPECT_NEAR(solve(0.7), free, 1e-9);
+}
+
+/* Trips close behind the stagnation point start the turbulent boundary
+ * layer at a small Re_theta, where the turbulent skin friction correlation
+ * alone does not give a solution. The laminar floor (Param::cf_laminar_floor,
+ * on by default) does. */
+TEST(CfLaminarFloor, TripNearStagnationConverges) {
+    Scirocco free_foil = TrippedFoil(4.0, 1.0, 1.0);
+    ASSERT_TRUE(free_foil.Solve());
+
+    Scirocco foil = TrippedFoil(4.0, 0.01, 0.01);
+    ASSERT_TRUE(foil.GetState().param.cf_laminar_floor);
+    ASSERT_TRUE(foil.Solve());
+    const auto& s = foil.GetState();
+    for (int si = 0; si < 2; ++si) {
+        EXPECT_TRUE(s.vsol.tripped[si]) << "surface " << si;
+        EXPECT_NEAR(s.vsol.Xt(si, 1), 0.01, 1e-12) << "surface " << si;
+    }
+    EXPECT_GT(foil.GetCd(), 1.5 * free_foil.GetCd());
+    EXPECT_LT(foil.GetCl(), free_foil.GetCl());
+}
+
+/* The floor replaces the turbulent value only where the laminar one is
+ * larger, and the wall dissipation keeps the turbulent value. */
+TEST(CfLaminarFloor, ActsOnlyWhereLaminarIsLarger) {
+    Scirocco foil("2412", 160);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    InitThermo(foil.GetState());
+    Param turb = BuildParam(foil.GetState(), 1);
+    turb.turb = true;
+    Param lam = turb;
+    lam.turb = false;
+    Param off = turb;
+    off.cf_laminar_floor = false;
+
+    /* Re_theta = 60 and 3000 at H = 1.6: [theta, delta*, ctau^0.5, ue] */
+    const double nu = turb.mu0 / turb.rho0;
+    for (double Ret : {60.0, 3000.0}) {
+        Vector4d U(Ret * nu, 1.6 * Ret * nu, 0.03, 1.0);
+        const double cf_turb = GetCfBase(U, turb).value;
+        const double cf_lam = GetCf(U, lam).value;
+        const bool floored = Ret < 100.0;
+        EXPECT_EQ(cf_lam > cf_turb, floored) << "Re_theta " << Ret;
+        EXPECT_EQ(GetCf(U, turb).value, floored ? cf_lam : cf_turb);
+        EXPECT_EQ(GetCf(U, off).value, cf_turb);
+        EXPECT_EQ(GetCDi_TurbWall(U, turb).value,
+                  GetCDi_TurbWall(U, off).value);
+        const ScalarLin4 got = GetCf(U, turb);
+        const ScalarLin4 ref = floored ? GetCf(U, lam) : GetCfBase(U, turb);
+        EXPECT_EQ(got.lin, ref.lin);
+    }
 }

@@ -134,6 +134,11 @@ struct Param {
     double xtrip_upper = 1.0;
     /** Forced transition on the lower surface, as xtrip_upper. */
     double xtrip_lower = 1.0;
+    /** Turbulent skin friction never below the laminar value at the same
+     *  Hk and Re_theta, as in XFOIL. It acts at small Re_theta (a trip close
+     *  behind the stagnation point) and just behind a separation bubble.
+     *  false gives mfoil's closure. Cut cell only. */
+    bool cf_laminar_floor = true;
     double capt_L = 60.0; /**< Captured: 10-90% transition length [theta],
                                calibrated on E387 drag (UIUC Vol 5) */
     double capt_ws = 1.0; /**< Captured: onset switch width in n */

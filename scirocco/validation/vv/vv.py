@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Data for the documentation's verification and validation pages.
 
-    vv.py codes       DRIVER OUT.json   Scirocco, XFOIL, mfoil and flexfoil
+    vv.py codes       DRIVER OUT.json   Scirocco (mfoil's closure), XFOIL, mfoil
+                                        and flexfoil
     vv.py experiments DRIVER OUT.json   Scirocco and XFOIL against wind-tunnel data
 
 DRIVER is vv_polar built against the library (see README.md). Every code runs
@@ -75,7 +76,7 @@ def panel(naca, workdir):
     return m.foil.x
 
 
-def run_scirocco(driver, workdir, re, ma, alphas, dist, trip):
+def run_scirocco(driver, workdir, re, ma, alphas, dist, trip, mfoil_closure):
     points, dists = {}, {}
     for k, sweep in enumerate(sweeps(alphas)):
         out = workdir / f"scirocco_{k}.json"
@@ -83,7 +84,8 @@ def run_scirocco(driver, workdir, re, ma, alphas, dist, trip):
             [str(driver), str(workdir / "nodes.txt"), str(re), str(ma), str(NCRIT),
              ",".join(map(str, sweep)),
              ",".join(str(a) for a in dist if a in sweep) or "-", str(out)]
-            + ([f"{trip[0]},{trip[1]}"] if trip else []),
+            + [f"{trip[0]},{trip[1]}" if trip else "-"]
+            + (["mfoil"] if mfoil_closure else []),
             check=True, timeout=600)
         data = json.loads(out.read_text())
         for p in data["points"]:
@@ -278,8 +280,10 @@ def run_case(case, driver, codes, pool):
             out.update(xtrip_upper=trip[0], xtrip_lower=trip[1])
         runs = {}
         if "scirocco" in codes:
+            # Against mfoil, Scirocco runs mfoil's closure: without the
+            # laminar floor on the turbulent skin friction that is its default.
             runs["scirocco"] = run_scirocco(driver, workdir, re, ma, alphas, dist,
-                                            trip)
+                                            trip, "mfoil" in codes)
         if "xfoil" in codes:
             runs["xfoil"] = run_xfoil(workdir, re, ma, alphas, dist, x.shape[1],
                                       trip)

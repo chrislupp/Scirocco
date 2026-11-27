@@ -2748,6 +2748,7 @@ TEST_F(MfoilReferenceTest, GetDistributions) {
 
     /* Set up state */
     Scirocco foil("0012", 130);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(alpha, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
 
@@ -3179,6 +3180,7 @@ TEST_F(MfoilReferenceTest, InitBoundaryLayer_Full) {
 
     /* Create foil and initialize (use SetOper signature: alpha, cl, Re, Ma) */
     Scirocco foil("0012", 130);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(0.0, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
     state.oper.viscous = true;

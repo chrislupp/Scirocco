@@ -31,7 +31,8 @@ python3 scirocco/validation/vv/vv.py experiments ./vv_polar docs/src/data/vv_exp
 ```
 
 `vv.py` holds the case lists. `vv_polar.cpp` documents the driver's
-arguments.
+arguments. `codes` runs Scirocco with mfoil's closure
+(`cf_laminar_floor = false`), `experiments` with its defaults.
 
 ## Measurements
 

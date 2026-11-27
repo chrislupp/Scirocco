@@ -33,7 +33,8 @@ differences skip |Cl| < 0.05. The cases and nodes are those of
   flexfoil builds its panels from the coordinates it is given, without
   repaneling.
 - **Same physics.** ncrit = 9, free transition on both surfaces, at most
-  100 Newton iterations per point.
+  100 Newton iterations per point. Scirocco runs mfoil's closure, as on the
+  [XFOIL and mfoil](./xfoil-mfoil#the-skin-friction-floor) page.
 - **How each code runs.** Scirocco and XFOIL sweep each polar from the
   angle nearest 0°, each point warm-starting from the last (Scirocco with
   `warm_start = true`). flexfoil's

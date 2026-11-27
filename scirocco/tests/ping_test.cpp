@@ -97,6 +97,7 @@ std::vector<int64_t> readIntVec(H5::H5File& file, const std::string& path) {
  */
 static Param MakeParam(double Re, double Ma, bool turb, bool wake) {
     Scirocco foil("0012", 130);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, Re, Ma);
     auto& state = foil.GetState();
     InitThermo(state);
@@ -120,6 +121,7 @@ class PingTest : public ::testing::Test {
         foil_ = std::make_unique<Scirocco>("0012", 130);
         foil_->SetOper(3.0, -1.0, 1e6, 0.0);
         auto& s = foil_->GetState();
+        s.param.cf_laminar_floor = false; /* as mfoil */
         s.oper.viscous = true;
         s.oper.initbl = true;
         s.param.verb = 0;
@@ -329,6 +331,7 @@ TEST_F(PingTest, ResidualTransitionDerivatives) {
  */
 TEST_F(PingTest, ResidualStation_Stagnation) {
     Scirocco foil_stag("0012", 130);
+    foil_stag.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil_stag.SetOper(1.0, -1.0, 1e6, 0.0);
     auto& st = foil_stag.GetState();
     InitThermo(st);

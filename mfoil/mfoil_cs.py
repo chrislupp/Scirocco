@@ -771,6 +771,41 @@ _mfoil_module.init_boundary_layer = _patched_init_boundary_layer
 _mfoil_module.calc_force = _patched_calc_force
 _mfoil_module.inviscid_velocity = _patched_inviscid_velocity
 
+
+# Laminar floor on the turbulent skin friction (XFOIL BLVAR; Scirocco
+# Param::cf_laminar_floor). Off unless M.param.cf_laminar_floor is set, so
+# that every other reference stays mfoil's. The turbulent wall dissipation
+# keeps the turbulent value, as in XFOIL.
+_orig_get_cf = _mfoil_module.get_cf
+_orig_get_cDi_turbwall = _mfoil_module.get_cDi_turbwall
+
+
+def _patched_get_cf(U, param):
+    cf, cf_U = _orig_get_cf(U, param)
+    if (param.turb and not param.wake
+            and getattr(param, 'cf_laminar_floor', False)):
+        param.turb = False
+        try:
+            cfl, cfl_U = _orig_get_cf(U, param)
+        finally:
+            param.turb = True
+        if np.real(cfl) > np.real(cf):
+            return cfl, cfl_U
+    return cf, cf_U
+
+
+def _patched_get_cDi_turbwall(U, param):
+    floor = getattr(param, 'cf_laminar_floor', False)
+    param.cf_laminar_floor = False
+    try:
+        return _orig_get_cDi_turbwall(U, param)
+    finally:
+        param.cf_laminar_floor = floor
+
+
+_mfoil_module.get_cf = _patched_get_cf
+_mfoil_module.get_cDi_turbwall = _patched_get_cDi_turbwall
+
 # ---------------------------------------------------------------------------
 # Patched: stagpoint_find  (line 806: abs() destroys complex imaginary part)
 # ---------------------------------------------------------------------------

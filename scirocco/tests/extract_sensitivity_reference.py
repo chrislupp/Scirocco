@@ -28,6 +28,10 @@ HDF5 structure:
                      at x/c = 0.2 (upper) and 0.6 (lower): CS dcl/dcd/dcm/dx
                      at the nodes around both trips
   trip_scalar/       same: CS d/dalpha, d/dRe (Ma=0); d/dMa at Ma=0.3
+  cf_floor_shape/    same case with the laminar skin-friction floor
+                     (Param::cf_laminar_floor), lower trip at x/c = 0.01 and
+                     free transition above: CS dcl/dcd/dcm/dx around both
+  cf_floor_scalar/   same: CS d/dalpha, d/dRe (Ma=0); d/dMa at Ma=0.3
 
 Usage:
   cd mfoil
@@ -44,6 +48,7 @@ envelope_* groups into the existing file; the two can be combined.
 --captured-trip-only (re)writes just captured_trip_shape/ and
 captured_trip_scalar/: the captured model with the trips of trip_shape/.
 --trip-only (re)writes just trip_shape/ and trip_scalar/.
+--cf-floor-only (re)writes just cf_floor_shape/ and cf_floor_scalar/.
 """
 
 import sys
@@ -130,7 +135,7 @@ def cs_inviscid_scalar(naca, npanel, alpha, Ma, var, step):
 
 
 def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic',
-                      xtrip=None):
+                      xtrip=None, cf_floor=False):
     """
     Complex-step derivative of (cl, cd, cm) w.r.t. a scalar operating condition.
     var: 'alpha', 'Ma', or 'Re'
@@ -151,6 +156,7 @@ def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic',
     M.param.doplot = False
     M.param.onset = onset
     M.param.xtrip = xtrip
+    M.param.cf_laminar_floor = cf_floor
     # Now enter complex mode for setoper + solve
     with complex_step_mode():
         M.setoper(**kwargs)
@@ -202,7 +208,7 @@ def cs_inviscid_shape(naca, npanel, alpha, Ma, test_nodes):
 
 
 def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic',
-                     xtrip=None):
+                     xtrip=None, cf_floor=False):
     """
     Complex-step shape sensitivities for viscous case.
     Returns dcl_dx, dcd_dx, dcm_dx [2, N+1] (nonzero only at test_nodes).
@@ -219,6 +225,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic',
     M_base.param.doplot = False
     M_base.param.onset = onset
     M_base.param.xtrip = xtrip
+    M_base.param.cf_laminar_floor = cf_floor
     recompute_geom(M_base)  # cumulative foil.s, same path as perturbations
     M_base.setoper(alpha=alpha, Re=Re, Ma=Ma)
     M_base.solve()
@@ -234,6 +241,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic',
             M.param.doplot = False
             M.param.onset = onset
             M.param.xtrip = xtrip
+            M.param.cf_laminar_floor = cf_floor
             M.foil.x = M.foil.x.astype(complex)
             M.foil.x[dim, node] += 1j * CS_STEP
             recompute_geom(M)
@@ -413,50 +421,69 @@ TRIP_X = [0.6, 0.2]
 
 
 def trip_nodes(M):
-    """The two nodes around each trip and their neighbours, plus one node
-    on each surface away from the trips."""
+    """The two nodes around each transition point (trip or free) and their
+    neighbours, plus one node on each surface away from them."""
     nodes = set()
     for si in range(2):
-        i, _, at_node = mfoil_cs.find_trip(M, si)
-        if i < 0 or at_node or not M.vsol.turb[M.vsol.Is[si][i]]:
-            raise RuntimeError('expected a trip inside an interval')
         Is = M.vsol.Is[si]
+        i, _, at_node = mfoil_cs.find_trip(M, si)
+        if i < 0:
+            turb = [k for k in range(len(Is)) if M.vsol.turb[Is[k]]]
+            if not turb:
+                continue
+            i = turb[0]
+        elif at_node or not M.vsol.turb[Is[i]]:
+            raise RuntimeError('expected a trip inside an interval')
         nodes.update(int(Is[k]) for k in range(i - 2, i + 2))
     nodes.update((20, 140))
     return sorted(nodes)
 
 
-def write_trip_groups(f):
+def write_trip_groups(f, prefix='trip', xtrip=None, cf_floor=False):
     """CS references for forced transition: shape, alpha, Re, Ma."""
     c = TRIP_CASE
-    print("\n--- trip_shape (NACA 2412, 160 panels, alpha=4, Re=1e6, "
-          f"xtrip lower/upper = {TRIP_X}) ---")
+    xtrip = TRIP_X if xtrip is None else xtrip
+    shape, scalar = prefix + '_shape', prefix + '_scalar'
+    print(f"\n--- {shape} (NACA 2412, 160 panels, alpha=4, Re=1e6, "
+          f"xtrip lower/upper = {xtrip}, cf floor = {cf_floor}) ---")
     M0 = mfoil.mfoil(naca=c['naca'], npanel=c['npanel'])
     M0.param.verb = 0
     M0.param.doplot = False
-    M0.param.xtrip = TRIP_X
+    M0.param.xtrip = xtrip
+    M0.param.cf_laminar_floor = cf_floor
     recompute_geom(M0)
     M0.setoper(alpha=c['alpha'], Re=c['Re'], Ma=0.0)
     M0.solve()
     nodes = trip_nodes(M0)
     M, dcl_dx, dcd_dx, dcm_dx = cs_viscous_shape(
-        c['naca'], c['npanel'], c['alpha'], c['Re'], 0.0, nodes, xtrip=TRIP_X)
-    write_viscous_shape_group(f, 'trip_shape', M, nodes, dcl_dx, dcd_dx,
-                              dcm_dx)
-    f['trip_shape'].create_dataset('xtrip', data=np.array(TRIP_X))
-    f['trip_shape'].create_dataset('xt', data=np.real(M.vsol.Xt[:, 1]))
+        c['naca'], c['npanel'], c['alpha'], c['Re'], 0.0, nodes, xtrip=xtrip,
+        cf_floor=cf_floor)
+    write_viscous_shape_group(f, shape, M, nodes, dcl_dx, dcd_dx, dcm_dx)
+    f[shape].create_dataset('xtrip', data=np.array(xtrip))
+    f[shape].create_dataset('xt', data=np.real(M.vsol.Xt[:, 1]))
 
-    print("\n--- trip_scalar (alpha, Re; Ma at Ma=0.3) ---")
-    g = f.create_group('trip_scalar')
+    print(f"\n--- {scalar} (alpha, Re; Ma at Ma=0.3) ---")
+    g = f.create_group(scalar)
     for var, suffix, Ma in (('alpha', 'dalpha', 0.0), ('Re', 'dRe', 0.0),
                             ('Ma', 'dMa', 0.3)):
         dcl, dcd, dcm = cs_viscous_scalar(c['naca'], c['npanel'], c['alpha'],
                                           c['Re'], Ma, var, CS_STEP,
-                                          xtrip=TRIP_X)
+                                          xtrip=xtrip, cf_floor=cf_floor)
         print(f"    d/{var}: dcl={dcl:.10e}, dcd={dcd:.10e}, dcm={dcm:.10e}")
         g.create_dataset('dcl_' + suffix, data=dcl)
         g.create_dataset('dcd_' + suffix, data=dcd)
         g.create_dataset('dcm_' + suffix, data=dcm)
+
+
+# Laminar floor on the turbulent skin friction (Param::cf_laminar_floor,
+# mfoil_cs._patched_get_cf). The lower trip is close behind the stagnation
+# point, where Re_theta is small; the upper surface transitions freely
+# behind a separation bubble. The floor acts in both places.
+FLOOR_X = [0.01, 1.0]
+
+
+def write_floor_groups(f):
+    write_trip_groups(f, prefix='cf_floor', xtrip=FLOOR_X, cf_floor=True)
 
 
 def write_captured_group(f):
@@ -594,6 +621,15 @@ def main():
                     del f[name]
             write_captured_cs_groups(f, 'captured_trip', TRIP_X)
         print(f"Wrote captured_trip_* groups to {OUTPUT_FILE}")
+        return
+
+    if '--cf-floor-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            for name in ('cf_floor_shape', 'cf_floor_scalar'):
+                if name in f:
+                    del f[name]
+            write_floor_groups(f)
+        print(f"Wrote cf_floor_shape/ and cf_floor_scalar/ to {OUTPUT_FILE}")
         return
 
     if '--captured-cs-only' in sys.argv[1:]:
@@ -735,6 +771,7 @@ def main():
         write_captured_group(f)
         write_captured_cs_groups(f)
         write_trip_groups(f)
+        write_floor_groups(f)
 
     elapsed = time.time() - t0
     print(f"\nDone. Wrote {OUTPUT_FILE}")

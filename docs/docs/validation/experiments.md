@@ -64,10 +64,10 @@ to 0.05 (`XTR 0.05 0.05` in XFOIL) reproduces that:
   within 0.4%. Above α = 5° the upper surface transitions freely ahead of
   the trip in both codes, and from 15° the stagnation point has passed the
   lower trip, which both codes then ignore.
-- **Not converged:** Scirocco at α = 13° and 14°, where the lower trip sits
-  just behind the stagnation point (see
-  [Transition limits](../concepts/transition#limits)). XFOIL converges
-  there.
+- **Near the stagnation point:** at α = 13° and 14° the lower trip sits
+  just behind the stagnation point. Scirocco's Cd is 0.9% and 1.3% below
+  XFOIL's there. These points rely on the
+  [laminar skin-friction floor](../concepts/transition#trips-near-the-leading-edge).
 
 ## NACA 0012 surface pressure
 

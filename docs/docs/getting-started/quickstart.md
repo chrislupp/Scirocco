@@ -52,9 +52,9 @@ scirocco/build/quickstart
 ```
 
 ```output
-Cl = 0.720173
-Cd = 0.00693199
-Cm = -0.0585055
+Cl = 0.720156
+Cd = 0.00693341
+Cm = -0.0585026
 ```
 
 That's a full viscous solve, with boundary layer, transition, and wake, in

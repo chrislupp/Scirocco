@@ -1,7 +1,8 @@
 /* Scirocco polar on prescribed panel nodes, for the verification and
  * validation pages of the documentation (see README.md).
  *
- * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json [TRIPS]
+ * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json [TRIPS
+ *                 [mfoil]]
  *   NODES        one node per line: x y s tx ty (lower TE -> LE -> upper TE),
  *                as mfoil panels it; Scirocco uses the nodes, arc length
  *                and tangents unchanged.
@@ -10,7 +11,9 @@
  *                one object, so each point warm-starts from the previous one
  *   DIST_ALPHAS  comma-separated subset of ALPHAS whose surface
  *                distributions are written ("-" for none)
- *   TRIPS        optional forced transition: XTRIP_UPPER,XTRIP_LOWER (x/c)
+ *   TRIPS        optional forced transition: XTRIP_UPPER,XTRIP_LOWER (x/c),
+ *                or "-" for none
+ *   mfoil        optional: mfoil's closure (Param::cf_laminar_floor = false)
  */
 #include <cmath>
 #include <fstream>
@@ -55,9 +58,10 @@ double TransitionX(const FoilState& state, int si) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 8 && argc != 9) {
+    if (argc < 8 || argc > 10 ||
+        (argc == 10 && std::string(argv[9]) != "mfoil")) {
         std::cerr << "usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS "
-                     "OUT.json [XTRIP_UPPER,XTRIP_LOWER]\n";
+                     "OUT.json [XTRIP_UPPER,XTRIP_LOWER|- [mfoil]]\n";
         return 2;
     }
     std::ifstream input(argv[1]);
@@ -81,7 +85,8 @@ int main(int argc, char** argv) {
     state.param.verb = 0;
     state.param.warm_start = true; /* a polar sweep, as a user would run it */
     state.param.ncrit = std::stod(argv[4]);
-    if (argc == 9) {
+    if (argc == 10) state.param.cf_laminar_floor = false;
+    if (argc >= 9 && std::string(argv[8]) != "-") {
         const auto trip = ParseList(argv[8]);
         if (trip.size() != 2) return 2;
         state.param.xtrip_upper = trip[0];
