@@ -268,6 +268,7 @@ Only the `[Unreleased]` section is edited during development. On release, it is 
 | `feature/<name>` | New features |
 | `fix/<name>` | Bug fixes |
 | `docs/<name>` | Documentation-only changes |
+| `release/<tag>` | A release PR into `main`, made only by `scripts/prepare_release.sh` |
 
 Keep branches focused — one logical change per PR. If a fix requires a
 refactor, split them into separate PRs.
@@ -289,8 +290,8 @@ nothing); if it is still there, delete it with
 `develop` when it deletes the branch below; check that it did.
 
 `main` and `develop` are protected branches that GitHub refuses to
-delete. Never delete them or try to, and never pass `--delete-branch`
-when merging a release PR (`develop` → `main`).
+delete. Never delete them or try to. A `release/<tag>` branch is deleted
+after its release PR merges, like any other branch.
 
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
@@ -303,44 +304,52 @@ commit category:
 | `Docs:` | `documentation` |
 | `Add:`, `Refactor:`, `CI:` | `enhancement` |
 | `Fix:` | `bug` (and `documentation` when it fixes the docs) |
-| Release, `develop` → `main` | `release` and `major`, `minor` or `patch` (see [Releases](#releases)) |
+| Release, `release/<tag>` → `main` | set by `scripts/prepare_release.sh` (see [Releases](#releases)) |
 
 Before marking a PR ready for review:
 - All CI checks pass (build + full test suite).
 - `clang-format` and `clang-tidy` produce no new warnings.
 - `CHANGELOG.md` is updated for any feature addition or bug fix.
 
-Squash-merge is preferred for feature branches; merge commits are used for
-release integrations (`develop` → `main`).
+Squash-merge is preferred for feature branches; release PRs into `main`
+are merged with a merge commit.
 
 ### Releases
 
-A release is a PR from `develop` to `main` labelled `release` and one of
-`major`, `minor` or `patch`, merged with a merge commit. On merge,
-`.github/workflows/release.yml` makes every versioned change: it bumps
-`scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
-(`scripts/release_docs.py`: `docs/versioned_docs/`,
-`docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
-and publishes. Its `homebrew` job then points the `scirocco` and
-`fauxfoil` formulae in `chrislupp/homebrew-tools` at a stable release
-(`scripts/homebrew_formula.py`; `RELEASE_TOKEN` must be able to push there).
-Those changes come only from the job: agents never commit a docs version
-snapshot or a version bump made by hand.
+Releases are made in two steps, and only the first involves an agent.
 
-Prepare a release on a `docs/` branch into `develop`, merged before the
-release PR:
+1. **Prepare.** Run `scripts/prepare_release.sh <bump>` (`major`, `minor`
+   or `patch`; add `alpha`, `beta` or `rc` for a prerelease). It branches
+   `release/<tag>` from `origin/develop`, merges `origin/main` in,
+   regenerates the fauXFOIL screenshots, makes every versioned change
+   (`scripts/release_plan.py prepare`: CMake version, CHANGELOG section,
+   docs snapshot), builds the docs, commits, pushes and opens the PR into
+   `main` with its labels. Never make these changes by hand. If the script
+   fails, fix the cause on `develop` and run it again.
+2. **Publish.** The user merges the release PR with a merge commit; agents
+   never merge into `main`. `.github/workflows/release.yml` then rebuilds
+   nothing: it tags the merge commit, gives the Docker images the PR
+   already built and tested (`candidate-<head commit>`) their version
+   tags, creates the GitHub release, points the Homebrew formulae at it,
+   merges `main` back into `develop` and checks the published artifacts
+   (`release-artifacts.yml`). Each job skips work already done, so a failed
+   job is fixed by rerunning it.
 
-1. Run `scripts/fauxfoil_screenshots.sh <bump>` with the release's bump
-   label and commit the two PNGs it writes. It builds fauXFOIL with the
-   coming version in a temporary worktree; the pictures come from this
-   script, never from hand-picked or edited plots.
-2. Build the docs as they will look after the release: in a throwaway
-   worktree, run `scripts/release_docs.py <version> false`, then
-   `npm run build` in `docs/`. Delete the worktree; commit nothing from it.
-   Links in `docs/src/pages/` and redirects resolve against the default
-   docs version, so a page moved since the last release needs
-   `createRedirects` in `docs/docusaurus.config.ts` (a static redirect to
-   it fails until the release) and a homepage link that looks the page up.
+While the release PR is open, its CI tests the exact commit that ships,
+and **Release check** confirms that the labels, version, CHANGELOG and
+docs snapshot agree, that the docs build, and that `RELEASE_TOKEN` can push
+to this repository and `chrislupp/homebrew-tools` and the Docker Hub login
+works. A release PR is ready only when every check passes, including
+**Release check** and both **Publish** jobs (the candidate images).
+
+`main`'s required status checks name CI jobs. When a job is renamed or a
+matrix changes, update them in the same PR, or release PRs wait on checks
+that never run. `main` requires no review: there is one maintainer.
+
+Links in `docs/src/pages/` and redirects resolve against the default docs
+version, so a page moved since the last release needs `createRedirects` in
+`docs/docusaurus.config.ts` (a static redirect to it fails until the
+release) and a homepage link that looks the page up.
 
 ### Commit messages
 

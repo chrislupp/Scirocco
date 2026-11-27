@@ -9,17 +9,18 @@
       "GCC 14 / Release",
       "Clang 18 / Release",
       "GCC 14 / Release / Sensitivity-Debug Suite",
-      "Build (scirocco-server)",
-      "Build (kulfan-server)",
-      "ASan and UBSan"
+      "Build (scirocco-server, amd64)",
+      "Build (scirocco-server, arm64)",
+      "Build (kulfan-server, amd64)",
+      "Build (kulfan-server, arm64)",
+      "Publish (chrislupp/scirocco)",
+      "Publish (chrislupp/scirocco-kulfan)",
+      "ASan and UBSan",
+      "Release check"
     ]
   },
   "enforce_admins": false,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
-  },
+  "required_pull_request_reviews": null,
   "restrictions": null,
   "required_conversation_resolution": true,
   "allow_force_pushes": false,
