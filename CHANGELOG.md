@@ -26,6 +26,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   that needs Qt 6.6+ (Quick, Quick Controls, Svg, Charts) and HDF5; the
   Scirocco build does not include it.
 
+### Fixed
+- A cold viscous `Solve()` on a reused `Scirocco` object (with
+  `warm_start = false`) now takes the same Newton path as one on a new
+  object. `StagPointFind` left the stagnation-point linearization
+  `isol.sstag_ue` from the previous solve in place, and the first coupled
+  Jacobian used it, so iteration counts depended on what the object solved
+  before. It is now reset to zero, as on a new object (#62).
+
 ## [0.3.1] - 2026-11-21
 
 ### Fixed
