@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# develop publishes the tested images as `next`. A release PR (into main,
+# from this repository) publishes them as `candidate-<head commit>`; the
+# release workflow later gives exactly those images their version tags.
+env:
+  PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/develop') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository) }}
+  PUBLISH_TAG: ${{ github.event_name == 'pull_request' && format('candidate-{0}', github.event.pull_request.head.sha) || 'next' }}
+
 # Pushes to a branch run one at a time, so an older develop run can never
 # overwrite a newer `next` image. Superseded PR runs are cancelled.
 concurrency:
@@ -44,7 +51,11 @@ jobs:
             runner: ubuntu-24.04-arm
 
     steps:
+      # A release PR builds its head commit, the commit its candidate tag
+      # names; other PRs build GitHub's test merge as usual.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref == 'main' && github.event.pull_request.head.sha || '' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -78,12 +89,11 @@ jobs:
           export PATH="$RUNNER_TEMP/smoke-client/bin:$PATH"
           bash scripts/smoke_image.sh "scirocco-ci:${{ matrix.kind }}" "${{ matrix.kind }}"
 
-      # develop publishes the images that just passed the smoke test as
-      # `next`. Each runner pushes its image by digest only (no tag); the
-      # `next` job tags the multi-arch manifest once every image has passed.
-      # Release images (version tags and `latest`) come from release.yml.
+      # Each runner pushes the image that just passed the smoke test by
+      # digest only (no tag); the publish job tags the multi-arch manifest
+      # once every image has passed.
       - name: Log in to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -93,7 +103,7 @@ jobs:
       # from its cache and the pushed image is the one that was tested.
       - name: Push the tested image by digest
         id: push
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: env.PUBLISH == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -104,7 +114,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
 
       - name: Record the digest
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: env.PUBLISH == 'true'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -112,7 +122,7 @@ jobs:
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
 
       - name: Upload the digest
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: env.PUBLISH == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.kind }}-${{ matrix.arch }}
@@ -120,10 +130,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  next:
-    name: Publish next (${{ matrix.image }})
+  publish:
+    name: Publish (${{ matrix.image }})
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -152,7 +165,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Tag the multi-arch manifest as next
+      - name: Tag the multi-arch manifest
         working-directory: ${{ runner.temp }}/digests
         env:
           IMAGE: ${{ matrix.image }}
@@ -160,5 +173,5 @@ jobs:
           sources=()
           for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
           test "${#sources[@]}" -eq 2
-          docker buildx imagetools create -t "$IMAGE:next" "${sources[@]}"
-          docker buildx imagetools inspect "$IMAGE:next"
+          docker buildx imagetools create -t "$IMAGE:$PUBLISH_TAG" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:$PUBLISH_TAG"

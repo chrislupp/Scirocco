@@ -23,6 +23,7 @@ you need to get a change from idea to merged PR.
 | `feature/<name>` | New features |
 | `fix/<name>` | Bug fixes |
 | `docs/<name>` | Documentation-only changes |
+| `release/<tag>` | Release PRs into `main`, made by `scripts/prepare_release.sh` |
 
 1. **Fork or branch** off `develop`.
 2. Keep branches focused — one logical change per PR. If a fix requires a
@@ -33,8 +34,8 @@ you need to get a change from idea to merged PR.
    - All CI checks pass (build + full test suite).
    - `clang-format` and `clang-tidy` produce no new warnings (see below).
    - `CHANGELOG.md` is updated (see below).
-5. Squash-merge is preferred for feature branches; merge commits are used for
-   release integrations from `develop` → `main`.
+5. Squash-merge is preferred for feature branches; release PRs into `main`
+   are merged with a merge commit.
 
 ---
 
@@ -273,7 +274,7 @@ needed.
 
 ## Release version progression
 
-Release PRs require exactly one `release`/`prerelease` label and one
+`scripts/prepare_release.sh` applies these labels. Release PRs require exactly one `release`/`prerelease` label and one
 `major`/`minor`/`patch` label. Prereleases also require exactly one of
 `alpha`, `beta`, or `rc`; stable releases must have none.
 The bump starts a new version cycle. Once that version has prerelease tags,
@@ -285,96 +286,75 @@ tags are rejected before any files are changed. Test this logic with
 `python3 -m unittest discover -s scripts -p 'test_*.py'`.
 
 
-### Release validation and publication
+### Making a release
 
-The release workflow pins the merged PR commit and requires it to remain the tip
-of `main`. Stable releases also run Docusaurus `docs:version`, set the snapshot
-as the default docs version, and include the generated docs, sidebar, version
-list, and config in the release commit. Prereleases leave snapshots and the
-default docs version unchanged. An existing snapshot is never overwritten;
-snapshot-generation failures stop the release before publication.
+1. **Prepare.** With `develop` holding everything the release should contain,
+   run:
 
-It prepares and commits these changes locally, then runs
-`scripts/validate_release.sh` against that prepared revision. This gate runs the
-Python tests, full C++ sensitivity and RPC suite, installed-consumer check,
-and documentation build/typecheck. A second job builds both Docker images on
-native `linux/amd64` and `linux/arm64` runners from the prepared commit, runs
-the malformed-request recovery and valid-request smoke tests against each, and
-pushes each tested image to Docker Hub by digest only, without a tag. Any
-failure stops publication.
+   ```bash
+   scripts/prepare_release.sh minor        # or major / patch
+   scripts/prepare_release.sh minor rc     # prerelease: alpha / beta / rc
+   ```
 
-Only after every image passes does the workflow push the release commit/tag,
-tag the multi-arch manifests built from those digests, and create the GitHub
-release. The atomic Git
-push uses an explicit lease on the original `main` revision to reject concurrent
-changes. Stable releases receive version, minor, major, and `latest` image
-tags; prereleases receive only their full version tag. Manual tag pushes do not
-publish images. The Docker workflow builds and smoke-tests both images on
-amd64 and arm64 runners on PRs and branch pushes. On pushes to `develop` it
-pushes each tested image by digest and, once all four have passed, tags the
-two multi-arch manifests as `next`. No other branch publishes images.
+   It branches `release/<tag>` from `origin/develop`, merges `origin/main`
+   in, regenerates the fauXFOIL screenshots (stable releases), and runs
+   `scripts/release_plan.py prepare`, which sets the CMake version, moves the
+   `[Unreleased]` notes under the new version in `CHANGELOG.md` and, for a
+   stable release, snapshots the docs (`docs/versioned_docs/`,
+   `docs/versions.json`, `lastVersion`). It builds the docs, checks the
+   result, commits, pushes and opens the PR into `main` with its labels.
+   It needs `gh`, `npm` and Qt 6 for the screenshots.
 
-While a release PR is open, the release job runs as the **Release dry run**
-check on every push and label change. It prepares and validates the release
-commit exactly as a merge would (version, CHANGELOG, docs snapshot,
-`validate_release.sh`), and checks that `RELEASE_TOKEN` can push to this
-repository and `chrislupp/homebrew-tools` and that the Docker Hub credentials
-log in. It creates no tag and pushes and publishes nothing. It is a required
-check on `main`, so a release PR cannot merge until it passes.
+2. **Review.** The PR's CI builds and tests the exact commit that ships.
+   The Docker workflow builds and smoke-tests both images on amd64 and
+   arm64 and publishes them as `candidate-<head commit>`. **Release check**
+   (`release.yml`) confirms that the labels, CMake version, CHANGELOG
+   section and docs snapshot agree with each other and with `main`, that
+   the branch contains `main` (so the merge ships the tested tree), that the
+   docs build, and that `RELEASE_TOKEN` can push to this repository and
+   `chrislupp/homebrew-tools` and the Docker Hub credentials log in. Merge
+   only when every check is green.
 
-For a local validation run without publication, install the dependencies listed
-in `scripts/validate_release.sh`, including a running Docker daemon, then run:
+3. **Publish.** Merge the PR with a merge commit. `release.yml` rebuilds
+   nothing. Its jobs, in order:
+   - **Tag**: checks the merge commit has the tested tree and the candidate
+     images exist, then pushes a signed tag;
+   - **Tag images**: gives the candidate images their version tags (stable
+     releases also get the minor, major and `latest` tags);
+   - **GitHub release**: creates it from the CHANGELOG section;
+   - **Homebrew**: points the `scirocco` and `fauxfoil` formulae at the
+     release (stable only);
+   - **Merge main into develop**: opens a PR instead if it conflicts;
+   - **Check published artifacts** (`release-artifacts.yml`): installs the
+     released source archive and exercises the published images through
+     the Python Philote client on both architectures.
+
+   Every job skips work that is already done, so a job that fails (a
+   network error, say) is fixed by rerunning it. Run
+   `release-artifacts.yml` by hand to recheck an existing release.
+
+`scripts/validate_release.sh` runs the whole validation (C++ suites with
+Philote, docs, images) on one machine without publishing, for a local check:
 
 ```bash
 PHILOTE_CPP_DIR=/path/to/Philote-Cpp/build bash scripts/validate_release.sh
 ```
 
-The workflow uses the existing `RELEASE_TOKEN`, `DOCKERHUB_USERNAME`, and
-`DOCKERHUB_TOKEN` secrets. Repository protection must permit the release token to
-push the validated version commit. GitHub and Docker Hub publication cannot be
-one transaction: if publication fails after validation, inspect the existing tag
-and image tags before retrying. Never rerun version calculation blindly after a
-partially published release.
-
-## Release qualification
-
-Before promoting `develop` to a stable release:
-
-1. Merge the intended changes into `develop` after their checks pass.
-2. Open a `develop` → `main` prerelease PR with one bump label (`major`, `minor`,
-   or `patch`), `prerelease`, and `rc`. Have it reviewed and require all checks.
-3. The release workflow validates the prepared commit and images before
-   publishing. The **Published release artifacts** workflow then downloads the
-   tagged source archive, tests a relocated CMake install, pulls both full-version
-   Docker images, and exercises them through the Python Philote client.
-4. Require that artifact workflow to pass before opening a stable-release PR.
-   Its `workflow_dispatch` input allows an existing release tag to be rechecked;
-   it does not publish anything. Inspect recorded image digests when diagnosing
-   a failed run. A post-publication failure must block promotion, even though it
-   cannot undo an already-published prerelease.
-
-The **ASan and UBSan** job runs the default core and Philote suites, including
-installed-consumer and RPC checks, in an instrumented build. Release builds
-remain uninstrumented. The **Coverage** job runs the default suite in a
-Clang-instrumented build and uploads the result to Codecov.
+The ASan and UBSan job runs the default core and Philote suites, including
+installed-consumer and RPC checks, in an instrumented build. The Coverage
+job runs the default suite in a Clang-instrumented build and uploads the
+result to Codecov.
 
 ### Main branch protection
 
-`.github/main-protection.json` records the protection configuration. It requires
-one approving review, dismissal of stale reviews, resolved conversations, an
-up-to-date branch, and the listed CI checks. Force pushes and deletion are
-blocked for ordinary contributors. An administrator can apply it with:
+`.github/main-protection.json` records the protection of `main`: the
+required status checks, an up-to-date branch and resolved conversations,
+no force pushes or deletion. It requires no review, because the project has
+one maintainer. `scripts/test_main_protection.py` fails if a required check
+is not the name of a CI job, so rename a job and its entry together. Apply
+the file with:
 
 ```bash
 gh api --method PUT repos/chrislupp/Scirocco/branches/main/protection \
     --input .github/main-protection.json
 ```
-
-Administrator enforcement is deliberately disabled because `RELEASE_TOKEN` is
-owned by the repository owner, `chrislupp`, and the release workflow pushes the
-validated version commit directly. This exception also permits administrators'
-manual pushes; a personal token cannot be distinguished from its owner's other
-Git operations. Personal repositories do not support per-user PR bypass lists.
-For an automation-only exception, migrate release authentication to a dedicated
-GitHub App and use rulesets with that App as the bypass actor. Never broaden the
-exception to ordinary contributors or disable checks to publish a release.
