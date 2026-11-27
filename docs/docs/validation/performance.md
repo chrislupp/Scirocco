@@ -54,7 +54,7 @@ Fortran from the CMPLXFOIL sources, built with `gfortran -O2
 Python overhead. Both codes ran on the same machine with the same
 coordinates: NACA 0012 at Re = 10⁶, 321 input points, repaneled by each code
 to the panel count shown. Cold starts are fresh solves. Warm starts follow
-a solve 0.5° away. Times are in milliseconds, with Newton steps in
+a solve 0.5° away, with `warm_start = true` for Scirocco. Times are in milliseconds, with Newton steps in
 parentheses.
 
 | Panels | α | XFOIL cold | Scirocco cold | XFOIL warm | Scirocco warm |
@@ -81,7 +81,7 @@ nodes unchanged, and flexfoil 1.1.6 builds its panels from them, so both
 codes solve the same discrete problem. flexfoil runs through its Python
 package, single-threaded. Times are medians of 11 runs in milliseconds,
 with Newton steps in parentheses. Warm starts follow a Scirocco solve 0.5°
-away; flexfoil's interface has no warm start.
+away, with `warm_start = true`; flexfoil's interface has no warm start.
 
 | Case | Panels | flexfoil | Scirocco cold | Scirocco warm |
 | --- | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ its cost grows faster with the panel count. The one case flexfoil wins,
 NACA 0012 at 8°, is one where Scirocco needs 15 steps to flexfoil's 5.
 
 A whole polar widens the gap, because Scirocco warm-starts each point
-from the last. NACA 0012 at Re = 10⁶ with 199 panels, α = 0…15°:
+from the last (`warm_start = true`). NACA 0012 at Re = 10⁶ with 199 panels, α = 0…15°:
 
 | | Time | Converged |
 | --- | --- | --- |

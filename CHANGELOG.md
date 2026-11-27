@@ -25,6 +25,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   carries the Scirocco logo and app icon. It is a separate CMake project
   that needs Qt 6.6+ (Quick, Quick Controls, Svg, Charts) and HDF5; the
   Scirocco build does not include it.
+- `warm_start` option of the Philote analysis discipline (default
+  `false`): starts each viscous `Compute` from the previous one.
+
+### Changed
+- `Param::warm_start` now defaults to `false`, so a viscous `Solve()`
+  starts cold and gives the same result whatever the object solved before.
+  Near stall the coupled equations can have more than one converged
+  solution, and a warm start picks between them based on earlier solves:
+  NACA 0012 at Re = 2e5 and 14.25 degrees converged to Cl = 0.93 after a
+  warm sweep and 0.71 from a cold start. Set `warm_start = true` for fast
+  polars. The Philote analysis discipline, which reuses one solver for
+  every `Compute`, now starts cold too, so evaluating the same design twice
+  gives the same outputs. fauXFOIL still warm-starts as XFOIL does (#63).
 
 ## [0.3.1] - 2026-11-21
 

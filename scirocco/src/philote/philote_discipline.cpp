@@ -50,11 +50,13 @@ void SiroccoDiscipline::Initialize() {
     AddOption("coordinates", "dict");
     AddOption("npanel", "int");
     AddOption("hdf5_file", "string");
+    AddOption("warm_start", "bool");
 }
 
 void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
     solver_.reset();
     nnodes_ = 0;
+    warm_start_ = false;
     const auto& fields = options.fields();
     if ((fields.count("naca") && !fields.at("naca").has_string_value()) ||
         (fields.count("coordinates") &&
@@ -66,6 +68,11 @@ void SiroccoDiscipline::SetOptions(const google::protobuf::Struct& options) {
 
     if (fields.count("npanel")) {
         npanel_ = IntegerOption(fields.at("npanel"), "npanel", 4, kMaxPanels);
+    }
+    if (fields.count("warm_start")) {
+        if (!fields.at("warm_start").has_bool_value())
+            throw std::invalid_argument("warm_start must be a bool");
+        warm_start_ = fields.at("warm_start").bool_value();
     }
 
     bool has_naca =
@@ -176,6 +183,8 @@ void SiroccoDiscipline::Compute(const philote::Variables& inputs,
     double Ma = inputs.at("Ma")(0);
 
     solver_->SetOper(alpha, -1.0, Re, Ma);
+    /* Off by default, so the same inputs always give the same outputs. */
+    state.param.warm_start = warm_start_;
     if (!solver_->Solve()) {
         throw std::runtime_error("Scirocco analysis did not converge");
     }

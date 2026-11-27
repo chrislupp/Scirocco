@@ -33,9 +33,9 @@ changes in $u_e$.
 
 1. Solve potential flow and lay out the wake along a streamline.
 2. Find the stagnation point and march a first guess for the boundary layer
-   down each surface. With `warm_start` (the default), a second `Solve()` on
-   the same object starts from the previous solution instead, shifted along
-   each surface to the new stagnation point.
+   down each surface. With [`warm_start`](#warm-starts) on, a second
+   `Solve()` on the same object starts from the previous solution instead,
+   shifted along each surface to the new stagnation point.
 3. Run Newton iterations on the full coupled system, updating the
    stagnation point and the transition location as they move.
 
@@ -67,6 +67,29 @@ Newton steps are damped with
 start still fails, Scirocco retries along a continuation path in angle of
 attack. `Solve()` returns `true` only when the residual meets the
 tolerance, or stops falling below `rtol_floor`.
+
+## Warm starts
+
+By default every `Solve()` starts cold, so the same inputs give the same
+result whatever the object solved before. Set `param.warm_start = true` to
+start each viscous solve from the last converged boundary layer of the same
+object, as XFOIL does. A polar step of 0.5° then mostly takes 5 or 6 Newton
+iterations instead of about 10. If the warm attempt hasn't converged within
+30 iterations, the solve starts again cold.
+
+Near stall the coupled equations can have more than one converged solution,
+and a warm start picks the one nearest the previous point. On NACA 0012 at
+Re = 2×10⁵ with 160 panels:
+
+| α | cold | warm, sweeping up | warm, sweeping down |
+| --- | --- | --- | --- |
+| 14.00° | 0.746 | 0.746 | 0.983 |
+| 14.25° | 0.710 | 0.931 | 0.931 |
+
+Each of these values is a converged solution, and XFOIL shows the same
+hysteresis. Away from stall a warm and a cold start agree to round-off. Use
+warm starts for polars where speed matters, and keep cold starts where a
+result must not depend on the order of evaluation, such as in optimization.
 
 ## Outputs
 

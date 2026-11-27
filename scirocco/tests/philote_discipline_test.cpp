@@ -327,6 +327,48 @@ TEST(PhiloteOptionsTest, NeitherNacaNorCoordinatesThrows) {
     EXPECT_THROW(disc.SetOptions(opts), std::invalid_argument);
 }
 
+/* The discipline reuses one solver, but by default each Compute starts
+ * cold, so evaluating the same design twice gives the same outputs whatever
+ * came in between. NACA 0012 at Re 2e5 and 14.25 deg has two converged
+ * boundary layers; a warm sweep up in 0.25 deg steps reaches the other one. */
+TEST(PhiloteOptionsTest, ComputeIgnoresEarlierEvaluations) {
+    scirocco::Scirocco ref("0012", 160);
+    const scirocco::MatrixXd foil_x = ref.GetFoilCoords();
+
+    auto evaluate = [&](const google::protobuf::Struct& opts,
+                        const std::vector<double>& alphas) {
+        scirocco::SiroccoDiscipline disc;
+        philote::Variables inputs, outputs;
+        philote::Partials partials;
+        RunLifecycle(disc, opts, inputs, outputs, partials);
+        for (const double alpha : alphas) {
+            SetCoordinateInputs(inputs, foil_x, alpha, 2e5, 0.0);
+            disc.Compute(inputs, outputs);
+        }
+        return std::make_pair(outputs.at("cl")(0), outputs.at("cd")(0));
+    };
+
+    const auto opts = BuildNacaOptions("0012", 160);
+    const auto fresh = evaluate(opts, {14.25});
+    const auto reused = evaluate(opts, {13.5, 13.75, 14.0, 14.25});
+    EXPECT_NEAR(reused.first, fresh.first, 1e-10);
+    EXPECT_NEAR(reused.second, fresh.second, 1e-10);
+
+    auto warm_opts = opts;
+    (*warm_opts.mutable_fields())["warm_start"].set_bool_value(true);
+    const auto warm = evaluate(warm_opts, {13.5, 13.75, 14.0, 14.25});
+    EXPECT_GT(std::abs(warm.first - fresh.first), 0.1)
+        << "the case no longer shows two branches; pick another";
+}
+
+TEST(PhiloteOptionsTest, WarmStartMustBeBool) {
+    scirocco::SiroccoDiscipline disc;
+    disc.Initialize();
+    auto opts = BuildNacaOptions("0012", 99);
+    (*opts.mutable_fields())["warm_start"].set_number_value(1);
+    EXPECT_THROW(disc.SetOptions(opts), std::invalid_argument);
+}
+
 /* ===========================================================================
    Partial derivative tests: discipline partials vs. CS reference (HDF5)
    ===========================================================================

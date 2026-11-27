@@ -97,6 +97,7 @@ class SiroccoDiscipline : public philote::ExplicitDiscipline {
     std::unique_ptr<Scirocco> solver_;
     int npanel_ = 199;
     int nnodes_ = 0;
+    bool warm_start_ = false;
 
 #ifdef SCIROCCO_HDF5
     std::unique_ptr<Hdf5Writer> hdf5_writer_;
