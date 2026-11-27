@@ -78,8 +78,8 @@ iterations instead of about 10. If the warm attempt hasn't converged within
 30 iterations, the solve starts again cold.
 
 Near stall the coupled equations can have more than one converged solution,
-and a warm start picks the one nearest the previous point. On NACA 0012 at
-Re = 2×10⁵ with 160 panels:
+and which one a warm start reaches depends on the earlier points. On NACA
+0012 at Re = 2×10⁵ with 160 panels, sweeping in 0.25° steps:
 
 | α | cold | warm, sweeping up | warm, sweeping down |
 | --- | --- | --- | --- |
@@ -87,7 +87,8 @@ Re = 2×10⁵ with 160 panels:
 | 14.25° | 0.710 | 0.931 | 0.931 |
 
 Each of these values is a converged solution, and XFOIL shows the same
-hysteresis. Away from stall a warm and a cold start agree to round-off. Use
+hysteresis. In this band the solution a warm start reaches is sensitive
+enough that it can change with the compiler or the BLAS library. Away from stall a warm and a cold start agree to round-off. Use
 warm starts for polars where speed matters, and keep cold starts where a
 result must not depend on the order of evaluation, such as in optimization.
 
