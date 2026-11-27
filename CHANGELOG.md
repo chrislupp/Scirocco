@@ -39,6 +39,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   every `Compute`, now starts cold too, so evaluating the same design twice
   gives the same outputs. fauXFOIL still warm-starts as XFOIL does (#63).
 
+### Fixed
+- A cold viscous `Solve()` on a reused `Scirocco` object (with
+  `warm_start = false`) now takes the same Newton path as one on a new
+  object. `StagPointFind` left the stagnation-point linearization
+  `isol.sstag_ue` from the previous solve in place, and the first coupled
+  Jacobian used it, so iteration counts depended on what the object solved
+  before. It is now reset to zero, as on a new object (#62).
+
 ## [0.3.1] - 2026-11-21
 
 ### Fixed

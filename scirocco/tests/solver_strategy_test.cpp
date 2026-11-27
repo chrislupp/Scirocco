@@ -259,6 +259,30 @@ TEST(SolverStrategy, DefaultSolveIgnoresEarlierSolves) {
         << "the case no longer shows two branches; pick another";
 }
 
+/* A cold solve on a reused object follows the same Newton path as one on a
+ * new object: nothing from the earlier solve (such as the stagnation-point
+ * linearization isol.sstag_ue) reaches its first Jacobian. */
+TEST(SolverStrategy, ColdSolveIgnoresEarlierSolves) {
+    Scirocco fresh("0012", 160);
+    fresh.GetState().param.warm_start = false;
+    fresh.SetOper(-4.0, -1.0, 2e5, 0.0);
+    ASSERT_TRUE(fresh.Solve());
+
+    for (const double before : {-4.0, 4.0, 12.0}) {
+        Scirocco reused("0012", 160);
+        reused.GetState().param.warm_start = false;
+        reused.SetOper(before, -1.0, 2e5, 0.0);
+        ASSERT_TRUE(reused.Solve());
+        reused.SetOper(-4.0, -1.0, 2e5, 0.0);
+        ASSERT_TRUE(reused.Solve());
+        EXPECT_EQ(reused.GetState().glob.coupled_iterations,
+                  fresh.GetState().glob.coupled_iterations)
+            << "after a solve at alpha " << before;
+        EXPECT_EQ(reused.GetCl(), fresh.GetCl()) << "alpha " << before;
+        EXPECT_EQ(reused.GetCd(), fresh.GetCd()) << "alpha " << before;
+    }
+}
+
 /* The influence matrix and its factorization are reused while the panel
  * nodes are unchanged, and rebuilt as soon as any node moves. */
 TEST(SolverStrategy, InviscidCacheFollowsGeometry) {

@@ -109,8 +109,10 @@ void StagPointFind(FoilState& state) {
         }
     }
 
-    /* NOTE: sstag_ue is NOT computed here (matching mfoil).
-     * It is set later by StagPointMove during viscous iterations. */
+    /* sstag_ue is set by StagPointMove during the viscous iterations. Until
+     * then it is zero (mfoil's initial value), so the first coupled Jacobian
+     * never carries over a value from an earlier solve on the same state. */
+    state.isol.sstag_ue.setZero();
 
     /* Compute xi (distance from stagnation point) for foil points only
      * Wake points will be added after BuildWake is called */
