@@ -29,9 +29,14 @@ class ReleaseValidationTest(unittest.TestCase):
             for name in ("python3", "cmake", "ctest", "npm", "docker"):
                 (temp / name).symlink_to(mock)
             log = temp / "commands"
+            # Settings of validate_release.sh come only from extra_env, never
+            # from the caller: the release job itself runs these tests with
+            # VALIDATE_IMAGES=0.
+            inherited = {k: v for k, v in os.environ.items()
+                         if k not in ("VALIDATE_IMAGES", "RELEASE_BUILD_DIR")}
             result = subprocess.run(
                 ["bash", "scripts/validate_release.sh"], cwd=ROOT,
-                env={**os.environ, "PATH": f"{temp}:{os.environ['PATH']}",
+                env={**inherited, "PATH": f"{temp}:{os.environ['PATH']}",
                      "PHILOTE_CPP_DIR": "/test/philote", "COMMAND_LOG": str(log),
                      "FAIL_MATCH": failure, **(extra_env or {})},
                 capture_output=True, text=True,

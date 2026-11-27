@@ -327,6 +327,16 @@ and publishes. Its `homebrew` job then points the `scirocco` and
 Those changes come only from the job: agents never commit a docs version
 snapshot or a version bump made by hand.
 
+While a release PR is open, the same workflow runs as **Release dry run**:
+the version bump, CHANGELOG retitle, docs snapshot, release commit and
+`scripts/validate_release.sh`, plus a check that `RELEASE_TOKEN` can push to
+this repository and the Homebrew tap and that the Docker Hub login works.
+It tags, pushes and publishes nothing. Never merge a release PR before
+**Release dry run** has passed; it is a required check on `main`. When a
+CI job is renamed (for example a new matrix entry), update `main`'s
+required status checks in the same PR, or release PRs wait on a check that
+never runs.
+
 Prepare a release on a `docs/` branch into `develop`, merged before the
 release PR:
 
