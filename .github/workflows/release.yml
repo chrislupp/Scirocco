@@ -36,10 +36,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+    # No saved credentials: checkout's token header would replace the
+    # RELEASE_TOKEN in the credential check's push URL.
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Require a release PR
       run: |
