@@ -19,6 +19,7 @@ jobs:
       PHILOTE_CPP_REF: 49e1b42c3e46a4b9b70619c29e705985a6e6555d
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/apt-setup
       - name: Install dependencies
         run: |
           sudo apt-get update

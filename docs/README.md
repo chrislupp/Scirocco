@@ -42,7 +42,8 @@ except `onset.json`, which comes from
 `transition.json`, which comes from
 `scirocco/validation/captured_transition/e387_calibrate.py docs`, and
 `vv_codes.json` and `vv_experiments.json`, which come from
-`scirocco/validation/vv/vv.py` (see its README; it needs XFOIL).
+`scirocco/validation/vv/vv.py` (see its README; it needs XFOIL and the
+`flexfoil` Python package).
 Timings in `src/data/bench.json` come from the `bench` example. Regenerate
 both after a change to solver results or performance:
 

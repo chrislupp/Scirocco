@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
                 "guides/gradients",
                 "guides/hdf5",
                 "guides/fauxfoil",
+                "guides/gui",
             ],
         },
         {
@@ -46,6 +47,7 @@ const sidebars: SidebarsConfig = {
             items: [
                 "validation/index",
                 "validation/xfoil-mfoil",
+                "validation/flexfoil",
                 "validation/experiments",
                 "validation/transition",
                 "validation/performance",

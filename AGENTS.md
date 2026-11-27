@@ -48,6 +48,14 @@ text-only), `FAUXFOIL_BUILD_TESTS=ON`. The Qt tests run without a display
 is configured; the Scirocco build, Docker images and release artifacts do
 not include it.
 
+Homebrew ships it as its own formula. `chrislupp/homebrew-tools` has
+`scirocco` (the library) and `fauxfoil`, which builds `fauxfoil/` with Qt
+from the same release tarball against the installed `scirocco`. Library
+users never get fauXFOIL or Qt. Both formulae carry the same `url` and
+`sha256`, and the release job updates them together (see
+[Releases](#releases)). Keep fauXFOIL buildable against an installed
+Scirocco (`-DFAUXFOIL_SCIROCCO_SOURCE=`); the formula depends on it.
+
 fauXFOIL's version is Scirocco's: CMake reads it from
 `project(scirocco VERSION ...)` (or the installed package) and passes it in
 as `SCIROCCO_VERSION`, which the banner, polar file headers and plot tags
@@ -55,6 +63,39 @@ print. Never hard-code it in `fauxfoil/`; the `fauXFOIL.Version` test
 fails if the binary reports anything else. The screenshots in
 `docs/static/img/fauxfoil-*.png` show the version too; see
 [Releases](#releases) for regenerating them.
+
+### Scirocco Viewer
+`gui/` holds Scirocco Viewer, a Qt 6 Quick (QML) program for looking at
+the HDF5 files `scirocco::Hdf5Writer` writes (`SCIROCCO_HDF5_OUTPUT=ON`,
+see `scirocco/examples/hdf5_output_example.cpp`). It is a separate CMake
+project like fauXFOIL, but reads only the HDF5 file and does not link
+Scirocco, so its reader (`gui/src/hdf5_reader.cpp`) must follow any
+change to the writer's group and dataset names. It needs Qt 6.6+ (Core,
+Gui, Qml, Quick, QuickControls2, Svg, Widgets, Charts) and HDF5 (C, C++):
+```bash
+cmake -S gui -B gui/build -DCMAKE_BUILD_TYPE=Release
+cmake --build gui/build -j
+gui/build/SciroccoViewer.app/Contents/MacOS/SciroccoViewer alpha_sweep.h5
+```
+`--theme light` starts in the light theme, `--set name=value` sets a
+main-window property (`activeSection=1`, `showCpArrows=true`, ...), and
+`--screenshot out.png` saves the window once it has drawn and quits: use
+them to check UI changes without a screen recorder
+(`QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2` needs no display). The
+docs picture `docs/static/img/gui-overview.png` comes from
+`scripts/gui_screenshot.sh`, never from a hand-made capture. On macOS it
+builds as an app bundle. The CI `Scirocco Viewer` job builds it with Qt
+from `install-qt-action` (Ubuntu's Qt is too old) and loads its QML
+offscreen. The Scirocco build, Docker images and release artifacts do not
+include it. The user guide is `docs/docs/guides/gui.md`.
+
+The viewer shows the Scirocco logo straight from `docs/static/img/` (the
+CMake file adds those SVGs as resources), so it changes with the docs. The
+app icon is generated: after a logo change, run
+`gui/resources/make_app_icon.py` (needs `rsvg-convert` and `iconutil`
+on macOS) and commit `app-icon.svg` and `AppIcon.icns`. UI icons are SVG
+path data on a 24-unit grid in `gui/qml/components/Icon.qml`, drawn in
+the theme's colours; add new ones there rather than as image files.
 
 ### Build options
 - `SCIROCCO_BUILD_TESTS=ON` (default) — solver, geometry, Jacobian, and adjoint suites; see CONTRIBUTING.md for dependency requirements
@@ -237,6 +278,20 @@ first, and every layer lands in `develop`: merge the bottom PR into
 Merging a PR into the branch below it leaves its commits outside `develop`;
 that is how the gradient speedups from #26–#28 were lost.
 
+A `feature/`, `fix/` or `docs/` branch is deleted once it is merged into
+`develop`. GitHub deletes the branch on `origin` when the PR merges (the
+repository has "Automatically delete head branches" on). After merging,
+check that it is gone (`git ls-remote --heads origin <branch>` prints
+nothing); if it is still there, delete it with
+`git push origin --delete <branch>`. Then delete the local branch
+(`git branch -D <branch>`) and prune its remote-tracking ref
+(`git fetch --prune`). In a stack, GitHub retargets the next PR to
+`develop` when it deletes the branch below; check that it did.
+
+`main` and `develop` are protected branches that GitHub refuses to
+delete. Never delete them or try to, and never pass `--delete-branch`
+when merging a release PR (`develop` → `main`).
+
 Before opening a PR, document any new feature on the documentation site
 (see [Documenting features](#documenting-features)).
 
@@ -266,8 +321,11 @@ A release is a PR from `develop` to `main` labelled `release` and one of
 `scirocco/CMakeLists.txt`, retitles `CHANGELOG.md`, snapshots the docs
 (`scripts/release_docs.py`: `docs/versioned_docs/`,
 `docs/versioned_sidebars/`, `docs/versions.json`, `lastVersion`), tags,
-and publishes. Those changes come only from the job: agents never commit
-a docs version snapshot or a version bump made by hand.
+and publishes. Its `homebrew` job then points the `scirocco` and
+`fauxfoil` formulae in `chrislupp/homebrew-tools` at a stable release
+(`scripts/homebrew_formula.py`; `RELEASE_TOKEN` must be able to push there).
+Those changes come only from the job: agents never commit a docs version
+snapshot or a version bump made by hand.
 
 Prepare a release on a `docs/` branch into `develop`, merged before the
 release PR:
@@ -365,6 +423,10 @@ fauxfoil/              # fauXFOIL: XFOIL-style command line on Scirocco (own CMa
   src/                 # Session, plots, PostScript, font reader; qt/ holds the plot window
   fonts/               # FauxfoilPlot.ttf (compiled into the program) and make_font.py, its source
   tests/               # Google Test suites (text and offscreen Qt)
+
+gui/                   # Scirocco Viewer: Qt Quick viewer for HDF5 output (own CMake project)
+  src/                 # HDF5 reader and video exporter exposed to QML
+  qml/                 # Main window, charts and airfoil canvas; components/ holds panels
 
 scirocco/
   include/scirocco/

@@ -194,7 +194,7 @@ void CpAxes(Scene& scene, const CpFrame& f, const CpOptions& options) {
                           f.Ycp(cp), Ink::Fore, Dash::Dotted);
     }
 
-    scene.Text(112.0, Top(193.0 + f.shift), 11.8, "fauXFOIL");
+    scene.Text(112.0, Top(193.0 + f.shift), 11.8, "Scirocco");
     scene.Text(112.0, Top(214.0 + f.shift), 9.4, "V " + options.version);
 }
 
@@ -958,7 +958,7 @@ Scene PolarPlot(const std::vector<Polar>& polars, const std::string& version,
         scene.Text(Xt(x), numbers_y, kNumber, Fixed(x, 1), Ink::Fore, 0.5);
     Frame(scene, b3);
     scene.Text(1025.0, Top(898.0), 17.0, "x_{tr} /c");
-    scene.Text(b3.right, Top(281.0), 9.9, "fauXFOIL V " + version, Ink::Fore,
+    scene.Text(b3.right, Top(281.0), 9.9, "Scirocco V " + version, Ink::Fore,
                1.0);
 
     /* Polars */

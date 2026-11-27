@@ -27,7 +27,7 @@ Philote server.
 | `niglob` | `200` | Maximum iterations for a coupled solve |
 | `bl_march` | `true` | Before each Newton step, re-solve the boundary layer by a [march](../concepts/viscous-coupling#the-solve) at the current `ue`, as XFOIL does. `false` gives mfoil's iteration |
 | `step_limiter` | `StepLimiter::Absolute` | Under-relaxation rule: `Absolute` (mfoil) caps the amplification change at 2, the shear-stress change at 0.05 and the `ue` change at 0.2; `Relative` (XFOIL) scales the step so no change exceeds +150% or −50% of its value |
-| `warm_start` | `true` | Start a viscous `Solve()` from the last converged boundary layer of the same object; cold start if that fails |
+| `warm_start` | `false` | Start a viscous `Solve()` from the last converged boundary layer of the same object; cold start if that fails. Faster for polars, but near stall the result can depend on earlier solves: see [warm starts](../concepts/viscous-coupling#warm-starts) |
 | `scale_coupled_system` | `true` | Equilibrate the assembled system of the trust-region step |
 | `use_continuation` | `true` | Retry failed cold starts along an angle/lift path |
 | `continuation_max_attempts` | `24` | Maximum continuation attempts |

@@ -49,6 +49,12 @@ for (double alpha = -2.0; alpha <= 10.0; alpha += 2.0) {
   10.0   1.2628  0.01547  -0.0370
 ```
 
+Each point starts cold, so its result doesn't depend on the points before
+it. For long polars, `foil.GetState().param.warm_start = true` starts each
+point from the last one, which usually saves a few Newton iterations. Near stall
+that can land on a different converged solution than a cold start; see
+[warm starts](../concepts/viscous-coupling#warm-starts).
+
 The same sweep from −4° to 14° in 1° steps, with the inviscid lift for
 comparison:
 

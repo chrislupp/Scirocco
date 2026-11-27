@@ -8,7 +8,9 @@ import styles from "./charts.module.css";
 import codes from "@site/src/data/vv_codes.json";
 import experiments from "@site/src/data/vv_experiments.json";
 
-type Code = "scirocco" | "xfoil" | "mfoil";
+type Code = "scirocco" | "xfoil" | "mfoil" | "flexfoil";
+/** The third code drawn next to Scirocco and XFOIL. */
+type Third = "mfoil" | "flexfoil";
 
 interface Point {
     alpha: number;
@@ -44,12 +46,14 @@ interface Case {
     scirocco: Run;
     xfoil: Run;
     mfoil?: Run;
+    flexfoil?: Run;
 }
 
 const CODE_STYLE: Record<Code, Pick<Series, "label" | "role" | "dashed" | "markers" | "line" | "open">> = {
     scirocco: { label: "Scirocco", role: "1" },
     xfoil: { label: "XFOIL 6.99", role: "2", dashed: true },
     mfoil: { label: "mfoil", role: "3", markers: true, line: false, open: true },
+    flexfoil: { label: `flexfoil ${codes.versions.flexfoil}`, role: "3", markers: true, line: false },
 };
 
 const f2 = (v: number) => v.toFixed(2);
@@ -65,8 +69,8 @@ function findCase(cases: Case[], name: string): Case {
 const codeCase = (name: string) => findCase(codes.cases as unknown as Case[], name);
 const experimentCase = (name: string) => findCase(experiments.cases as unknown as Case[], name);
 
-function codesOf(c: Case): Code[] {
-    return c.mfoil ? ["scirocco", "xfoil", "mfoil"] : ["scirocco", "xfoil"];
+function codesOf(c: Case, third: Third = "mfoil"): Code[] {
+    return c[third] ? ["scirocco", "xfoil", third] : ["scirocco", "xfoil"];
 }
 
 /** Evenly spaced ticks covering [lo, hi]. */
@@ -83,8 +87,13 @@ function domain(values: number[], step: number): [number, number] {
     return [Math.floor(lo / step + 1e-9) * step, Math.ceil(hi / step - 1e-9) * step];
 }
 
-function polarSeries(c: Case, key: "cl" | "cd" | "xtr_upper", xKey: "alpha" | "cd" = "alpha"): Series[] {
-    return codesOf(c).map((code) => {
+function polarSeries(
+    c: Case,
+    key: "cl" | "cd" | "xtr_upper",
+    xKey: "alpha" | "cd" = "alpha",
+    third: Third = "mfoil",
+): Series[] {
+    return codesOf(c, third).map((code) => {
         const pts = c[code]!.points.filter((p) => p.converged);
         return {
             id: code,
@@ -95,8 +104,8 @@ function polarSeries(c: Case, key: "cl" | "cd" | "xtr_upper", xKey: "alpha" | "c
     });
 }
 
-function missing(c: Case): string {
-    const parts = codesOf(c)
+function missing(c: Case, third: Third = "mfoil"): string {
+    const parts = codesOf(c, third)
         .map((code) => {
             const bad = c[code]!.points.filter((p) => !p.converged).map((p) => `${p.alpha}°`);
             return bad.length ? `${CODE_STYLE[code].label} at ${bad.join(", ")}` : null;
@@ -122,10 +131,10 @@ function conditions(c: Case) {
 }
 
 /** Lift curve and drag polar from the three codes on shared nodes. */
-export function CodePolarPlot({ name }: { name: string }) {
+export function CodePolarPlot({ name, third = "mfoil" }: { name: string; third?: Third }) {
     const c = codeCase(name);
-    const lift = polarSeries(c, "cl");
-    const drag = polarSeries(c, "cl", "cd");
+    const lift = polarSeries(c, "cl", "alpha", third);
+    const drag = polarSeries(c, "cl", "cd", third);
     const cls = lift.flatMap((s) => s.y);
     const cds = drag.flatMap((s) => s.x);
     const clDomain = domain(cls, 0.25);
@@ -141,7 +150,7 @@ export function CodePolarPlot({ name }: { name: string }) {
                 y={{ domain: clDomain, ticks: ticks(...clDomain, 0.5), label: "Cl" }}
                 fx={(v) => `${v}`}
                 fy={f3}
-                caption={<>{conditions(c)}.{missing(c)}</>}
+                caption={<>{conditions(c)}.{missing(c, third)}</>}
             />
             <Chart
                 title={`Drag polar, ${conditions(c)}`}
@@ -162,13 +171,13 @@ export function CodePolarPlot({ name }: { name: string }) {
 }
 
 /** Upper-surface transition location against angle of attack. */
-export function CodeTransitionPlot({ name }: { name: string }) {
+export function CodeTransitionPlot({ name, third = "mfoil" }: { name: string; third?: Third }) {
     const c = codeCase(name);
     return (
         <Chart
             title={`Upper-surface transition, ${conditions(c)}`}
             height={300}
-            series={polarSeries(c, "xtr_upper")}
+            series={polarSeries(c, "xtr_upper", "alpha", third)}
             x={{ domain: domain(c.alphas, 2), ticks: ticks(...domain(c.alphas, 2), 2), label: "α (deg)" }}
             y={{ domain: [0, 1], ticks: [0, 0.2, 0.4, 0.6, 0.8, 1], label: "x/c transition, upper" }}
             fx={(v) => `${v}`}
@@ -187,24 +196,26 @@ export function CodeDistributionPlot({
     quantity,
     surface = "both",
     yMax,
+    third = "mfoil",
 }: {
     name: string;
     quantity: "cp" | "cf";
     surface?: "both" | "upper";
     /** Clip the y axis, e.g. above the leading-edge Cf peak. */
     yMax?: number;
+    third?: Third;
 }) {
     const c = codeCase(name);
     const dist = (code: Code) => c[code]!.distributions[0];
     const alpha = dist("scirocco").alpha;
-    const series: Series[] = codesOf(c)
+    const series: Series[] = codesOf(c, third)
         .filter((code) => dist(code))
         .map((code) => {
             const d = dist(code);
             const start = surface === "upper" ? leIndex(d.x) : 0;
             let x = d.x.slice(start);
             let v = d[quantity]!.slice(start);
-            if (code === "mfoil") {
+            if (code === third) {
                 // A marker on every sixth node keeps the lines beneath visible.
                 const keep = (_: number, i: number) => i % 6 === 0;
                 x = x.filter(keep);

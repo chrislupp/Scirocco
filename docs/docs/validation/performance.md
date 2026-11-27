@@ -1,6 +1,6 @@
 ---
 title: Performance
-description: Measured timings for paneling, inviscid and viscous solves, and gradients.
+description: Measured timings for paneling, inviscid and viscous solves, and gradients, against XFOIL, flexfoil and CMPLXFOIL.
 ---
 
 # Performance
@@ -54,7 +54,7 @@ Fortran from the CMPLXFOIL sources, built with `gfortran -O2
 Python overhead. Both codes ran on the same machine with the same
 coordinates: NACA 0012 at Re = 10⁶, 321 input points, repaneled by each code
 to the panel count shown. Cold starts are fresh solves. Warm starts follow
-a solve 0.5° away. Times are in milliseconds, with Newton steps in
+a solve 0.5° away, with `warm_start = true` for Scirocco. Times are in milliseconds, with Newton steps in
 parentheses.
 
 | Panels | α | XFOIL cold | Scirocco cold | XFOIL warm | Scirocco warm |
@@ -72,6 +72,53 @@ Newton step costs O(N²) plus one dense N × N factorization done with BLAS.
 Warm starts reuse the geometry-only work and predict the new edge velocity,
 so most take 5-6 steps. XFOIL's convergence tolerance (`EPS1 = 1e-10` on the
 RMS relative change) is about as tight as Scirocco's.
+
+## Compared to flexfoil
+
+[flexfoil](./flexfoil) is a Rust rewrite of XFOIL. These are viscous
+analyses on the same nodes: mfoil panels each airfoil, Scirocco takes the
+nodes unchanged, and flexfoil 1.1.6 builds its panels from them, so both
+codes solve the same discrete problem. flexfoil runs through its Python
+package, single-threaded. Times are medians of 11 runs in milliseconds,
+with Newton steps in parentheses. Warm starts follow a Scirocco solve 0.5°
+away, with `warm_start = true`; flexfoil's interface has no warm start.
+
+| Case | Panels | flexfoil | Scirocco cold | Scirocco warm |
+| --- | --- | --- | --- | --- |
+| NACA 0012, Re = 10⁶, α = 2° | 159 | 33 (7) | 17 (8) | 7.5 |
+| NACA 0012, Re = 10⁶, α = 8° | 159 | 28 (6) | 15 (6) | 9.0 |
+| NACA 0012, Re = 10⁶, α = 2° | 199 | 53 (7) | 24 (8) | 12 |
+| NACA 0012, Re = 10⁶, α = 5° | 199 | 70 (11) | 37 (15) | 16 |
+| NACA 0012, Re = 10⁶, α = 8° | 199 | 39 (5) | 48 (15) | 12 |
+| NACA 0012, Re = 10⁶, α = 5° | 283 | 156 (12) | 53 (10) | 26 |
+| NACA 2412, Re = 3×10⁶, α = 4° | 199 | 68 (10) | 26 (9) | 12 |
+| NACA 4412, Re = 2×10⁵, α = 4° | 199 | 44 (6) | 25 (9) | 13 |
+
+From a cold start Scirocco is about twice as fast at 160–200 panels and
+three times as fast at 283. flexfoil takes as many Newton steps or fewer;
+each costs about 5.5 ms at 199 panels, against about 2 ms for Scirocco, and
+its cost grows faster with the panel count. The one case flexfoil wins,
+NACA 0012 at 8°, is one where Scirocco needs 15 steps to flexfoil's 5.
+
+A whole polar widens the gap, because Scirocco warm-starts each point
+from the last (`warm_start = true`). NACA 0012 at Re = 10⁶ with 199 panels, α = 0…15°:
+
+| | Time | Converged |
+| --- | --- | --- |
+| flexfoil, one point after another | 1.33 s | 15 / 16 |
+| flexfoil, `analyze_faithful_batch` on 10 cores | 0.66 s | 15 / 16 |
+| Scirocco, one sweep, including process start | 0.28 s | 16 / 16 |
+
+flexfoil's batch solves points in parallel, but the point at 1° runs all
+100 iterations without converging (the limit cycle XFOIL also has, see
+[flexfoil](./flexfoil#viscous-polars)) and sets the wall-clock time.
+
+The PyPI wheel is built for size (`opt-level = "s"`). The times above use
+flexfoil built from the same source with `opt-level = 3` and
+`target-cpu=native`, to match Scirocco's `-march=native`; that is only
+about 5% faster than the wheel. The scripts are in
+[`scirocco/validation/vv`](https://github.com/chrislupp/Scirocco/tree/develop/scirocco/validation/vv)
+(`flexfoil_timing.py`).
 
 ## Compared to CMPLXFOIL
 

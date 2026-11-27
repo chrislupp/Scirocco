@@ -454,6 +454,20 @@ TEST_F(FauxfoilTest, PolarPlotShowsStoredPolar) {
     EXPECT_TRUE(HasLabel(polar, "x_{tr} /c"));
 }
 
+/* Plots are tagged with the solver's name and version, not fauXFOIL's. */
+TEST_F(FauxfoilTest, PlotsAreTaggedScirocco) {
+    RecordingDisplay display;
+    Run("naca 0012\noper\nvisc 1e6\npacc\n\n\naseq 0 2 2\npplo\n\nquit\n", {},
+        &display);
+    ASSERT_GE(display.shown.size(), 2U);
+    const auto& cp = display.shown.front();
+    const auto& polar = display.shown.back();
+    EXPECT_TRUE(HasLabel(cp, "Scirocco"));
+    EXPECT_TRUE(HasLabel(polar, "Scirocco V "));
+    EXPECT_FALSE(HasLabel(cp, "fauXFOIL"));
+    EXPECT_FALSE(HasLabel(polar, "fauXFOIL"));
+}
+
 TEST_F(FauxfoilTest, ZoomMarksCornersAndUnzoomRestores) {
     RecordingDisplay display;
     display.Click(200.0, 700.0);

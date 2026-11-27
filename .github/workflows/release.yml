@@ -17,6 +17,9 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'release') ||
        contains(github.event.pull_request.labels.*.name, 'prerelease'))
     runs-on: ubuntu-24.04
+    outputs:
+      tag_version: ${{ steps.version.outputs.tag_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
 
     steps:
     # ── Checkout ──────────────────────────────────────────────────────
@@ -37,26 +40,7 @@ jobs:
 
     # ── GPG setup for signed commits ─────────────────────────────────
     - name: Generate ephemeral GPG key
-      run: |
-        cat > /tmp/gpg-key-params <<GPGEOF
-        %no-protection
-        Key-Type: RSA
-        Key-Length: 4096
-        Subkey-Type: RSA
-        Subkey-Length: 4096
-        Name-Real: github-actions[bot]
-        Name-Email: 41898282+github-actions[bot]@users.noreply.github.com
-        Expire-Date: 1d
-        GPGEOF
-        gpg --batch --gen-key /tmp/gpg-key-params
-        KEY_ID=$(gpg --list-secret-keys --keyid-format=long | grep sec | awk '{print $2}' | cut -d'/' -f2)
-        echo "GPG_KEY_ID=${KEY_ID}" >> "$GITHUB_ENV"
-
-        git config user.name  "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git config user.signingkey "${KEY_ID}"
-        git config commit.gpgsign true
-        git config tag.gpgsign true
+      run: bash scripts/release_gpg.sh
 
     - name: Calculate and validate release version
       id: version
@@ -133,6 +117,13 @@ jobs:
 
     - name: Install validation dependencies
       run: |
+        # Same as .github/actions/apt-setup, inlined because this job checks
+        # out a tree that may predate that action.
+        grep -rl packages.microsoft.com /etc/apt/sources.list.d 2>/dev/null \
+          | xargs -r sudo rm -f
+        printf '%s\n' 'Acquire::Retries "3";' \
+          'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' \
+          | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
         sudo apt-get update
         sudo apt-get install -y libeigen3-dev libgtest-dev libhdf5-dev \
           libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
@@ -149,9 +140,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
         cmake --build /tmp/philote-cpp/build -j2
 
-    - name: Validate prepared commit and both release images
+    - name: Validate prepared commit
       env:
         PHILOTE_CPP_DIR: /tmp/philote-cpp/build
+        # The images job builds and tests the images on both architectures.
+        VALIDATE_IMAGES: '0'
       run: bash scripts/validate_release.sh
 
     - name: Refuse publication if main advanced or tracked files changed
@@ -167,11 +160,94 @@ jobs:
         TAG="${{ steps.version.outputs.tag_version }}"
         git tag -a "$TAG" -m "Release ${TAG}"
 
-    - name: Push commit and tag
+    # Nothing is pushed yet: the images job builds the images from this
+    # bundle, and the publish job pushes it once every image has passed.
+    - name: Bundle the release commit and tag
+      env:
+        CANDIDATE: ${{ github.event.pull_request.merge_commit_sha }}
+        TAG: ${{ steps.version.outputs.tag_version }}
       run: |
-        git push --atomic \
-          --force-with-lease=refs/heads/main:${{ github.event.pull_request.merge_commit_sha }} \
-          origin HEAD:refs/heads/main "${{ steps.version.outputs.tag_version }}"
+        mkdir -p "$RUNNER_TEMP/release"
+        git bundle create "$RUNNER_TEMP/release/release.bundle" \
+          "refs/tags/$TAG" "^$CANDIDATE"
+
+    - name: Upload the release bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-bundle
+        path: ${{ runner.temp }}/release/release.bundle
+        if-no-files-found: error
+        retention-days: 7
+
+  # ── Release images ───────────────────────────────────────────────
+  # Build and smoke-test both images on native amd64 and arm64 runners from
+  # the prepared release commit, then push each by digest only. No tag
+  # moves until the publish job, so a failure here publishes nothing.
+  images:
+    name: Images (${{ matrix.kind }}, ${{ matrix.arch }})
+    needs: release
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: true
+      matrix:
+        kind: [analysis, geometry]
+        arch: [amd64, arm64]
+        include:
+          - kind: analysis
+            image: chrislupp/scirocco
+            dockerfile: docker/scirocco-server/Dockerfile
+          - kind: geometry
+            image: chrislupp/scirocco-kulfan
+            dockerfile: docker/kulfan-server/Dockerfile
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+    - name: Checkout merged candidate
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Download the release bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: release-bundle
+        path: ${{ runner.temp }}/release
+
+    - name: Check out the prepared release commit
+      env:
+        TAG: ${{ needs.release.outputs.tag_version }}
+      run: |
+        git fetch "$RUNNER_TEMP/release/release.bundle" "refs/tags/$TAG:refs/tags/$TAG"
+        git checkout --detach "$TAG^{commit}"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build local image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ${{ matrix.dockerfile }}
+        platforms: linux/${{ matrix.arch }}
+        push: false
+        load: true
+        tags: scirocco-release:${{ matrix.kind }}
+
+    - name: Install smoke-test client
+      run: |
+        python3 -m venv "$RUNNER_TEMP/smoke-client"
+        "$RUNNER_TEMP/smoke-client/bin/pip" install philote-mdo==0.8.0
+
+    - name: Smoke-test image and invalid-request recovery
+      run: |
+        export PATH="$RUNNER_TEMP/smoke-client/bin:$PATH"
+        bash scripts/smoke_image.sh "scirocco-release:${{ matrix.kind }}" "${{ matrix.kind }}"
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
@@ -179,9 +255,97 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Publish the tested images without rebuilding
+    # Same builder and inputs as the tested build, so every layer comes from
+    # its local cache and the pushed image is the one that was tested.
+    - name: Push the tested image by digest
+      id: push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ${{ matrix.dockerfile }}
+        platforms: linux/${{ matrix.arch }}
+        outputs: type=image,name=${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+
+    - name: Record the digest
       env:
-        VERSION: ${{ steps.version.outputs.tag_version }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/digests"
+        touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+    - name: Upload the digest
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-digests-${{ matrix.kind }}-${{ matrix.arch }}
+        path: ${{ runner.temp }}/digests/*
+        if-no-files-found: error
+        retention-days: 7
+
+  # ── Publish ──────────────────────────────────────────────────────
+  # Push the validated commit and tag, tag the multi-arch image manifests,
+  # create the GitHub release and merge main back into develop.
+  publish:
+    needs: [release, images]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout merged candidate
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_TOKEN }}
+
+    - name: Download the release bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: release-bundle
+        path: ${{ runner.temp }}/release
+
+    # Signs the merge commit if main has to be merged back into develop.
+    - name: Generate ephemeral GPG key
+      run: bash scripts/release_gpg.sh
+
+    - name: Check out the prepared release commit
+      env:
+        TAG: ${{ needs.release.outputs.tag_version }}
+      run: |
+        git fetch "$RUNNER_TEMP/release/release.bundle" "refs/tags/$TAG:refs/tags/$TAG"
+        git checkout -B main "$TAG^{commit}"
+
+    - name: Refuse publication if main advanced
+      env:
+        CANDIDATE: ${{ github.event.pull_request.merge_commit_sha }}
+      run: |
+        git fetch origin main
+        test "$(git rev-parse origin/main)" = "$CANDIDATE"
+        test "$(git rev-parse HEAD^)" = "$CANDIDATE"
+
+    - name: Push commit and tag
+      run: |
+        git push --atomic \
+          --force-with-lease=refs/heads/main:${{ github.event.pull_request.merge_commit_sha }} \
+          origin HEAD:refs/heads/main "${{ needs.release.outputs.tag_version }}"
+
+    - name: Download the image digests
+      uses: actions/download-artifact@v4
+      with:
+        path: ${{ runner.temp }}/digests
+        pattern: release-digests-*
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Tag the tested multi-arch images
+      working-directory: ${{ runner.temp }}/digests
+      env:
+        VERSION: ${{ needs.release.outputs.tag_version }}
       run: |
         version="${VERSION#v}"
         tags=("$version")
@@ -191,17 +355,23 @@ jobs:
         for kind in analysis geometry; do
           image=chrislupp/scirocco
           if [[ "$kind" == geometry ]]; then image=chrislupp/scirocco-kulfan; fi
-          for tag in "${tags[@]}"; do
-            docker tag "scirocco-release:$kind" "$image:$tag"
-            docker push "$image:$tag"
+          sources=()
+          for arch in amd64 arm64; do
+            digests=(release-digests-"$kind-$arch"/*)
+            test "${#digests[@]}" -eq 1
+            sources+=("$image@sha256:$(basename "${digests[0]}")")
           done
+          tag_args=()
+          for tag in "${tags[@]}"; do tag_args+=(-t "$image:$tag"); done
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$image:$version"
         done
 
     # ── Extract release notes ────────────────────────────────────────
     - name: Extract release notes
       id: notes
       run: |
-        TAG="${{ steps.version.outputs.tag_version }}"
+        TAG="${{ needs.release.outputs.tag_version }}"
         VERSION="${TAG#v}"
 
         # Extract the section for this version from CHANGELOG.md
@@ -223,10 +393,10 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.version.outputs.tag_version }}
-        name: ${{ steps.version.outputs.tag_version }}
+        tag_name: ${{ needs.release.outputs.tag_version }}
+        name: ${{ needs.release.outputs.tag_version }}
         body_path: /tmp/release-notes.md
-        prerelease: ${{ steps.version.outputs.is_prerelease }}
+        prerelease: ${{ needs.release.outputs.is_prerelease }}
       env:
         GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
@@ -247,6 +417,45 @@ jobs:
           gh pr create \
             --base develop \
             --head main \
-            --title "chore: merge release ${{ steps.version.outputs.tag_version }} back to develop" \
+            --title "chore: merge release ${{ needs.release.outputs.tag_version }} back to develop" \
             --body "Automatic merge of release changes back to develop failed due to conflicts. Please resolve manually."
         fi
+
+  # ── Homebrew formula ─────────────────────────────────────────────
+  # Point the scirocco and fauxfoil formulae in chrislupp/homebrew-tools at
+  # the new stable release. A separate job, so a failure here leaves the
+  # published release intact; rerun it once fixed. RELEASE_TOKEN must be
+  # able to push to the tap.
+  homebrew:
+    needs: [release, publish]
+    if: needs.release.outputs.is_prerelease == 'false'
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout release tag
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.release.outputs.tag_version }}
+
+    - name: Checkout Homebrew tap
+      uses: actions/checkout@v4
+      with:
+        repository: chrislupp/homebrew-tools
+        token: ${{ secrets.RELEASE_TOKEN }}
+        path: homebrew-tools
+
+    - name: Update and push the formulae
+      env:
+        TAG: ${{ needs.release.outputs.tag_version }}
+      run: |
+        python3 scripts/homebrew_formula.py "$TAG" \
+          homebrew-tools/Formula/scirocco.rb homebrew-tools/Formula/fauxfoil.rb
+        cd homebrew-tools
+        if git diff --quiet; then
+          echo "Formulae already point at $TAG"
+          exit 0
+        fi
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -am "Update Scirocco and fauXFOIL to ${TAG#v}"
+        git push origin HEAD

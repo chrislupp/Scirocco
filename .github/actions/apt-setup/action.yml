@@ -1,0 +1,16 @@
+name: Set up apt
+description: >
+  Make apt fail fast instead of hanging. Removes the runner image's
+  packages.microsoft.com source, which no job installs from and which has
+  returned 403 and broken `apt-get update`, and makes apt retry and time
+  out on a stalled mirror.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        grep -rl packages.microsoft.com /etc/apt/sources.list.d 2>/dev/null \
+          | xargs -r sudo rm -f
+        printf '%s\n' 'Acquire::Retries "3";' \
+          'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' \
+          | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null

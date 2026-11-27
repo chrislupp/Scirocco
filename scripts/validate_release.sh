@@ -2,6 +2,8 @@
 # Validate the prepared checkout without publishing. Run from the repo root.
 # Requires CMake/Eigen/GTest/HDF5, PhiloteCpp, npm, Docker, and the Python
 # reference + smoke-client dependencies. PHILOTE_CPP_DIR is a build-tree package.
+# VALIDATE_IMAGES=0 skips the Docker images; the release workflow builds and
+# tests them in a separate job on each architecture.
 set -euo pipefail
 : "${PHILOTE_CPP_DIR:?Set PHILOTE_CPP_DIR to the pinned PhiloteCpp build}"
 review_build="${RELEASE_BUILD_DIR:-build-release}"
@@ -16,7 +18,10 @@ ctest --test-dir "$review_build" --output-on-failure --no-tests=error
 npm --prefix docs ci
 npm --prefix docs run typecheck
 npm --prefix docs run build
-# Keep these images local until *both* pass. Publication retags these exact IDs.
+if [[ "${VALIDATE_IMAGES:-1}" == 0 ]]; then
+    exit 0
+fi
+# Build and smoke-test both images for this machine's architecture.
 for kind in analysis geometry; do
     if [[ "$kind" == analysis ]]; then
         dockerfile=docker/scirocco-server/Dockerfile

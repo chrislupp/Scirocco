@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `linux/arm64` Docker images: every `chrislupp/scirocco` and
+  `chrislupp/scirocco-kulfan` tag (`next`, versions and `latest`) is now a
+  multi-arch manifest with `linux/amd64` and `linux/arm64` images, each
+  built and smoke-tested on a native runner, so the servers run without
+  emulation on Apple silicon and Arm hosts.
+- Homebrew formulae: `brew install chrislupp/tools/scirocco` installs the
+  core library, headers and CMake package from the release source, and
+  `brew install chrislupp/tools/fauxfoil` installs `fauXFOIL` with its Qt
+  plot window. The release workflow's new `homebrew` job points both
+  formulae in `chrislupp/homebrew-tools` at each stable release.
+- Scirocco Viewer: a Qt 6 Quick desktop program in `gui/` that opens the
+  HDF5 files `Hdf5Writer` writes and steps through their iterations. It
+  shows the airfoil and wake with optional panel nodes and Cp arrows, Cp
+  and boundary-layer distributions, and the cl, cd and cm history, with
+  light and dark themes and video export of the iteration sequence. It
+  carries the Scirocco logo and app icon. It is a separate CMake project
+  that needs Qt 6.6+ (Quick, Quick Controls, Svg, Charts) and HDF5; the
+  Scirocco build does not include it.
+- `warm_start` option of the Philote analysis discipline (default
+  `false`): starts each viscous `Compute` from the previous one.
+
+### Changed
+- fauXFOIL plots are tagged `Scirocco` and `Scirocco V <version>` instead
+  of `fauXFOIL` and `fauXFOIL V <version>`, naming the solver that produced
+  them. The program name, prompt and banner are unchanged.
+- `Param::warm_start` now defaults to `false`, so a viscous `Solve()`
+  starts cold and gives the same result whatever the object solved before.
+  Near stall the coupled equations can have more than one converged
+  solution, and a warm start picks between them based on earlier solves:
+  NACA 0012 at Re = 2e5 and 14.25 degrees converged to Cl = 0.93 after a
+  warm sweep and 0.71 from a cold start. Set `warm_start = true` for fast
+  polars. The Philote analysis discipline, which reuses one solver for
+  every `Compute`, now starts cold too, so evaluating the same design twice
+  gives the same outputs. fauXFOIL still warm-starts as XFOIL does (#63).
+
+### Fixed
+- A cold viscous `Solve()` on a reused `Scirocco` object (with
+  `warm_start = false`) now takes the same Newton path as one on a new
+  object. `StagPointFind` left the stagnation-point linearization
+  `isol.sstag_ue` from the previous solve in place, and the first coupled
+  Jacobian used it, so iteration counts depended on what the object solved
+  before. It is now reset to zero, as on a new object (#62).
+
 ## [0.3.1] - 2026-11-21
 
 ### Fixed

@@ -10,9 +10,17 @@ the same menus, prompts, command abbreviations, iteration printout, plots
 and polar file layout. Scirocco does the analysis. If you already drive XFOIL
 by hand or from a script, you can use `fauXFOIL` the same way.
 
+On macOS or Linux, Homebrew installs it with its plot window, and Scirocco
+with it:
+
+```bash
+brew install chrislupp/tools/fauxfoil
+fauXFOIL
+```
+
 fauXFOIL is a separate program in the repository's `fauxfoil/` directory,
-next to the library, and uses only Scirocco's public API. Its build compiles
-the Scirocco source tree beside it:
+next to the library, and uses only Scirocco's public API. To build it
+yourself, its build compiles the Scirocco source tree beside it:
 
 ```bash
 cmake -S fauxfoil -B fauxfoil/build -DCMAKE_BUILD_TYPE=Release
