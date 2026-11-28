@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "scirocco/core/bl_march.h"
@@ -524,6 +526,85 @@ TEST(SolverStrategy, FailedWarmStartMatchesColdStart) {
     cold.SetOper(16.0, -1.0, 1e6, 0.0);
     EXPECT_EQ(warm_ok, cold.Solve());
     if (warm_ok) EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-6);
+}
+
+/* A warm start keeps the stagnation panel of the solution it starts from,
+ * so restarting at the same operating point is converged at once. Near
+ * stall (the second case) that panel is several nodes from the inviscid
+ * stagnation point. */
+TEST(SolverStrategy, WarmRestartAtSamePointIsConverged) {
+    for (const auto& [alpha, Re] :
+         {std::pair{5.0, 1e6}, std::pair{13.5, 2e5}}) {
+        Scirocco foil("0012", 160);
+        foil.GetState().param.warm_start = true;
+        foil.SetOper(alpha, -1.0, Re, 0.0);
+        ASSERT_TRUE(foil.Solve());
+        const double cl = foil.GetCl();
+        foil.SetOper(alpha, -1.0, Re, 0.0);
+        ASSERT_TRUE(foil.Solve());
+        EXPECT_EQ(foil.GetState().glob.coupled_iterations, 1) << alpha;
+        EXPECT_NEAR(foil.GetCl(), cl, 1e-10);
+    }
+}
+
+/* When the stagnation point moves to another panel between solves, in
+ * either direction, the warm boundary layer is shifted with it and the
+ * solve reaches the cold-start solution. */
+TEST(SolverStrategy, WarmStartFollowsStagnationPanel) {
+    Scirocco warm("0012", 200);
+    warm.GetState().param.warm_start = true;
+    int panel = -1;
+    for (const double alpha : {2.0, 6.0, 2.0, -3.0}) {
+        warm.SetOper(alpha, -1.0, 1e6, 0.0);
+        ASSERT_TRUE(warm.Solve()) << alpha;
+        EXPECT_NE(warm.GetState().isol.Istag[0], panel) << alpha;
+        panel = warm.GetState().isol.Istag[0];
+
+        Scirocco cold("0012", 200);
+        cold.SetOper(alpha, -1.0, 1e6, 0.0);
+        ASSERT_TRUE(cold.Solve()) << alpha;
+        EXPECT_EQ(cold.GetState().isol.Istag[0], panel) << alpha;
+        EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-8) << alpha;
+        EXPECT_NEAR(warm.GetCd(), cold.GetCd(), 1e-9) << alpha;
+    }
+}
+
+/* SolveViscous warm starts only from a boundary layer of the right size
+ * with a valid stagnation panel; anything else starts cold and gives the
+ * cold-start solution. */
+TEST(SolverStrategy, MalformedWarmStateStartsCold) {
+    Scirocco foil("0012", 99);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    const FoilState solved = foil.GetState();
+    const int cold_iterations = solved.glob.coupled_iterations;
+    const int N = solved.foil.N;
+
+    auto solve = [&](auto&& tamper) {
+        FoilState state = solved;
+        state.oper.initbl = false;
+        tamper(state);
+        SolveViscous(state);
+        EXPECT_TRUE(state.glob.conv);
+        EXPECT_NEAR(state.post.cl, solved.post.cl, 1e-9);
+        return state.glob.coupled_iterations;
+    };
+    /* Untouched, the solved state is a warm start: next to converged */
+    EXPECT_LE(solve([](FoilState&) {}), 2);
+    EXPECT_EQ(solve([](FoilState& s) {
+                  s.glob.U.conservativeResize(4, s.glob.U.cols() - 1);
+              }),
+              cold_iterations);
+    EXPECT_EQ(solve([](FoilState& s) { s.vsol.turb.pop_back(); }),
+              cold_iterations);
+    /* Stagnation pairs that are out of range or not adjacent nodes */
+    const std::vector<std::array<int, 2>> invalid = {
+        {-1, 0}, {40, 44}, {N - 1, N}};
+    for (const auto& pair : invalid) {
+        const int iterations =
+            solve([&](FoilState& s) { s.isol.Istag = pair; });
+        EXPECT_EQ(iterations, cold_iterations) << pair[0];
+    }
 }
 
 /// The observer is called once per Newton iteration and leaves the solve

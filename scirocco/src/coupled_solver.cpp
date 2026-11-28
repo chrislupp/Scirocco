@@ -106,6 +106,36 @@ void PredictEdgeVelocity(FoilState& state) {
 }
 
 /**
+ * @brief Stagnation panel of the warm-start prediction ue = ueinv + ue_m m:
+ * the panel where the predicted edge velocity changes sign, found from the
+ * current panel as StagPointMove does. The current panel is kept if the
+ * prediction has no such panel (or is not finite: NaN compares false).
+ */
+std::array<int, 2> PredictStagnation(const FoilState& state) {
+    const auto& U = state.glob.U;
+    const VectorXd mass = U.row(1).cwiseProduct(U.row(3)).transpose();
+    const VectorXd ue = GetUeInv(state) + state.vsol.ue_m * mass;
+    const int N = state.foil.N;
+    std::array<int, 2> pair = state.isol.Istag;
+    if (ue(pair[1]) < 0) {
+        for (int j = pair[1] + 1; j < N; ++j) {
+            if (ue(j) > 0) {
+                pair = {j - 1, j};
+                break;
+            }
+        }
+    } else if (ue(pair[0]) < 0) {
+        for (int j = pair[0] - 1; j >= 0; --j) {
+            if (ue(j) > 0) {
+                pair = {j, j + 1};
+                break;
+            }
+        }
+    }
+    return pair;
+}
+
+/**
  * @brief Locate transition from the amplification march (UpdateTransition).
  * @return true if no station changed between laminar and turbulent
  */
@@ -167,6 +197,22 @@ void SolveViscous(FoilState& state) {
     /* Build wake */
     BuildWake(state);
 
+    /* A supplied initial boundary layer of the right size is a warm start.
+     * It keeps its own (viscous) stagnation panel: near stall that is
+     * several nodes from the inviscid one found above, and re-indexing the
+     * boundary layer to the inviscid point would discard the solution. */
+    const int nsys = state.foil.N + state.wake.N;
+    const bool warm = !state.oper.initbl && state.glob.U.cols() == nsys &&
+                      static_cast<int>(state.vsol.turb.size()) == nsys &&
+                      entry_istag[0] >= 0 &&
+                      entry_istag[1] == entry_istag[0] + 1 &&
+                      entry_istag[1] < state.foil.N;
+    if (warm) {
+        state.isol.Istag = entry_istag;
+        for (int i = 0; i < state.foil.N; ++i)
+            state.isol.sgnue(i) = i <= entry_istag[0] ? -1.0 : 1.0;
+    }
+
     /* Extend xi to include wake points */
     ExtendXiToWake(state);
 
@@ -191,13 +237,24 @@ void SolveViscous(FoilState& state) {
 
     /* Initialize boundary layer, unless the caller supplied an initial
      * state of the right size (warm start). */
-    const int nsys = state.foil.N + state.wake.N;
-    if (!state.oper.initbl && state.glob.U.cols() == nsys &&
-        static_cast<int>(state.vsol.turb.size()) == nsys) {
+    if (warm) {
         state.glob.Nsys = nsys;
         state.glob.realloc = true;
-        ShiftToStagnation(state, entry_istag);
+        /* Follow the stagnation point to the panel the predicted edge
+         * velocity puts it on (XFOIL's STMOVE). */
+        const std::array<int, 2> predicted = PredictStagnation(state);
+        if (predicted != entry_istag) {
+            state.isol.Istag = predicted;
+            for (int i = 0; i < state.foil.N; ++i)
+                state.isol.sgnue(i) = i <= predicted[0] ? -1.0 : 1.0;
+            IdentifySurfaces(state);
+            ShiftToStagnation(state, entry_istag);
+            RebuildUeM(state);
+        }
         PredictEdgeVelocity(state);
+        /* Stagnation point and xi from the predicted edge velocity, as in
+         * the coupled iterations. */
+        StagPointMove(state);
     } else {
         InitBoundaryLayer(state);
         if (state.param.verb >= 1) {

@@ -1249,6 +1249,24 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
     CoupledFactorization& factorization = *state.glob.coupled_factorization;
     VectorXd lambda = factorization.SolveTranspose(rhs);
     VectorXd residual = factorization.ApplyTranspose(lambda) - rhs;
+    /* Near stall the Jacobian is ill-conditioned and this solve can end
+     * just above the limit checked below: refine it with the same
+     * factorization for as long as a pass halves the residual. */
+    auto inaccurate = [&]() {
+        const VectorXd bound =
+            factorization.AbsApplyTranspose(lambda) + rhs.cwiseAbs();
+        return residual.norm() > 1e-11 * std::max(bound.norm(), 1e-30);
+    };
+    VectorXd refined, refined_residual;
+    auto improves = [&]() {
+        refined = lambda - factorization.SolveTranspose(residual);
+        refined_residual = factorization.ApplyTranspose(refined) - rhs;
+        return refined_residual.norm() < 0.5 * residual.norm();
+    };
+    while (inaccurate() && improves()) {
+        lambda = refined;
+        residual = refined_residual;
+    }
     // Check the original equations, never a regularized replacement.
     VectorXd scale = factorization.AbsApplyTranspose(lambda);
     scale += rhs.cwiseAbs();
