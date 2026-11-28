@@ -1249,28 +1249,29 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
     CoupledFactorization& factorization = *state.glob.coupled_factorization;
     VectorXd lambda = factorization.SolveTranspose(rhs);
     VectorXd residual = factorization.ApplyTranspose(lambda) - rhs;
-    // Check the original equations, never a regularized replacement.
-    auto error = [&]() {
-        VectorXd scale = factorization.AbsApplyTranspose(lambda);
-        scale += rhs.cwiseAbs();
-        return residual.norm() / std::max(scale.norm(), 1e-30);
+    /* Near stall the Jacobian is ill-conditioned and this solve can end
+     * just above the limit checked below: refine it with the same
+     * factorization for as long as a pass halves the residual. */
+    auto inaccurate = [&]() {
+        const VectorXd bound =
+            factorization.AbsApplyTranspose(lambda) + rhs.cwiseAbs();
+        return residual.norm() > 1e-11 * std::max(bound.norm(), 1e-30);
     };
-    double relative = error();
-    /* Near stall the Jacobian is ill-conditioned: refine the solve with
-     * the same factorization for as long as a pass halves the residual. */
     VectorXd refined, refined_residual;
     auto improves = [&]() {
         refined = lambda - factorization.SolveTranspose(residual);
         refined_residual = factorization.ApplyTranspose(refined) - rhs;
         return refined_residual.norm() < 0.5 * residual.norm();
     };
-    while (relative > 1e-11 && improves()) {
+    while (inaccurate() && improves()) {
         lambda = refined;
         residual = refined_residual;
-        relative = error();
     }
-    /* A nonfinite solve gives a NaN error, which fails this comparison. */
-    if (!(relative <= 1e-11)) {
+    // Check the original equations, never a regularized replacement.
+    VectorXd scale = factorization.AbsApplyTranspose(lambda);
+    scale += rhs.cwiseAbs();
+    if (!lambda.allFinite() || !residual.allFinite() ||
+        residual.norm() > 1e-11 * std::max(scale.norm(), 1e-30)) {
         throw std::runtime_error(
             "SolveViscousAdjoint: inaccurate transpose solve");
     }

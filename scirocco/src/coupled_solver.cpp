@@ -116,18 +116,21 @@ std::array<int, 2> PredictStagnation(const FoilState& state) {
     const VectorXd mass = U.row(1).cwiseProduct(U.row(3)).transpose();
     const VectorXd ue = GetUeInv(state) + state.vsol.ue_m * mass;
     const int N = state.foil.N;
-    /* First node with positive ue from node j in direction step */
-    auto first_positive = [&](int j, int step) {
-        while (j >= 0 && j < N && !(ue(j) > 0)) j += step;
-        return j;
-    };
     std::array<int, 2> pair = state.isol.Istag;
     if (ue(pair[1]) < 0) {
-        const int j = first_positive(pair[1], 1);
-        if (j < N) pair = {j - 1, j};
+        for (int j = pair[1] + 1; j < N; ++j) {
+            if (ue(j) > 0) {
+                pair = {j - 1, j};
+                break;
+            }
+        }
     } else if (ue(pair[0]) < 0) {
-        const int j = first_positive(pair[0], -1);
-        if (j >= 0) pair = {j, j + 1};
+        for (int j = pair[0] - 1; j >= 0; --j) {
+            if (ue(j) > 0) {
+                pair = {j, j + 1};
+                break;
+            }
+        }
     }
     return pair;
 }
