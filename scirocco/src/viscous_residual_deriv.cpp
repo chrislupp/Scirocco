@@ -67,6 +67,19 @@ MatrixXd DRblDFoilX(const FoilState& state, const MatrixXd& dfoil_s_dx) {
     /* ---- R_x · DXi ---- */
     MatrixXd dRbl = state.glob.R_x * dxi_dx; /* sparse * dense → dense */
 
+    /* ---- Forced transition: the trip's fraction of its interval ----
+     * f = (x_trip - x_a) / (x_b - x_a) with x_trip = xtrip * chord fixed, so
+     * df/dx_a = (f - 1) / (x_b - x_a) and df/dx_b = -f / (x_b - x_a). */
+    for (const TripSensitivity& trip : state.glob.trip) {
+        if (!trip.active) continue;
+        const double dxab =
+            state.foil.x(0, trip.node) - state.foil.x(0, trip.prev);
+        dRbl.block(3 * trip.node, 2 * trip.prev, 3, 1) +=
+            trip.R_f * (trip.frac - 1.0) / dxab;
+        dRbl.block(3 * trip.node, 2 * trip.node, 3, 1) -=
+            trip.R_f * trip.frac / dxab;
+    }
+
     /* ---- wgap chain at wake stations ip = 1..Nw-1 ----
      *
      * ResidualStation modifies U via "U.row(1) -= Aux" AND uses Aux directly

@@ -30,6 +30,7 @@
 */
 #pragma once
 
+#include <array>
 #include <functional>
 #include <memory>
 
@@ -44,6 +45,19 @@ struct FoilState;
  *  Glob::iteration_observer). Arguments: the current state and the 0-based
  *  iteration. */
 using IterationObserver = std::function<void(const FoilState&, int)>;
+
+/** Sensitivity of the boundary-layer residual to a forced-transition
+ *  location, kept by BuildGlobSys for the shape derivatives. The trip sits
+ *  at the fraction f = (x_trip - x(prev)) / (x(node) - x(prev)) of its
+ *  interval, which changes with the two node coordinates. */
+struct TripSensitivity {
+    bool active = false; /**< Transition in this interval is forced, at a
+                              location that depends on the geometry */
+    int prev = 0;        /**< Node upstream of the trip */
+    int node = 0;        /**< Node downstream; its three residuals carry R_f */
+    double frac = 0.0;   /**< f */
+    Vector3d R_f = Vector3d::Zero(); /**< dR/df at fixed states and xi */
+};
 
 /* Global system variables */
 struct Glob {
@@ -81,6 +95,8 @@ struct Glob {
        and pre-multiplying by Ma here keeps the BuildGlobSys aggregation
        uniform: ∂R/∂Ma = dR_dMa_times_Ma / Ma. Size 3*Nsys (BL rows). */
     VectorXd dR_dMa_times_Ma;
+    /* Forced transition on the lower and upper surfaces (BuildGlobSys). */
+    std::array<TripSensitivity, 2> trip;
     bool realloc = false; /**< If true, system Jacobians will be reallocated */
 
     /* Factorization of the coupled Jacobian at the converged state, for

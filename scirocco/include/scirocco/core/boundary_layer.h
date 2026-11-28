@@ -56,6 +56,15 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
                             const Matrix42d& U, const Vector2d& Aux,
                             bool scalar_derivatives = true);
 
+/** A trip inside a transition interval, for ResidualTransition. */
+struct IntervalTrip {
+    double frac = 0.0;   /**< In: the trip's fraction of the interval, from
+                              FindTrip */
+    bool forced = false; /**< Out: transition is at the trip (false: the
+                              amplification reached ncrit ahead of it) */
+    Vector3d R_frac = Vector3d::Zero(); /**< Out, if forced: dR/dfrac */
+};
+
 /**
  * @brief Compute residual at a transition station (combined laminar +
  * turbulent) U1 should be laminar, U2 should be turbulent Returns combined
@@ -66,12 +75,16 @@ ResidualLin ResidualStation(const Param& param, const Vector2d& x,
  * @param U State matrix at the station
  * @param Aux Auxiliary variables at the station
  * @param scalar_derivatives Also compute lin_Ret and lin_Ma
+ * @param trip Forced transition: the trip in this interval, or null if it
+ * holds none. As in XFOIL's TRCHEK2, transition is at the trip unless the
+ * amplification reaches ncrit ahead of it.
  * @return Combined residual and Jacobian at the transition station
  */
 ResidualLin ResidualTransition(FoilState& state, const Param& param_base,
                                const Vector2d& x, const Matrix42d& U,
                                const Vector2d& Aux,
-                               bool scalar_derivatives = true);
+                               bool scalar_derivatives = true,
+                               IntervalTrip* trip = nullptr);
 
 /**
  * @brief Thwaites correlation for stagnation initialization

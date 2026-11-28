@@ -35,11 +35,37 @@
 
 namespace scirocco {
 
+/** Where the trip (Param::xtrip_lower, xtrip_upper) sits on one surface. */
+struct Trip {
+    int station = -1;     /**< Index i in Is[si]: the trip is between stations
+                               i-1 and i. Negative if the surface has no trip */
+    double frac = 1.0;    /**< Fraction of that interval:
+                               xi_trip = xi(i-1) + frac * (xi(i) - xi(i-1)) */
+    bool at_node = false; /**< The trip was moved to a node (frac 0 or 1), so
+                               it does not move with the geometry */
+};
+
+/**
+ * @brief Locate the trip on a surface, as XFOIL's XIFSET does.
+ *
+ * The trip is at x = xtrip * chord on the geometric upper or lower surface,
+ * interpolated linearly in x between panel nodes. It is absent if xtrip is 1
+ * or more, if it lies at or behind the trailing-edge node, or if the
+ * stagnation point has moved past it (XFOIL then also leaves that side
+ * free). A trip ahead of the leading edge acts at the leading-edge node, and
+ * one between the first two stations after the stagnation point, which stay
+ * laminar, acts at the second.
+ * @param state FoilState with surfaces (vsol.Is) and xi set
+ * @param si Surface index (0=lower, 1=upper)
+ */
+Trip FindTrip(const FoilState& state, int si);
+
 /**
  * @brief March amplification factor along a surface
  * @param state FoilState with current solution
  * @param si Surface index
- * @return Index of last laminar station in Is array (before transition)
+ * @return Index of last laminar station in Is array (before transition):
+ * the station before e^N transition or before the trip, whichever is first
  */
 int MarchAmplification(FoilState& state, int si);
 

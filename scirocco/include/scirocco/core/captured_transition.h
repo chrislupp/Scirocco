@@ -46,6 +46,15 @@ namespace scirocco {
  * capt_L momentum thicknesses (C = 2.2 wc / capt_L, nc = ncrit + b ws +
  * 2.3 wc). This mirrors mfoil/mfoil_captured.py, which documents the
  * formulation and its evidence (scirocco/validation/captured_transition).
+ *
+ * Forced transition (Param::xtrip_*, located by FindTrip): in the interval
+ * that holds the trip, a fraction f along it, n jumps to at least ncrit,
+ *
+ *   n2 = n1 + q dx + J,  J = ws softplus((ncrit - n1 - q f dx) / ws)
+ *
+ * with q the interval's amplification rate. The trip therefore acts as
+ * onset does: the closures blend over capt_L momentum thicknesses behind
+ * it. Where free transition comes first, J vanishes.
  */
 
 /** Interval residual of the captured model. */
@@ -53,6 +62,7 @@ struct CapturedResidual {
     Eigen::Vector4d R;                /**< [mom, shape, amp, lag] */
     Eigen::Matrix<double, 4, 10> R_U; /**< w.r.t. [U1, U2], 5 states each */
     Eigen::Matrix<double, 4, 2> R_x;  /**< w.r.t. [x1, x2] */
+    Eigen::Vector4d R_f = Eigen::Vector4d::Zero(); /**< w.r.t. trip_frac */
 };
 
 /**
@@ -61,11 +71,22 @@ struct CapturedResidual {
  * @param x xi at the two stations
  * @param U states [th, ds, ct, ue, n] at the two stations (5 x 2)
  * @param Aux wake gap at the two stations
+ * @param trip_frac fraction of the interval at which a trip sits; negative
+ * if the interval has none
  */
 CapturedResidual CapturedIntervalResidual(const Param& param,
                                           const Eigen::Vector2d& x,
                                           const Eigen::Matrix<double, 5, 2>& U,
-                                          const Eigen::Vector2d& Aux);
+                                          const Eigen::Vector2d& Aux,
+                                          double trip_frac = -1.0);
+
+/** A trip whose position in its interval depends on the geometry. */
+struct CapturedTrip {
+    int prev = 0;      /**< Node upstream of the trip */
+    int node = 0;      /**< Node downstream; its residuals carry R_f */
+    double frac = 0.0; /**< f */
+    Eigen::Vector4d R_f = Eigen::Vector4d::Zero(); /**< dR/df */
+};
 
 /** Global captured system at the current state. */
 struct CapturedSystem {
@@ -74,6 +95,7 @@ struct CapturedSystem {
     SparseMatrixd R_U; /**< dR/d[th, ds, ct, ue, n] [4 Nsys x 5 Nsys], incl.
                             the stagnation-movement chain in ue columns */
     SparseMatrixd R_x; /**< dR/dxi [4 Nsys x Nsys] */
+    std::vector<CapturedTrip> trip; /**< Trips that move with the geometry */
 };
 
 /** @brief Assemble the captured system (as BuildGlobSys does). */

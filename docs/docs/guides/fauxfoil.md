@@ -209,7 +209,7 @@ As with XFOIL, a file name on the command line is loaded at startup
 |---|---|
 | Top level | `QUIT`, `OPER`, `GDES`, `NACA`, `LOAD`, `SAVE`, `PSAV`, `REVE`, `NORM`, `XYCM`, `PCOP`, `PANE`, `PPAR`, `PLOP`, `NAME`, `NINC` |
 | `OPER` | `VISC`, `RE`, `MACH`, `TYPE` (type 1), `ITER`, `INIT`, `ALFA`, `CL`, `CLI`, `ASEQ`, `CSEQ`, `!`, `VPAR`, `SEQP`, `PACC`, `PGET`, `PWRT`, `PSUM`, `PLIS`, `PDEL`, `PPLO`, `APLO`, `PPAX`, `RGET`, `RDEL`, `GRID`, `CPIO`, `CREF`, `FREF`, `CPX`, `CPV`, `VPLO`, `ANNO`, `HARD`, `SIZE`, `CPMI`, `BL`, `BLC`, `BLWT`, `CPWR`, `DUMP`, `CPMN`, `NAME`, `NINC` |
-| `VPAR` | `SHOW`, `N`, `NT`, `NB`, `WAKE`, `INIT`, `LAG`, `GB`, `CTR`, `REST` |
+| `VPAR` | `SHOW`, `XTR`, `N`, `NT`, `NB`, `WAKE`, `INIT`, `LAG`, `GB`, `CTR`, `REST` |
 | `VPLO` | `H`, `DT`, `DB`, `UE`, `CF`, `CD`, `N`, `CT`, `RT`, `RTL`, `DUMP`, `OVER`, `X`, `Y`, `XPLO`, `BLOW`, `RESE`, `SIZE`, `ANNO`, `HARD`, `GRID`, `SYMB`, `LABE`, `CLIP` |
 | `GDES` | `GSET`, `EXEC`, `ADEG`, `ARAD`, `TRAN`, `SCAL`, `UNIT`, `DERO`, `FLAP`, `DIST`, `CPLO`, `PLOT`, `INPL`, `BLOW`, `RESE`, `WIND`, `TSIZ`, `TICK`, `GRID`, `GPAR`, `OVER`, `SIZE`, `ANNO`, `HARD`, `NAME`, `NINC` |
 | Any menu | `Z`, `U` |
@@ -219,6 +219,8 @@ Abbreviations work as in XFOIL (`a` for `ALFA`, `as` for `ASEQ`, `v` for
 lacks prints `command not available in Scirocco`.
 
 `VPAR` settings map to Scirocco's [`Param`](../api/solver-params.md):
+`XTR` sets `xtrip_upper` and `xtrip_lower`
+([forced transition](../concepts/transition#forced-transition)),
 `N` sets `ncrit`, `LAG` sets `SlagK` and `Cuq`, `GB` sets `GA` and `GB`,
 `CTR` sets `CtauC` and `CtauE`, and `WAKE` sets the wake length. `ITER`
 sets `niglob`.
@@ -251,8 +253,10 @@ sets `niglob`.
   node count (`PPAR N`, default 160) can be changed. As in XFOIL, `LOAD`
   uses the file's points directly as panel nodes, so run `PANE` after
   loading a coarse file.
-- **One Ncrit, no trips.** Scirocco uses one Ncrit for both surfaces and
-  has no forced transition, so `XTR` stays at 1.0.
+- **One Ncrit.** Scirocco uses one Ncrit for both surfaces.
+- **Trips near the leading edge.** `XTR` works as in XFOIL, but a trip
+  close behind the stagnation point may not converge (see
+  [Transition limits](../concepts/transition#limits)).
 - **Polar types.** Only type 1 (fixed Mach and Reynolds number).
 - **No polar dump files.** XFOIL's binary dump files are not written.
 - **Different numbers.** Results come from Scirocco, so they are close to

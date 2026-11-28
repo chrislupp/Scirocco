@@ -35,6 +35,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 
 #include "scirocco/core/bl_march.h"
 #include "scirocco/core/boundary_layer.h"
@@ -508,11 +509,20 @@ void BuildGlobSys(FoilState& state, bool scalar_derivatives) {
 
         /* Get parameter structure for this surface */
         Param param = BuildParam(state, si);
+        const Trip trip = FindTrip(state, si);
 
         /* Get xi values for this surface */
         VectorXd xi(N);
         for (int idx = 0; idx < N; ++idx) {
             xi(idx) = state.isol.xi(Is[idx]);
+        }
+        if (si < 2) {
+            /* Until a transition interval is found: laminar to the trailing
+             * edge. */
+            state.vsol.tripped[si] = false;
+            state.glob.trip[si] = TripSensitivity{};
+            state.vsol.Xt(si, 0) = xi(N - 1);
+            state.vsol.Xt(si, 1) = state.foil.x(0, Is[N - 1]);
         }
 
         /* Get auxiliary data (wake gap) */
@@ -683,8 +693,28 @@ void BuildGlobSys(FoilState& state, bool scalar_derivatives) {
             ResidualLin res;
             if (tran) {
                 /* Transition station: combined laminar + turbulent residual */
+                IntervalTrip here{trip.frac};
                 res = ResidualTransition(state, param, xin, Uin, Aux_in,
-                                         scalar_derivatives);
+                                         scalar_derivatives,
+                                         i == trip.station ? &here : nullptr);
+                if (si < 2) {
+                    /* Transition location, and whether the trip set it */
+                    const double w =
+                        (state.vsol.xt - xin(0)) / (xin(1) - xin(0));
+                    state.vsol.Xt(si, 0) = state.vsol.xt;
+                    state.vsol.Xt(si, 1) =
+                        state.foil.x(0, Is[ip]) +
+                        w * (state.foil.x(0, Is[i]) - state.foil.x(0, Is[ip]));
+                    state.vsol.tripped[si] = here.forced;
+                    if (here.forced && !trip.at_node) {
+                        auto& sens = state.glob.trip[si];
+                        sens.active = true;
+                        sens.prev = Is[ip];
+                        sens.node = Is[i];
+                        sens.frac = trip.frac;
+                        sens.R_f = here.R_frac;
+                    }
+                }
                 /* After transition, subsequent stations are turbulent */
                 param.turb = true;
             } else {

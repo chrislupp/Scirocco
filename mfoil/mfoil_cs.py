@@ -328,6 +328,84 @@ def _patched_solve_glob(M):
 
 
 # ---------------------------------------------------------------------------
+# Forced transition (trip), as in Scirocco (FindTrip, ResidualTransition) and
+# XFOIL (XIFSET, TRCHEK2). mfoil has none; it is added here so that complex
+# step can give reference derivatives. Set M.param.xtrip = [lower, upper],
+# x/c of the trip on each surface; 1 or more (or no attribute) means free
+# transition only.
+# ---------------------------------------------------------------------------
+def find_trip(M, si):
+    """Trip on surface si: (station, frac, at_node), station < 0 if none.
+
+    The trip is between stations station-1 and station of M.vsol.Is[si], at
+    xi = xi[station-1] + frac*(xi[station] - xi[station-1]). frac comes from
+    linear interpolation in x between the two nodes, and is complex when the
+    geometry is.
+    """
+    none = (-1, 1., False)
+    xtrip = getattr(M.param, 'xtrip', None)
+    if xtrip is None or si > 1 or not (xtrip[si] < 1.0):
+        return none
+    Is = M.vsol.Is[si]
+    n = len(Is)
+    if n < 2:
+        return none
+    x = M.foil.x[0, Is]
+    xr = np.real(x)
+    xt = xtrip[si] * np.real(M.geom.chord)
+    if not (xt < xr[n - 1]):
+        return none
+    xi = np.real(M.isol.xi[Is])
+    i0 = 1 if xi[0] < 1e-8 * xi[n - 1] else 0
+    first = i0 + 2
+    if n <= first:
+        return none
+    for i in range(n - 1, first - 1, -1):
+        if xr[i - 1] < xt:
+            return (i, (xt - x[i - 1]) / (x[i] - x[i - 1]), False)
+        if xr[i - 1] >= xr[i]:
+            return (i, 1., True)
+    if xr[i0] < xt:
+        return (first, 0., True)
+    return none
+
+
+def _interval_trip(M, x1, x2):
+    """Trip fraction if the interval x1..x2 (xi) holds a trip, else None."""
+    for si in range(2):
+        i, frac, _ = find_trip(M, si)
+        if i < 0:
+            continue
+        Is = M.vsol.Is[si]
+        if (np.real(M.isol.xi[Is[i - 1]]) == np.real(x1) and
+                np.real(M.isol.xi[Is[i]]) == np.real(x2)):
+            return frac
+    return None
+
+
+def _amplification_at_trip(param, U1, U2, dxt, w2):
+    """Laminar amplification at the trip, a distance dxt past station 1."""
+    turb_save = param.turb
+    param.turb = False
+    damp1, _ = _mfoil_module.get_damp(U1, param)
+    Ut = (1. - w2) * U1 + w2 * U2
+    Ut[2] = U1[2] + damp1 * dxt
+    nNewton = 20
+    for it in range(nNewton):
+        dampt, dampt_Ut = _mfoil_module.get_damp(Ut, param)
+        R = Ut[2] - U1[2] - 0.5 * dxt * (damp1 + dampt)
+        if np.abs(np.real(R)) < 1e-12 and np.abs(np.imag(R)) < 1e-30:
+            break
+        dn = -R / (1. - 0.5 * dxt * dampt_Ut[2])
+        dmax = 0.5 * (1.01 - it / nNewton)
+        if np.abs(np.real(dn)) > dmax:
+            dn = dn * dmax / np.abs(np.real(dn))
+        Ut[2] += dn
+    param.turb = turb_save
+    return Ut[2]
+
+
+# ---------------------------------------------------------------------------
 # Patched: march_amplification  (lines 2596, 2600, 2612: abs(), complex check)
 # ---------------------------------------------------------------------------
 _orig_march_amplification = _mfoil_module.march_amplification
@@ -341,6 +419,7 @@ def _patched_march_amplification(M, si):
 
     U[2, 0] = 0.
     param.turb, param.wake = False, False
+    itrip = find_trip(M, si)[0]
     i = 1
     while i < N:
         U1, U2 = U[:, i - 1], U[:, i].copy()
@@ -372,8 +451,8 @@ def _patched_march_amplification(M, si):
         if iNewton >= nNewton - 1:
             _mfoil_module.vprint(param, 1, 'march amp Newton unconverged!')
 
-        if np.real(U2[2]) > param.ncrit:
-            _mfoil_module.vprint(param, 2, '  march_amplification (si,i=%d,%d): %.5e is above critical.' % (si, i, np.real(U2[2])))
+        if np.real(U2[2]) > param.ncrit or i == itrip:
+            _mfoil_module.vprint(param, 2, '  march_amplification (si,i=%d,%d): %.5e is above critical, or the trip.' % (si, i, np.real(U2[2])))
             break
         else:
             M.glob.U[2, Is[i]] = U2[2]
@@ -410,9 +489,18 @@ def _patched_residual_transition(M, param, x, U, Aux):
 
     Z = np.zeros(4)
 
+    # forced transition: the interval holds a trip and the amplification is
+    # still below ncrit there
+    frac = _interval_trip(M, x1, x2)
+    forced = (frac is not None and
+              np.real(_amplification_at_trip(param, U1, U2, frac * dx, frac)) < ncrit)
+
     # determine transition location xt
     xt = x1 + 0.5 * dx  # initial guess
     nNewton = 30  # match mfoil.py (tightened from 20)
+    if forced:
+        xt = x1 + frac * dx
+        nNewton = 1  # one pass, for the quantities used below
     for iNewton in range(nNewton):
         w2 = (xt - x1) / dx; w1 = 1. - w2
         Ut = w1 * U1 + w2 * U2
@@ -427,12 +515,12 @@ def _patched_residual_transition(M, param, x, U, Aux):
 
         Rxt = ncrit - sa[0] - 0.5 * (xt - x1) * (damp1 + dampt)
         Rxt_xt = -0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * np.dot(dampt_Ut, Ut_xt)
-        dxt = -Rxt / Rxt_xt
+        dxt = 0. if forced else -Rxt / Rxt_xt
         _mfoil_module.vprint(param, 4, '   Transition: iNewton,Rxt,xt = %d,%.5e,%.5e' % (iNewton, np.real(Rxt), np.real(xt)))
         dmax = 0.2 * dx * (1.1 - iNewton / nNewton)
         if np.real(np.abs(dxt)) > np.real(dmax):
             dxt = dxt * dmax / np.abs(dxt)
-        if np.real(np.abs(Rxt)) < 1e-14:  # match mfoil.py tightening
+        if forced or np.real(np.abs(Rxt)) < 1e-14:  # match mfoil.py tightening
             break
         if iNewton < nNewton:
             xt += dxt
@@ -448,8 +536,14 @@ def _patched_residual_transition(M, param, x, U, Aux):
     Rxt_x1 = 0.5 * (damp1 + dampt) - 0.5 * (xt - x1) * np.dot(dampt_Ut, Ut_x1)
     Rxt_x2 = -0.5 * (xt - x1) * np.dot(dampt_Ut, Ut_x2)
 
+    if forced:
+        Rxt_xt = 1.  # not used: xt is prescribed
     xt_U = -Rxt_U / Rxt_xt; xt_U1 = xt_U[I1]; xt_U2 = xt_U[I2]
     xt_x1 = -Rxt_x1 / Rxt_xt; xt_x2 = -Rxt_x2 / Rxt_xt
+    if forced:
+        # xt = x1 + frac*dx, frac fixed by the geometry
+        xt_U1 = np.zeros(4); xt_U2 = np.zeros(4)
+        xt_x1 = w1; xt_x2 = w2
 
     Ut_x1 += Ut_xt * xt_x1
     Ut_x2 += Ut_xt * xt_x2
@@ -470,6 +564,10 @@ def _patched_residual_transition(M, param, x, U, Aux):
 
     param2.turb = False
     Rl, Rl_U, Rl_x = _mfoil_module.residual_station(param2, np.r_[x1, xt], np.stack((U1, Utl), axis=-1), Aux)
+    if forced:
+        # the amplification at the trip is not a state: no amplification
+        # equation over the laminar part
+        Rl[2] = 0.; Rl_U[2, :] = 0.; Rl_x[2, :] = 0.
     Rl_U1 = Rl_U[:, I1]; Rl_Utl = Rl_U[:, I2]
     param2.turb = True
     Rt, Rt_U, Rt_x = _mfoil_module.residual_station(param2, np.r_[xt, x2], np.stack((Utt, U2), axis=-1), Aux)

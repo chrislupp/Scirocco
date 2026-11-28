@@ -30,7 +30,8 @@ Custom MDX components, registered in `src/theme/MDXComponents.tsx`:
 `<OnsetPlot>`, `<ShapeGradientPlot>`, `<TransitionSweepPlot>`, `<E387DragPlot>`,
 the verification and validation figures in `src/components/charts/vv.tsx`
 (`<CodePolarPlot>`, `<CodeTransitionPlot>`, `<CodeDistributionPlot>`,
-`<ExperimentPolarPlot>`, `<GregoryCpPlot>`, `<ColesWadcockCpPlot>`),
+`<ExperimentPolarPlot>`, `<TrippedPolarPlot>`, `<GregoryCpPlot>`,
+`<ColesWadcockCpPlot>`),
 `<BenchTable>`, `<QuickstartSource>` (which shows
 `scirocco/examples/quickstart.cpp` as built by CI), and `<N2>`.
 

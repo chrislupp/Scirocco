@@ -46,9 +46,12 @@ CODE_CASES = [
     ("2412_re6e6_m04", "2412", 6e6, 0.4, arange(-2, 6, 1), [2.0]),
 ]
 
-# Validation cases against published measurements.
+# Validation cases against published measurements. A seventh entry is forced
+# transition, (x/c upper, x/c lower); Ladson's roughness strips were at 5%
+# chord on both surfaces.
 EXPERIMENT_CASES = [
     ("0012_re6e6", "0012", 6e6, 0.15, arange(0, 19, 1), []),
+    ("0012_re6e6_trip", "0012", 6e6, 0.15, arange(0, 19, 1), [], (0.05, 0.05)),
     ("0012_re288e4", "0012", 2.88e6, 0.0, arange(0, 15, 1), [0.0, 10.0, 15.0]),
     ("4412_re152e4", "4412", 1.52e6, 0.08, arange(0, 13, 1) + [13.87], [13.87]),
 ]
@@ -72,14 +75,15 @@ def panel(naca, workdir):
     return m.foil.x
 
 
-def run_scirocco(driver, workdir, re, ma, alphas, dist):
+def run_scirocco(driver, workdir, re, ma, alphas, dist, trip):
     points, dists = {}, {}
     for k, sweep in enumerate(sweeps(alphas)):
         out = workdir / f"scirocco_{k}.json"
         subprocess.run(
             [str(driver), str(workdir / "nodes.txt"), str(re), str(ma), str(NCRIT),
              ",".join(map(str, sweep)),
-             ",".join(str(a) for a in dist if a in sweep) or "-", str(out)],
+             ",".join(str(a) for a in dist if a in sweep) or "-", str(out)]
+            + ([f"{trip[0]},{trip[1]}"] if trip else []),
             check=True, timeout=600)
         data = json.loads(out.read_text())
         for p in data["points"]:
@@ -89,14 +93,15 @@ def run_scirocco(driver, workdir, re, ma, alphas, dist):
     return points, dists
 
 
-def run_xfoil(workdir, re, ma, alphas, dist, n):
+def run_xfoil(workdir, re, ma, alphas, dist, n, trip):
+    xtr = "XTR {:g} {:g}".format(*trip) if trip else "XTR 1 1"
     points, dists = {}, {}
     for k, sweep in enumerate(sweeps(alphas)):
         tag = f"xfoil_{k}"
         dump = workdir / f"{tag}.bin"
         dump.unlink(missing_ok=True)
         cmds = ["PLOP", "G F", "", "LOAD airfoil.dat", "PCOP", "OPER",
-                f"MACH {ma}", "ITER 100", "VPAR", f"N {NCRIT:g}", "XTR 1 1", ""]
+                f"MACH {ma}", "ITER 100", "VPAR", f"N {NCRIT:g}", xtr, ""]
         if re:
             cmds.append(f"VISC {re:g}")
         cmds += ["PACC", "", dump.name]
@@ -261,19 +266,26 @@ def clean(obj, digits=6):
 
 
 def run_case(case, driver, codes, pool):
-    name, naca, re, ma, alphas, dist = case
+    name, naca, re, ma, alphas, dist, *rest = case
+    trip = rest[0] if rest else None
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
         x = panel(naca, workdir)
         out = dict(name=name, airfoil=f"NACA {naca}", re=re, mach=ma,
                    ncrit=NCRIT, panels=NPANEL, alphas=alphas,
                    coords=dict(x=x[0], y=x[1]))
+        if trip:
+            out.update(xtrip_upper=trip[0], xtrip_lower=trip[1])
         runs = {}
         if "scirocco" in codes:
-            runs["scirocco"] = run_scirocco(driver, workdir, re, ma, alphas, dist)
+            runs["scirocco"] = run_scirocco(driver, workdir, re, ma, alphas, dist,
+                                            trip)
         if "xfoil" in codes:
-            runs["xfoil"] = run_xfoil(workdir, re, ma, alphas, dist, x.shape[1])
+            runs["xfoil"] = run_xfoil(workdir, re, ma, alphas, dist, x.shape[1],
+                                      trip)
         if "mfoil" in codes:
+            if trip:
+                raise ValueError("mfoil has no forced transition")
             runs["mfoil"] = run_mfoil(pool, naca, re, ma, alphas, dist)
         if "flexfoil" in codes:
             runs["flexfoil"] = run_flexfoil(pool, x, re, ma, alphas, dist)

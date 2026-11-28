@@ -1,7 +1,7 @@
 /* Scirocco polar on prescribed panel nodes, for the verification and
  * validation pages of the documentation (see README.md).
  *
- * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json
+ * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json [TRIPS]
  *   NODES        one node per line: x y s tx ty (lower TE -> LE -> upper TE),
  *                as mfoil panels it; Scirocco uses the nodes, arc length
  *                and tangents unchanged.
@@ -10,6 +10,7 @@
  *                one object, so each point warm-starts from the previous one
  *   DIST_ALPHAS  comma-separated subset of ALPHAS whose surface
  *                distributions are written ("-" for none)
+ *   TRIPS        optional forced transition: XTRIP_UPPER,XTRIP_LOWER (x/c)
  */
 #include <cmath>
 #include <fstream>
@@ -44,36 +45,19 @@ std::string Num(double v) {
     return os.str();
 }
 
-/* Transition x/c on surface si (0 lower, 1 upper): the solver keeps only the
- * xi location, so recover x by evaluating the transition residual of the
- * converged interval on a copy, as compare_solver_driver.cpp does. */
+/* Transition x/c on surface si (0 lower, 1 upper); 1 where the surface
+ * stays laminar. */
 double TransitionX(const FoilState& state, int si) {
-    const auto& idx = state.vsol.Is[si];
-    for (size_t k = 1; k < idx.size(); ++k) {
-        const int i0 = idx[k - 1], i1 = idx[k];
-        if (state.vsol.turb[i0] || !state.vsol.turb[i1]) continue;
-        if (i0 >= state.foil.N || i1 >= state.foil.N) return 1.0;
-        auto copy = state;
-        auto param = BuildParam(copy, si);
-        param.simi = false;
-        param.turb = false;
-        Matrix42d u;
-        u.col(0) = state.glob.U.col(i0);
-        u.col(1) = state.glob.U.col(i1);
-        Vector2d xi(state.isol.xi(i0), state.isol.xi(i1));
-        ResidualTransition(copy, param, xi, u, Vector2d::Zero());
-        const double w = (copy.vsol.xt - xi(0)) / (xi(1) - xi(0));
-        return (1 - w) * state.foil.x(0, i0) + w * state.foil.x(0, i1);
-    }
-    return 1.0;
+    return state.vsol.turb[state.vsol.Is[si].back()] ? state.vsol.Xt(si, 1)
+                                                     : 1.0;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 8) {
+    if (argc != 8 && argc != 9) {
         std::cerr << "usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS "
-                     "OUT.json\n";
+                     "OUT.json [XTRIP_UPPER,XTRIP_LOWER]\n";
         return 2;
     }
     std::ifstream input(argv[1]);
@@ -95,7 +79,14 @@ int main(int argc, char** argv) {
         state.foil.t.col(i) << nodes[i][3], nodes[i][4];
     }
     state.param.verb = 0;
+    state.param.warm_start = true; /* a polar sweep, as a user would run it */
     state.param.ncrit = std::stod(argv[4]);
+    if (argc == 9) {
+        const auto trip = ParseList(argv[8]);
+        if (trip.size() != 2) return 2;
+        state.param.xtrip_upper = trip[0];
+        state.param.xtrip_lower = trip[1];
+    }
 
     std::ofstream out(argv[7]);
     out << "{\"points\":[";

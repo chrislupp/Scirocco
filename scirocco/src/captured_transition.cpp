@@ -26,6 +26,7 @@
 #include "scirocco/core/boundary_layer.h"
 #include "scirocco/core/geometry.h"
 #include "scirocco/core/inviscid.h"
+#include "scirocco/core/transition.h"
 #include "scirocco/core/viscous_geom_deriv.h"
 #include "scirocco/core/wake.h"
 #include "scirocco/properties/bl_properties.h"
@@ -95,6 +96,23 @@ std::pair<double, double> Release(double n, const Param& p) {
 }
 double RateC(const Param& p) { return 2.2 * p.capt_wc / p.capt_L; }
 
+/* Jump of n at a trip, J = ws softplus((ncrit - npre) / ws), and
+ * -dJ/dnpre: lifts the amplification npre reached at the trip to ncrit,
+ * and vanishes where it is already past it.
+ *
+ * The interval with the trip, a fraction f along it, is integrated in two
+ * parts, so that the blend starts at the trip and not at the next node:
+ *   npre  = n1 + q1 f dx                    laminar rate up to the trip
+ *   npost = npre + J(npre)
+ *   n2    = npost + (q1* + q2) / 2 (1 - f) dx
+ * with q1* the rate at station 1 with its growth switch at npost. */
+std::pair<double, double> TripJump(double npre, const Param& p) {
+    const double t = (p.ncrit - npre) / p.capt_ws;
+    if (t > 30.0) return {p.capt_ws * t, 1.0};
+    const double e = std::exp(t);
+    return {p.capt_ws * std::log1p(e), e / (1.0 + e)};
+}
+
 /* Upwind helper for 5-state linearizations (upw_U has 10 entries). */
 std::pair<double, Vector10d> Up(double upw, const Vector10d& upw_U, double f1,
                                 const Vector5d& f1_U, double f2,
@@ -144,6 +162,7 @@ XtLin BlendedXt(Fn fn, const Vector5d& U, double x, const Param& param) {
 struct RateLin {
     double q;
     Vector5d q_U;
+    double q_s; /* dq/ds */
 };
 
 RateLin Rate(double d, const Vector5d& d_U, double s, double s_n, double C,
@@ -160,6 +179,7 @@ RateLin Rate(double d, const Vector5d& d_U, double s, double s_n, double C,
     RateLin out;
     out.q = (1.0 - s) * d + s * m;
     out.q_U = (1.0 - s) * d_U + s * m_U + (m - d) * s_n * Unit(AMP);
+    out.q_s = m - d;
     return out;
 }
 
@@ -168,7 +188,8 @@ RateLin Rate(double d, const Vector5d& d_U, double s, double s_n, double C,
 CapturedResidual CapturedIntervalResidual(const Param& param,
                                           const Eigen::Vector2d& x,
                                           const Matrix52d& Uin,
-                                          const Eigen::Vector2d& Aux) {
+                                          const Eigen::Vector2d& Aux,
+                                          double trip_frac) {
     Matrix52d U = Uin;
     U.row(DS) -= Aux.transpose();
     const Vector5d U1 = U.col(0), U2 = U.col(1);
@@ -325,6 +346,7 @@ CapturedResidual CapturedIntervalResidual(const Param& param,
     double Ramp;
     Vector10d Ramp_U;
     Vector2d Ramp_x = Vector2d::Zero();
+    double Ramp_f = 0.0;
     if (param.wake) {
         Ramp = n1 - n0;
         Ramp_U = Two(-Unit(AMP), Unit(AMP));
@@ -344,6 +366,25 @@ CapturedResidual CapturedIntervalResidual(const Param& param,
         Ramp = n1 - n0 - damp * dx;
         Ramp_U = Two(-Unit(AMP), Unit(AMP)) - damp_U * dx;
         Ramp_x = -damp * dx_x;
+        if (trip_frac >= 0.0) {
+            /* trip: see TripJump */
+            const double f = trip_frac, g = (1.0 - f) * dx;
+            const double npre = n0 + q1.q * f * dx;
+            auto [J, sig] = TripJump(npre, param);
+            const double a = 1.0 - sig; /* dnpost/dnpre */
+            const double npost = npre + J;
+            auto [ss, ss_n] = Growth(npost, param);
+            RateLin qs = Rate(d1, E5(d1_U, kLam), ss, 0.0, C, th0);
+            const double qs_n = qs.q_s * ss_n;
+            const double k = 1.0 + 0.5 * g * qs_n; /* -dRamp/dnpost */
+            Vector5d npost_U = a * (Unit(AMP) + q1.q_U * (f * dx));
+            Ramp = n1 - npost - 0.5 * (qs.q + q2.q) * g;
+            Ramp_U = Two(-k * npost_U - 0.5 * g * qs.q_U,
+                         Unit(AMP) - 0.5 * g * q2.q_U);
+            Ramp_x =
+                -(k * a * q1.q * f + 0.5 * (qs.q + q2.q) * (1.0 - f)) * dx_x;
+            Ramp_f = -k * a * q1.q * dx + 0.5 * (qs.q + q2.q) * dx;
+        }
     }
 
     /* ---- momentum equation (blended cf) */
@@ -393,6 +434,7 @@ CapturedResidual CapturedIntervalResidual(const Param& param,
     out.R_x.row(1) = Rshape_x.transpose();
     out.R_x.row(2) = Ramp_x.transpose();
     out.R_x.row(3) = Rlag_x.transpose();
+    out.R_f(2) = Ramp_f;
     return out;
 }
 
@@ -500,11 +542,9 @@ double BlendedTan(const ParamDir& dir, F f, FRe f_dRet, FMa f_dMa,
 
 /* dR/dp of one captured interval at fixed U (p = Re or Ma). Mirrors
  * CapturedIntervalResidual term by term. */
-Vector4d CapturedIntervalParamPartial(const Param& param,
-                                      const Eigen::Vector2d& x,
-                                      const Matrix52d& Uin,
-                                      const Eigen::Vector2d& Aux,
-                                      const ParamDir& dir) {
+Vector4d CapturedIntervalParamPartial(
+    const Param& param, const Eigen::Vector2d& x, const Matrix52d& Uin,
+    const Eigen::Vector2d& Aux, const ParamDir& dir, double trip_frac = -1.0) {
     using namespace detail;
     Matrix52d U = Uin;
     U.row(DS) -= Aux.transpose();
@@ -649,6 +689,7 @@ Vector4d CapturedIntervalParamPartial(const Param& param,
                        const ThermoMaDeriv& d) { return GetDamp_dMa(u, p, d); };
         double C = RateC(param);
         double q_p = 0.0;
+        std::array<double, 2> qk{}, qk_p{}, dk_v{}, dk_pv{};
         for (int k = 0; k < 2; ++k) {
             const Vector5d& Uk = k == 0 ? U1 : U2;
             Vector4d Ul = View(Uk, kLam);
@@ -659,8 +700,28 @@ Vector4d CapturedIntervalParamPartial(const Param& param,
             double rr = std::sqrt((dk - c) * (dk - c) + 0.01 * c * c);
             double m_d = 0.5 * (1.0 + (dk - c) / rr);
             q_p += 0.5 * ((1.0 - s) + s * m_d) * dk_p;
+            qk[k] = (1.0 - s) * dk + s * 0.5 * (dk + c + rr);
+            qk_p[k] = ((1.0 - s) + s * m_d) * dk_p;
+            dk_v[k] = dk;
+            dk_pv[k] = dk_p;
         }
         Ramp_p = -q_p * dx;
+        if (trip_frac >= 0.0) {
+            /* as the residual: npost and the rate q1* at it */
+            const double f = trip_frac, g = (1.0 - f) * dx;
+            const double npre = U1(AMP) + qk[0] * f * dx;
+            auto [J, sig] = TripJump(npre, param);
+            const double npost_p = (1.0 - sig) * qk_p[0] * f * dx;
+            auto [ss, ss_n] = Growth(npre + J, param);
+            const double c = C / U1(TH);
+            const double rr =
+                std::sqrt((dk_v[0] - c) * (dk_v[0] - c) + 0.01 * c * c);
+            const double m = 0.5 * (dk_v[0] + c + rr);
+            const double m_d = 0.5 * (1.0 + (dk_v[0] - c) / rr);
+            const double qs_p = ((1.0 - ss) + ss * m_d) * dk_pv[0] +
+                                (m - dk_v[0]) * ss_n * npost_p;
+            Ramp_p = -npost_p - 0.5 * (qs_p + qk_p[1]) * g;
+        }
     }
 
     /* ---- momentum (blended cf) */
@@ -861,15 +922,19 @@ CapturedSystem BuildCapturedSystem(const FoilState& state) {
             param.turb = true;
             param.wake = true;
         }
+        const Trip trip = FindTrip(state, si);
         for (int i = i0 + 1; i < N; ++i) {
             Matrix52d Ui;
             Ui.col(0) = NodeState(state, Is[i - 1]);
             Ui.col(1) = NodeState(state, Is[i]);
-            CapturedResidual ri =
-                CapturedIntervalResidual(param, Vector2d(xi(i - 1), xi(i)), Ui,
-                                         Vector2d(aux(i - 1), aux(i)));
+            const bool tripped = i == trip.station;
+            CapturedResidual ri = CapturedIntervalResidual(
+                param, Vector2d(xi(i - 1), xi(i)), Ui,
+                Vector2d(aux(i - 1), aux(i)), tripped ? trip.frac : -1.0);
             Eigen::MatrixXd RU = ri.R_U, Rx = ri.R_x;
             put(Is[i], ri.R, RU, {Is[i - 1], Is[i]}, &Rx);
+            if (tripped && !trip.at_node)
+                a.trip.push_back({Is[i - 1], Is[i], trip.frac, ri.R_f});
         }
     }
     a.R_U.resize(4 * Nsys, 5 * Nsys);
@@ -943,6 +1008,16 @@ MatrixXd CapturedDRblDFoilX(const FoilState& state, const CapturedSystem& a,
     const int N = state.foil.N;
     const int Nw = state.wake.N;
     MatrixXd dRbl = a.R_x * DXiDFoilX(state, dfoil_s_dx);
+    /* Trip fraction f = (x_trip - x_a) / (x_b - x_a), x_trip fixed:
+     * df/dx_a = (f - 1) / (x_b - x_a), df/dx_b = -f / (x_b - x_a). */
+    for (const CapturedTrip& trip : a.trip) {
+        const double dxab =
+            state.foil.x(0, trip.node) - state.foil.x(0, trip.prev);
+        dRbl.block(4 * trip.node, 2 * trip.prev, 4, 1) +=
+            trip.R_f * (trip.frac - 1.0) / dxab;
+        dRbl.block(4 * trip.node, 2 * trip.node, 4, 1) -=
+            trip.R_f * trip.frac / dxab;
+    }
     MatrixXd dwgap_dx = DWgapDFoilX(state, dfoil_s_dx);
     const auto& Iw = state.vsol.Is[2];
     for (int ip = 1; ip < Nw; ++ip) {
@@ -1013,13 +1088,15 @@ VectorXd CapturedThermoPartial(const FoilState& state, bool mach) {
             param.turb = true;
             param.wake = true;
         }
+        const Trip trip = FindTrip(state, si);
         for (int i = i0 + 1; i < N; ++i) {
             Matrix52d Ui;
             Ui.col(0) = NodeState(state, Is[i - 1]);
             Ui.col(1) = NodeState(state, Is[i]);
             dR.segment<4>(4 * Is[i]) += CapturedIntervalParamPartial(
                 param, Vector2d(xi(i - 1), xi(i)), Ui,
-                Vector2d(aux(i - 1), aux(i)), dir);
+                Vector2d(aux(i - 1), aux(i)), dir,
+                i == trip.station ? trip.frac : -1.0);
         }
     }
     return dR;
@@ -1116,6 +1193,7 @@ void ConvertState(FoilState& state) {
     for (int si = 0; si < 3; ++si) {
         const std::vector<int>& Is = state.vsol.Is[si];
         Param param = BuildParam(state, si);
+        const Trip trip = FindTrip(state, si);
         for (size_t k = 0; k < Is.size(); ++k) {
             int j = Is[k];
             if (si < 2 && !state.vsol.turb[j]) {
@@ -1136,12 +1214,26 @@ void ConvertState(FoilState& state) {
             auto [sm, sm_n] = Growth(Um(2), P);
             (void)sm_n;
             double q1 = Rate(d1, Vector5d::Zero(), sm, 0.0, C, Um(0)).q;
+            const double f =
+                static_cast<int>(k) == trip.station ? trip.frac : -1.0;
             for (int it = 0; it < 60; ++it) {
                 auto [d2, d2_U] = GetDamp(Uj, pl);
                 auto [s2, s2_n] = Growth(Uj(2), P);
                 RateLin q2 = Rate(d2, E5(d2_U, kLam), s2, s2_n, C, Uj(0));
                 double Ra = Uj(2) - Um(2) - 0.5 * (q1 + q2.q) * dx;
-                Uj(2) -= Ra / (1.0 - 0.5 * q2.q_U(AMP) * dx);
+                double Ra_n = 1.0 - 0.5 * q2.q_U(AMP) * dx;
+                if (f >= 0.0) {
+                    /* as CapturedIntervalResidual */
+                    const double npre = Um(2) + q1 * f * dx;
+                    const double npost = npre + TripJump(npre, P).first;
+                    const double qs =
+                        Rate(d1, Vector5d::Zero(), Growth(npost, P).first, 0.0,
+                             C, Um(0))
+                            .q;
+                    Ra = Uj(2) - npost - 0.5 * (qs + q2.q) * (1.0 - f) * dx;
+                    Ra_n = 1.0 - 0.5 * q2.q_U(AMP) * (1.0 - f) * dx;
+                }
+                Uj(2) -= Ra / Ra_n;
                 if (std::abs(Ra) < 1e-12) break;
             }
             state.glob.Un(j) = Uj(2);

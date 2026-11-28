@@ -24,6 +24,10 @@ HDF5 structure:
                      TransitionModel::Captured cl/cd/cm (mfoil_captured)
   captured_shape/    same, alpha=4, Re=1e6: CS dcl/dcd/dcm/dx around transition
   captured_scalar/   same: CS d/dalpha, d/dRe (Ma=0); d/dMa at Ma=0.3
+  trip_shape/        NACA 2412, 160 panels, alpha=4, Re=1e6, forced transition
+                     at x/c = 0.2 (upper) and 0.6 (lower): CS dcl/dcd/dcm/dx
+                     at the nodes around both trips
+  trip_scalar/       same: CS d/dalpha, d/dRe (Ma=0); d/dMa at Ma=0.3
 
 Usage:
   cd mfoil
@@ -36,6 +40,10 @@ envelope_* groups into the existing file; the two can be combined.
 --captured-only (re)writes just captured_primal/.
 --laminar-te-only (re)writes just viscous_re_laminar_te/.
 --captured-cs-only (re)writes just captured_shape/ and captured_scalar/.
+
+--captured-trip-only (re)writes just captured_trip_shape/ and
+captured_trip_scalar/: the captured model with the trips of trip_shape/.
+--trip-only (re)writes just trip_shape/ and trip_scalar/.
 """
 
 import sys
@@ -121,7 +129,8 @@ def cs_inviscid_scalar(naca, npanel, alpha, Ma, var, step):
     return dcl, dcm
 
 
-def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic'):
+def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic',
+                      xtrip=None):
     """
     Complex-step derivative of (cl, cd, cm) w.r.t. a scalar operating condition.
     var: 'alpha', 'Ma', or 'Re'
@@ -141,6 +150,7 @@ def cs_viscous_scalar(naca, npanel, alpha, Re, Ma, var, step, onset='cubic'):
     M.param.verb = 0
     M.param.doplot = False
     M.param.onset = onset
+    M.param.xtrip = xtrip
     # Now enter complex mode for setoper + solve
     with complex_step_mode():
         M.setoper(**kwargs)
@@ -191,7 +201,8 @@ def cs_inviscid_shape(naca, npanel, alpha, Ma, test_nodes):
     return M_base, dcl_dx, dcm_dx
 
 
-def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic'):
+def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic',
+                     xtrip=None):
     """
     Complex-step shape sensitivities for viscous case.
     Returns dcl_dx, dcd_dx, dcm_dx [2, N+1] (nonzero only at test_nodes).
@@ -207,6 +218,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic'):
     M_base.param.verb = 0
     M_base.param.doplot = False
     M_base.param.onset = onset
+    M_base.param.xtrip = xtrip
     recompute_geom(M_base)  # cumulative foil.s, same path as perturbations
     M_base.setoper(alpha=alpha, Re=Re, Ma=Ma)
     M_base.solve()
@@ -221,6 +233,7 @@ def cs_viscous_shape(naca, npanel, alpha, Re, Ma, test_nodes, onset='cubic'):
             M.param.verb = 0
             M.param.doplot = False
             M.param.onset = onset
+            M.param.xtrip = xtrip
             M.foil.x = M.foil.x.astype(complex)
             M.foil.x[dim, node] += 1j * CS_STEP
             recompute_geom(M)
@@ -392,6 +405,60 @@ def write_laminar_te_re_group(f):
     g.create_dataset('dcm_dRe', data=dcm)
 
 
+# Forced transition (mfoil_cs.find_trip; Scirocco Param::xtrip_lower/upper).
+# xtrip is [lower, upper]. Free transition would be at x/c = 0.40 on the
+# upper surface and absent on the lower one, so both trips act.
+TRIP_CASE = dict(naca='2412', npanel=160, alpha=4.0, Re=1e6)
+TRIP_X = [0.6, 0.2]
+
+
+def trip_nodes(M):
+    """The two nodes around each trip and their neighbours, plus one node
+    on each surface away from the trips."""
+    nodes = set()
+    for si in range(2):
+        i, _, at_node = mfoil_cs.find_trip(M, si)
+        if i < 0 or at_node or not M.vsol.turb[M.vsol.Is[si][i]]:
+            raise RuntimeError('expected a trip inside an interval')
+        Is = M.vsol.Is[si]
+        nodes.update(int(Is[k]) for k in range(i - 2, i + 2))
+    nodes.update((20, 140))
+    return sorted(nodes)
+
+
+def write_trip_groups(f):
+    """CS references for forced transition: shape, alpha, Re, Ma."""
+    c = TRIP_CASE
+    print("\n--- trip_shape (NACA 2412, 160 panels, alpha=4, Re=1e6, "
+          f"xtrip lower/upper = {TRIP_X}) ---")
+    M0 = mfoil.mfoil(naca=c['naca'], npanel=c['npanel'])
+    M0.param.verb = 0
+    M0.param.doplot = False
+    M0.param.xtrip = TRIP_X
+    recompute_geom(M0)
+    M0.setoper(alpha=c['alpha'], Re=c['Re'], Ma=0.0)
+    M0.solve()
+    nodes = trip_nodes(M0)
+    M, dcl_dx, dcd_dx, dcm_dx = cs_viscous_shape(
+        c['naca'], c['npanel'], c['alpha'], c['Re'], 0.0, nodes, xtrip=TRIP_X)
+    write_viscous_shape_group(f, 'trip_shape', M, nodes, dcl_dx, dcd_dx,
+                              dcm_dx)
+    f['trip_shape'].create_dataset('xtrip', data=np.array(TRIP_X))
+    f['trip_shape'].create_dataset('xt', data=np.real(M.vsol.Xt[:, 1]))
+
+    print("\n--- trip_scalar (alpha, Re; Ma at Ma=0.3) ---")
+    g = f.create_group('trip_scalar')
+    for var, suffix, Ma in (('alpha', 'dalpha', 0.0), ('Re', 'dRe', 0.0),
+                            ('Ma', 'dMa', 0.3)):
+        dcl, dcd, dcm = cs_viscous_scalar(c['naca'], c['npanel'], c['alpha'],
+                                          c['Re'], Ma, var, CS_STEP,
+                                          xtrip=TRIP_X)
+        print(f"    d/{var}: dcl={dcl:.10e}, dcd={dcd:.10e}, dcm={dcm:.10e}")
+        g.create_dataset('dcl_' + suffix, data=dcl)
+        g.create_dataset('dcd_' + suffix, data=dcd)
+        g.create_dataset('dcm_' + suffix, data=dcm)
+
+
 def write_captured_group(f):
     """Captured-transition primal (mfoil_captured) on cumulative-s geometry."""
     import mfoil_captured
@@ -417,7 +484,8 @@ def write_captured_group(f):
 CAPTURED_NODES = [40, 95, 110, 113, 116, 118, 120, 123, 140]
 
 
-def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
+def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None,
+                      xtrip=None):
     """Captured solve in complex_step_mode with one complex perturbation.
 
     Converges the real part to 1e-11, then runs extra Newton steps so the
@@ -427,6 +495,7 @@ def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
     M = mfoil.mfoil(naca='2412', npanel=160)
     M.param.verb = 0
     M.param.doplot = False
+    M.param.xtrip = xtrip
     if node is not None:
         M.foil.x = M.foil.x.astype(complex)
         M.foil.x[dim, node] += 1j * CS_STEP
@@ -459,34 +528,41 @@ def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
     return M
 
 
-def write_captured_cs_groups(f):
-    """CS references for the captured model: shape, alpha, Re, Ma."""
-    print("\n--- captured_shape (NACA 2412, 160, alpha=4, Re=1e6) ---")
-    M0 = captured_cs_solve(4.0, 1e6, 0.0)
+def write_captured_cs_groups(f, prefix='captured', xtrip=None):
+    """CS references for the captured model: shape, alpha, Re, Ma.
+
+    With xtrip ([lower, upper]) the trips act, and the shape nodes are those
+    around the trips (trip_nodes)."""
+    print(f"\n--- {prefix}_shape (NACA 2412, 160, alpha=4, Re=1e6, "
+          f"xtrip={xtrip}) ---")
+    M0 = captured_cs_solve(4.0, 1e6, 0.0, xtrip=xtrip)
     N = M0.foil.N
+    nodes = CAPTURED_NODES if xtrip is None else trip_nodes(M0)
     dcl = np.zeros((2, N)); dcd = np.zeros((2, N)); dcm = np.zeros((2, N))
-    for node in CAPTURED_NODES:
+    for node in nodes:
         for dim in range(2):
-            M = captured_cs_solve(4.0, 1e6, 0.0, node, dim)
+            M = captured_cs_solve(4.0, 1e6, 0.0, node, dim, xtrip=xtrip)
             dcl[dim, node] = np.imag(M.post.cl) / CS_STEP
             dcd[dim, node] = np.imag(M.post.cd) / CS_STEP
             dcm[dim, node] = np.imag(M.post.cm) / CS_STEP
             print(f"    node={node} dim={dim}: dcl={dcl[dim, node]:.8e} "
                   f"dcd={dcd[dim, node]:.8e} dcm={dcm[dim, node]:.8e}")
-    g = f.create_group('captured_shape')
+    g = f.create_group(prefix + '_shape')
     g.create_dataset('x_base', data=np.real(M0.foil.x[:, :N]))
     g.create_dataset('cl_base', data=float(np.real(M0.post.cl)))
     g.create_dataset('cd_base', data=float(np.real(M0.post.cd)))
-    g.create_dataset('test_nodes', data=np.array(CAPTURED_NODES, dtype=np.int64))
+    g.create_dataset('test_nodes', data=np.array(nodes, dtype=np.int64))
+    if xtrip is not None:
+        g.create_dataset('xtrip', data=np.array(xtrip))
     g.create_dataset('dcl_dx', data=dcl)
     g.create_dataset('dcd_dx', data=dcd)
     g.create_dataset('dcm_dx', data=dcm)
 
-    print("\n--- captured_scalar ---")
-    g = f.create_group('captured_scalar')
+    print(f"\n--- {prefix}_scalar ---")
+    g = f.create_group(prefix + '_scalar')
     for var, Ma, suffix in (('alpha', 0.0, 'dalpha'), ('Re', 0.0, 'dRe'),
                             ('Ma', 0.3, 'dMa')):
-        M = captured_cs_solve(4.0, 1e6, Ma, var=var)
+        M = captured_cs_solve(4.0, 1e6, Ma, var=var, xtrip=xtrip)
         vals = [np.imag(getattr(M.post, k)) / CS_STEP for k in ('cl', 'cd', 'cm')]
         print(f"    d/{var}: dcl={vals[0]:.10e} dcd={vals[1]:.10e} dcm={vals[2]:.10e}")
         for k, v in zip(('dcl_', 'dcd_', 'dcm_'), vals):
@@ -500,6 +576,24 @@ def main():
                 del f['viscous_re_laminar_te']
             write_laminar_te_re_group(f)
         print(f"Wrote viscous_re_laminar_te/ to {OUTPUT_FILE}")
+        return
+
+    if '--trip-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            for name in ('trip_shape', 'trip_scalar'):
+                if name in f:
+                    del f[name]
+            write_trip_groups(f)
+        print(f"Wrote trip_shape/ and trip_scalar/ to {OUTPUT_FILE}")
+        return
+
+    if '--captured-trip-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            for name in ('captured_trip_shape', 'captured_trip_scalar'):
+                if name in f:
+                    del f[name]
+            write_captured_cs_groups(f, 'captured_trip', TRIP_X)
+        print(f"Wrote captured_trip_* groups to {OUTPUT_FILE}")
         return
 
     if '--captured-cs-only' in sys.argv[1:]:
@@ -640,6 +734,7 @@ def main():
         write_laminar_te_re_group(f)
         write_captured_group(f)
         write_captured_cs_groups(f)
+        write_trip_groups(f)
 
     elapsed = time.time() - t0
     print(f"\nDone. Wrote {OUTPUT_FILE}")

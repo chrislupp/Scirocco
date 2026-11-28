@@ -242,6 +242,33 @@ TEST_F(FauxfoilTest, ViscousPolarMatchesXfoilLayout) {
     EXPECT_LT(cd, 0.007);
 }
 
+/* VPAR's XTR sets trips: transition is forced there and the polar file
+ * records the trip positions and where transition ended up. */
+TEST_F(FauxfoilTest, XtrForcesTransition) {
+    const std::string out =
+        Run("naca 2412\noper\nvisc 1e6\nvpar\nxtr 0.2 0.6\nshow\n\n"
+            "pacc\npolar.txt\n\nalfa 4\n\nquit\n");
+    EXPECT_TRUE(Has(out,
+                    "\n Xtr/c     =  0.2000    top    side\n"
+                    " Xtr/c     =  0.6000    bottom side\n"));
+    EXPECT_TRUE(Has(out, " Side 1 forced transition at x/c =  0.2000"));
+    EXPECT_TRUE(Has(out, " Side 2 forced transition at x/c =  0.6000"));
+    EXPECT_FALSE(Has(out, "Convergence failed"));
+
+    const std::vector<std::string> lines = Lines("polar.txt");
+    ASSERT_EQ(lines.size(), 13u);
+    EXPECT_EQ(lines[7], " xtrf =   0.200 (top)        0.600 (bottom)  ");
+    std::istringstream row(lines[12]);
+    double alpha = 0.0, cl = 0.0, cd = 0.0, cdp = 0.0, cm = 0.0;
+    double xtr_top = 0.0, xtr_bot = 0.0;
+    row >> alpha >> cl >> cd >> cdp >> cm >> xtr_top >> xtr_bot;
+    EXPECT_NEAR(xtr_top, 0.2, 1e-4);
+    EXPECT_NEAR(xtr_bot, 0.6, 1e-4);
+    /* XFOIL 6.99 gives CL 0.6712, CD 0.00930 for this point */
+    EXPECT_NEAR(cl, 0.6712, 0.01);
+    EXPECT_NEAR(cd, 0.00930, 2e-4);
+}
+
 TEST_F(FauxfoilTest, ParametersLockedWhileAccumulating) {
     const std::string out =
         Run("naca 0012\noper\npacc\n\n\nmach 0.3\n\nquit\n");

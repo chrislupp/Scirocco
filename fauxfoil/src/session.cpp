@@ -131,7 +131,8 @@ double TurbulenceLevel(double ncrit) {
 
 /// x/c of transition on one surface and where it lies among the nodes.
 struct Transition {
-    bool free = false; /**< Free transition (else the trailing edge) */
+    bool free = false; /**< Free transition (else the trip, or the trailing
+                            edge) */
     double x = 1.0;
     int station = 0;   /**< XFOIL boundary-layer station index */
     double node = 0.0; /**< Fractional node index counted from the
@@ -177,7 +178,11 @@ Transition FindTransition(const FoilState& state, int si) {
     param.turb = false;
     const double ncrit = param.ncrit;
     double xt = x1 + 0.5 * dx;
-    if (std::fabs(dx) > 1e-14) {
+    if (state.vsol.tripped[si]) {
+        /* Forced by the trip: the solver stored its location */
+        result.free = false;
+        xt = state.vsol.Xt(si, 0);
+    } else if (std::fabs(dx) > 1e-14) {
         constexpr int kNewton = 30;
         for (int it = 0; it < kNewton; ++it) {
             const double w2 = (xt - x1) / dx;
@@ -1416,8 +1421,8 @@ void Session::Oper() {
 }
 
 void Session::ShowVpar() const {
-    out_ << "\n Xtr/c     =" << F(1.0, 8, 4) << "    top    side\n"
-         << " Xtr/c     =" << F(1.0, 8, 4) << "    bottom side\n"
+    out_ << "\n Xtr/c     =" << F(bl_.xtrip_upper, 8, 4) << "    top    side\n"
+         << " Xtr/c     =" << F(bl_.xtrip_lower, 8, 4) << "    bottom side\n"
          << " NcritT    =" << F(bl_.ncrit, 8, 2) << "   ("
          << F(TurbulenceLevel(bl_.ncrit), 6, 3) << " % turb. level )\n"
          << " NcritB    =" << F(bl_.ncrit, 8, 2) << "   ("
@@ -1446,13 +1451,12 @@ void Session::Vpar() {
             ShowVpar();
         } else if (Is(command, {"XTR", "X"})) {
             if (PolarLocked()) continue;
-            double top = v.size() > 0 ? v[0] : 1.0;
-            double bottom = v.size() > 1 ? v[1] : 1.0;
+            double top = v.size() > 0 ? v[0] : bl_.xtrip_upper;
+            double bottom = v.size() > 1 ? v[1] : bl_.xtrip_lower;
             if (v.size() < 1) AskReal("Enter top    side Xtrip/c", top);
             if (v.size() < 2) AskReal("Enter bottom side Xtrip/c", bottom);
-            if (top < 1.0 || bottom < 1.0)
-                out_ << " *** Forced transition is not available in "
-                        "Scirocco; Xtr/c stays 1.0\n";
+            bl_.xtrip_upper = top;
+            bl_.xtrip_lower = bottom;
         } else if (Is(command, {"N", "NT", "NB"})) {
             if (PolarLocked()) continue;
             double ncrit = bl_.ncrit;
@@ -1511,6 +1515,8 @@ void Session::Vpar() {
 void Session::ApplyParameters(FoilState& state) const {
     state.param.niglob = bl_.niglob;
     state.param.ncrit = bl_.ncrit;
+    state.param.xtrip_upper = bl_.xtrip_upper;
+    state.param.xtrip_lower = bl_.xtrip_lower;
     state.param.SlagK = bl_.SlagK;
     state.param.Cuq = bl_.Cuq;
     state.param.Dlr = bl_.Dlr;
@@ -1714,6 +1720,8 @@ void Session::TogglePacc() {
     polar.re = viscous_ ? re_ : 0.0;
     polar.mach = mach_;
     polar.ncrit_top = polar.ncrit_bot = bl_.ncrit;
+    polar.xtrip_top = bl_.xtrip_upper;
+    polar.xtrip_bot = bl_.xtrip_lower;
     if (foil_) {
         const MatrixXd& x = foil_->GetFoilCoords();
         for (Eigen::Index i = 0; i < x.cols(); ++i) {
@@ -1733,7 +1741,9 @@ void Session::TogglePacc() {
         Polar old;
         bool use = ReadPolarFile(save, old);
         if (use && (old.re != polar.re || old.mach != polar.mach ||
-                    old.ncrit_top != polar.ncrit_top)) {
+                    old.ncrit_top != polar.ncrit_top ||
+                    old.xtrip_top != polar.xtrip_top ||
+                    old.xtrip_bot != polar.xtrip_bot)) {
             auto row = [this](const char* label, double a, double b,
                               bool integer) {
                 out_ << ' ' << A(label, 6) << ":   ";
@@ -1761,8 +1771,8 @@ void Session::TogglePacc() {
             row("Matyp", 1, old.mach_type, true);
             row("NcritT", polar.ncrit_top, old.ncrit_top, false);
             row("NcritB", polar.ncrit_bot, old.ncrit_bot, false);
-            row("xtr T", 1.0, old.xtrip_top, false);
-            row("xtr B", 1.0, old.xtrip_bot, false);
+            row("xtr T", polar.xtrip_top, old.xtrip_top, false);
+            row("xtr B", polar.xtrip_bot, old.xtrip_bot, false);
             out_ << "\n Current parameters different from old save file "
                     "values.\n";
             use = AskYesNo("Set current parameters to old save file values ?");
@@ -1771,9 +1781,13 @@ void Session::TogglePacc() {
                 viscous_ = re_ > 0.0;
                 mach_ = old.mach;
                 bl_.ncrit = old.ncrit_top;
+                bl_.xtrip_upper = old.xtrip_top;
+                bl_.xtrip_lower = old.xtrip_bot;
                 polar.re = old.re;
                 polar.mach = old.mach;
                 polar.ncrit_top = polar.ncrit_bot = old.ncrit_top;
+                polar.xtrip_top = old.xtrip_top;
+                polar.xtrip_bot = old.xtrip_bot;
             }
         }
         if (use) {
