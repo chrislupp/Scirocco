@@ -40,6 +40,9 @@ envelope_* groups into the existing file; the two can be combined.
 --captured-only (re)writes just captured_primal/.
 --laminar-te-only (re)writes just viscous_re_laminar_te/.
 --captured-cs-only (re)writes just captured_shape/ and captured_scalar/.
+
+--captured-trip-only (re)writes just captured_trip_shape/ and
+captured_trip_scalar/: the captured model with the trips of trip_shape/.
 --trip-only (re)writes just trip_shape/ and trip_scalar/.
 """
 
@@ -481,7 +484,8 @@ def write_captured_group(f):
 CAPTURED_NODES = [40, 95, 110, 113, 116, 118, 120, 123, 140]
 
 
-def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
+def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None,
+                      xtrip=None):
     """Captured solve in complex_step_mode with one complex perturbation.
 
     Converges the real part to 1e-11, then runs extra Newton steps so the
@@ -491,6 +495,7 @@ def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
     M = mfoil.mfoil(naca='2412', npanel=160)
     M.param.verb = 0
     M.param.doplot = False
+    M.param.xtrip = xtrip
     if node is not None:
         M.foil.x = M.foil.x.astype(complex)
         M.foil.x[dim, node] += 1j * CS_STEP
@@ -523,34 +528,41 @@ def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None):
     return M
 
 
-def write_captured_cs_groups(f):
-    """CS references for the captured model: shape, alpha, Re, Ma."""
-    print("\n--- captured_shape (NACA 2412, 160, alpha=4, Re=1e6) ---")
-    M0 = captured_cs_solve(4.0, 1e6, 0.0)
+def write_captured_cs_groups(f, prefix='captured', xtrip=None):
+    """CS references for the captured model: shape, alpha, Re, Ma.
+
+    With xtrip ([lower, upper]) the trips act, and the shape nodes are those
+    around the trips (trip_nodes)."""
+    print(f"\n--- {prefix}_shape (NACA 2412, 160, alpha=4, Re=1e6, "
+          f"xtrip={xtrip}) ---")
+    M0 = captured_cs_solve(4.0, 1e6, 0.0, xtrip=xtrip)
     N = M0.foil.N
+    nodes = CAPTURED_NODES if xtrip is None else trip_nodes(M0)
     dcl = np.zeros((2, N)); dcd = np.zeros((2, N)); dcm = np.zeros((2, N))
-    for node in CAPTURED_NODES:
+    for node in nodes:
         for dim in range(2):
-            M = captured_cs_solve(4.0, 1e6, 0.0, node, dim)
+            M = captured_cs_solve(4.0, 1e6, 0.0, node, dim, xtrip=xtrip)
             dcl[dim, node] = np.imag(M.post.cl) / CS_STEP
             dcd[dim, node] = np.imag(M.post.cd) / CS_STEP
             dcm[dim, node] = np.imag(M.post.cm) / CS_STEP
             print(f"    node={node} dim={dim}: dcl={dcl[dim, node]:.8e} "
                   f"dcd={dcd[dim, node]:.8e} dcm={dcm[dim, node]:.8e}")
-    g = f.create_group('captured_shape')
+    g = f.create_group(prefix + '_shape')
     g.create_dataset('x_base', data=np.real(M0.foil.x[:, :N]))
     g.create_dataset('cl_base', data=float(np.real(M0.post.cl)))
     g.create_dataset('cd_base', data=float(np.real(M0.post.cd)))
-    g.create_dataset('test_nodes', data=np.array(CAPTURED_NODES, dtype=np.int64))
+    g.create_dataset('test_nodes', data=np.array(nodes, dtype=np.int64))
+    if xtrip is not None:
+        g.create_dataset('xtrip', data=np.array(xtrip))
     g.create_dataset('dcl_dx', data=dcl)
     g.create_dataset('dcd_dx', data=dcd)
     g.create_dataset('dcm_dx', data=dcm)
 
-    print("\n--- captured_scalar ---")
-    g = f.create_group('captured_scalar')
+    print(f"\n--- {prefix}_scalar ---")
+    g = f.create_group(prefix + '_scalar')
     for var, Ma, suffix in (('alpha', 0.0, 'dalpha'), ('Re', 0.0, 'dRe'),
                             ('Ma', 0.3, 'dMa')):
-        M = captured_cs_solve(4.0, 1e6, Ma, var=var)
+        M = captured_cs_solve(4.0, 1e6, Ma, var=var, xtrip=xtrip)
         vals = [np.imag(getattr(M.post, k)) / CS_STEP for k in ('cl', 'cd', 'cm')]
         print(f"    d/{var}: dcl={vals[0]:.10e} dcd={vals[1]:.10e} dcm={vals[2]:.10e}")
         for k, v in zip(('dcl_', 'dcd_', 'dcm_'), vals):
@@ -573,6 +585,15 @@ def main():
                     del f[name]
             write_trip_groups(f)
         print(f"Wrote trip_shape/ and trip_scalar/ to {OUTPUT_FILE}")
+        return
+
+    if '--captured-trip-only' in sys.argv[1:]:
+        with h5py.File(OUTPUT_FILE, 'a') as f:
+            for name in ('captured_trip_shape', 'captured_trip_scalar'):
+                if name in f:
+                    del f[name]
+            write_captured_cs_groups(f, 'captured_trip', TRIP_X)
+        print(f"Wrote captured_trip_* groups to {OUTPUT_FILE}")
         return
 
     if '--captured-cs-only' in sys.argv[1:]:

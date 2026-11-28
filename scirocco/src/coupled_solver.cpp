@@ -147,11 +147,6 @@ void SolveViscous(FoilState& state) {
     if (state.param.verb >= 1) {
         std::cout << "SolveViscous: starting" << '\n';
     }
-    if (state.param.transition == TransitionModel::Captured &&
-        (state.param.xtrip_upper < 1.0 || state.param.xtrip_lower < 1.0))
-        throw std::invalid_argument(
-            "Forced transition (xtrip_upper, xtrip_lower) is not available "
-            "with TransitionModel::Captured");
 
     /* Stagnation nodes of a supplied initial boundary layer (warm start) */
     const std::array<int, 2> entry_istag = state.isol.Istag;

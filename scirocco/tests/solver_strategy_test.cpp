@@ -713,8 +713,31 @@ TEST(ForcedTransition, SameSolutionWithoutMarch) {
     EXPECT_NEAR(march.GetCd(), plain.GetCd(), 1e-9);
 }
 
-TEST(ForcedTransition, CapturedModelRejectsTrip) {
-    Scirocco foil = TrippedFoil(4.0, 0.2, 1.0);
-    foil.GetState().param.transition = TransitionModel::Captured;
-    EXPECT_THROW(foil.Solve(), std::invalid_argument);
+/* The captured model takes the trip too: its result follows the cut cell's,
+ * from which it differs only by the transition length. */
+TEST(ForcedTransition, CapturedModelFollowsCutCell) {
+    for (const auto& [xu, xl] :
+         {std::pair<double, double>{0.2, 0.6}, {0.05, 0.05}, {1.0, 0.1}}) {
+        Scirocco cut = TrippedFoil(4.0, xu, xl);
+        ASSERT_TRUE(cut.Solve());
+        Scirocco capt = TrippedFoil(4.0, xu, xl);
+        capt.GetState().param.transition = TransitionModel::Captured;
+        ASSERT_TRUE(capt.Solve()) << xu << " " << xl;
+        EXPECT_NEAR(capt.GetCl(), cut.GetCl(), 2e-3) << xu << " " << xl;
+        EXPECT_NEAR(capt.GetCd() / cut.GetCd(), 1.0, 0.01) << xu << " " << xl;
+    }
+}
+
+/* Captured model: a trip ahead of free transition raises the drag, and one
+ * behind the end of the transition zone changes nothing. */
+TEST(ForcedTransition, CapturedModelTripActsOnlyAheadOfTransition) {
+    auto solve = [](double xu) {
+        Scirocco foil = TrippedFoil(4.0, xu, 1.0);
+        foil.GetState().param.transition = TransitionModel::Captured;
+        EXPECT_TRUE(foil.Solve());
+        return foil.GetCd();
+    };
+    const double free = solve(1.0);
+    EXPECT_GT(solve(0.2), 1.1 * free);
+    EXPECT_NEAR(solve(0.7), free, 1e-9);
 }

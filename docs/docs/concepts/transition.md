@@ -137,6 +137,15 @@ Derivatives with respect to shape, angle of attack, Reynolds number and
 Mach number account for the trip and match complex-step references. The
 trip stays at its x/c, so it does not move with the shape.
 
+Trips work in both transition models. With
+[captured transition](#captured-transition-experimental) the trip acts as
+onset does: the amplification factor jumps to `ncrit` at the trip, and the
+closures then blend from laminar to turbulent over `capt_L` momentum
+thicknesses behind it. The case above gives cd = 0.00925 with the captured
+model. A trip behind the end of the transition zone changes nothing; one
+inside the zone shortens it slightly. `vsol.Xt` and `vsol.tripped` are
+those of the cut-cell solution the captured solve starts from.
+
 ## How transition moves during a solve
 
 Transition is part of the Newton iteration: as the solution changes, the
@@ -177,8 +186,6 @@ free-stream turbulence.
 - **The trip is placed by x, not along a chord line.** It is at
   x = `xtrip` × chord, interpolated linearly between panel nodes, which
   assumes the leading edge at x = 0.
-- **Cut cell only.** With `TransitionModel::Captured`, `Solve()` throws
-  `std::invalid_argument` if a trip is set.
 - **Not on the Philote server**, which does not expose solver parameters.
 
 Source: [`transition.cpp`](https://github.com/chrislupp/Scirocco/blob/develop/scirocco/src/transition.cpp),

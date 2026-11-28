@@ -128,8 +128,9 @@ struct Param {
     TransitionModel transition = TransitionModel::CutCell; /**< Transition */
     /** Forced transition (trip) on the upper surface at
      *  x = xtrip_upper * chord: the boundary layer turns turbulent there
-     *  unless e^N transition comes first. 1 or more: free transition only.
-     *  Cut cell only (see FindTrip). */
+     *  unless e^N transition comes first. 1 or more: free transition only
+     *  (see FindTrip). With TransitionModel::Captured the closures blend
+     *  over capt_L momentum thicknesses behind the trip. */
     double xtrip_upper = 1.0;
     /** Forced transition on the lower surface, as xtrip_upper. */
     double xtrip_lower = 1.0;

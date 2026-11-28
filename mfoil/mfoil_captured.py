@@ -49,6 +49,18 @@ double-counting the ramp the shear-lag equation already models, so it is
 not the default. The zone should span several panels: at Re 3e6 the
 dCd/dalpha ripple is 4.3% at 160 panels and 1.2% at 320.
 
+Forced transition (M.param.xtrip = [lower, upper], located by
+mfoil_cs.find_trip): in the interval that holds the trip, a fraction f along
+it, n jumps to at least ncrit,
+
+  npre  = n1 + q1 f dx                    laminar rate up to the trip
+  npost = npre + ws softplus((ncrit - npre) / ws)
+  n2    = npost + (q1* + q2) / 2 (1 - f) dx
+
+with q1* the rate at station 1 with its growth switch at npost. The trip
+acts as onset does: the closures blend over capt_L momentum thicknesses
+behind it, and where free transition came first the jump vanishes.
+
 Usage:
     M = mfoil.mfoil(naca='2412', npanel=160)
     M.setoper(alpha=4, Re=1e6)
@@ -135,6 +147,25 @@ def _rate(d, d_U, s, s_n, C, th, k, E):
     r = np.sqrt((d - c)**2 + (ke*c)**2)
     q_C = s*0.5*(1 - (d - c)/r + ke*ke*c/r)/th
     return q, q_U, q_C
+
+
+def _trip_jump(npre, param):
+    """J = ws softplus((ncrit - npre) / ws) and -dJ/dnpre."""
+    ws = getattr(param, 'capt_ws', 1.0)
+    t = (param.ncrit - npre)/ws
+    if np.real(t) > 30:
+        return ws*t, 1.0
+    e = np.exp(t)
+    return ws*np.log1p(e), e/(1 + e)
+
+
+def _find_trip(M, si):
+    """(station, frac) of the trip on surface si; station < 0 if none."""
+    if si > 1 or getattr(M.param, 'xtrip', None) is None:
+        return -1, 1.
+    import mfoil_cs
+    i, frac, _ = mfoil_cs.find_trip(M, si)
+    return i, frac
 
 
 def _dN(L):
@@ -234,8 +265,10 @@ def _xt(name, U5, x, param):
     return v, v_U, f/U5[TH]
 
 
-def residual_captured(param, x, Uin, Aux):
+def residual_captured(param, x, Uin, Aux, trip=None):
     """Four residuals of one interval; U is 5x2. Returns R, R_U (4x10), R_x.
+
+    trip: fraction of the interval at which a trip sits, or None.
 
     Same discretization as mfoil.residual_station, with the closures Hs, cf
     and cDi blended per station by g(n), one shear-lag equation whose
@@ -358,6 +391,22 @@ def residual_captured(param, x, Uin, Aux):
         Ramp = n[1] - n[0] - damp*dx
         Ramp_U = two(-E[AMP], E[AMP]) - damp_U*dx
         Ramp_x = -damp*dx_x - 0.5*(q1_C + q2_C)*C_x*dx
+        if trip is not None:
+            # forced transition (constant C only): see the module docstring
+            f = trip; g = (1 - f)*dx
+            npre = n[0] + q1*f*dx
+            J, sig = _trip_jump(npre, param)
+            a = 1 - sig
+            npost = npre + J
+            ss, ss_n = growth_switch(npost, param)
+            d1_5 = _e5(d1_U, LAM_ROWS)
+            qs, qs_U, _ = _rate(d1, d1_5, ss, 0.0, C, th[0], 0, E)
+            qs_n = (qs - d1)/ss*ss_n if np.real(ss) > 1e-300 else 0.0
+            k = 1 + 0.5*g*qs_n
+            npost_U = a*(E[AMP] + q1_U*f*dx)
+            Ramp = n[1] - npost - 0.5*(qs + q2)*g
+            Ramp_U = two(-k*npost_U - 0.5*g*qs_U, E[AMP] - 0.5*g*q2_U)
+            Ramp_x = -(k*a*q1*f + 0.5*(qs + q2)*(1 - f))*dx_x
 
     # ---- momentum equation (blended cf)
     Ms1, Ms1_U = mf.get_Mach2(Ut1, param); Ms2, Ms2_U = mf.get_Mach2(Ut2, param)
@@ -488,9 +537,12 @@ def build_glob_sys(M):
             R1, R1_U, J = wake_sys(M, param)
             put(Is[i0], R1, R1_U, J)
             param.turb, param.wake = True, True
+        itrip, ftrip = _find_trip(M, si)
         for i in range(i0 + 1, N):
             Ip = [i - 1, i]
-            Ri, Ri_U, Ri_x = residual_captured(param, xi[Ip], U[:, Ip], Aux[Ip])
+            Ri, Ri_U, Ri_x = residual_captured(
+                param, xi[Ip], U[:, Ip], Aux[Ip],
+                ftrip if i == itrip else None)
             put(Is[i], Ri, Ri_U, [Is[i - 1], Is[i]], Ri_x)
 
     # stagnation-point movement: R_ue += R_x x_st st_ue (as in mfoil)
@@ -583,6 +635,7 @@ def convert_state(M):
     for si in range(3):
         Is = M.vsol.Is[si]
         param = mf.build_param(M, si)
+        itrip, ftrip = _find_trip(M, si)
         for k, j in enumerate(Is):
             if si == 2 or M.vsol.turb[j]:
                 U[CT, j] = U4[2, j]
@@ -609,7 +662,15 @@ def convert_state(M):
                 q2, q2_U, _ = _rate(d2, _e5(d2_U, LAM_ROWS), s2, s2_n, C, Uj[0], 1, E)
                 q2_n = q2_U[AMP]
                 Ra = Uj[2] - Um[2] - 0.5*(q1 + q2)*dx
-                Uj[2] -= Ra/(1 - 0.5*q2_n*dx)
+                Ra_n = 1 - 0.5*q2_n*dx
+                if k == itrip:  # as residual_captured
+                    npre = Um[2] + q1*ftrip*dx
+                    npost = npre + _trip_jump(npre, M.param)[0]
+                    qs = _rate(d1, np.zeros(5), growth_switch(npost, M.param)[0],
+                               0.0, C, Um[0], 0, E)[0]
+                    Ra = Uj[2] - npost - 0.5*(qs + q2)*(1 - ftrip)*dx
+                    Ra_n = 1 - 0.5*q2_n*(1 - ftrip)*dx
+                Uj[2] -= Ra/Ra_n
                 if abs(Ra) < 1e-12:
                     break
             U[AMP, j] = Uj[2]

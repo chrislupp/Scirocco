@@ -13,9 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `TRCHEK2`); the default of 1 leaves a surface free. Shape, angle of
   attack, Reynolds number and Mach number derivatives account for the trip
   and match mfoil complex-step references. `FindTrip` locates the trip,
-  `FoilState::vsol.tripped` tells whether it set transition. Cut-cell
-  model only: `TransitionModel::Captured` throws if a trip is set. A trip
-  close behind the stagnation point may not converge.
+  `FoilState::vsol.tripped` tells whether it set transition. Both
+  transition models take the trip: with `TransitionModel::Captured` the
+  amplification factor jumps to `ncrit` at the trip and the closures blend
+  over `capt_L` momentum thicknesses behind it, with derivatives that match
+  `mfoil_captured` complex step. A trip close behind the stagnation point
+  may not converge.
 - `fauXFOIL`: `VPAR`'s `XTR` sets the trips. Polar files record them and
   the iteration report shows `forced` transition at the trip.
 - Validation: NACA 0012 drag at Re = 6e6 with transition tripped at 5%

@@ -819,13 +819,17 @@ namespace {
 
 /** Captured solve on the captured_shape reference geometry. */
 Sensitivity CapturedSensitivities(H5::H5File& file, double alpha, double Re,
-                                  double Ma, double* cd = nullptr) {
+                                  double Ma, double* cd = nullptr,
+                                  double xtrip_lower = 1.0,
+                                  double xtrip_upper = 1.0) {
     MatrixXd x_base = readMatrix(file, "captured_shape/x_base");
     auto N_ref = static_cast<int>(x_base.cols());
     Scirocco foil("2412", N_ref - 1);
     foil.SetOper(alpha, -1.0, Re, Ma);
     auto& s = foil.GetState();
     s.param.transition = TransitionModel::Captured;
+    s.param.xtrip_lower = xtrip_lower;
+    s.param.xtrip_upper = xtrip_upper;
     s.foil.x = x_base;
     s.foil.N = N_ref;
     RecomputeArcLength(s);
@@ -842,20 +846,19 @@ Sensitivity CapturedSensitivities(H5::H5File& file, double alpha, double Re,
     return ViscousSensitivities(s);
 }
 
-}  // namespace
-
-/* Captured transition adjoint vs mfoil_captured complex step: shape nodes
- * around onset and the closure blend, plus alpha, Re and Ma. */
-TEST_F(SensitivityReferenceTest, CapturedTransitionShapeSensitivity) {
-    auto nodes = readIntVector(getFile(), "captured_shape/test_nodes");
-    MatrixXd dcl_ref = readMatrix(getFile(), "captured_shape/dcl_dx");
-    MatrixXd dcd_ref = readMatrix(getFile(), "captured_shape/dcd_dx");
-    MatrixXd dcm_ref = readMatrix(getFile(), "captured_shape/dcm_dx");
+/* Captured adjoint vs mfoil_captured complex step: the shape nodes of
+ * <prefix>_shape/. */
+void CheckCapturedShape(H5::H5File& file, const std::string& prefix,
+                        double xtrip_lower, double xtrip_upper) {
+    const std::string g = prefix + "_shape/";
+    auto nodes = readIntVector(file, g + "test_nodes");
+    MatrixXd dcl_ref = readMatrix(file, g + "dcl_dx");
+    MatrixXd dcd_ref = readMatrix(file, g + "dcd_dx");
+    MatrixXd dcm_ref = readMatrix(file, g + "dcm_dx");
     double cd = 0.0;
-    Sensitivity sens = CapturedSensitivities(getFile(), 4.0, 1e6, 0.0, &cd);
-    EXPECT_LT(
-        RelErr(cd, readScalar<double>(getFile(), "captured_shape/cd_base")),
-        1e-10);
+    Sensitivity sens = CapturedSensitivities(file, 4.0, 1e6, 0.0, &cd,
+                                             xtrip_lower, xtrip_upper);
+    EXPECT_LT(RelErr(cd, readScalar<double>(file, g + "cd_base")), 1e-10);
     for (const auto& [name, got, ref] :
          {std::tuple<const char*, const MatrixXd&, const MatrixXd&>{
               "dcl/dx", sens.dcl_dx, dcl_ref},
@@ -874,9 +877,12 @@ TEST_F(SensitivityReferenceTest, CapturedTransitionShapeSensitivity) {
     }
 }
 
-TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
-    const std::string g = "captured_scalar/";
-    Sensitivity s0 = CapturedSensitivities(getFile(), 4.0, 1e6, 0.0);
+/* As CheckCapturedShape, for alpha, Re and Ma under <prefix>_scalar/. */
+void CheckCapturedScalar(H5::H5File& file, const std::string& prefix,
+                         double xtrip_lower, double xtrip_upper) {
+    const std::string g = prefix + "_scalar/";
+    Sensitivity s0 = CapturedSensitivities(file, 4.0, 1e6, 0.0, nullptr,
+                                           xtrip_lower, xtrip_upper);
     for (const auto& [name, got] :
          {std::pair<const char*, double>{"dcl_dalpha", s0.dcl_dalpha},
           {"dcd_dalpha", s0.dcd_dalpha},
@@ -884,17 +890,40 @@ TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
           {"dcl_dRe", s0.dcl_dRe},
           {"dcd_dRe", s0.dcd_dRe},
           {"dcm_dRe", s0.dcm_dRe}}) {
-        auto ref = readScalar<double>(getFile(), g + name);
+        auto ref = readScalar<double>(file, g + name);
         EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
             << name << " scirocco=" << got << " ref=" << ref;
     }
-    Sensitivity sm = CapturedSensitivities(getFile(), 4.0, 1e6, 0.3);
+    Sensitivity sm = CapturedSensitivities(file, 4.0, 1e6, 0.3, nullptr,
+                                           xtrip_lower, xtrip_upper);
     for (const auto& [name, got] :
          {std::pair<const char*, double>{"dcl_dMa", sm.dcl_dMa},
           {"dcd_dMa", sm.dcd_dMa},
           {"dcm_dMa", sm.dcm_dMa}}) {
-        auto ref = readScalar<double>(getFile(), g + name);
+        auto ref = readScalar<double>(file, g + name);
         EXPECT_LT(RelErr(got, ref), TOL_VISC_SCALAR_ALPHA)
             << name << " scirocco=" << got << " ref=" << ref;
     }
+}
+
+}  // namespace
+
+/* Captured transition adjoint vs mfoil_captured complex step: shape nodes
+ * around onset and the closure blend, plus alpha, Re and Ma. */
+TEST_F(SensitivityReferenceTest, CapturedTransitionShapeSensitivity) {
+    CheckCapturedShape(getFile(), "captured", 1.0, 1.0);
+}
+
+TEST_F(SensitivityReferenceTest, CapturedTransitionScalarSensitivity) {
+    CheckCapturedScalar(getFile(), "captured", 1.0, 1.0);
+}
+
+/* The same with the trips of trip_shape/ (lower 0.6, upper 0.2): shape nodes
+ * around both trips, whose position in their interval moves with the nodes. */
+TEST_F(SensitivityReferenceTest, CapturedTripShapeSensitivity) {
+    CheckCapturedShape(getFile(), "captured_trip", 0.6, 0.2);
+}
+
+TEST_F(SensitivityReferenceTest, CapturedTripScalarSensitivity) {
+    CheckCapturedScalar(getFile(), "captured_trip", 0.6, 0.2);
 }
