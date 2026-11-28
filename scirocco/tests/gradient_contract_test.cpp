@@ -33,6 +33,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -364,5 +365,17 @@ TEST(NearStallAdjointTest, TransposeSolveIsRefined) {
         EXPECT_TRUE(sens.dcd_dx.allFinite());
         EXPECT_TRUE(std::isfinite(sens.dcl_dalpha));
     }
+}
+/* The adjoint solve is checked against the original equations, and a
+ * solve that cannot meet the backward-error limit is reported. */
+TEST(NearStallAdjointTest, NonfiniteSolveThrows) {
+    Scirocco foil("2412", 80);
+    foil.SetOper(4.0, -1.0, 1e6, 0.0);
+    ASSERT_TRUE(foil.Solve());
+    FoilState& state = foil.GetState();
+    VectorXd rhs = VectorXd::Ones(4 * state.glob.Nsys);
+    EXPECT_NO_THROW(SolveViscousAdjoint(state, rhs));
+    rhs(7) = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(SolveViscousAdjoint(state, rhs), std::runtime_error);
 }
 }  // namespace

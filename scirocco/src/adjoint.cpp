@@ -1257,22 +1257,20 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
     };
     double relative = error();
     /* Near stall the Jacobian is ill-conditioned: refine the solve with
-     * the same factorization while that reduces the backward error. */
-    for (int pass = 0; pass < 3 && lambda.allFinite() && residual.allFinite() &&
-                       relative > 1e-11;
-         ++pass) {
-        const VectorXd refined =
-            lambda - factorization.SolveTranspose(residual);
-        const VectorXd refined_residual =
-            factorization.ApplyTranspose(refined) - rhs;
-        if (!refined.allFinite() || !refined_residual.allFinite() ||
-            refined_residual.norm() >= residual.norm())
-            break;
+     * the same factorization for as long as a pass halves the residual. */
+    VectorXd refined, refined_residual;
+    auto improves = [&]() {
+        refined = lambda - factorization.SolveTranspose(residual);
+        refined_residual = factorization.ApplyTranspose(refined) - rhs;
+        return refined_residual.norm() < 0.5 * residual.norm();
+    };
+    while (relative > 1e-11 && improves()) {
         lambda = refined;
         residual = refined_residual;
         relative = error();
     }
-    if (!lambda.allFinite() || !residual.allFinite() || relative > 1e-11) {
+    /* A nonfinite solve gives a NaN error, which fails this comparison. */
+    if (!(relative <= 1e-11)) {
         throw std::runtime_error(
             "SolveViscousAdjoint: inaccurate transpose solve");
     }

@@ -108,22 +108,25 @@ void PredictEdgeVelocity(FoilState& state) {
 /**
  * @brief Stagnation panel of the warm-start prediction ue = ueinv + ue_m m:
  * the panel where the predicted edge velocity changes sign, found from the
- * current panel as StagPointMove does.
+ * current panel as StagPointMove does. The current panel is kept if the
+ * prediction has no such panel (or is not finite: NaN compares false).
  */
 std::array<int, 2> PredictStagnation(const FoilState& state) {
     const auto& U = state.glob.U;
     const VectorXd mass = U.row(1).cwiseProduct(U.row(3)).transpose();
     const VectorXd ue = GetUeInv(state) + state.vsol.ue_m * mass;
     const int N = state.foil.N;
+    /* First node with positive ue from node j in direction step */
+    auto first_positive = [&](int j, int step) {
+        while (j >= 0 && j < N && !(ue(j) > 0)) j += step;
+        return j;
+    };
     std::array<int, 2> pair = state.isol.Istag;
-    if (!ue.allFinite()) return pair;
     if (ue(pair[1]) < 0) {
-        int j = pair[1];
-        while (j < N && !(ue(j) > 0)) ++j;
+        const int j = first_positive(pair[1], 1);
         if (j < N) pair = {j - 1, j};
     } else if (ue(pair[0]) < 0) {
-        int j = pair[0];
-        while (j >= 0 && !(ue(j) > 0)) --j;
+        const int j = first_positive(pair[0], -1);
         if (j >= 0) pair = {j, j + 1};
     }
     return pair;
