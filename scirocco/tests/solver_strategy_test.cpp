@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "scirocco/core/bl_march.h"
@@ -524,6 +525,25 @@ TEST(SolverStrategy, FailedWarmStartMatchesColdStart) {
     cold.SetOper(16.0, -1.0, 1e6, 0.0);
     EXPECT_EQ(warm_ok, cold.Solve());
     if (warm_ok) EXPECT_NEAR(warm.GetCl(), cold.GetCl(), 1e-6);
+}
+
+/* A warm start keeps the stagnation panel of the solution it starts from,
+ * so restarting at the same operating point is converged at once. Near
+ * stall (the second case) that panel is several nodes from the inviscid
+ * stagnation point. */
+TEST(SolverStrategy, WarmRestartAtSamePointIsConverged) {
+    for (const auto& [alpha, Re] :
+         {std::pair{5.0, 1e6}, std::pair{13.5, 2e5}}) {
+        Scirocco foil("0012", 160);
+        foil.GetState().param.warm_start = true;
+        foil.SetOper(alpha, -1.0, Re, 0.0);
+        ASSERT_TRUE(foil.Solve());
+        const double cl = foil.GetCl();
+        foil.SetOper(alpha, -1.0, Re, 0.0);
+        ASSERT_TRUE(foil.Solve());
+        EXPECT_EQ(foil.GetState().glob.coupled_iterations, 1) << alpha;
+        EXPECT_NEAR(foil.GetCl(), cl, 1e-10);
+    }
 }
 
 /// The observer is called once per Newton iteration and leaves the solve

@@ -1250,10 +1250,29 @@ VectorXd SolveViscousAdjoint(FoilState& state, const VectorXd& rhs) {
     VectorXd lambda = factorization.SolveTranspose(rhs);
     VectorXd residual = factorization.ApplyTranspose(lambda) - rhs;
     // Check the original equations, never a regularized replacement.
-    VectorXd scale = factorization.AbsApplyTranspose(lambda);
-    scale += rhs.cwiseAbs();
-    if (!lambda.allFinite() || !residual.allFinite() ||
-        residual.norm() > 1e-11 * std::max(scale.norm(), 1e-30)) {
+    auto error = [&]() {
+        VectorXd scale = factorization.AbsApplyTranspose(lambda);
+        scale += rhs.cwiseAbs();
+        return residual.norm() / std::max(scale.norm(), 1e-30);
+    };
+    double relative = error();
+    /* Near stall the Jacobian is ill-conditioned: refine the solve with
+     * the same factorization while that reduces the backward error. */
+    for (int pass = 0; pass < 3 && lambda.allFinite() && residual.allFinite() &&
+                       relative > 1e-11;
+         ++pass) {
+        const VectorXd refined =
+            lambda - factorization.SolveTranspose(residual);
+        const VectorXd refined_residual =
+            factorization.ApplyTranspose(refined) - rhs;
+        if (!refined.allFinite() || !refined_residual.allFinite() ||
+            refined_residual.norm() >= residual.norm())
+            break;
+        lambda = refined;
+        residual = refined_residual;
+        relative = error();
+    }
+    if (!lambda.allFinite() || !residual.allFinite() || relative > 1e-11) {
         throw std::runtime_error(
             "SolveViscousAdjoint: inaccurate transpose solve");
     }

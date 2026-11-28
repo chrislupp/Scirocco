@@ -342,4 +342,27 @@ TEST(RueVJPContextTest, RejectsContextFromAnotherState) {
     EXPECT_THROW(ComputeRueVJP(b.GetState(), lambda, ctx),
                  std::invalid_argument);
 }
+/* Near stall the coupled Jacobian is ill-conditioned and one transpose
+ * solve leaves a backward error just above the adjoint's limit. The solve
+ * is refined, so the gradient is available at these converged points. */
+TEST(NearStallAdjointTest, TransposeSolveIsRefined) {
+    struct Case {
+        const char* naca;
+        int npanel;
+        double alpha, Re;
+    };
+    for (const Case& c :
+         {Case{"0012", 200, 14.15, 2e5}, Case{"0012", 200, 14.4, 2e5},
+          Case{"0009", 160, 11.95, 5e5}}) {
+        Scirocco foil(c.naca, c.npanel);
+        foil.SetOper(c.alpha, -1.0, c.Re, 0.0);
+        ASSERT_TRUE(foil.Solve()) << c.naca << " " << c.alpha;
+        Sensitivity sens;
+        ASSERT_NO_THROW(sens = foil.ComputeSensitivities())
+            << c.naca << " " << c.alpha;
+        EXPECT_TRUE(sens.dcl_dx.allFinite());
+        EXPECT_TRUE(sens.dcd_dx.allFinite());
+        EXPECT_TRUE(std::isfinite(sens.dcl_dalpha));
+    }
+}
 }  // namespace

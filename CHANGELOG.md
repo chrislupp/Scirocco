@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- Warm starts (`Param::warm_start`) re-indexed the previous boundary layer
+  to the inviscid stagnation point of the new operating point. Near stall
+  that point is several nodes from the viscous one, so the warm guess
+  started far from the solution it came from and often failed over to a
+  cold start. The warm guess now keeps its viscous stagnation panel and
+  moves only where the predicted edge velocity changes sign: a restart at
+  the same operating point is converged at once, and warm polars take the
+  same or fewer Newton iterations with unchanged results. Inside a stall
+  hysteresis band a warm sweep now follows the attached solution going up
+  and the stalled one coming down (NACA 0012, Re 2e5, 14 degrees: Cl 0.983
+  up, 0.746 down).
+- `ComputeSensitivities` threw "inaccurate transpose solve" at some
+  converged near-stall solutions (for example NACA 0012 at Re 2e5, 200
+  panels and 14.15 degrees), where the ill-conditioned Jacobian left the
+  adjoint solve just above its backward-error limit. The solve is now
+  refined with the same factorization before the check, which brings
+  those cases to round-off.
+
 ## [0.4.0] - 2026-11-27
 
 ### Added

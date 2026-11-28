@@ -34,8 +34,10 @@ changes in $u_e$.
 1. Solve potential flow and lay out the wake along a streamline.
 2. Find the stagnation point and march a first guess for the boundary layer
    down each surface. With [`warm_start`](#warm-starts) on, a second
-   `Solve()` on the same object starts from the previous solution instead,
-   shifted along each surface to the new stagnation point.
+   `Solve()` on the same object starts from the previous solution instead.
+   It keeps that solution's stagnation panel, and is shifted along each
+   surface only if the predicted edge velocity moves the stagnation point
+   to another panel.
 3. Run Newton iterations on the full coupled system, updating the
    stagnation point and the transition location as they move.
 
@@ -83,11 +85,13 @@ and which one a warm start reaches depends on the earlier points. On NACA
 
 | α | cold | warm, sweeping up | warm, sweeping down |
 | --- | --- | --- | --- |
-| 14.00° | 0.746 | 0.746 | 0.983 |
-| 14.25° | 0.710 | 0.931 | 0.931 |
+| 14.00° | 0.746 | 0.983 | 0.746 |
+| 14.25° | 0.710 | 0.887 | 0.710 |
 
-Each of these values is a converged solution, and XFOIL shows the same
-hysteresis. In this band the solution a warm start reaches is sensitive
+Sweeping up, the warm start stays on the attached solution until it ends
+between 14.25° and 14.5°. Sweeping down, it stays on the stalled one until
+13.75°. Each of these values is a converged solution, and XFOIL shows the
+same hysteresis. In this band the solution a warm start reaches is sensitive
 enough that it can change with the compiler or the BLAS library. Away from stall a warm and a cold start agree to round-off. Use
 warm starts for polars where speed matters, and keep cold starts where a
 result must not depend on the order of evaluation, such as in optimization.
