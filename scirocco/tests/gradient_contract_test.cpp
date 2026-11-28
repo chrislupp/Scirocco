@@ -106,6 +106,7 @@ TEST_P(GradientContractTest, OutputsAndGradientsMatchPython) {
     MatrixXd x = ReadMatrix(group, "x");
     Scirocco foil("0012", x.cols() - 1);
     auto& s = foil.GetState();
+    s.param.cf_laminar_floor = false; /* as mfoil */
     s.foil.x = x;
     // This is the actual optimization input path, not the cumulative test
     // helper.

@@ -17,8 +17,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   transition models take the trip: with `TransitionModel::Captured` the
   amplification factor jumps to `ncrit` at the trip and the closures blend
   over `capt_L` momentum thicknesses behind it, with derivatives that match
-  `mfoil_captured` complex step. A trip close behind the stagnation point
-  may not converge.
+  `mfoil_captured` complex step.
+- `Param::cf_laminar_floor` (default true): the turbulent skin friction is
+  never below the laminar value at the same shape factor and Re_theta, as
+  in XFOIL's `BLVAR`. Trips close behind the stagnation point, where
+  Re_theta is small, now converge (NACA 2412, Re = 1e6, trips at 1% chord:
+  8 iterations; before, no convergence). The turbulent wall dissipation
+  keeps the turbulent value, also as in XFOIL. Shape, angle of attack,
+  Reynolds number and Mach number derivatives account for the floor and
+  match complex-step references. `GetCfBase` returns the skin friction
+  without the floor. Both transition models use the floor;
+  `TransitionModel::Captured` needs it for the same trips.
 - `fauXFOIL`: `VPAR`'s `XTR` sets the trips. Polar files record them and
   the iteration report shows `forced` transition at the trip.
 - Validation: NACA 0012 drag at Re = 6e6 with transition tripped at 5%
@@ -26,8 +35,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   data" page). `vv.py` cases and `vv_polar` take trip positions.
   `vv_polar` sets `warm_start = true`, which its sweeps relied on while
   that was the default.
+- Validation: tripped drag of the Eppler 387 and SD2030 at Re = 1e5 to 5e5
+  against the UIUC measurements (trips at 2% and 5% chord) and XFOIL, for
+  both transition models and without the skin-friction floor
+  (`vv.py tripped`, the "Wind-tunnel data" page). Scirocco converges at 199
+  of 200 points (198 with captured transition; 33 without the floor) and
+  its Cd is within 0.4% of XFOIL's on average. `vv_polar` takes plain
+  coordinates and a `captured` flag.
 
 ### Changed
+- Viscous results change slightly because `Param::cf_laminar_floor` is on
+  by default: the floor also acts at the first turbulent stations behind a
+  laminar separation bubble. Cd moves by 0.02% to 0.2% on average and at
+  most 0.8% on the polars of the "XFOIL and mfoil" page (NACA 2412,
+  alpha = 4 deg, Re = 1e6: Cd 0.0069320 to 0.0069334), towards XFOIL. Set
+  `cf_laminar_floor = false` for the previous results, which are mfoil's;
+  `vv.py codes` and the tests against mfoil references do.
 - `FoilState::vsol.Xt` now holds the transition location of the current
   solution (xi and x per surface, the trailing-edge node's where a surface
   stays laminar). `BuildGlobSys` updates it; before, only the

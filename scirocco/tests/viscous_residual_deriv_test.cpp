@@ -166,6 +166,7 @@ class ResidualDerivTest : public ::testing::Test {
         s.oper.viscous = true;
         s.oper.initbl = true;
         s.param.verb = 0;
+        s.param.cf_laminar_floor = false; /* as mfoil */
         s.isol.AIC.resize(0, 0);
         s.isol.gamref.resize(0, 0);
         s.isol.gam.resize(0);

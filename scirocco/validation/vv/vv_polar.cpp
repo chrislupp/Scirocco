@@ -1,16 +1,21 @@
 /* Scirocco polar on prescribed panel nodes, for the verification and
  * validation pages of the documentation (see README.md).
  *
- * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json [TRIPS]
+ * Usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS OUT.json [TRIPS
+ *                 [mfoil] [captured]]
  *   NODES        one node per line: x y s tx ty (lower TE -> LE -> upper TE),
  *                as mfoil panels it; Scirocco uses the nodes, arc length
- *                and tangents unchanged.
+ *                and tangents unchanged. With only x y per line, Scirocco
+ *                panels the coordinates itself, with as many nodes.
  *   RE           Reynolds number (0 for an inviscid solve)
  *   ALPHAS       comma-separated angles of attack [deg], solved in order on
  *                one object, so each point warm-starts from the previous one
  *   DIST_ALPHAS  comma-separated subset of ALPHAS whose surface
  *                distributions are written ("-" for none)
- *   TRIPS        optional forced transition: XTRIP_UPPER,XTRIP_LOWER (x/c)
+ *   TRIPS        optional forced transition: XTRIP_UPPER,XTRIP_LOWER (x/c),
+ *                or "-" for none
+ *   mfoil        optional: mfoil's closure (Param::cf_laminar_floor = false)
+ *   captured     optional: TransitionModel::Captured
  */
 #include <cmath>
 #include <fstream>
@@ -55,33 +60,57 @@ double TransitionX(const FoilState& state, int si) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 8 && argc != 9) {
+    bool mfoil_closure = false, captured = false, usage = argc < 8;
+    for (int k = 9; k < argc; ++k) {
+        const std::string flag = argv[k];
+        if (flag == "mfoil")
+            mfoil_closure = true;
+        else if (flag == "captured")
+            captured = true;
+        else
+            usage = true;
+    }
+    if (usage) {
         std::cerr << "usage: vv_polar NODES RE MA NCRIT ALPHAS DIST_ALPHAS "
-                     "OUT.json [XTRIP_UPPER,XTRIP_LOWER]\n";
+                     "OUT.json [XTRIP_UPPER,XTRIP_LOWER|- [mfoil] "
+                     "[captured]]\n";
         return 2;
     }
     std::ifstream input(argv[1]);
-    std::vector<std::array<double, 5>> nodes;
-    std::array<double, 5> row{};
-    while (input >> row[0] >> row[1] >> row[2] >> row[3] >> row[4])
-        nodes.push_back(row);
+    std::vector<std::vector<double>> nodes;
+    for (std::string line; std::getline(input, line);) {
+        std::istringstream fields(line);
+        std::vector<double> row;
+        for (double v; fields >> v;) row.push_back(v);
+        if (!row.empty()) nodes.push_back(row);
+    }
     if (nodes.size() < 3) return 3;
+    const bool panelled = nodes[0].size() == 5;
+    for (const auto& row : nodes)
+        if (row.size() != (panelled ? 5U : 2U)) return 3;
     const double re = std::stod(argv[2]), ma = std::stod(argv[3]);
     const auto alphas = ParseList(argv[5]);
     const auto dist = ParseList(argv[6]);
     const std::set<double> dist_set(dist.begin(), dist.end());
 
-    Scirocco foil("0012", static_cast<int>(nodes.size()) - 1);
+    const int npanel = static_cast<int>(nodes.size()) - 1;
+    Eigen::MatrixXd coords(2, nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i)
+        coords.col(i) << nodes[i][0], nodes[i][1];
+    Scirocco foil =
+        panelled ? Scirocco("0012", npanel) : Scirocco(coords, npanel);
     auto& state = foil.GetState();
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        state.foil.x.col(i) << nodes[i][0], nodes[i][1];
+    for (size_t i = 0; panelled && i < nodes.size(); ++i) {
+        state.foil.x.col(i) = coords.col(i);
         state.foil.s(i) = nodes[i][2];
         state.foil.t.col(i) << nodes[i][3], nodes[i][4];
     }
     state.param.verb = 0;
     state.param.warm_start = true; /* a polar sweep, as a user would run it */
     state.param.ncrit = std::stod(argv[4]);
-    if (argc == 9) {
+    if (mfoil_closure) state.param.cf_laminar_floor = false;
+    if (captured) state.param.transition = TransitionModel::Captured;
+    if (argc >= 9 && std::string(argv[8]) != "-") {
         const auto trip = ParseList(argv[8]);
         if (trip.size() != 2) return 2;
         state.param.xtrip_upper = trip[0];

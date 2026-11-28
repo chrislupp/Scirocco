@@ -7,8 +7,9 @@ import Chart, { Series } from "./Chart";
 import styles from "./charts.module.css";
 import codes from "@site/src/data/vv_codes.json";
 import experiments from "@site/src/data/vv_experiments.json";
+import tripped from "@site/src/data/vv_tripped.json";
 
-type Code = "scirocco" | "xfoil" | "mfoil" | "flexfoil";
+type Code = "scirocco" | "scirocco_captured" | "xfoil" | "mfoil" | "flexfoil";
 /** The third code drawn next to Scirocco and XFOIL. */
 type Third = "mfoil" | "flexfoil";
 
@@ -44,6 +45,7 @@ interface Case {
     mach: number;
     alphas: number[];
     scirocco: Run;
+    scirocco_captured?: Run;
     xfoil: Run;
     mfoil?: Run;
     flexfoil?: Run;
@@ -51,6 +53,7 @@ interface Case {
 
 const CODE_STYLE: Record<Code, Pick<Series, "label" | "role" | "dashed" | "markers" | "line" | "open">> = {
     scirocco: { label: "Scirocco", role: "1" },
+    scirocco_captured: { label: "Scirocco, captured transition", role: "3" },
     xfoil: { label: "XFOIL 6.99", role: "2", dashed: true },
     mfoil: { label: "mfoil", role: "3", markers: true, line: false, open: true },
     flexfoil: { label: `flexfoil ${codes.versions.flexfoil}`, role: "3", markers: true, line: false },
@@ -365,7 +368,13 @@ export function TrippedPolarPlot() {
             title="NACA 0012 drag polar at Re 6 million with transition tripped at 5% chord"
             width={480}
             height={340}
-            series={[code("scirocco"), code("xfoil"), grit("80 grit", false), grit("180 grit", true)]}
+            series={[
+                code("scirocco"),
+                code("scirocco_captured"),
+                code("xfoil"),
+                grit("80 grit", false),
+                grit("180 grit", true),
+            ]}
             x={{ domain: [0, 0.02], ticks: [0, 0.005, 0.01, 0.015, 0.02], label: "Cd" }}
             y={{ domain: [0, 2], ticks: [0, 0.5, 1, 1.5, 2], label: "Cl" }}
             fx={f5}
@@ -377,6 +386,125 @@ export function TrippedPolarPlot() {
                 </>
             }
         />
+    );
+}
+
+interface TrippedSummary {
+    mean: number | null;
+    rms: number | null;
+    points: number;
+    converged: number;
+}
+
+interface TrippedCase {
+    name: string;
+    airfoil: string;
+    re: number;
+    alphas: number[];
+    measured: { alpha: number[]; cl: number[]; cd: number[] };
+    scirocco: { points: Point[] };
+    scirocco_captured: { points: Point[] };
+    scirocco_nofloor: { points: Point[] };
+    xfoil: { points: Point[] };
+    summary: Record<"scirocco" | "scirocco_captured" | "scirocco_nofloor" | "xfoil", TrippedSummary>;
+}
+
+const trippedCases = tripped.cases as unknown as TrippedCase[];
+
+/** Tripped low-Reynolds-number drag polar against the UIUC measurements. */
+export function UiucTrippedPlot({ name }: { name: string }) {
+    const c = trippedCases.find((k) => k.name === name);
+    if (!c) throw new Error(`No tripped case ${name}`);
+    const cdMax = 0.04;
+    const code = (k: "scirocco" | "scirocco_captured" | "xfoil"): Series => {
+        const pts = c[k].points.filter((p) => p.converged && p.cd! <= cdMax);
+        return { id: k, ...CODE_STYLE[k], x: pts.map((p) => p.cd!), y: pts.map((p) => p.cl!) };
+    };
+    const m = c.measured;
+    const idx = m.cd.map((v, i) => [v, i] as const).filter(([v]) => v <= cdMax).map(([, i]) => i);
+    const total = c.alphas.length;
+    return (
+        <Chart
+            title={`${c.airfoil} drag polar at Re ${reText(c.re)} with trips at 2% and 5% chord`}
+            width={480}
+            height={340}
+            series={[
+                code("scirocco"),
+                code("scirocco_captured"),
+                code("xfoil"),
+                {
+                    id: "uiuc",
+                    label: "UIUC, zigzag trips",
+                    role: "ref",
+                    line: false,
+                    markers: true,
+                    x: idx.map((i) => m.cd[i]),
+                    y: idx.map((i) => m.cl[i]),
+                },
+            ]}
+            x={{ domain: [0, cdMax], ticks: [0, 0.01, 0.02, 0.03, 0.04], label: "Cd" }}
+            y={{ domain: [-0.5, 1.5], ticks: [-0.5, 0, 0.5, 1, 1.5], label: "Cl" }}
+            fx={f5}
+            fy={f3}
+            caption={
+                <>
+                    {c.airfoil}, Re = {reText(c.re)}, ncrit = {tripped.ncrit}, {tripped.panels} panels, α = −3…9°,
+                    trips at x/c = {tripped.trip.upper} (upper) and {tripped.trip.lower} (lower). Without the
+                    skin-friction floor, {c.summary.scirocco_nofloor.converged} of {total} points converge.
+                </>
+            }
+        />
+    );
+}
+
+/** Drag error against the UIUC tripped polars, and convergence, per code. */
+export function UiucTrippedTable() {
+    const err = (s: TrippedSummary) =>
+        s.mean === null || s.rms === null ? "–" : `${s.mean >= 0 ? "+" : "−"}${Math.abs(s.mean).toFixed(1)}% / ${s.rms.toFixed(1)}%`;
+    const total = (k: keyof TrippedCase["summary"]) => trippedCases.reduce((n, c) => n + c.summary[k].converged, 0);
+    const all = trippedCases.reduce((n, c) => n + c.alphas.length, 0);
+    return (
+        <table>
+            <thead>
+                <tr>
+                    <th>Airfoil</th>
+                    <th>Re</th>
+                    <th>Scirocco</th>
+                    <th>Scirocco, captured</th>
+                    <th>XFOIL</th>
+                    <th>Converged without the floor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {trippedCases.map((c) => (
+                    <tr key={c.name}>
+                        <td>{c.airfoil}</td>
+                        <td>{reText(c.re)}</td>
+                        <td>{err(c.summary.scirocco)}</td>
+                        <td>{err(c.summary.scirocco_captured)}</td>
+                        <td>{err(c.summary.xfoil)}</td>
+                        <td>
+                            {c.summary.scirocco_nofloor.converged} of {c.alphas.length}
+                        </td>
+                    </tr>
+                ))}
+                <tr>
+                    <td colSpan={2}>Points converged</td>
+                    <td>
+                        {total("scirocco")} of {all}
+                    </td>
+                    <td>
+                        {total("scirocco_captured")} of {all}
+                    </td>
+                    <td>
+                        {total("xfoil")} of {all}
+                    </td>
+                    <td>
+                        {total("scirocco_nofloor")} of {all}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     );
 }
 

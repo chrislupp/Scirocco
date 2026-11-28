@@ -62,6 +62,7 @@ mean to change the model.
 | --- | --- | --- |
 | `ncrit` | `9.0` | $e^N$ transition threshold (see [Transition](../concepts/transition)) |
 | `xtrip_upper`, `xtrip_lower` | `1.0` | Forced transition (trip) on the upper and lower surface, as x/c. The boundary layer turns turbulent there unless $e^N$ transition comes first; 1 or more leaves the surface free (see [Forced transition](../concepts/transition#forced-transition)) |
+| `cf_laminar_floor` | `true` | The turbulent skin friction is never below the laminar value at the same shape factor and $Re_\theta$, as in XFOIL. Needed for trips close behind the stagnation point; `false` gives mfoil's closure (see [Trips near the leading edge](../concepts/transition#trips-near-the-leading-edge)). Both transition models use it |
 | `transition` | `TransitionModel::CutCell` | `TransitionModel::Captured` blends laminar and turbulent closures smoothly, for smooth gradients; experimental, prescribed angle of attack only (see [Captured transition](../concepts/transition#captured-transition-experimental)) |
 | `capt_L`, `capt_ws`, `capt_wc`, `capt_b` | 60, 1, 1, 0 | Captured model: transition length in momentum thicknesses, onset and blend widths in amplification factor, blend offset |
 | `onset` | `OnsetModel::Cubic` | Amplification onset ramp; `OnsetModel::Envelope` is fitted to stability theory (see [Onset of amplification](../concepts/transition#onset-of-amplification)) |

@@ -175,6 +175,7 @@ TEST_F(ForwardReferenceTest, ForwardRxComparison) {
 
     /* ---- Solve in C++ to set up infrastructure ---- */
     Scirocco foil("0012", N_ref - 1);
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
     state.foil.x = x_base;
@@ -408,6 +409,8 @@ TEST_F(ForwardReferenceTest, PrimalComparison) {
     int N_ref = static_cast<int>(x_base.cols());
 
     Scirocco foil("0012", N_ref - 1);
+
+    foil.GetState().param.cf_laminar_floor = false; /* as mfoil */
     foil.SetOper(3.0, -1.0, 1e6, 0.0);
     auto& state = foil.GetState();
     state.foil.x = x_base;

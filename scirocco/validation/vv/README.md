@@ -28,10 +28,16 @@ Matplotlib installed for mfoil, and flexfoil for `codes`
 ```bash
 python3 scirocco/validation/vv/vv.py codes ./vv_polar docs/src/data/vv_codes.json
 python3 scirocco/validation/vv/vv.py experiments ./vv_polar docs/src/data/vv_experiments.json
+python3 scirocco/validation/vv/vv.py tripped ./vv_polar docs/src/data/vv_tripped.json
 ```
 
 `vv.py` holds the case lists. `vv_polar.cpp` documents the driver's
-arguments.
+arguments. `codes` runs Scirocco with mfoil's closure
+(`cf_laminar_floor = false`), `experiments` with its defaults. `tripped`
+downloads the UIUC tripped polars (Low-Speed Airfoil Tests, volume 4) and
+coordinates into `--cache` (default `uiuc_cache`); they are GPL-licensed and
+not stored here. It runs both transition models, the cut cell without the
+floor, and XFOIL, on 160 panels that XFOIL makes.
 
 ## Measurements
 

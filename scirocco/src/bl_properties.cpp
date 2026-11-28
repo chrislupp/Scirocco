@@ -233,7 +233,41 @@ ScalarLin4 GetRet(const Vector4d& U, const Param& param) {
     return {Ret, Ret_U};
 }
 
+namespace {
+
+/* Laminar skin friction (mfoil correlation) from Hk and Re_theta */
+ScalarLin4 CfLaminar(double Hk, const Vector4d& Hk_U, double Ret,
+                     const Vector4d& Ret_U) {
+    double num, num_Hk;
+    if (Hk < 5.5) {
+        double term = std::pow(5.5 - Hk, 3) / (Hk + 1.0);
+        num = 0.0727 * term - 0.07;
+        num_Hk = 0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
+                           std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
+    } else {
+        double invterm = 1.0 - 1.0 / (Hk - 4.5);
+        num = 0.015 * invterm * invterm - 0.07;
+        num_Hk = 0.015 * 2.0 * invterm / std::pow(Hk - 4.5, 2);
+    }
+    return {num / Ret, num_Hk / Ret * Hk_U - num / (Ret * Ret) * Ret_U};
+}
+
+}  // namespace
+
 ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
+    ScalarLin4 cf = GetCfBase(U, param);
+    if (param.turb && !param.wake && param.cf_laminar_floor) {
+        /* XFOIL (BLVAR): the laminar value where it is larger, which is at
+         * small Re_theta and behind a separation bubble. */
+        auto [Hk, Hk_U] = GetHk(U, param);
+        auto [Ret, Ret_U] = GetRet(U, param);
+        ScalarLin4 lam = CfLaminar(Hk, Hk_U, Ret, Ret_U);
+        if (lam.value > cf.value) return lam;
+    }
+    return cf;
+}
+
+ScalarLin4 GetCfBase(const Vector4d& U, const Param& param) {
     /* Skin friction coefficient (matches mfoil get_cf) */
     if (param.wake) {
         return {0.0, Vector4d::Zero()};
@@ -284,21 +318,7 @@ ScalarLin4 GetCf(const Vector4d& U, const Param& param) {
         cf = (cf0 + 1.1e-4 * (dd - 1.0)) / Fc;
         cf_U = (cf0_U + 1.1e-4 * dd_U) / Fc - cf / Fc * Fc_U;
     } else {
-        /* Laminar cf (mfoil correlation) */
-        double num, num_Hk;
-        if (Hk < 5.5) {
-            double term = std::pow(5.5 - Hk, 3) / (Hk + 1.0);
-            num = 0.0727 * term - 0.07;
-            num_Hk =
-                0.0727 * (3.0 * std::pow(5.5 - Hk, 2) / (Hk + 1.0) * (-1.0) -
-                          std::pow(5.5 - Hk, 3) / std::pow(Hk + 1.0, 2));
-        } else {
-            double invterm = 1.0 - 1.0 / (Hk - 4.5);
-            num = 0.015 * invterm * invterm - 0.07;
-            num_Hk = 0.015 * 2.0 * invterm / std::pow(Hk - 4.5, 2);
-        }
-        cf = num / Ret;
-        cf_U = num_Hk / Ret * Hk_U - num / (Ret * Ret) * Ret_U;
+        return CfLaminar(Hk, Hk_U, Ret, Ret_U);
     }
 
     return {cf, cf_U};
@@ -341,7 +361,7 @@ ScalarLin4 GetCDi_Lam(const Vector4d& U, const Param& param) {
 ScalarLin4 GetCDi_TurbWall(const Vector4d& U, const Param& param) {
     if (param.wake) return {0.0, Vector4d::Zero()};
 
-    auto [cf, cf_U] = GetCf(U, param);
+    auto [cf, cf_U] = GetCfBase(U, param);
     auto [Hk, Hk_U] = GetHk(U, param);
     auto [Hs, Hs_U] = GetHs(U, param);
     auto [Us, Us_U] = GetUs(U, param);

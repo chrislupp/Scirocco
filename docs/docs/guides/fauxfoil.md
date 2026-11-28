@@ -254,9 +254,6 @@ sets `niglob`.
   uses the file's points directly as panel nodes, so run `PANE` after
   loading a coarse file.
 - **One Ncrit.** Scirocco uses one Ncrit for both surfaces.
-- **Trips near the leading edge.** `XTR` works as in XFOIL, but a trip
-  close behind the stagnation point may not converge (see
-  [Transition limits](../concepts/transition#limits)).
 - **Polar types.** Only type 1 (fixed Mach and Reynolds number).
 - **No polar dump files.** XFOIL's binary dump files are not written.
 - **Different numbers.** Results come from Scirocco, so they are close to

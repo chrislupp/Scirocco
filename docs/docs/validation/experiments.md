@@ -1,6 +1,6 @@
 ---
 title: Wind-tunnel data
-description: Scirocco and XFOIL against published NACA 0012 and NACA 4412 measurements, lift, drag and surface pressure.
+description: Scirocco and XFOIL against published measurements, lift, drag (free and tripped) and surface pressure.
 ---
 
 # Comparison with wind-tunnel data
@@ -15,6 +15,7 @@ same strengths and errors:
 | Cl,max | same | 1.74 at 18° | 1.74 at 18° | 1.60 at 16.4° (Abbott), 1.61 at 17.1° (Ladson) |
 | Cd at Cl = 0…1.25 | same | 9–17% below, 14% on average | 9–17% below, 13% on average | Abbott & von Doenhoff |
 | Cd at Cl = 0…1.25, tripped at 5% chord | same | 2–4% below on average | 2–4% below on average | Ladson, three grit sizes |
+| Cd at Cl = 0.1…1, tripped at 2% and 5% chord | Eppler 387 and SD2030, Re = 3.5×10⁵ and 5×10⁵ | 5.4% below to 2.1% above on average | 5.4% below to 3.0% above on average | UIUC, zigzag trips |
 | Upper-surface Cp, RMS error | NACA 0012, α = 0 / 10 / 15° | 0.018 / 0.047 / 0.25 | 0.016 / 0.043 / 0.26 | Gregory & O'Reilly |
 | Cp, RMS error | NACA 4412, α = 13.87° | 0.19 | 0.19 | Coles & Wadcock |
 
@@ -25,7 +26,13 @@ same strengths and errors:
   from the leading edge, which an integral boundary layer coupled to a
   panel method doesn't capture.
 - **Tripped drag is close.** With the trips of Ladson's test, both codes
-  are within 2–4% of his drag on average.
+  are within 2–4% of his drag on average, and within 6% of the UIUC
+  tripped polars at Re ≥ 3.5×10⁵. Both
+  [transition models](../concepts/transition#forced-transition) take the
+  trips.
+- **Thin trips at Re ≤ 2×10⁵ are not modelled.** There both codes are
+  14–21% above the measured drag on average: the codes switch to turbulent
+  flow at the trip, the real boundary layer does not.
 - **Free-transition drag is low.** Both codes are 9–17% below Abbott and
   von Doenhoff's free-transition drag. The codes agree with each other to
   1%, so the gap is in the shared model or in the conditions, not in
@@ -54,20 +61,61 @@ to 0.05 (`XTR 0.05 0.05` in XFOIL) reproduces that:
 
 <TrippedPolarPlot />
 
-- **Zero lift:** Cd is 0.00791 (Scirocco) and 0.00793 (XFOIL) against
-  0.0080–0.0081 measured. With free transition the codes give 0.0051.
-- **Up to Cl = 1.25:** Scirocco is 4.0%, 2.7% and 1.9% below the 80-, 120-
-  and 180-grit data on average (XFOIL 3.7%, 2.4% and 1.6%), against 25%
-  below with free transition. Point by point the difference runs from 8.5%
-  below to 2.9% above.
-- **Code to code:** Scirocco's Cd is within 1.0% of XFOIL's and its Cl
-  within 0.4%. Above α = 5° the upper surface transitions freely ahead of
-  the trip in both codes, and from 15° the stagnation point has passed the
-  lower trip, which both codes then ignore.
-- **Not converged:** Scirocco at α = 13° and 14°, where the lower trip sits
-  just behind the stagnation point (see
-  [Transition limits](../concepts/transition#limits)). XFOIL converges
-  there.
+- **Zero lift:** Cd is 0.00791 (Scirocco, both transition models) and
+  0.00793 (XFOIL) against 0.0080–0.0081 measured. With free transition the
+  codes give 0.0051.
+- **Up to Cl = 1.25:** Scirocco is 3.8%, 2.9% and 1.8% below the 80-, 120-
+  and 180-grit data on average (captured transition 3.6%, 2.8% and 1.7%;
+  XFOIL 3.6%, 2.7% and 1.6%), against 25% below with free transition. Point
+  by point the difference runs from 8.5% below to 2.9% above.
+- **Code to code:** up to α = 12°, Scirocco's Cd is within 1.0% of XFOIL's
+  (0.7% with captured transition) and its Cl within 0.4%. Above α = 5° the
+  upper surface transitions freely ahead of the trip in both codes, and
+  from 15° the stagnation point has passed the lower trip, which both codes
+  then ignore.
+- **Near the stagnation point:** at α = 13° and 14° the lower trip sits
+  just behind the stagnation point. Scirocco's Cd is 0.9% and 1.3% below
+  XFOIL's there. These points rely on the
+  [laminar skin-friction floor](../concepts/transition#trips-near-the-leading-edge).
+
+## Tripped drag at low Reynolds numbers
+
+Selig and McGranahan measured six airfoils at Re = 10⁵ to 5×10⁵, clean and
+with zigzag trips at 2% chord on the upper surface and 5% on the lower.
+Two of them are compared here, the Eppler 387 and the SD2030, with
+`xtrip_upper = 0.02` and `xtrip_lower = 0.05`. These trips sit where
+$Re_\theta$ is well below 100, so the case tests the
+[laminar skin-friction floor](../concepts/transition#trips-near-the-leading-edge)
+directly.
+
+<UiucTrippedPlot name="e387_re350000" />
+
+<UiucTrippedPlot name="sd2030_re500000" />
+
+The table gives the Cd error against the measured polar, mean / RMS, over
+the converged points with Cl between 0.1 and 1, at the measured Cl:
+
+<UiucTrippedTable />
+
+- **Re ≥ 3.5×10⁵:** Scirocco is within 6% of the measured drag on average,
+  as XFOIL is. The captured model is 0.7–2% lower than the cut cell, and
+  within 7%.
+- **Re ≤ 2×10⁵:** apart from the Eppler 387 at 10⁵, Scirocco and XFOIL
+  over-predict by 14–21% on average, and the captured model by 9–18%. A
+  thin trip does not make the boundary layer turbulent at once at these
+  Reynolds numbers, as the codes assume. This is a limit of forced
+  transition as a model of a thin trip.
+- **Code to code:** over all eight polars Scirocco's Cd differs from
+  XFOIL's by 0.36% on average (5.5% at most), and its Cl by 0.009 at most.
+  The skin friction behind a trip at 1% chord matches XFOIL's station by
+  station, to 0.07% of its peak on average and 1.1% at most (NACA 0012,
+  Re = 10⁶, α = 4°).
+- **The floor is needed.** Without it 33 of the 200 points converge, none
+  of them at Re ≤ 2×10⁵.
+
+Both codes run on the same 160 panels, which XFOIL makes from the published
+coordinates, with the trailing edge opened by 0.25% of the chord. The other
+four airfoils of the report were not run.
 
 ## NACA 0012 surface pressure
 
@@ -127,6 +175,14 @@ stored with their headers in
   Roughness Simulation Hoar Frost," ARC R&M 3726, 1970.
 - Coles, D. and Wadcock, A. J., "Flying-Hot-Wire Study of Flow Past an NACA
   4412 Airfoil at Maximum Lift," *AIAA Journal* 17(4), 1979, pp. 321–329.
+
+The tripped low-Reynolds-number polars are from the
+[UIUC Low-Speed Airfoil Tests](https://m-selig.ae.illinois.edu/pd.html),
+volume 4. `vv.py tripped` downloads them; they are GPL-licensed and not
+stored in this repository:
+
+- Selig, M. S. and McGranahan, B. D., "Wind Tunnel Aerodynamic Tests of Six
+  Airfoils for Use on Small Wind Turbines," NREL/SR-500-34515, 2004.
 
 The Eppler 387 comparison against the UIUC low-speed measurements is on
 [Transition validation](./transition#captured-transition-against-measured-drag).

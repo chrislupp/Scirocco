@@ -116,7 +116,7 @@ std::printf("cl = %.4f  cd = %.5f  upper: x/c = %.3f %s  lower: x/c = %.3f %s\n"
 ```
 
 ```output
-cl = 0.6671  cd = 0.00927  upper: x/c = 0.200 (trip)  lower: x/c = 0.600 (trip)
+cl = 0.6670  cd = 0.00928  upper: x/c = 0.200 (trip)  lower: x/c = 0.600 (trip)
 ```
 
 Without the trips the same case gives cl = 0.7202 and cd = 0.00693, with
@@ -146,6 +146,35 @@ model. A trip behind the end of the transition zone changes nothing; one
 inside the zone shortens it slightly. `vsol.Xt` and `vsol.tripped` are
 those of the cut-cell solution the captured solve starts from.
 
+### Trips near the leading edge
+
+A trip close behind the stagnation point starts the turbulent boundary
+layer at a small $Re_\theta$, below about 100, where the turbulent skin
+friction correlation is too low to give a solution. As XFOIL does, Scirocco
+therefore uses the laminar skin friction at a turbulent station wherever it
+is the larger of the two (`cf_laminar_floor`, on by default), in both
+transition models. With it, a trip at 1% chord or less converges like any
+other:
+
+```cpp
+foil.GetState().param.xtrip_upper = 0.01;
+foil.GetState().param.xtrip_lower = 0.01;
+foil.Solve();   // cl = 0.6560  cd = 0.01244, 8 iterations
+```
+
+The floor also acts at the first turbulent stations behind a laminar
+separation bubble, so it changes free-transition results too: Cd by 0.02%
+to 0.2% on average at Re = 2×10⁵ to 3×10⁶, and by at most 0.8% (see
+[XFOIL and mfoil](../validation/xfoil-mfoil#the-skin-friction-floor)).
+`cf_laminar_floor = false` gives mfoil's closure, without the floor. The
+derivatives account for the floor and match complex-step references.
+
+Behind a trip at 1% chord the skin friction matches XFOIL's station by
+station. Against measured polars with trips at 2% and 5% chord, both models
+converge at 198 or more of 200 points and are as close to the data as
+XFOIL; without the floor 33 points converge (see
+[tripped drag at low Reynolds numbers](../validation/experiments#tripped-drag-at-low-reynolds-numbers)).
+
 ## How transition moves during a solve
 
 Transition is part of the Newton iteration: as the solution changes, the
@@ -173,13 +202,10 @@ free-stream turbulence.
 
 [Forced transition](#forced-transition) has these limits:
 
-- **Trips close behind the stagnation point may not converge.** There the
-  boundary layer is too thin for the turbulent closure ($Re_\theta$ below
-  about 100), and `Solve()` returns `false`. This rules out a trip at
-  x/c = 0 as a way to get a fully turbulent solution, and can affect the
-  lower surface at high angles of attack, where the stagnation point sits
-  just ahead of the trip. Move the trip a few percent of chord downstream.
-  XFOIL converges in these cases.
+- **A trip at x/c = 0 does not make the solution fully turbulent.** The
+  stagnation point is at or behind x = 0 on one surface, which then has no
+  trip ahead of its boundary layer and transitions freely (see the next
+  point). Use a small positive value on both surfaces, such as 0.01.
 - **A trip the stagnation point has passed is ignored.** At a high angle of
   attack the stagnation point can move behind a lower-surface trip near the
   leading edge. That surface then transitions freely, as in XFOIL.

@@ -7,9 +7,10 @@ description: Scirocco against XFOIL 6.99 and mfoil on identical panel nodes, inv
 
 Scirocco implements the model of [mfoil](https://websites.umich.edu/~kfid/codes/mfoil/),
 Fidkowski's Python reimplementation of XFOIL's panel method and integral
-boundary layer. Wherever both converge, Scirocco reproduces mfoil's
-forces and transition locations to every stored digit. Both differ from
-XFOIL by the same small amount: on average 0.3–0.5% in Cl and 0.5–1% in Cd.
+boundary layer. Wherever both converge, Scirocco with mfoil's closure
+selected reproduces mfoil's forces and transition locations to every
+stored digit. Both differ from XFOIL by the same small amount: on average
+0.3–0.5% in Cl and 0.5–1% in Cd.
 
 | Case | Converged (Scirocco / XFOIL / mfoil) | Cl vs XFOIL, mean / max | Cd vs XFOIL, mean / max | Transition vs XFOIL, max | vs mfoil |
 | --- | --- | --- | --- | --- | --- |
@@ -31,7 +32,9 @@ significant digits stored, which leaves a largest transition difference of
   nodes without repaneling (`PCOP`). Paneling differences are therefore
   ruled out; what remains is the solver.
 - **Same physics.** ncrit = 9, free transition on both surfaces, Kármán–Tsien
-  correction at M = 0.4.
+  correction at M = 0.4. Scirocco runs mfoil's closure
+  (`cf_laminar_floor = false`); see
+  [The skin-friction floor](#the-skin-friction-floor) for its default.
 - **How each code runs.** Scirocco and XFOIL sweep each polar the way a user
   would, starting at the angle nearest 0° and continuing up, then down, each
   point warm-starting from the last (Scirocco with `warm_start = true`; see
@@ -98,6 +101,30 @@ surface from x/c = 0.39 to 0.59. That is the laminar separation bubble;
 transition at 0.58c closes it.
 
 <CodeDistributionPlot name="4412_re2e5" quantity="cf" surface="upper" yMax={0.01} />
+
+## The skin-friction floor
+
+By default Scirocco does not let the turbulent skin friction fall below the
+laminar value, as XFOIL does and mfoil does not (see
+[Trips near the leading edge](../concepts/transition#trips-near-the-leading-edge)).
+The comparison above switches that off, to check the implementation against
+mfoil. With the default, the same polars converge at the same points and
+move slightly towards XFOIL in drag:
+
+| Case | Cd change, mean / max | Cl change, max | Cd vs XFOIL, mean / max |
+| --- | --- | --- | --- |
+| NACA 0012, Re = 10⁶ | 0.08% / 0.19% | 0.11% | 0.86% / 3.6% |
+| NACA 2412, Re = 3×10⁶ | 0.02% / 0.06% | 0.02% | 0.53% / 0.94% |
+| NACA 4412, Re = 2×10⁵ | 0.23% / 0.75% | 0.14% | 0.62% / 2.4% |
+| NACA 2412, Re = 6×10⁶, M = 0.4 | 0.0005% / 0.004% | 0.00% | 0.48% / 0.77% |
+
+The floor acts at the first few turbulent stations behind transition. Its
+effect is largest at the lowest Reynolds number, where a laminar separation
+bubble precedes transition.
+
+mfoil has no floor and no forced transition, so it cannot check either.
+They are checked against XFOIL and against measured tripped polars instead:
+see [tripped drag at low Reynolds numbers](./experiments#tripped-drag-at-low-reynolds-numbers).
 
 ## Convergence
 
