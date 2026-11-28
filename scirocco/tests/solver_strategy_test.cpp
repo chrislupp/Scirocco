@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -596,12 +597,14 @@ TEST(SolverStrategy, MalformedWarmStateStartsCold) {
               cold_iterations);
     EXPECT_EQ(solve([](FoilState& s) { s.vsol.turb.pop_back(); }),
               cold_iterations);
-    EXPECT_EQ(solve([](FoilState& s) { s.isol.Istag = {-1, 0}; }),
-              cold_iterations);
-    EXPECT_EQ(solve([](FoilState& s) { s.isol.Istag = {40, 44}; }),
-              cold_iterations);
-    EXPECT_EQ(solve([&](FoilState& s) { s.isol.Istag = {N - 1, N}; }),
-              cold_iterations);
+    /* Stagnation pairs that are out of range or not adjacent nodes */
+    const std::vector<std::array<int, 2>> invalid = {
+        {-1, 0}, {40, 44}, {N - 1, N}};
+    for (const auto& pair : invalid) {
+        const int iterations =
+            solve([&](FoilState& s) { s.isol.Istag = pair; });
+        EXPECT_EQ(iterations, cold_iterations) << pair[0];
+    }
 }
 
 /// The observer is called once per Newton iteration and leaves the solve
