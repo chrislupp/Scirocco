@@ -4,6 +4,10 @@
     vv.py codes       DRIVER OUT.json   Scirocco (mfoil's closure), XFOIL, mfoil
                                         and flexfoil
     vv.py experiments DRIVER OUT.json   Scirocco and XFOIL against wind-tunnel data
+    vv.py tripped     DRIVER OUT.json   Scirocco (both transition models, and
+                                        without the skin-friction floor) and
+                                        XFOIL against tripped low-Reynolds-
+                                        number polars (UIUC)
 
 DRIVER is vv_polar built against the library (see README.md). Every code runs
 on the same panel nodes: mfoil panels the airfoil, Scirocco takes the nodes,
@@ -11,13 +15,20 @@ arc lengths and tangents unchanged, and XFOIL loads the nodes without
 repaneling (PCOP), as does flexfoil. Scirocco and XFOIL sweep each polar in
 order, as a user would, so every point warm-starts from the previous one;
 mfoil and flexfoil solve each point from a cold start.
+
+tripped downloads the UIUC measurements and coordinates into --cache (they
+are GPL-licensed and not kept in this repository). XFOIL panels each airfoil
+(160 panels) and both codes use those nodes.
 """
 import argparse
 import json
 import os
 import subprocess
 import sys
+import re as regex
 import tempfile
+import urllib.request
+import zipfile
 from concurrent.futures import ProcessPoolExecutor
 from importlib import metadata
 from pathlib import Path
@@ -58,6 +69,26 @@ EXPERIMENT_CASES = [
 ]
 
 
+# Tripped polars from Selig & McGranahan, "Wind Tunnel Aerodynamic Tests of
+# Six Airfoils for Use on Small Wind Turbines", NREL/SR-500-34515, 2004 (UIUC
+# Low-Speed Airfoil Tests, vol. 4): zigzag trips at 2% chord on the upper
+# and 5% on the lower surface. (name, label, coordinates, drag file); the
+# other four airfoils of the report are not run.
+UIUC = "https://m-selig.ae.illinois.edu/"
+UIUC_DATA = "pd/pub/lsat/volume04.zip"
+UIUC_TRIP = (0.02, 0.05)
+UIUC_PANELS = 160
+UIUC_TE_GAP = 0.0025  # the solver needs an open trailing edge
+TRIPPED_CASES = [
+    ("e387", "Eppler 387", "ads/coord/e387.dat", "volume04/e387_tf_drg.txt"),
+    ("sd2030", "SD2030", "ads/coord/sd2030.dat", "volume04/sd2030_tf_drg.txt"),
+]
+TRIPPED_ALPHAS = arange(-3, 9, 0.5)
+# (key, vv_polar flags)
+TRIPPED_RUNS = [("scirocco", []), ("scirocco_captured", ["captured"]),
+                ("scirocco_nofloor", ["mfoil"])]
+
+
 def sweeps(alphas):
     """Split a polar into two sweeps that both start at the angle nearest 0."""
     alphas = sorted(alphas)
@@ -76,16 +107,16 @@ def panel(naca, workdir):
     return m.foil.x
 
 
-def run_scirocco(driver, workdir, re, ma, alphas, dist, trip, mfoil_closure):
+def run_scirocco(driver, workdir, re, ma, alphas, dist, trip, flags=()):
+    """flags: vv_polar's trailing arguments ("mfoil", "captured")."""
     points, dists = {}, {}
     for k, sweep in enumerate(sweeps(alphas)):
-        out = workdir / f"scirocco_{k}.json"
+        out = workdir / f"scirocco_{'_'.join(flags)}_{k}.json"
         subprocess.run(
             [str(driver), str(workdir / "nodes.txt"), str(re), str(ma), str(NCRIT),
              ",".join(map(str, sweep)),
              ",".join(str(a) for a in dist if a in sweep) or "-", str(out)]
-            + [f"{trip[0]},{trip[1]}" if trip else "-"]
-            + (["mfoil"] if mfoil_closure else []),
+            + [f"{trip[0]},{trip[1]}" if trip else "-"] + list(flags),
             check=True, timeout=600)
         data = json.loads(out.read_text())
         for p in data["points"]:
@@ -283,7 +314,10 @@ def run_case(case, driver, codes, pool):
             # Against mfoil, Scirocco runs mfoil's closure: without the
             # laminar floor on the turbulent skin friction that is its default.
             runs["scirocco"] = run_scirocco(driver, workdir, re, ma, alphas, dist,
-                                            trip, "mfoil" in codes)
+                                            trip, ["mfoil"] * ("mfoil" in codes))
+        if "scirocco_captured" in codes:
+            runs["scirocco_captured"] = run_scirocco(
+                driver, workdir, re, ma, alphas, dist, trip, ["captured"])
         if "xfoil" in codes:
             runs["xfoil"] = run_xfoil(workdir, re, ma, alphas, dist, x.shape[1],
                                       trip)
@@ -304,12 +338,21 @@ def run_case(case, driver, codes, pool):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("mode", choices=("codes", "experiments"))
+    parser.add_argument("mode", choices=("codes", "experiments", "tripped"))
     parser.add_argument("driver", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--workers", type=int, default=os.cpu_count())
+    parser.add_argument("--cache", type=Path, default=Path("uiuc_cache"),
+                        help="tripped: where the UIUC downloads are kept")
     args = parser.parse_args()
     driver = args.driver.resolve()
+    if args.mode == "tripped":
+        data = dict(cases=run_tripped(driver, args.cache),
+                    trip=dict(upper=UIUC_TRIP[0], lower=UIUC_TRIP[1]),
+                    panels=UIUC_PANELS, ncrit=NCRIT, cl_range=[0.1, 1.0])
+        args.output.write_text(
+            json.dumps(clean(data), separators=(",", ":")) + "\n")
+        return
     with ProcessPoolExecutor(args.workers) as pool:
         if args.mode == "codes":
             codes = ("scirocco", "xfoil", "mfoil", "flexfoil")
@@ -317,10 +360,107 @@ def main():
             data = dict(cases=cases,
                         versions=dict(flexfoil=metadata.version("flexfoil")))
         else:
-            cases = [run_case(c, driver, ("scirocco", "xfoil"), pool)
+            cases = [run_case(c, driver,
+                              ("scirocco", "xfoil")
+                              + ("scirocco_captured",) * (len(c) > 6), pool)
                      for c in EXPERIMENT_CASES]
             data = dict(cases=cases, measured=load_measurements())
     args.output.write_text(json.dumps(clean(data), separators=(",", ":")) + "\n")
+
+
+def uiuc_fetch(cache, path):
+    """Local copy of a UIUC file, downloaded on first use."""
+    local = cache / Path(path).name
+    if not local.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(UIUC + path, local)
+    return local
+
+
+def uiuc_polars(text):
+    """{average Reynolds number: rows of alpha, Cl, Cd} of a UIUC drag file."""
+    pattern = (r"Average Reynolds #:\s*([\d.]+)\s*Number of angles of attack:"
+               r"\s*\d+\s*alpha[^\n]*\n((?:\s*-?[\d.]+(?:\s+-?[\d.]+)+\n)+)")
+    return {float(m.group(1)):
+            np.array([[float(v) for v in row.split()[:3]]
+                      for row in m.group(2).strip().split("\n")])
+            for m in regex.finditer(pattern, text)}
+
+
+def uiuc_panel(coords, workdir):
+    """Open the trailing edge and let XFOIL panel the airfoil.
+
+    Writes airfoil.dat (XFOIL's order) and nodes.txt (x y, from the lower
+    trailing edge, for vv_polar). The published coordinates are too coarse
+    at the leading edge to panel directly.
+    """
+    x = np.loadtxt(coords, skiprows=1)  # from the upper trailing edge
+    le = int(np.argmin(x[:, 0]))
+    x[:le, 1] += 0.5 * UIUC_TE_GAP * x[:le, 0]
+    x[le:, 1] -= 0.5 * UIUC_TE_GAP * x[le:, 0]
+    np.savetxt(workdir / "raw.dat", x, fmt="%.7f", header="raw", comments="")
+    cmds = ["PLOP", "G F", "", "LOAD raw.dat", "PPAR", f"N {UIUC_PANELS + 1}",
+            "", "", "PSAV airfoil.dat", "QUIT", ""]
+    subprocess.run([XFOIL], input="\n".join(cmds), text=True, cwd=workdir,
+                   capture_output=True, timeout=60)
+    nodes = np.loadtxt(workdir / "airfoil.dat")
+    assert len(nodes) == UIUC_PANELS + 1, "XFOIL did not panel the airfoil"
+    np.savetxt(workdir / "airfoil.dat", nodes, fmt="%.17g", header="airfoil",
+               comments="")
+    np.savetxt(workdir / "nodes.txt", nodes[::-1], fmt="%.17g")
+    return nodes[::-1].T
+
+
+def cd_error(measured, points, cl_lo=0.1, cl_hi=1.0):
+    """Cd error [%] at the measured Cl-Cd curve, for converged points with
+    cl_lo <= Cl <= cl_hi: mean, rms and number of points."""
+    alpha, cl, cd = measured.T
+    keep = (cl >= cl_lo - 0.05) & (cl <= cl_hi + 0.05) & (alpha > -3.5)
+    order = np.argsort(cl[keep])
+    pts = [p for p in points
+           if p["converged"] and cl_lo <= p["cl"] <= cl_hi]
+    if not pts:
+        return dict(mean=None, rms=None, points=0)
+    ref = np.interp([p["cl"] for p in pts], cl[keep][order], cd[keep][order])
+    err = 100 * (np.array([p["cd"] for p in pts]) - ref) / ref
+    return dict(mean=err.mean(), rms=np.sqrt((err**2).mean()), points=len(pts))
+
+
+def run_tripped(driver, cache):
+    archive = zipfile.ZipFile(uiuc_fetch(cache, UIUC_DATA))
+    cases = []
+    for name, label, coords, drag in TRIPPED_CASES:
+        polars = uiuc_polars(
+            archive.read(drag).decode("latin-1").replace("\r\n", "\n"))
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            x = uiuc_panel(uiuc_fetch(cache, coords), workdir)
+            for re_measured, measured in sorted(polars.items()):
+                re = round(re_measured, -4)
+                out = dict(name=f"{name}_re{re:.0f}", airfoil=label, re=re,
+                           re_measured=re_measured, alphas=TRIPPED_ALPHAS,
+                           coords=dict(x=x[0], y=x[1]),
+                           measured=dict(alpha=measured[:, 0],
+                                         cl=measured[:, 1], cd=measured[:, 2]),
+                           summary={})
+                runs = {key: run_scirocco(driver, workdir, re, 0.0,
+                                          TRIPPED_ALPHAS, [], UIUC_TRIP, flags)
+                        for key, flags in TRIPPED_RUNS}
+                runs["xfoil"] = run_xfoil(workdir, re, 0.0, TRIPPED_ALPHAS, [],
+                                          x.shape[1], UIUC_TRIP)
+                for key, (points, _) in runs.items():
+                    pts = [points[a] for a in TRIPPED_ALPHAS]
+                    out[key] = dict(points=pts)
+                    out["summary"][key] = dict(
+                        cd_error(measured, pts),
+                        converged=sum(p["converged"] for p in pts))
+                    s = out["summary"][key]
+                    print(f"{out['name']:16s} {key:18s} converged "
+                          f"{s['converged']:2d}/{len(pts)}  Cd error mean "
+                          f"{s['mean']} rms {s['rms']} ({s['points']} points)",
+                          flush=True)
+                cases.append(out)
+    return cases
 
 
 def load_measurements():

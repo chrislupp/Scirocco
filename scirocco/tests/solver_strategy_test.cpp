@@ -764,6 +764,23 @@ TEST(CfLaminarFloor, TripNearStagnationConverges) {
     EXPECT_LT(foil.GetCl(), free_foil.GetCl());
 }
 
+/* The captured model needs the floor for such trips too, and stays close to
+ * the cut cell with it. */
+TEST(CfLaminarFloor, CapturedModelTripNearStagnation) {
+    Scirocco cut = TrippedFoil(4.0, 0.01, 0.01);
+    ASSERT_TRUE(cut.Solve());
+    Scirocco capt = TrippedFoil(4.0, 0.01, 0.01);
+    capt.GetState().param.transition = TransitionModel::Captured;
+    ASSERT_TRUE(capt.Solve());
+    EXPECT_NEAR(capt.GetCl(), cut.GetCl(), 2e-3);
+    EXPECT_NEAR(capt.GetCd() / cut.GetCd(), 1.0, 0.02);
+
+    Scirocco bare = TrippedFoil(4.0, 0.01, 0.01);
+    bare.GetState().param.transition = TransitionModel::Captured;
+    bare.GetState().param.cf_laminar_floor = false;
+    EXPECT_FALSE(bare.Solve());
+}
+
 /* The floor replaces the turbulent value only where the laminar one is
  * larger, and the wall dissipation keeps the turbulent value. */
 TEST(CfLaminarFloor, ActsOnlyWhereLaminarIsLarger) {

@@ -137,7 +137,7 @@ struct Param {
     /** Turbulent skin friction never below the laminar value at the same
      *  Hk and Re_theta, as in XFOIL. It acts at small Re_theta (a trip close
      *  behind the stagnation point) and just behind a separation bubble.
-     *  false gives mfoil's closure. Cut cell only. */
+     *  false gives mfoil's closure. Both transition models use it. */
     bool cf_laminar_floor = true;
     double capt_L = 60.0; /**< Captured: 10-90% transition length [theta],
                                calibrated on E387 drag (UIUC Vol 5) */

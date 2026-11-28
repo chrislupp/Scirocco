@@ -496,6 +496,7 @@ def write_captured_group(f):
         M = mfoil.mfoil(naca='2412', npanel=160)
         M.param.verb = 0
         M.param.doplot = False
+        M.param.cf_laminar_floor = True  # Scirocco's default
         recompute_geom(M)
         M.setoper(alpha=alpha, Re=Re)
         if not mfoil_captured.solve_captured(M):
@@ -523,6 +524,7 @@ def captured_cs_solve(alpha, Re, Ma, node=None, dim=None, var=None,
     M.param.verb = 0
     M.param.doplot = False
     M.param.xtrip = xtrip
+    M.param.cf_laminar_floor = True  # Scirocco's default
     if node is not None:
         M.foil.x = M.foil.x.astype(complex)
         M.foil.x[dim, node] += 1j * CS_STEP

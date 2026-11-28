@@ -60,9 +60,6 @@ Param BuildParam(const FoilState& state, int si) {
     param.wake = (si == 2);
     param.turb = param.wake; /* Wake is fully turbulent (matches mfoil) */
     param.simi = false;
-    /* The captured model blends the two closures itself */
-    if (param.transition != TransitionModel::CutCell)
-        param.cf_laminar_floor = false;
 
     return param;
 }

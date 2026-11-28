@@ -24,6 +24,8 @@ import {
     ExperimentPolarPlot,
     GregoryCpPlot,
     TrippedPolarPlot,
+    UiucTrippedPlot,
+    UiucTrippedTable,
 } from "@site/src/components/charts/vv";
 
 export default {
@@ -49,5 +51,7 @@ export default {
     ExperimentPolarPlot,
     GregoryCpPlot,
     TrippedPolarPlot,
+    UiucTrippedPlot,
+    UiucTrippedTable,
     ColesWadcockCpPlot,
 };

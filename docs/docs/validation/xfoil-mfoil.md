@@ -122,6 +122,10 @@ The floor acts at the first few turbulent stations behind transition. Its
 effect is largest at the lowest Reynolds number, where a laminar separation
 bubble precedes transition.
 
+mfoil has no floor and no forced transition, so it cannot check either.
+They are checked against XFOIL and against measured tripped polars instead:
+see [tripped drag at low Reynolds numbers](./experiments#tripped-drag-at-low-reynolds-numbers).
+
 ## Convergence
 
 Scirocco converged at 58 of the 59 viscous points, XFOIL at 57, and mfoil,

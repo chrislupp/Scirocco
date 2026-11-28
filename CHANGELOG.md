@@ -25,8 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   8 iterations; before, no convergence). The turbulent wall dissipation
   keeps the turbulent value, also as in XFOIL. Shape, angle of attack,
   Reynolds number and Mach number derivatives account for the floor and
-  match mfoil complex-step references. `GetCfBase` returns the skin
-  friction without the floor. `TransitionModel::Captured` ignores it.
+  match complex-step references. `GetCfBase` returns the skin friction
+  without the floor. Both transition models use the floor;
+  `TransitionModel::Captured` needs it for the same trips.
 - `fauXFOIL`: `VPAR`'s `XTR` sets the trips. Polar files record them and
   the iteration report shows `forced` transition at the trip.
 - Validation: NACA 0012 drag at Re = 6e6 with transition tripped at 5%
@@ -34,6 +35,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   data" page). `vv.py` cases and `vv_polar` take trip positions.
   `vv_polar` sets `warm_start = true`, which its sweeps relied on while
   that was the default.
+- Validation: tripped drag of the Eppler 387 and SD2030 at Re = 1e5 to 5e5
+  against the UIUC measurements (trips at 2% and 5% chord) and XFOIL, for
+  both transition models and without the skin-friction floor
+  (`vv.py tripped`, the "Wind-tunnel data" page). Scirocco converges at 199
+  of 200 points (198 with captured transition; 33 without the floor) and
+  its Cd is within 0.4% of XFOIL's on average. `vv_polar` takes plain
+  coordinates and a `captured` flag.
 
 ### Changed
 - Viscous results change slightly because `Param::cf_laminar_floor` is on

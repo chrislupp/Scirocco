@@ -152,8 +152,9 @@ A trip close behind the stagnation point starts the turbulent boundary
 layer at a small $Re_\theta$, below about 100, where the turbulent skin
 friction correlation is too low to give a solution. As XFOIL does, Scirocco
 therefore uses the laminar skin friction at a turbulent station wherever it
-is the larger of the two (`cf_laminar_floor`, on by default). With it, a
-trip at 1% chord or less converges like any other:
+is the larger of the two (`cf_laminar_floor`, on by default), in both
+transition models. With it, a trip at 1% chord or less converges like any
+other:
 
 ```cpp
 foil.GetState().param.xtrip_upper = 0.01;
@@ -167,6 +168,12 @@ to 0.2% on average at Re = 2×10⁵ to 3×10⁶, and by at most 0.8% (see
 [XFOIL and mfoil](../validation/xfoil-mfoil#the-skin-friction-floor)).
 `cf_laminar_floor = false` gives mfoil's closure, without the floor. The
 derivatives account for the floor and match complex-step references.
+
+Behind a trip at 1% chord the skin friction matches XFOIL's station by
+station. Against measured polars with trips at 2% and 5% chord, both models
+converge at 198 or more of 200 points and are as close to the data as
+XFOIL; without the floor 33 points converge (see
+[tripped drag at low Reynolds numbers](../validation/experiments#tripped-drag-at-low-reynolds-numbers)).
 
 ## How transition moves during a solve
 
